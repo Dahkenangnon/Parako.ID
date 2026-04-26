@@ -1,0 +1,393 @@
+{% extends "layouts/admin-layout.njk" %}
+{% block admin_content %}
+    <div
+        class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Page Header -->
+        <div class="mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                    <h1 class="text-xl sm:text-2xl font-bold text-foreground truncate">OIDC Clients</h1>
+                    <p class="mt-1 text-sm text-muted-foreground">Manage OpenID Connect client applications</p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <a href="/admin/data-transfer/oidc-clients" class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="arrow-left-right" class="h-4 w-4 mr-1 sm:mr-2"></i>
+                        <span class="hidden xs:inline">Import / Export</span>
+                        <span class="xs:hidden">Import</span>
+                    </a>
+                    <a
+                        href="/admin/oidc-clients/create"
+                        class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-primary text-primary-foreground text-sm font-medium
+                            hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                        <i data-lucide="plus" class="h-4 w-4 mr-1 sm:mr-2"></i>
+                        <span class="hidden xs:inline">Create Client</span>
+                        <span class="xs:hidden">Create</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Statistics Grid -->
+        <div class="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Clients</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.total | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="key" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.active | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="check-circle" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Web Apps</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.byType.web | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="globe" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Native/SPA</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ (stats.byType.native | default(0)) + (stats.byType.spa | default(0)) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="smartphone" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Advanced Filter Section -->
+        <div class="bg-card border border-border overflow-hidden mb-6">
+            <form
+                method="GET" action="/admin/oidc-clients">
+                <!-- Filter Header -->
+                <div class="bg-muted/50 px-4 py-2 border-b border-border">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="filter" class="h-4 w-4 text-muted-foreground"></i>
+                        <h3 class="text-sm font-medium text-foreground">Filters</h3>
+                    </div>
+                </div>
+                <!-- Filter Controls -->
+                <div
+                    class="p-4 space-y-4">
+                    <!-- Search Section -->
+                    <div>
+                        <label for="search" class="block text-xs font-medium text-muted-foreground mb-2">Search</label>
+                        <div class="relative">
+                            <i
+                                data-lucide="search"
+                                class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                            <input type="text" name="search" id="search" value="{{ filters.search or '' }}" placeholder="Search clients by name or ID..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"></div>
+                        </div>
+                        <!-- Filter & Sort Grid -->
+                        <div>
+                            <label class="block text-xs font-medium text-muted-foreground mb-2">Filter & Sort</label>
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div class="relative">
+                                    <select
+                                        name="application_type"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                            focus:ring-primary/20 focus:border-primary">
+                                        <option value="">All Types</option>
+                                        {% for key, preset in appTypePresets %}
+                                            <option value="{{ key }}" {{ 'selected' if filters.applicationType == key else '' }}>{{ preset.label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <i
+                                        data-lucide="chevron-down"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <select
+                                        name="status"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                            focus:ring-primary/20 focus:border-primary">
+                                        <option value="">All Status</option>
+                                        <option value="active" {{ 'selected' if filters.status == 'active' else '' }}>Active</option>
+                                        <option value="inactive" {{ 'selected' if filters.status == 'inactive' else '' }}>Inactive</option>
+                                    </select>
+                                    <i
+                                        data-lucide="chevron-down"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <select
+                                        name="sortBy"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                            focus:ring-primary/20 focus:border-primary">
+                                        <option value="created_at" {{ 'selected' if filters.sortBy == 'created_at' else '' }}>Sort by Date</option>
+                                        <option value="client_name" {{ 'selected' if filters.sortBy == 'client_name' else '' }}>Sort by Name</option>
+                                        <option value="application_type" {{ 'selected' if filters.sortBy == 'application_type' else '' }}>Sort by Type</option>
+                                    </select>
+                                    <i
+                                        data-lucide="chevron-down"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Action Footer -->
+                    <div class="bg-muted/30 px-4 py-3 border-t border-border flex flex-col sm:flex-row gap-2 sm:justify-end">
+                        <button
+                            type="submit"
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium
+                                hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="filter" class="h-4 w-4"></i>
+                            <span>Apply Filters</span>
+                        </button>
+                        <a
+                            href="/admin/oidc-clients"
+                            class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium
+                                hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                            <span>Clear Filters</span>
+                        </a>
+                    </div>
+                </form>
+            </div>
+            <!-- Static Clients Note -->
+            {% if staticClientsNote %}
+            <div class="bg-muted/50 border border-border p-4 mb-6 flex items-start gap-3">
+                <i data-lucide="info" class="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"></i>
+                <p class="text-sm text-muted-foreground">Static clients configured in <code class="text-xs bg-muted px-1 py-0.5">parako-rp.jsonc</code> are automatically available to the OIDC provider and are not shown here. Only managed clients are displayed below.</p>
+            </div>
+            {% endif %}
+            <!-- Clients Table -->
+            <div class="bg-card border border-border overflow-hidden">
+                {% if clients and clients.length > 0 %}
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-border">
+                            <thead class="bg-muted/50 border-b border-border">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left">
+                                        <a
+                                            href="?sortBy=client_name&sortOrder={% if filters.sortBy == 'client_name' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
+                                                hover:text-foreground transition-colors">
+                                            <span>Client</span>
+                                            {% if filters.sortBy == 'client_name' %}
+                                                {% if filters.sortOrder == 'asc' %}
+                                                    <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
+                                                {% else %}
+                                                    <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
+                                                {% endif %}
+                                            {% endif %}
+                                        </a>
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left">
+                                        <a
+                                            href="?sortBy=application_type&sortOrder={% if filters.sortBy == 'application_type' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
+                                                hover:text-foreground transition-colors">
+                                            <span>Type</span>
+                                            {% if filters.sortBy == 'application_type' %}
+                                                {% if filters.sortOrder == 'asc' %}
+                                                    <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
+                                                {% else %}
+                                                    <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
+                                                {% endif %}
+                                            {% endif %}
+                                        </a>
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-left">
+                                        <a
+                                            href="?sortBy=active&sortOrder={% if filters.sortBy == 'active' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
+                                                hover:text-foreground transition-colors">
+                                            <span>Status</span>
+                                            {% if filters.sortBy == 'active' %}
+                                                {% if filters.sortOrder == 'asc' %}
+                                                    <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
+                                                {% else %}
+                                                    <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
+                                                {% endif %}
+                                            {% endif %}
+                                        </a>
+                                    </th>
+                                    <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-card divide-y divide-border">
+                                {% for client in clients %}
+                                    <tr class="hover:bg-muted/50 transition-colors">
+                                        <td class="px-6 py-5 whitespace-nowrap">
+                                            <div class="flex items-center">
+                                                <div class="flex-shrink-0 h-10 w-10">
+                                                    <div class="h-10 w-10 bg-primary/10 flex items-center justify-center">
+                                                        <i data-lucide="key" class="h-5 w-5 text-primary"></i>
+                                                    </div>
+                                                </div>
+                                                <div class="ml-4 min-w-0 flex-1">
+                                                    <div class="text-sm font-medium text-foreground truncate max-w-32" title="{{ client.client_name }}">{{ client.client_name }}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="px-6 py-5 whitespace-nowrap">
+                                            {% if client.application_type == 'web' %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                                    <i data-lucide="globe" class="h-3 w-3 mr-1"></i>
+                                                    Web
+                                                </span>
+                                            {% elif client.application_type == 'spa' %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary-foreground">
+                                                    <i data-lucide="zap" class="h-3 w-3 mr-1"></i>
+                                                    SPA
+                                                </span>
+                                            {% elif client.application_type == 'native' %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning-foreground
+                                                        dark:text-warning">
+                                                    <i data-lucide="smartphone" class="h-3 w-3 mr-1"></i>
+                                                    Native
+                                                </span>
+                                            {% else %}
+                                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                                    <i data-lucide="server" class="h-3 w-3 mr-1"></i>
+                                                    API
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="px-6 py-5 whitespace-nowrap">
+                                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium {{ 'bg-primary/10 text-primary' if client.active else 'bg-warning/10 text-warning-foreground dark:text-warning' }}" title="{{ 'Active' if client.active else 'Inactive' }}">
+                                                <i data-lucide="{{ 'check-circle' if client.active else 'x-circle' }}" class="h-3 w-3 mr-1"></i>
+                                                {{ 'Active' if client.active else 'Inactive' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
+                                            <div class="flex items-center justify-end space-x-2">
+                                                <a
+                                                    href="/admin/oidc-clients/view/{{ client.client_id }}"
+                                                    class="text-primary hover:text-primary/80"
+                                                    title="View Details">
+                                                    <i data-lucide="eye" class="h-4 w-4"></i>
+                                                </a>
+                                                <a
+                                                    href="/admin/oidc-clients/edit/{{ client.client_id }}"
+                                                    class="text-muted-foreground hover:text-foreground"
+                                                    title="Edit Client">
+                                                    <i data-lucide="edit" class="h-4 w-4"></i>
+                                                </a>
+                                                {% if client.active %}
+                                                    <form
+                                                        method="POST"
+                                                        action="/admin/oidc-clients/deactivate/{{ client.client_id }}"
+                                                        class="inline"
+                                                        onsubmit="return confirmDeactivateClient(event)">
+                                                        <input type="hidden" name="_method" value="POST">
+                                                        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                                        <button type="submit" class="text-warning-foreground dark:text-warning hover:text-warning/80" title="Deactivate Client">
+                                                            <i data-lucide="pause" class="h-4 w-4"></i>
+                                                        </button>
+                                                    </form>
+                                                {% else %}
+                                                    <form
+                                                        method="POST"
+                                                        action="/admin/oidc-clients/activate/{{ client.client_id }}"
+                                                        class="inline">
+                                                        <input type="hidden" name="_method" value="POST">
+                                                        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                                        <button type="submit" class="text-primary hover:text-primary/80" title="Activate Client">
+                                                            <i data-lucide="play" class="h-4 w-4"></i>
+                                                        </button>
+                                                    </form>
+                                                {% endif %}
+                                                <form
+                                                    method="POST"
+                                                    action="/admin/oidc-clients/delete/{{ client.client_id }}"
+                                                    class="inline"
+                                                    onsubmit="return confirmDeleteClient(event)">
+                                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                                    <button type="submit" class="text-destructive hover:text-destructive/80" title="Delete Client">
+                                                        <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <!-- Pagination -->
+                                        {% if pagination.totalPages > 1 %}
+                                            <div class="px-6 py-4 border-t border-border">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="text-sm text-muted-foreground">
+                                                        Showing
+                                                        {{ ((pagination.currentPage - 1) * pagination.itemsPerPage) + 1 }} to
+                                                        {{ pagination.currentPage * pagination.itemsPerPage if pagination.currentPage * pagination.itemsPerPage < pagination.totalItems else pagination.totalItems }}
+                                                        of
+                                                        {{ pagination.totalItems }} results
+                                                    </div>
+                                                    <div class="flex items-center space-x-2">
+                                                        {% if pagination.hasPrev %}
+                                                            <a
+                                                                href="?page={{ pagination.currentPage - 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                                                class="inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground bg-card border border-border
+                                                                    hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                                                                <i data-lucide="chevron-left" class="h-4 w-4 mr-1"></i>
+                                                                Previous
+                                                            </a>
+                                                        {% endif %}
+                                                        <span class="inline-flex items-center px-3 py-2 text-sm font-medium text-primary-foreground bg-primary">
+                                                            {{ pagination.currentPage }} of {{ pagination.totalPages }}
+                                                        </span>
+                                                        {% if pagination.hasNext %}
+                                                            <a
+                                                                href="?page={{ pagination.currentPage + 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                                                class="inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground bg-card border border-border
+                                                                    hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                                                                Next
+                                                                <i data-lucide="chevron-right" class="h-4 w-4 ml-1"></i>
+                                                            </a>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% else %}
+                                        <div class="px-6 py-12 text-center">
+                                            <i data-lucide="key" class="h-12 w-12 text-muted-foreground mx-auto mb-4"></i>
+                                            <h3 class="text-lg font-medium text-foreground mb-2">No clients found</h3>
+                                            <p class="text-muted-foreground mb-6">Get started by creating your first OIDC client.</p>
+                                            <a
+                                                href="/admin/oidc-clients/create"
+                                                class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90
+                                                    focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                                                <i data-lucide="plus" class="h-4 w-4 mr-2"></i>
+                                                Create Client
+                                            </a>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endblock %}
+{% block scripts %}
+    {{ super() }}
+    <!-- Admin OIDC Clients Management Script -->
+    <script src="/js/admin/oidc-clients.js"></script>
+{% endblock %}

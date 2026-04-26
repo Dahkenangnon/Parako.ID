@@ -1,0 +1,42 @@
+{
+  "title": "Sekyuriti shitsumon",
+  "description": "Akaunto kaifuku no tame no sekyuriti shitsumon wo settei shimasu",
+  "setup": {
+    "title": "Sekyuriti shitsumon no settei",
+    "select_question": "質問を選択...",
+    "select_questions": "{{count}} ko no shitsumon wo erabi, kotae wo nyuryoku shite kudasai",
+    "answer_placeholder": "Anata no kotae",
+    "save": "Sekyuriti shitsumon wo hozon",
+    "instruction": "Anata dake ga shitte iru kotae no shitsumon wo erande kudasai. Kotae wa oomoji komoji wo kubetsu shimasen."
+  },
+  "recovery": {
+    "title": "Sekyuriti shitsumon ni kotaeru",
+    "description": "Akaunto wo kaifuku suru tame ni sekyuriti shitsumon ni kotaete kudasai",
+    "submit": "Kotae wo kakunin",
+    "attempts_remaining": "Nokori {{count}} kai"
+  },
+  "questions": {
+    "q1": "Hajimete katta petto no namae wa?",
+    "q2": "Umareta machi no namae wa?",
+    "q3": "Kodomo no koro no adana wa?",
+    "q4": "Kodomo no koro no shinyu no namae wa?",
+    "q5": "Hajimete katta kuruma no mekaa wa?",
+    "q6": "Shougakkou no namae wa?",
+    "q7": "Okaasan no kyuusei wa?",
+    "q8": "Sodatta machi no toori no namae wa?",
+    "q9": "Kodomo no koro no sukina tabemono wa?",
+    "q10": "Hajimete itta konsaato wa?"
+  },
+  "validation": {
+    "answer_too_short": "Kotae wa sukunakutomo 3 moji hitsuyou desu",
+    "answer_too_generic": "Motto gutaiteki na kotae wo nyuryoku shite kudasai",
+    "all_answers_required": "Subete no shitsumon ni kotaete kudasai",
+    "incorrect_answers": "Hitotsu ijou no kotae ga machigatte imasu",
+    "select_different_questions": "Betsu no shitsumon wo erande kudasai"
+  },
+  "status": {
+    "configured": "Sekyuriti shitsumon settei zumi",
+    "not_configured": "Sekyuriti shitsumon mi settei",
+    "update": "Sekyuriti shitsumon wo koushin"
+  }
+}

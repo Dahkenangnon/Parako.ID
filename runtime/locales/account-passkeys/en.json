@@ -1,0 +1,53 @@
+{
+  "title": "Passkeys",
+  "description": "Manage your passkeys for secure, passwordless authentication. Passkeys use biometrics like Touch ID or Face ID, or security keys like YubiKey.",
+  "add_button": "Add Passkey",
+  "loading": "Loading passkeys...",
+  "adding": "Adding...",
+  "empty": {
+    "title": "No Passkeys Yet",
+    "description": "Add a passkey to use Touch ID, Face ID, Windows Hello, or a security key for faster, more secure sign-in."
+  },
+  "info": {
+    "title": "About Passkeys",
+    "point1": "Passkeys are more secure than passwords and protect against phishing",
+    "point2": "They work across devices synced with your iCloud, Google, or Microsoft account",
+    "point3": "You can have multiple passkeys for different devices"
+  },
+  "actions": {
+    "rename": "Rename",
+    "delete": "Delete"
+  },
+  "rename": {
+    "title": "Rename Passkey",
+    "label": "Passkey Name",
+    "placeholder": "e.g., MacBook Touch ID",
+    "confirm": "Save",
+    "cancel": "Cancel"
+  },
+  "delete": {
+    "confirmTitle": "Delete Passkey",
+    "confirmMessage": "Are you sure you want to delete this passkey? This action cannot be undone."
+  },
+  "success": {
+    "added": "Passkey added successfully",
+    "renamed": "Passkey renamed successfully",
+    "deleted": "Passkey deleted successfully"
+  },
+  "error": {
+    "loading": "Failed to load passkeys",
+    "adding": "Failed to add passkey",
+    "renaming": "Failed to rename passkey",
+    "deleting": "Failed to delete passkey",
+    "notSupported": "Passkeys are not supported in your browser"
+  },
+  "lastUsed": "Last used",
+  "neverUsed": "Never used",
+  "createdOn": "Created on",
+  "deviceType": {
+    "platform": "Platform authenticator",
+    "crossPlatform": "Security key",
+    "singleDevice": "Single device",
+    "multiDevice": "Synced across devices"
+  }
+}

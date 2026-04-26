@@ -1,0 +1,522 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground">Activity Details</h1>
+                <p class="mt-2 text-xs sm:text-sm text-muted-foreground font-mono break-all">Activity ID: {{ activity._id }}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                        {% if activity.type.includes('login') %}
+                            bg-secondary/10 text-secondary
+                        {% elif activity.type.includes('failed') or activity.type.includes('error') %}
+                            bg-destructive/10 text-destructive
+                        {% elif activity.type.includes('success') %}
+                            bg-primary/10 text-primary
+                        {% else %}
+                            bg-muted text-muted-foreground
+                        {% endif %}">
+                        {{ activity.description }}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                        {% if activity.status == 'success' %}
+                            bg-primary/10 text-primary
+                        {% elif activity.status == 'failed' %}
+                            bg-destructive/10 text-destructive
+                        {% elif activity.status == 'warning' %}
+                            bg-warning/10 text-warning
+                        {% else %}
+                            bg-secondary/10 text-secondary
+                        {% endif %}">
+                        {{ activity.status | upper }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <a href="/admin/activities" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 w-full sm:w-auto">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Activities
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Activity Information -->
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+                Activity Information
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Basic Information -->
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Activity Type</label>
+                    <p class="text-foreground">{{ activity.description }}</p>
+                </div>
+                
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Status</label>
+                    <p class="text-foreground">{{ activity.status | upper }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Description</label>
+                    <p class="text-foreground">{{ activity.description }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Timestamp</label>
+                    <p class="text-foreground font-mono">{{ activity.timestamp | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Activity ID</label>
+                    <p class="text-foreground font-mono text-sm break-all">{{ activity._id }}</p>
+                </div>
+                <!-- Actor Information (Who performed the action) -->
+                {% if activity.actor %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Actor Type</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                            {% if activity.actor.actor_type == 'admin' %}
+                                bg-secondary/10 text-secondary
+                            {% elif activity.actor.actor_type == 'system' %}
+                                bg-primary/10 text-primary
+                            {% elif activity.actor.actor_type == 'service' %}
+                                bg-accent/10 text-accent
+                            {% elif activity.actor.actor_type == 'anonymous' %}
+                                bg-muted text-muted-foreground
+                            {% else %}
+                                bg-primary/10 text-primary
+                            {% endif %}">
+                            {{ activity.actor.actor_type | upper }}
+                        </span>
+                    </p>
+                </div>
+
+                {% if activity.actor.full_name %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Actor Name</label>
+                    <p class="text-foreground">{{ activity.actor.full_name }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.actor.username %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Actor Username</label>
+                    <p class="text-foreground">@{{ activity.actor.username }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.actor.email %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Actor Email</label>
+                    <p class="text-foreground font-mono">{{ activity.actor.email }}</p>
+                </div>
+                {% endif %}
+                {% elif activity.user %}
+                {# Legacy user field support #}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">User</label>
+                    <div class="flex items-center space-x-2">
+                        {% if activity.user.picture %}
+                            <img class="h-6 w-6 rounded-full" src="{{ activity.user.picture }}" alt="{{ activity.user.name or activity.user.username }}">
+                        {% else %}
+                            <div class="h-6 w-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium text-xs">
+                                {{ (activity.user.given_name and activity.user.given_name[0]) or (activity.user.username and activity.user.username[0]) or 'U' }}
+                            </div>
+                        {% endif %}
+                        <span class="text-foreground">{{ activity.user.name or activity.user.username }}</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Username</label>
+                    <p class="text-foreground">@{{ activity.user.username }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Email</label>
+                    <p class="text-foreground font-mono">{{ activity.user.email or 'N/A' }}</p>
+                </div>
+                {% elif activity.username %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Username</label>
+                    <p class="text-foreground">@{{ activity.username }}</p>
+                </div>
+                {% else %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Actor</label>
+                    <p class="text-foreground">Anonymous</p>
+                </div>
+                {% endif %}
+
+                <!-- Target Information (What was acted upon) -->
+                {% if activity.target and activity.target.target_type and activity.target.target_type != 'none' %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Type</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-accent/10 text-accent">
+                            {{ activity.target.target_type | upper }}
+                        </span>
+                    </p>
+                </div>
+
+                {% if activity.target.full_name %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Name</label>
+                    <p class="text-foreground">{{ activity.target.full_name }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.target.username %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Username</label>
+                    <p class="text-foreground">@{{ activity.target.username }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.target.email %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Email</label>
+                    <p class="text-foreground font-mono">{{ activity.target.email }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.target.entity_id %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Entity ID</label>
+                    <p class="text-foreground font-mono break-all">{{ activity.target.entity_id }}</p>
+                </div>
+                {% endif %}
+
+                {% if activity.target.entity_name %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Target Entity Name</label>
+                    <p class="text-foreground">{{ activity.target.entity_name }}</p>
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <!-- Network Information -->
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">IP Address</label>
+                    <p class="text-foreground font-mono">{{ activity.ip_address or 'N/A' }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">User Agent</label>
+                    <p class="text-foreground font-mono break-all">{{ activity.user_agent or 'N/A' }}</p>
+                </div>
+
+                {% if activity.client_id %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Client ID</label>
+                    <p class="text-foreground font-mono">{{ activity.client_id }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Information -->
+    {% if activity.device_infos %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="monitor" class="h-5 w-5 mr-2 text-primary"></i>
+                Device Information
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Browser Information -->
+                {% if activity.device_infos.browser %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Browser</label>
+                    <p class="text-foreground">{{ activity.device_infos.browser.name or 'Unknown' }} {{ activity.device_infos.browser.version or '' }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Operating System -->
+                {% if activity.device_infos.os %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Operating System</label>
+                    <p class="text-foreground">{{ activity.device_infos.os.name or 'Unknown' }} {{ activity.device_infos.os.version or '' }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Device Details -->
+                {% if activity.device_infos.device %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Device</label>
+                    <p class="text-foreground">{{ activity.device_infos.device.type or 'Unknown' }} - {{ activity.device_infos.device.vendor or '' }} {{ activity.device_infos.device.model or '' }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Platform -->
+                {% if activity.device_infos.platform %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Platform</label>
+                    <p class="text-foreground">{{ activity.device_infos.platform }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Language -->
+                {% if activity.device_infos.language %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Language</label>
+                    <p class="text-foreground">{{ activity.device_infos.language }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Timezone -->
+                {% if activity.device_infos.timezone_guess %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Timezone</label>
+                    <p class="text-foreground">{{ activity.device_infos.timezone_guess }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Screen Information -->
+                {% if activity.device_infos.screen %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Screen Resolution</label>
+                    <p class="text-foreground">{{ activity.device_infos.screen.width or 'Unknown' }} × {{ activity.device_infos.screen.height or 'Unknown' }} ({{ activity.device_infos.screen.pixel_ratio or '1' }}x)</p>
+                </div>
+                {% endif %}
+                
+                <!-- Hardware Information -->
+                {% if activity.device_infos.hardware_concurrency %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">CPU Cores</label>
+                    <p class="text-foreground">{{ activity.device_infos.hardware_concurrency }}</p>
+                </div>
+                {% endif %}
+                
+                {% if activity.device_infos.memory %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Memory</label>
+                    <p class="text-foreground">{{ activity.device_infos.memory }} GB</p>
+                </div>
+                {% endif %}
+                
+                <!-- Fingerprint Information -->
+                {% if activity.device_infos.fingerprint %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Server Fingerprint</label>
+                    <p class="text-foreground font-mono break-all">{{ activity.device_infos.fingerprint.substring(0, 16) }}...</p>
+                </div>
+                {% endif %}
+                
+                {% if activity.device_infos.fingerprint_js_id %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Client Fingerprint</label>
+                    <p class="text-foreground font-mono break-all">{{ activity.device_infos.fingerprint_js_id.substring(0, 16) }}...</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Geographic Location -->
+    {% if activity.device_infos.geo_location %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="map-pin" class="h-5 w-5 mr-2 text-primary"></i>
+                Geographic Location
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% if activity.device_infos.geo_location.country %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Country</label>
+                    <p class="text-foreground">{{ activity.device_infos.geo_location.country }}</p>
+                </div>
+                {% endif %}
+                {% if activity.device_infos.geo_location.region %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Region</label>
+                    <p class="text-foreground">{{ activity.device_infos.geo_location.region }}</p>
+                </div>
+                {% endif %}
+                {% if activity.device_infos.geo_location.city %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">City</label>
+                    <p class="text-foreground">{{ activity.device_infos.geo_location.city }}</p>
+                </div>
+                {% endif %}
+                {% if activity.device_infos.geo_location.latitude and activity.device_infos.geo_location.longitude %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Coordinates</label>
+                    <p class="text-foreground">{{ activity.device_infos.geo_location.latitude }}, {{ activity.device_infos.geo_location.longitude }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Security Assessment -->
+    {% if activity.device_infos.risk_level or activity.device_infos.is_new_device or activity.device_infos.is_suspicious or activity.device_infos.confidence_score %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                Security Assessment
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Risk Level -->
+                {% if activity.device_infos.risk_level %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Risk Level</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                            {% if activity.device_infos.risk_level == 'critical' %}
+                                bg-destructive/10 text-destructive
+                            {% elif activity.device_infos.risk_level == 'high' %}
+                                bg-destructive/10 text-destructive
+                            {% elif activity.device_infos.risk_level == 'medium' %}
+                                bg-warning/10 text-warning
+                            {% else %}
+                                bg-primary/10 text-primary
+                            {% endif %}">
+                            {{ activity.device_infos.risk_level | upper }}
+                        </span>
+                    </p>
+                </div>
+                {% endif %}
+                
+                <!-- Confidence Score -->
+                {% if activity.device_infos.confidence_score %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Confidence Score</label>
+                    <p class="text-foreground">{{ activity.device_infos.confidence_score }}%</p>
+                </div>
+                {% endif %}
+                
+                <!-- New Device -->
+                {% if activity.device_infos.is_new_device !== undefined %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">New Device</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2 py-1 text-xs font-medium
+                            {% if activity.device_infos.is_new_device %}
+                                bg-warning/10 text-warning
+                            {% else %}
+                                bg-primary/10 text-primary
+                            {% endif %}">
+                            {% if activity.device_infos.is_new_device %}Yes{% else %}No{% endif %}
+                        </span>
+                    </p>
+                </div>
+                {% endif %}
+
+                <!-- Suspicious Activity -->
+                {% if activity.device_infos.is_suspicious !== undefined %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Suspicious Activity</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2 py-1 text-xs font-medium
+                            {% if activity.device_infos.is_suspicious %}
+                                bg-destructive/10 text-destructive
+                            {% else %}
+                                bg-primary/10 text-primary
+                            {% endif %}">
+                            {% if activity.device_infos.is_suspicious %}Yes{% else %}No{% endif %}
+                        </span>
+                    </p>
+                </div>
+                {% endif %}
+
+                <!-- 2FA Required -->
+                {% if activity.device_infos.requires_2fa !== undefined %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">2FA Required</label>
+                    <p class="text-foreground">
+                        <span class="inline-flex items-center px-2 py-1 text-xs font-medium
+                            {% if activity.device_infos.requires_2fa %}
+                                bg-secondary/10 text-secondary
+                            {% else %}
+                                bg-muted text-muted-foreground
+                            {% endif %}">
+                            {% if activity.device_infos.requires_2fa %}Yes{% else %}No{% endif %}
+                        </span>
+                    </p>
+                </div>
+                {% endif %}
+                
+                <!-- Matched Device ID -->
+                {% if activity.device_infos.matched_device_id %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Matched Device ID</label>
+                    <p class="text-foreground font-mono">{{ activity.device_infos.matched_device_id }}</p>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Risk Assessment Reason -->
+            {% if activity.device_infos.reason %}
+            <div class="mt-4 p-3 bg-muted/30">
+                <label class="text-sm font-medium text-muted-foreground mb-2">Risk Assessment Reason</label>
+                <p class="text-sm text-foreground">{{ activity.device_infos.reason }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Additional Metadata -->
+    {% if activity.metadata and activity.metadata | length > 0 %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+                Additional Information
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for key in activity.metadata %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">{{ key | replace('_', ' ') | upper }}</label>
+                    <p class="text-foreground break-all">{{ activity.metadata[key] | tojson }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Related Activity -->
+    {% if activity.related_activity_id %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="link" class="h-5 w-5 mr-2 text-primary"></i>
+                Related Activity
+            </h2>
+        </div>
+        <div class="p-6">
+            <p class="text-sm text-muted-foreground mb-4">This activity is related to another activity in the system.</p>
+            <a href="/admin/activities/{{ activity.related_activity_id }}" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                <i data-lucide="external-link" class="h-4 w-4 mr-2"></i>
+                View Related Activity
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

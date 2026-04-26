@@ -1,0 +1,42 @@
+{
+  "title": "Questions de sécurité",
+  "description": "Configurez des questions de sécurité pour récupérer votre compte",
+  "setup": {
+    "title": "Configurer les questions de sécurité",
+    "select_question": "Sélectionnez une question...",
+    "select_questions": "Sélectionnez {{count}} questions et fournissez vos réponses",
+    "answer_placeholder": "Votre réponse",
+    "save": "Enregistrer les questions de sécurité",
+    "instruction": "Choisissez des questions dont vous seul connaissez les réponses. Les réponses ne sont pas sensibles à la casse."
+  },
+  "recovery": {
+    "title": "Répondre aux questions de sécurité",
+    "description": "Répondez à vos questions de sécurité pour récupérer votre compte",
+    "submit": "Vérifier les réponses",
+    "attempts_remaining": "{{count}} tentatives restantes"
+  },
+  "questions": {
+    "q1": "Quel était le nom de votre premier animal de compagnie ?",
+    "q2": "Dans quelle ville êtes-vous né(e) ?",
+    "q3": "Quel était votre surnom d'enfance ?",
+    "q4": "Quel est le nom de votre meilleur ami d'enfance ?",
+    "q5": "Quelle était la marque de votre première voiture ?",
+    "q6": "Quel était le nom de votre école primaire ?",
+    "q7": "Quel est le nom de jeune fille de votre mère ?",
+    "q8": "Dans quelle rue avez-vous grandi ?",
+    "q9": "Quel était votre plat préféré enfant ?",
+    "q10": "Quel a été le premier concert auquel vous avez assisté ?"
+  },
+  "validation": {
+    "answer_too_short": "La réponse doit contenir au moins 3 caractères",
+    "answer_too_generic": "Veuillez fournir une réponse plus spécifique",
+    "all_answers_required": "Veuillez répondre à toutes les questions",
+    "incorrect_answers": "Une ou plusieurs réponses sont incorrectes",
+    "select_different_questions": "Veuillez sélectionner des questions différentes"
+  },
+  "status": {
+    "configured": "Questions de sécurité configurées",
+    "not_configured": "Questions de sécurité non configurées",
+    "update": "Modifier les questions de sécurité"
+  }
+}

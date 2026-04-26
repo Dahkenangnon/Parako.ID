@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "切换侧边栏",
+    "navigation": {
+      "home": "首页",
+      "my_profile": "我的资料",
+      "apps": "应用",
+      "sessions": "会话",
+      "settings": "设置"
+    },
+    "admin_section": {
+      "title": "管理员",
+      "admin_panel": "管理面板"
+    },
+    "footer": {
+      "logout": "退出登录",
+      "switch_account": "切换账户",
+      "my_account": "我的账户"
+    },
+    "account_switcher": {
+      "add_account": "添加账户",
+      "loading": "加载中...",
+      "failed_to_load": "加载失败",
+      "retry": "重试",
+      "no_other_accounts": "没有其他账户"
+    }
+  },
+  "mobile": {
+    "close": "关闭",
+    "menu": "菜单"
+  },
+  "theme_language": {
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "language": "语言",
+    "settings": "主题和语言设置"
+  }
+}

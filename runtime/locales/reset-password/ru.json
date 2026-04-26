@@ -1,0 +1,14 @@
+{
+  "title": "Создайте новый пароль",
+  "placeholder": {
+    "new_password": "Введите новый пароль",
+    "confirm_password": "Подтвердите новый пароль"
+  },
+  "button": {
+    "reset_password": "Сбросить пароль",
+    "resetting": "Сброс пароля..."
+  },
+  "link": {
+    "remember_password": "Помните свой пароль?"
+  }
+}

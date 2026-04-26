@@ -1,0 +1,113 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <div class="mb-6 flex justify-center">
+                    <h1 class="auth-heading text-center font-bold text-primary text-lg sm:text-xl md:text-2xl lg:text-3xl leading-tight break-words">
+                        <span class="block max-w-full" style="display: block; width: 100%;">
+                            <span class="block w-full" style="display: block; width: 100%; font-size: clamp(1rem, 2.5vw, 2rem);">
+                                Verify Code
+                            </span>
+                        </span>
+                    </h1>
+                </div>
+
+                <p class="text-center text-sm text-gray-600 dark:text-muted-foreground mb-6">
+                    Enter the verification code sent to your secondary email
+                </p>
+
+                <!-- Error Messages -->
+                {% if error %}
+                <div class="bg-red-50 dark:bg-red-900 border-2 border-red-200 dark:border-red-700 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-800 dark:text-red-200">{{ error }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Verification Code Form -->
+                <form action="{{ routes.authFull.process_recovery_verify_code }}" method="POST" class="space-y-4">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    <!-- Verification Code Input -->
+                    <div class="space-y-2">
+                        <label for="code" class="block text-sm font-semibold text-gray-900 dark:text-foreground">Verification Code</label>
+                        <div class="flex gap-2 sm:gap-3 max-w-xs mx-auto" id="otp-container">
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input flex-1 min-w-0 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                        </div>
+                        <!-- Hidden input to store the complete code -->
+                        <input type="hidden" id="code" name="code" />
+                        <p class="text-xs text-gray-500 dark:text-muted-foreground text-center">
+                            Enter the 6-digit code sent to your secondary email address
+                        </p>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Verify Code
+                    </button>
+                </form>
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.recovery_method_select }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.recovery.back_to_methods', 'Back to recovery options') }}</a>
+                    </p>
+                </div>
+
+                <!-- Help Information -->
+                <div class="mt-6 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border p-4">
+                    <h3 class="text-sm font-medium text-gray-900 dark:text-foreground mb-2">Need Help?</h3>
+                    <div class="text-sm text-gray-600 dark:text-muted-foreground space-y-1">
+                        <p>• Check your email inbox for the verification code</p>
+                        <p>• The code expires in 15 minutes</p>
+                        <p>• Check your spam folder if you don't see the email</p>
+                        <p>• If the code has expired, you can request a new one</p>
+                    </div>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/recovery-verify-code.js"></script>
+
+<!-- Complete configuration and translations for RecoveryVerifyCodeManager -->
+<script id="___RECOVERY_VERIFY_CODE_STATE___" type="application/json">
+{
+  "config": {
+    "codeLength": 6,
+    "autoFocus": true,
+    "enablePaste": true,
+    "enableBackspace": true,
+    "shakeAnimationDuration": 500,
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "verifyCode": {{ t('auth.verifyCode', 'Verify Code') | tojson | safe }},
+    "verifyingCode": {{ t('auth.verifyingCode', 'Verifying...') | tojson | safe }},
+    "codeRequired": {{ t('auth.codeRequired', 'Please enter the verification code') | tojson | safe }},
+    "codeInvalid": {{ t('auth.codeInvalid', 'Please enter a valid 6-digit verification code') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

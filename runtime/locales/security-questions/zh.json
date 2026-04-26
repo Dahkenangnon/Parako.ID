@@ -1,0 +1,42 @@
+{
+  "title": "Anquan wenti",
+  "description": "Shezhi anquan wenti yi huifu ninde zhanghao",
+  "setup": {
+    "title": "Shezhi anquan wenti",
+    "select_question": "选择一个问题...",
+    "select_questions": "Xuanze {{count}} ge wenti bing tigong daan",
+    "answer_placeholder": "Ninde daan",
+    "save": "Baocun anquan wenti",
+    "instruction": "Xuanze zhiyou nin zhidao daan de wenti. Daan bu qufen daxiaoxie."
+  },
+  "recovery": {
+    "title": "Huida anquan wenti",
+    "description": "Huida ninde anquan wenti yi huifu zhanghao",
+    "submit": "Yanzheng daan",
+    "attempts_remaining": "Shengyu {{count}} ci juhui"
+  },
+  "questions": {
+    "q1": "Ninde diyi zhi chongwu jiao shenme mingzi?",
+    "q2": "Ni zai nage chengshi chusheng?",
+    "q3": "Ni xiaoshihou de waihao shi shenme?",
+    "q4": "Nide tongnian zuihao pengyou jiao shenme?",
+    "q5": "Nide diyi liang che shi shenme pinpai?",
+    "q6": "Nide xiaoxue jiao shenme mingzi?",
+    "q7": "Ni muqin de po xing shi shenme?",
+    "q8": "Ni zai nage jiedao zhang da?",
+    "q9": "Ni xiaoshihou zui xihuan chi shenme?",
+    "q10": "Ni canjia de diyi chang yanyanhui shi shenme?"
+  },
+  "validation": {
+    "answer_too_short": "Daan bixu zhishao 3 ge zfu",
+    "answer_too_generic": "Qing tigong geng juti de daan",
+    "all_answers_required": "Qing huida suoyou wenti",
+    "incorrect_answers": "Yi ge huo duo ge daan bucuowu",
+    "select_different_questions": "Qing xuanze butong de wenti"
+  },
+  "status": {
+    "configured": "Anquan wenti yi shezhi",
+    "not_configured": "Anquan wenti wei shezhi",
+    "update": "Gengxin anquan wenti"
+  }
+}

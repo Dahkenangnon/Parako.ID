@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "Переключить боковую панель",
+    "navigation": {
+      "home": "Главная",
+      "my_profile": "Мой профиль",
+      "apps": "Приложения",
+      "sessions": "Сеансы",
+      "settings": "Настройки"
+    },
+    "admin_section": {
+      "title": "Админ",
+      "admin_panel": "Панель администратора"
+    },
+    "footer": {
+      "logout": "Выйти",
+      "switch_account": "Переключить аккаунт",
+      "my_account": "Мой аккаунт"
+    },
+    "account_switcher": {
+      "add_account": "Добавить аккаунт",
+      "loading": "Загрузка...",
+      "failed_to_load": "Не удалось загрузить",
+      "retry": "Повторить",
+      "no_other_accounts": "Нет других аккаунтов"
+    }
+  },
+  "mobile": {
+    "close": "Закрыть",
+    "menu": "Меню"
+  },
+  "theme_language": {
+    "theme": "Тема",
+    "light": "Светлая",
+    "dark": "Тёмная",
+    "language": "Язык",
+    "settings": "Настройки темы и языка"
+  }
+}

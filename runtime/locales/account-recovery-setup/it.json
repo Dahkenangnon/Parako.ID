@@ -1,0 +1,25 @@
+{
+  "title": "Autenticazione a due fattori abilitata!",
+  "subtitle": "Ora impostiamo le opzioni di recupero in modo che tu possa sempre rientrare nel tuo account, anche se perdi l'accesso alla tua {{method}}.",
+  "method_email": "email",
+  "method_app": "app di autenticazione",
+  "setup_recovery": {
+    "title": "Imposta recupero account",
+    "description": "Creeremo codici di backup per il tuo account e opzionalmente imposteremo un indirizzo email di backup."
+  },
+  "backup_codes": {
+    "title": "Codici di backup (Richiesto)",
+    "description": "Creeremo codici di backup che potrai utilizzare per rientrare nel tuo account se perdi l'accesso al tuo {{method}}. Ogni codice può essere utilizzato una sola volta.",
+    "method_email_account": "account email"
+  },
+  "backup_email": {
+    "label": "Email di backup (Opzionale)",
+    "placeholder": "Inserisci indirizzo email di backup (opzionale)",
+    "help_text": "Se fornito, riceverai un'email di verifica per confermare questo indirizzo email di backup."
+  },
+  "button": {
+    "submit": "Imposta opzioni di backup",
+    "skip": "Salta per ora",
+    "continue": "Continua alle Impostazioni"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "title": "Domande di sicurezza",
+  "description": "Configura le domande di sicurezza per recuperare il tuo account",
+  "setup": {
+    "title": "Configura domande di sicurezza",
+    "select_question": "Seleziona una domanda...",
+    "select_questions": "Seleziona {{count}} domande e fornisci le tue risposte",
+    "answer_placeholder": "La tua risposta",
+    "save": "Salva domande di sicurezza",
+    "instruction": "Scegli domande con risposte che solo tu conosceresti. Le risposte non distinguono maiuscole."
+  },
+  "recovery": {
+    "title": "Rispondi alle domande di sicurezza",
+    "description": "Rispondi alle tue domande di sicurezza per recuperare il tuo account",
+    "submit": "Verifica risposte",
+    "attempts_remaining": "{{count}} tentativi rimanenti"
+  },
+  "questions": {
+    "q1": "Qual era il nome del tuo primo animale domestico?",
+    "q2": "In quale citta sei nato/a?",
+    "q3": "Qual era il tuo soprannome da bambino/a?",
+    "q4": "Qual e il nome del tuo migliore amico d'infanzia?",
+    "q5": "Qual era la marca della tua prima auto?",
+    "q6": "Qual era il nome della tua scuola elementare?",
+    "q7": "Qual e il cognome da nubile di tua madre?",
+    "q8": "In quale via sei cresciuto/a?",
+    "q9": "Qual era il tuo cibo preferito da bambino/a?",
+    "q10": "Qual e stato il primo concerto a cui hai assistito?"
+  },
+  "validation": {
+    "answer_too_short": "La risposta deve avere almeno 3 caratteri",
+    "answer_too_generic": "Per favore fornisci una risposta piu specifica",
+    "all_answers_required": "Per favore rispondi a tutte le domande",
+    "incorrect_answers": "Una o piu risposte sono errate",
+    "select_different_questions": "Per favore seleziona domande diverse"
+  },
+  "status": {
+    "configured": "Domande di sicurezza configurate",
+    "not_configured": "Domande di sicurezza non configurate",
+    "update": "Aggiorna domande di sicurezza"
+  }
+}

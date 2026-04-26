@@ -1,0 +1,33 @@
+{% extends "layouts/base.njk" %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-background py-12 px-4 sm:px-6 lg:px-8">
+  <div class="max-w-md w-full space-y-8">
+    <div class="text-center">
+      <div class="mx-auto flex items-center justify-center h-16 w-16 bg-red-100 dark:bg-red-900 border-2 border-red-200 dark:border-red-700">
+        <svg class="h-8 w-8 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </div>
+      <h2 class="mt-6 text-3xl font-extrabold text-gray-900 dark:text-foreground">
+        {{ provider|title }} Authentication Error
+      </h2>
+      <p class="mt-2 text-sm text-red-600 dark:text-red-400">
+        {{ error }}
+      </p>
+    </div>
+
+    <div class="space-y-4">
+      <a href="{{ redirectUrl }}"
+         class="group relative w-full flex justify-center py-3 px-4 border-2 border-transparent text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+        Try Again
+      </a>
+
+      <a href="{{  routes.authFull.login }}"
+         class="group relative w-full flex justify-center py-3 px-4 border-2 border-gray-200 dark:border-border text-sm font-medium text-gray-700 dark:text-foreground bg-white dark:bg-card hover:bg-gray-50 dark:hover:bg-accent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+        Back to Login
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

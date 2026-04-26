@@ -1,0 +1,455 @@
+{% extends "layouts/admin-layout.njk" %}
+{% block admin_content %}
+    <div
+        class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <!-- Page Header -->
+        <div class="mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div class="min-w-0 flex-1">
+                    <h1 class="text-xl sm:text-2xl font-bold text-foreground truncate">User Activities</h1>
+                    <p class="mt-1 text-sm text-muted-foreground">Monitor and analyze user activities across the system</p>
+                </div>
+                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                    <a
+                        href="/admin/data-transfer/activities"
+                        class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-secondary text-secondary-foreground text-sm
+                            font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="download" class="h-4 w-4 mr-1 sm:mr-2"></i>
+                        <span class="hidden xs:inline">Export CSV</span>
+                        <span class="xs:hidden">Export</span>
+                    </a>
+                    <button
+                        onclick="showClearOldModal()"
+                        class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground text-sm
+                            font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2">
+                        <i data-lucide="trash-2" class="h-4 w-4 mr-1 sm:mr-2"></i>
+                        <span class="hidden xs:inline">Clear Old</span>
+                        <span class="xs:hidden">Clear</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Statistics Grid -->
+        <div class="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Activities</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.totalActivities | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="activity" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.todayCount | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="calendar" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Unique Users</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.uniqueUsers | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-primary/10 flex items-center justify-center">
+                            <i data-lucide="users" class="h-6 w-6 text-primary"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-card border border-border p-4 hover:border-primary/30 transition-colors">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Failed Logins</p>
+                        <p class="mt-2 text-2xl font-bold text-foreground truncate">{{ stats.failedLogins | default(0) }}</p>
+                    </div>
+                    <div class="flex-shrink-0 ml-3">
+                        <div class="w-12 h-12 bg-destructive/10 flex items-center justify-center">
+                            <i data-lucide="alert-triangle" class="h-6 w-6 text-destructive"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Advanced Filter Section -->
+        <div class="bg-card border border-border overflow-hidden mb-6">
+            <form
+                method="GET" action="/admin/activities">
+                <!-- Filter Header -->
+                <div class="bg-muted/50 px-4 py-2 border-b border-border">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="filter" class="h-4 w-4 text-muted-foreground"></i>
+                        <h3 class="text-sm font-medium text-foreground">Filters</h3>
+                    </div>
+                </div>
+                <!-- Filter Controls -->
+                <div
+                    class="p-4 space-y-4">
+                    <!-- Search Section -->
+                    <div>
+                        <label for="search" class="block text-xs font-medium text-muted-foreground mb-2">Search</label>
+                        <div class="relative">
+                            <i
+                                data-lucide="search"
+                                class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                            <input type="text" name="search" id="search" value="{{ filters.search }}" placeholder="Description or username..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"></div>
+                        </div>
+                        <!-- Filter & Sort Grid -->
+                        <div>
+                            <label class="block text-xs font-medium text-muted-foreground mb-2">Filter & Sort</label>
+                            <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div class="relative">
+                                    <select
+                                        name="type"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                            focus:ring-primary/20 focus:border-primary">
+                                        {% for type in activityTypes %}
+                                            <option value="{{ type }}" {% if filters.type == type %} selected {% endif %}>{{ type | title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <i
+                                        data-lucide="chevron-down"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <select
+                                        name="status"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                            focus:ring-primary/20 focus:border-primary">
+                                        {% for status in statuses %}
+                                            <option value="{{ status }}" {% if filters.status == status %} selected {% endif %}>{{ status | title }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <i
+                                        data-lucide="chevron-down"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <input type="text" name="username" placeholder="Username..." value="{{ filters.username }}" class="w-full px-3 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"></div>
+                                    <div class="relative">
+                                        <input type="date" name="dateFrom" value="{{ filters.dateFrom }}" placeholder="From date..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                            <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
+                                        </div>
+                                        <div class="relative">
+                                            <input type="date" name="dateTo" value="{{ filters.dateTo }}" placeholder="To date..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                                <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
+                                            </div>
+                                            <div class="relative">
+                                                <select
+                                                    name="sortBy"
+                                                    class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
+                                                        focus:ring-primary/20 focus:border-primary">
+                                                    <option value="timestamp" {% if filters.sortBy == 'timestamp' %} selected {% endif %}>Timestamp</option>
+                                                    <option value="type" {% if filters.sortBy == 'type' %} selected {% endif %}>Type</option>
+                                                    <option value="username" {% if filters.sortBy == 'username' %} selected {% endif %}>Username</option>
+                                                    <option value="status" {% if filters.sortBy == 'status' %} selected {% endif %}>Status</option>
+                                                </select>
+                                                <i
+                                                    data-lucide="chevron-down"
+                                                    class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Action Footer -->
+                                <div class="bg-muted/30 px-4 py-3 border-t border-border flex flex-col sm:flex-row gap-2 sm:justify-end">
+                                    <button
+                                        type="submit"
+                                        class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium
+                                            hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                                        <i data-lucide="filter" class="h-4 w-4"></i>
+                                        <span>Apply Filters</span>
+                                    </button>
+                                    <a
+                                        href="/admin/activities"
+                                        class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium
+                                            hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                                        <i data-lucide="x" class="h-4 w-4"></i>
+                                        <span>Clear Filters</span>
+                                    </a>
+                                </div>
+                            </form>
+                        </div>
+                        <!-- Activities Table -->
+                        <div class="bg-card border border-border overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-border">
+                                    <thead class="bg-muted/50 border-b border-border">
+                                        <tr>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                                                Timestamp</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Type</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actor</th>
+                                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">Target</th>
+                                            <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wide">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-card divide-y divide-border">
+                                        {% for activity in activities %}
+                                            <tr
+                                                class="hover:bg-muted/50 transition-colors">
+                                                <!-- Timestamp -->
+                                                <td class="px-6 py-5 whitespace-nowrap text-sm text-muted-foreground">
+                                                    <time datetime="{{ activity.timestamp }}" class="truncate max-w-32 block" title="{{ activity.timestamp | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}">{{ activity.timestamp | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</time>
+                                                </td>
+                                                <!-- Type -->
+                                                <td class="px-6 py-5 whitespace-nowrap">
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                                                                                                                                                {% if activity.type.includes('login') %}
+                                                                                                                                                    bg-primary/10 text-primary
+                                                                                                                                                {% elif activity.type.includes('failed') or activity.type.includes('error') %}
+                                                                                                                                                    bg-destructive/10 text-destructive
+                                                                                                                                                {% elif activity.type.includes('success') %}
+                                                                                                                                                    bg-primary/10 text-primary
+                                                                                                                                                {% else %}
+                                                                                                                                                    bg-muted text-muted-foreground
+                                                                                                                                                {% endif %}" title="{{ activity.description }}">
+                                                        {{ activity.description }}
+                                                    </span>
+                                                </td>
+                                                <!-- Status -->
+                                                <td class="px-6 py-5 whitespace-nowrap">
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                                                                                                                                                {% if activity.status == 'success' %}
+                                                                                                                                                    bg-primary/10 text-primary
+                                                                                                                                                {% elif activity.status == 'failed' %}
+                                                                                                                                                    bg-destructive/10 text-destructive
+                                                                                                                                                {% elif activity.status == 'warning' %}
+                                                                                                                                                    bg-warning/10 text-warning-foreground dark:text-warning
+                                                                                                                                                {% else %}
+                                                                                                                                                    bg-primary/10 text-primary
+                                                                                                                                                {% endif %}" title="{{ activity.status | title }}">
+                                                        {{ activity.status | title }}
+                                                    </span>
+                                                </td>
+                                                <!-- User / Actor -->
+                                                <td class="px-6 py-5 whitespace-nowrap">
+                                                    {% if activity.actor %}
+                                                        <div class="flex items-center">
+                                                            <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium text-sm">
+                                                                {{ (activity.actor.given_name and activity.actor.given_name[0]) or (activity.actor.username and activity.actor.username[0]) or (activity.actor.email and activity.actor.email[0]) or 'U' }}
+                                                            </div>
+                                                            <div class="ml-3 min-w-0 flex-1">
+                                                                <div class="text-sm font-medium text-foreground truncate" title="{{ activity.actor.full_name or activity.actor.username or activity.actor.email }}">
+                                                                    {{ activity.actor.full_name or activity.actor.username or activity.actor.email }}
+                                                                </div>
+                                                                <div class="text-sm text-muted-foreground truncate">
+                                                                    {% if activity.actor.username %}
+                                                                        <span title="@{{ activity.actor.username }}">@{{ activity.actor.username }}</span>
+                                                                    {% endif %}
+                                                                    {% if activity.actor.actor_type and activity.actor.actor_type != 'user' %}
+                                                                        <span class="ml-1 inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary-foreground">{{ activity.actor.actor_type }}</span>
+                                                                    {% endif %}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    {% elif activity.user %}
+                                                        <div class="flex items-center">
+                                                            {% if activity.user.picture %}
+                                                                <img class="h-8 w-8 rounded-full" src="{{ activity.user.picture }}" alt="{{ activity.user.name or activity.user.username }}">
+                                                                {% else %}
+                                                                    <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium text-sm">
+                                                                        {{ (activity.user.given_name and activity.user.given_name[0]) or (activity.user.username and activity.user.username[0]) or 'U' }}
+                                                                    </div>
+                                                                {% endif %}
+                                                                <div class="ml-3 min-w-0 flex-1">
+                                                                    <div class="text-sm font-medium text-foreground truncate" title="{{ activity.user.name or activity.user.username }}">{{ activity.user.name or activity.user.username }}</div>
+                                                                    <div class="text-sm text-muted-foreground truncate" title="@{{ activity.user.username }}">@{{ activity.user.username }}</div>
+                                                                </div>
+                                                            </div>
+                                                        {% elif activity.username %}
+                                                            <div class="text-sm text-foreground truncate" title="@{{ activity.username }}">@{{ activity.username }}</div>
+                                                        {% else %}
+                                                            <div class="text-sm text-muted-foreground">Anonymous</div>
+                                                        {% endif %}
+                                                    </td>
+                                                    <!-- Target -->
+                                                    <td class="px-6 py-5 whitespace-nowrap">
+                                                        {% if activity.target and activity.target.target_type and activity.target.target_type != 'none' %}
+                                                            <div class="text-sm">
+                                                                <div class="flex items-center gap-1 mb-1">
+                                                                    <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium {% if activity.target.target_type == 'user' %}
+                                                                            bg-primary/10 text-primary {% elif activity.target.target_type == 'client' %} bg-secondary/10 text-secondary-foreground {%
+                                                                            elif activity.target.target_type == 'session' %} bg-blue-500/10 text-blue-600 dark:text-blue-400 {% elif
+                                                                            activity.target.target_type == 'config' or activity.target.target_type == 'system' %} bg-orange-500/10 text-orange-600
+                                                                            dark:text-orange-400 {% else %} bg-muted text-muted-foreground {% endif %}">
+                                                                        {{ activity.target.target_type | upper }}
+                                                                    </span>
+                                                                </div>
+                                                                {% if activity.target.full_name or activity.target.username or activity.target.entity_name or activity.target.entity_id %}
+                                                                    <div class="text-xs text-muted-foreground truncate max-w-[150px]" title="{{ activity.target.full_name or activity.target.username or activity.target.entity_name or activity.target.entity_id }}">
+                                                                        {{ activity.target.full_name or activity.target.username or activity.target.entity_name or activity.target.entity_id }}
+                                                                    </div>
+                                                                {% endif %}
+                                                            </div>
+                                                        {% else %}
+                                                            <span class="text-xs text-muted-foreground">—</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <!-- Actions -->
+                                                    <td class="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
+                                                        <a href="/admin/activities/{{ activity._id }}" class="text-primary hover:text-primary/80" title="View Details">
+                                                            <i data-lucide="eye" class="h-4 w-4"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            {% else %}
+                                                <tr>
+                                                    <td colspan="6" class="px-6 py-12 text-center">
+                                                        <div class="text-muted-foreground">
+                                                            <i data-lucide="activity" class="h-12 w-12 mx-auto mb-4 opacity-50"></i>
+                                                            <h3 class="text-lg font-medium mb-2">No activities found</h3>
+                                                            <p class="text-sm">Try adjusting your search or filter criteria.</p>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <!-- Pagination -->
+                                {% if pagination.totalPages > 1 %}
+                                    <div class="bg-muted/50 px-4 py-3 flex items-center justify-between border-t border-border sm:px-6">
+                                        <div class="flex-1 flex justify-between sm:hidden">
+                                            {% if pagination.hasPrevPage %}
+                                                <a
+                                                    href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                                    class="relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card
+                                                        hover:bg-muted">
+                                                    Previous
+                                                </a>
+                                            {% endif %}
+                                            {% if pagination.hasNextPage %}
+                                                <a
+                                                    href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                                    class="ml-3 relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card
+                                                        hover:bg-muted">
+                                                    Next
+                                                </a>
+                                            {% endif %}
+                                        </div>
+                                        <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                            <div>
+                                                <p class="text-sm text-muted-foreground">
+                                                    Showing
+                                                    <span class="font-medium">{{ ((pagination.page - 1) * pagination.limit) + 1 }}</span>
+                                                    to
+                                                    <span class="font-medium">{{ pagination.page * pagination.limit if pagination.page * pagination.limit < pagination.totalResults else pagination.totalResults }}</span>
+                                                    of
+                                                    <span class="font-medium">{{ pagination.totalResults }}</span>
+                                                    results
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <nav class="relative z-0 inline-flex -space-x-px">
+                                                    {% if pagination.hasPrevPage %}
+                                                        <a
+                                                            href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                                            class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground
+                                                                hover:bg-muted">
+                                                            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+                                                        </a>
+                                                    {% endif %}
+                                                    <!-- Page numbers -->
+                                                    {% set startPage = pagination.page - 2 if pagination.page > 2 else 1 %}
+                                                    {% set endPage = startPage + 4 if startPage + 4 <= pagination.totalPages else pagination.totalPages %}
+                                                    {% set startPage = endPage - 4 if endPage - 4 > 0 else 1 %}
+                                                    {% for pageNum in range(startPage, endPage + 1) %}
+                                                        {% if pageNum == pagination.page %}
+                                                            <span class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm
+                                                                    font-medium">
+                                                                {{ pageNum }}
+                                                            </span>
+                                                        {% else %}
+                                                            <a
+                                                                href="?page={{ pageNum }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                                                class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground
+                                                                    hover:bg-muted">
+                                                                {{ pageNum }}
+                                                            </a>
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    {% if pagination.hasNextPage %}
+                                                        <a
+                                                            href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                                            class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground
+                                                                hover:bg-muted">
+                                                            <i data-lucide="chevron-right" class="h-5 w-5"></i>
+                                                        </a>
+                                                    {% endif %}
+                                                </nav>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <!-- Clear Old Activities Modal -->
+                        <div id="clearOldModal" class="fixed inset-0 bg-background/80 z-50 hidden">
+                            <div class="flex items-center justify-center min-h-screen p-4">
+                                <div class="bg-card border border-border max-w-md w-full p-6">
+                                    <div class="flex items-center mb-4">
+                                        <div class="flex-shrink-0">
+                                            <i data-lucide="alert-triangle" class="h-6 w-6 text-orange-600 dark:text-orange-400"></i>
+                                        </div>
+                                        <div class="ml-3">
+                                            <h3 class="text-lg font-medium text-foreground">Clear Old Activities</h3>
+                                        </div>
+                                    </div>
+                                    <div class="mb-4">
+                                        <p class="text-sm text-muted-foreground">This will permanently delete activities older than the specified number of
+                                            days. This action cannot be undone.</p>
+                                        <div class="mt-3">
+                                            <label for="days" class="block text-sm font-medium text-foreground mb-2">Delete activities older than (days)</label>
+                                            <input
+                                                type="number"
+                                                id="days"
+                                                name="days"
+                                                min="1"
+                                                max="365"
+                                                value="90"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2
+                                                    focus:ring-primary focus:border-transparent"></div>
+                                        </div>
+                                        <div class="flex justify-end space-x-3">
+                                            <button
+                                                onclick="hideClearOldModal()"
+                                                class="px-4 py-2 text-sm font-medium text-muted-foreground border border-border hover:bg-muted">
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onclick="clearOldActivities()"
+                                                class="px-4 py-2 text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                Clear Activities
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endblock %}
+{% block scripts %}
+{{ super() }}
+<script type="application/json" id="___ADMIN_ACTIVITIES_STATE___">
+{
+    "csrfToken": {{ csrfToken | tojson | safe }},
+    "routes": {
+        "clearOld": "/admin/activities/clear-old"
+    }
+}
+</script>
+<script src="/js/admin/activities/index.js"></script>
+{% endblock %}

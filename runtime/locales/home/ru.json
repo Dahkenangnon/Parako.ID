@@ -1,0 +1,24 @@
+{
+  "title": "Войдите, чтобы продолжить",
+  "choose_method": "Выберите способ продолжения",
+  "social_divider": "или",
+  "social_divider_dynamic": "или",
+  "tab": {
+    "email": "Эл. почта",
+    "phone": "Телефон"
+  },
+  "link": {
+    "reset_password": "Сбросить пароль",
+    "recover_account": "Восстановить учетную запись",
+    "create_account": "Создайте сейчас",
+    "sign_up_prompt": "Нет учетной записи?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Войти через {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

@@ -1,0 +1,205 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground">Grant Details</h1>
+                <p class="mt-2 text-xs sm:text-sm text-muted-foreground font-mono break-all">Grant ID: {{ grant.id }}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium {{ 'bg-primary/10 text-primary' if not grant.isExpired else 'bg-destructive/10 text-destructive' }}">
+                        <i data-lucide="{{ 'check-circle' if not grant.isExpired else 'x-circle' }}" class="h-3 w-3 mr-1"></i>
+                        {{ 'Active' if not grant.isExpired else 'Expired' }}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary">
+                        <i data-lucide="shield-check" class="h-3 w-3 mr-1"></i>
+                        {{ grant.scopes.length }} permissions
+                    </span>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                {% if not grant.isExpired %}
+                <form method="post" action="/admin/user-grants/{{ grant.id }}/revoke" class="w-full sm:w-auto" id="revoke-grant-form">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 w-full">
+                        <i data-lucide="shield-x" class="h-4 w-4 mr-2"></i>
+                        Revoke Grant
+                    </button>
+                </form>
+                {% endif %}
+                <a href="/admin/user-grants" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2 w-full sm:w-auto">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Grants
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grant Information -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Client Information -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="building" class="h-5 w-5 mr-2 text-primary"></i>
+                    Client Application
+                </h2>
+            </div>
+            <div class="p-6">
+                
+                <div class="flex items-start space-x-4">
+                    <div class="flex-shrink-0">
+                        <div class="bg-background h-16 w-16 flex items-center justify-center border border-border">
+                            {% if grant.client.logo %}
+                            <img src="{{ grant.client.logo }}" alt="{{ grant.client.name }}" class="h-14 w-14 object-contain" />
+                            {% else %}
+                            <div class="bg-primary/10 h-14 w-14 flex items-center justify-center">
+                                <span class="text-primary font-medium text-sm">{{ grant.client.name | truncate(12) }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1 min-w-0">
+                        <h4 class="text-lg font-medium text-foreground mb-1">{{ grant.client.name }}</h4>
+                        <p class="text-sm text-muted-foreground mb-2">{{ grant.client.developer }}</p>
+                        
+                        {% if grant.client.uri %}
+                        <div class="mb-2">
+                            <span class="text-xs font-medium text-foreground">Website:</span>
+                            <a href="{{ grant.client.uri }}" target="_blank" class="text-xs text-primary hover:underline ml-1">{{ grant.client.uri }}</a>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="text-xs text-muted-foreground">
+                            <span class="font-medium">Client ID:</span> <span class="font-mono text-sm break-all">{{ grant.client.id }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Information -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="user" class="h-5 w-5 mr-2 text-primary"></i>
+                    User Account
+                </h2>
+            </div>
+            <div class="p-6">
+                
+                <div class="space-y-3">
+                    <div>
+                        <span class="text-sm font-medium text-foreground">Username:</span>
+                        <span class="text-sm text-muted-foreground ml-2">{{ grant.username }}</span>
+                    </div>
+                    
+                    <div>
+                        <span class="text-sm font-medium text-foreground">Grant ID:</span>
+                        <span class="text-sm text-muted-foreground ml-2 font-mono">{{ grant.grantId }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Grant Details -->
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="shield-check" class="h-5 w-5 mr-2 text-primary"></i>
+                Grant Details
+            </h2>
+        </div>
+        <div class="p-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Timestamps -->
+                <div class="space-y-3">
+                    <h4 class="text-sm font-medium text-foreground">Timestamps</h4>
+                    
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-sm text-muted-foreground">Granted At:</span>
+                            <span class="text-sm text-foreground font-mono">{{ grant.grantedAt | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</span>
+                        </div>
+
+                        {% if grant.expiresAt %}
+                        <div class="flex justify-between">
+                            <span class="text-sm text-muted-foreground">Expires At:</span>
+                            <span class="text-sm text-foreground font-mono">{{ grant.expiresAt | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</span>
+                        </div>
+                        
+                        <div class="flex justify-between">
+                            <span class="text-sm text-muted-foreground">Status:</span>
+                            {% if grant.isExpired %}
+                            <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-destructive/10 text-destructive">
+                                Expired
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-primary/10 text-primary">
+                                Active
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Permissions -->
+                <div class="space-y-3">
+                    <h4 class="text-sm font-medium text-foreground">Permissions (Scopes)</h4>
+                    
+                    {% if grant.scopes and grant.scopes.length > 0 %}
+                    <div class="flex flex-wrap gap-2">
+                        {% for scope in grant.scopes %}
+                        <span class="inline-flex items-center px-3 py-1 text-sm font-medium bg-primary/10 text-primary">
+                            {{ scope }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-muted-foreground">No specific permissions granted</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw Payload (Collapsible) -->
+    <div class="bg-card border border-border">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="code" class="h-5 w-5 mr-2 text-primary"></i>
+                Technical Details
+            </h2>
+        </div>
+        <div class="p-6">
+            
+            <details class="group">
+                <summary class="cursor-pointer list-none">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-foreground">Raw Grant Payload</span>
+                        <svg class="h-4 w-4 text-muted-foreground group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </div>
+                </summary>
+                
+                <div class="mt-4">
+                    <pre class="bg-muted/50 p-4 text-xs text-foreground overflow-x-auto"><code>{{ grant.rawPayload | tojson }}</code></pre>
+                </div>
+            </details>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/grants/index.js"></script>
+{% endblock %}

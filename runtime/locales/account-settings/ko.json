@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "설정 탐색",
+    "profile": "프로필",
+    "preferences": "환경설정",
+    "notifications": "알림",
+    "security": "보안",
+    "recovery": "복구",
+    "social": "소셜 계정"
+  },
+  "upload_widget": {
+    "title": "프로필 사진 업로드 중...",
+    "description": "이미지를 처리하는 중입니다. 잠시만 기다려 주세요"
+  },
+  "profile": {
+    "title": "프로필 정보",
+    "picture_label": "프로필 사진",
+    "upload_description": "새로운 프로필 사진을 업로드하세요. 사진이나 업로드 버튼을 클릭하여 이미지를 선택합니다.",
+    "upload_button": "이미지 업로드",
+    "remove_button": "삭제",
+    "first_name": "이름",
+    "last_name": "성",
+    "save_button": "변경 사항 저장",
+    "remove_confirm": "프로필 사진을 삭제하시겠습니까?",
+    "remove_error": "아바타 삭제에 실패했습니다. 다시 시도해 주세요.",
+    "file_read_error": "선택한 파일을 읽는 중 오류가 발생했습니다. 다시 시도해 주세요."
+  },
+  "preferences": {
+    "title": "설정",
+    "language": {
+      "title": "언어 설정",
+      "current": "현재 설정된 언어:",
+      "none": "언어 설정이 없습니다. 기본값은 영어입니다.",
+      "update_error": "언어 설정 업데이트에 실패했습니다. 다시 시도해 주세요."
+    },
+    "timezone": {
+      "title": "시간대",
+      "current": "현재 설정된 시간대:",
+      "update_error": "시간대 업데이트에 실패했습니다. 다시 시도해 주세요."
+    }
+  },
+  "email_verification": {
+    "title": "이메일 확인",
+    "primary_email": "주 이메일 주소",
+    "verified": "확인됨",
+    "unverified": "미확인",
+    "verify_prompt": "모든 기능을 사용하려면 이메일 주소를 확인해 주세요",
+    "resend_button": "확인 이메일 재전송",
+    "verify_manually": "수동으로 확인"
+  },
+  "phone_verification": {
+    "title": "전화번호 확인",
+    "primary_phone": "주 전화번호",
+    "verified": "확인됨",
+    "unverified": "미확인"
+  },
+  "add_email": {
+    "title": "이메일 주소 추가",
+    "description": "이메일 주소를 추가하면 계정 복구가 더 쉬워집니다. 비밀번호 재설정 및 계정 복구에 사용할 수 있습니다.",
+    "button": "이메일 추가"
+  },
+  "security": {
+    "title": "보안",
+    "mfa": {
+      "active_title": "이중 인증(2FA) 활성화됨",
+      "active_description": "계정이 2FA로 보호됩니다",
+      "active_description_multi": "{{count}}개의 인증 방법이 활성화되어 있습니다.",
+      "totp_title": "인증 앱",
+      "email_title": "이메일 인증",
+      "webauthn_title": "패스키",
+      "passkeys_count": "개의 패스키가 등록됨",
+      "manage_passkeys": "패스키 관리",
+      "using": "사용 방법: {{method}}",
+      "using_email": "사용 방법: 이메일",
+      "using_app": "사용 방법: 인증 앱",
+      "using_method": "사용 방법: {{method}}",
+      "inactive_title": "이중 인증(2FA) 비활성화됨",
+      "inactive_description": "계정 보안을 강화하려면 2FA를 활성화하세요",
+      "title": "이중 인증(2FA)",
+      "enabled_status": "활성",
+      "enabled_text": "계정이 2FA로 보호됩니다",
+      "disabled_status": "비활성",
+      "disabled_text": "계정 보안을 강화하려면 2FA를 추가하세요",
+      "disable_button": "2FA 비활성화",
+      "enable_app_button": "앱으로 활성화",
+      "enable_email_button": "이메일로 활성화",
+      "already_enabled_message": "이 계정은 이미 이중 인증이 활성화되어 있습니다.",
+      "method_already_enabled": "이 MFA 방식은 이미 활성화되어 있습니다.",
+      "not_enabled_message": "이 계정은 아직 이중 인증이 활성화되지 않았습니다.",
+      "disable_confirm": "이중 인증을 비활성화하시겠습니까? 계정 보안이 낮아집니다.",
+      "enable_app_confirm": "인증 앱 2FA를 활성화하시겠습니까?",
+      "enable_email_confirm": "이메일 기반 2FA를 활성화하시겠습니까?"
+    },
+    "password": {
+      "set_title": "비밀번호 설정",
+      "set_description": "현재 소셜 로그인만 활성화되어 있습니다. 소셜 계정을 연결 해제해도 계정에 접근할 수 있도록 비밀번호를 설정하세요.",
+      "current_label": "현재 비밀번호",
+      "new_label": "새 비밀번호",
+      "confirm_label": "새 비밀번호 확인",
+      "requirements_title": "비밀번호 요구 사항",
+      "min_length": "최소 {{count}}자",
+      "uppercase": "대문자 최소 1개",
+      "lowercase": "소문자 최소 1개",
+      "number": "숫자 최소 1개",
+      "symbol": "특수문자 최소 1개",
+      "mismatch_error": "비밀번호가 일치하지 않습니다",
+      "mismatch": "비밀번호가 일치하지 않습니다",
+      "change_success": "비밀번호가 성공적으로 변경되었습니다",
+      "change_button": "비밀번호 변경"
+    }
+  },
+  "recovery": {
+    "title": "계정 복구",
+    "active_title": "계정 복구 활성화됨",
+    "active_description": "계정 접근을 복구하기 위한 백업 방법이 설정되어 있습니다",
+    "inactive_title": "계정 복구 미설정",
+    "inactive_description": "비밀번호 또는 2FA 장치를 분실할 경우를 대비해 백업 방법을 설정하세요",
+    "dashboard": {
+      "backup_codes": "백업 코드",
+      "backup_email": "백업 이메일",
+      "security_questions": "보안 질문",
+      "codes_available": "코드 사용 가능",
+      "not_configured": "미설정",
+      "configured": "설정됨",
+      "verified": "확인됨",
+      "score_title": "복구 상태",
+      "score_critical": "복구 방법이 설정되지 않았습니다. 최소 하나의 방법을 설정하세요.",
+      "score_warning": "복구 방법이 하나만 설정되어 있습니다. 더 추가하세요.",
+      "score_low_codes": "백업 코드가 거의 소진되었습니다. 새 코드를 생성하세요.",
+      "score_good": "계정 복구 옵션이 잘 구성되어 있습니다.",
+      "methods_active": "메서드 활성"
+    },
+    "backup_codes": {
+      "title": "백업 코드",
+      "setup_status": "설정됨",
+      "low_status": "거의 소진됨",
+      "depleted_status": "소진됨",
+      "depleted_text": "즉시 새 코드를 생성하세요",
+      "remaining": "남은 코드 {{count}}개",
+      "created_at": "생성일: {{date}}",
+      "not_setup_status": "미설정",
+      "not_setup_text": "계정 접근을 복구하기 위한 일회용 코드를 생성하세요",
+      "codes_created_badge": "코드 생성됨",
+      "create_new_button": "새 코드 생성",
+      "remove_button": "코드 삭제",
+      "create_button": "코드 생성",
+      "confirm_new": "새 백업 코드를 생성하시겠습니까? 기존 코드는 모두 무효화됩니다.",
+      "confirm_remove": "백업 코드를 삭제하시겠습니까?",
+      "view_once_tooltip": "보안을 위해 백업 코드는 한 번만 볼 수 있습니다"
+    },
+    "backup_email": {
+      "title": "백업 이메일",
+      "verified_status": "확인됨",
+      "verified_text": "계정 접근 복구에 사용 가능합니다",
+      "pending_status": "확인 대기",
+      "pending_text": "확인 링크를 위해 이메일을 확인하세요",
+      "not_setup_status": "미설정",
+      "not_setup_text": "계정 접근 복구를 위해 백업 이메일을 추가하세요",
+      "remove_button": "이메일 삭제",
+      "add_button": "이메일 추가",
+      "placeholder": "백업 이메일 입력",
+      "confirm_remove": "백업 이메일을 삭제하시겠습니까?",
+      "cancel_button": "인증 취소",
+      "cancel_confirm": "대기 중인 이메일 인증을 취소하시겠습니까?"
+    },
+    "security_questions": {
+      "title": "보안 질문",
+      "setup_status": "설정됨",
+      "setup_text": "{{count}}개 질문 설정됨",
+      "not_setup_status": "미설정",
+      "not_setup_text": "계정 복구를 위해 보안 질문을 추가하세요",
+      "setup_button": "질문 설정",
+      "update_button": "질문 업데이트",
+      "remove_button": "질문 삭제",
+      "confirm_remove": "보안 질문을 삭제하시겠습니까?",
+      "last_used": "마지막 사용: {{date}}"
+    }
+  },
+  "social": {
+    "title": "연결된 계정",
+    "description": "빠르고 안전하게 로그인하려면 소셜 계정을 연결하세요. 여러 계정을 연결하고 여기서 관리할 수 있습니다.",
+    "connected": "연결됨",
+    "not_connected": "미연결",
+    "unlink_button": "연결 해제",
+    "set_password_first": "먼저 비밀번호 설정",
+    "set_password_first_tooltip": "유일한 소셜 계정을 해제하기 전에 비밀번호를 설정해야 합니다",
+    "connect_button": "연결",
+    "no_accounts": "사용 가능한 소셜 계정이 없습니다",
+    "confirm_unlink": "{{provider}} 계정 연결을 해제하시겠습니까?"
+  },
+  "notifications": {
+    "title": "알림 설정",
+    "preferred_channel": "선호하는 알림 방법",
+    "preferred_channel_desc": "알림을 받을 방법을 선택하세요",
+    "channel_email": "이메일",
+    "channel_sms": "SMS",
+    "channel_auto": "자동",
+    "security_alerts": "보안 알림",
+    "security_alerts_desc": "의심스러운 로그인 시도 및 보안 이벤트에 대한 알림 받기",
+    "new_session_alerts": "새 세션 알림",
+    "new_session_alerts_desc": "새 기기가 계정에 로그인할 때 알림 받기",
+    "marketing": "제품 업데이트",
+    "marketing_desc": "새 기능 및 개선 사항에 대한 업데이트 받기",
+    "save_button": "설정 저장"
+  }
+}

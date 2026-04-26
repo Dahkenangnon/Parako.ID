@@ -1,0 +1,43 @@
+{
+  "last_activity": "Последняя активность",
+  "security_account": {
+    "title": "Безопасность и аккаунт",
+    "two_factor_auth": "Двухфакторная аутентификация",
+    "enabled": "Включено",
+    "not_enabled": "Не включено",
+    "manage": "Управлять",
+    "enable": "Включить",
+    "active_sessions": "Активные сеансы",
+    "devices": "{{count}} устройств",
+    "view": "Просмотр",
+    "connected_apps": "Подключенные приложения",
+    "apps_count": "{{count}} приложений",
+    "language": "Язык",
+    "language_default": "Английский (по умолчанию)",
+    "change": "Изменить",
+    "not_available": "Недоступно"
+  },
+  "quick_actions": {
+    "title": "Быстрые действия",
+    "edit_profile": {
+      "title": "Редактировать профиль",
+      "description": "Обновить личную информацию"
+    },
+    "security_settings": {
+      "title": "Настройки безопасности",
+      "description": "Управление паролем и 2FA"
+    },
+    "view_sessions": {
+      "title": "Просмотр сеансов",
+      "description": "Управление активными устройствами"
+    },
+    "connected_applications": {
+      "title": "Подключенные приложения",
+      "description": "Управление разрешениями приложений"
+    },
+    "sign_out": {
+      "title": "Выйти",
+      "description": "Выйти из аккаунта"
+    }
+  }
+}

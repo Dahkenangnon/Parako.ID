@@ -1,0 +1,86 @@
+# -------------------------------
+# Dependency directories
+# -------------------------------
+node_modules/
+
+# -------------------------------
+# Build output
+# -------------------------------
+dist/
+public/css/styles.css
+!public/css/theme.css
+public/js
+runtime/views/*
+uploads/
+.tmp-uploads/
+# -------------------------------
+# Environment variables
+# -------------------------------
+.env
+
+# -------------------------------
+# Logs
+# -------------------------------
+/logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# -------------------------------
+# Test coverage and results
+# -------------------------------
+coverage/
+test-results/
+parako-id-v*.tar.gz
+parako-id-v*.zip
+ssl
+
+# -------------------------------
+# IDE settings
+# -------------------------------
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# -------------------------------
+# OS generated files
+# -------------------------------
+.DS_Store
+Thumbs.db
+
+# -------------------------------
+# JWKS (JSON Web Key Sets)
+# -------------------------------
+runtime/jwks/jwks.json
+runtime/jwks/jwks.json.*
+runtime/views/custom
+
+# -------------------------------
+# Parako.ID configuration files
+# -------------------------------
+parako.jsonc
+parako-rp.jsonc
+parako.dev.jsonc
+parako.prod.jsonc
+parako-rp.dev.jsonc
+parako-rp.prod.jsonc
+runtime/config-backups/*.jsonc
+
+# -------------------------------
+# i18n generated files
+# -------------------------------
+runtime/locales/.merged/
+
+
+# -------------------------------
+# Licenses
+# -------------------------------
+THIRD_PARTY_LICENSES.txt
+
+# -------------------------------
+# Database files
+# -------------------------------
+data/

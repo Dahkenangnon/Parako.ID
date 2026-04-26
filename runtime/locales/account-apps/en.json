@@ -1,0 +1,17 @@
+{
+  "title": "Connected Apps",
+  "description": "These are the apps and websites you've given permission to use your account. You can remove access to any app you no longer use or trust.",
+  "remove_all_access": "Remove All Access",
+  "remove_access": "Remove Access",
+  "last_used": "Last used",
+  "connected": "Connected",
+  "what_app_can_do": "What this app can do",
+  "empty_state": {
+    "title": "No Connected Apps",
+    "description": "You haven't connected any apps or websites to your account yet."
+  },
+  "confirm": {
+    "remove_all": "Are you sure you want to remove access for all connected apps? This cannot be undone.",
+    "remove_single": "Are you sure you want to remove access for \"{{appName}}\"? This cannot be undone."
+  }
+}

@@ -1,0 +1,33 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-2">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-10 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-10 w-auto" />
+                </div>
+
+                <!-- Error Icon -->
+                <div class="flex justify-center mb-3">
+                    <div class="bg-blue-50 dark:bg-blue-900 border-2 border-blue-200 dark:border-blue-700 p-3">
+                        <svg class="h-10 w-10 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Error Content -->
+                <div class="text-center mb-4">
+                    <h1 class="auth-heading text-4xl font-bold text-gray-900 dark:text-foreground mb-1">404</h1>
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-foreground mb-2">{{ t('common.error_page.404.title') }}</h2>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground">{{ t('common.error_page.404.description') }}</p>
+                </div>
+
+                <!-- Action Button -->
+                <a href="{{ urls.website or '/' }}" class="auth-btn w-full h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white text-sm flex items-center justify-center">
+                    {{ t('common.button.go_home') }}
+                </a>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "layouts/admin-layout.njk" %}
+{% block admin_content %}
+  <div class="max-w-4xl mx-auto space-y-6">
+    <!-- Header -->
+    <div>
+      <h1 class="text-2xl font-semibold text-foreground">{{ t('admin-layout.sidebar.navigation.data') }}</h1>
+      <p class="text-sm text-muted-foreground mt-1">Import and export data for backup, migration, and compliance</p>
+    </div>
+
+    <!-- Entity Cards -->
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {% for entity in entities %}
+      <a href="/admin/data-transfer/{{ entity.entityId }}"
+         class="group block border border-border bg-card p-5 hover:border-foreground/20 transition-colors">
+        <div class="flex items-start justify-between mb-3">
+          <div class="flex items-center gap-2">
+            {% if entity.entityId === 'users' %}
+              <i data-lucide="users" class="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors"></i>
+            {% elif entity.entityId === 'oidc-clients' %}
+              <i data-lucide="key" class="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors"></i>
+            {% elif entity.entityId === 'activities' %}
+              <i data-lucide="activity" class="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors"></i>
+            {% endif %}
+            <h3 class="font-medium text-foreground">{{ entity.displayName }}</h3>
+          </div>
+          <span class="text-xs uppercase font-medium px-2 py-0.5 border border-border text-muted-foreground">
+            {{ entity.format | upper }}
+          </span>
+        </div>
+
+        <p class="text-sm text-muted-foreground mb-3">{{ entity.description }}</p>
+
+        <div class="flex gap-2">
+          {% if entity.hasImport %}
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20">
+            <i data-lucide="upload" class="h-3 w-3"></i>
+            Import
+          </span>
+          {% endif %}
+          {% if entity.hasExport %}
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20">
+            <i data-lucide="download" class="h-3 w-3"></i>
+            Export
+          </span>
+          {% endif %}
+          {% if not entity.hasImport %}
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-muted text-muted-foreground border border-border">
+            Export Only
+          </span>
+          {% endif %}
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- Info box -->
+    <div class="border border-border bg-card p-4">
+      <div class="flex items-start gap-3">
+        <i data-lucide="info" class="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"></i>
+        <div class="text-sm text-muted-foreground space-y-1">
+          <p><strong>Users</strong> can be imported via CSV and exported with optional sensitive data (phone, address) and password hashes.</p>
+          <p><strong>OIDC Clients</strong> use JSON format for backup and migration between environments.</p>
+          <p><strong>Activity logs</strong> are export-only for compliance archival. Importing audit logs would break provenance.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

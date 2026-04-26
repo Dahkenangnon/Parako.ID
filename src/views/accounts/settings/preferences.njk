@@ -1,0 +1,183 @@
+{% extends "layouts/account-layout.njk" %}
+{% block account_content %}
+    {% include "partials/account-settings-tabs.njk" %}
+
+    <div class="space-y-10">
+        <!-- Preferences Settings -->
+        <div class="mb-8">
+            <div>
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0
+                                001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0
+                                00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0
+                                00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07
+                                2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    {{ t('account-settings.preferences.title') }}
+                </h2>
+                <!-- Language/Locale Settings -->
+                <div class="space-y-6">
+                    <div class="bg-muted/50 p-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="flex items-start sm:items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                        <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-foreground">{{ t('account-settings.preferences.language.title') }}</p>
+                                    <p class="text-sm text-muted-foreground mt-1">
+                                        {% if userLocale %}
+                                            {{ t('account-settings.preferences.language.current') }}
+                                            {% set availableLocales = getAvailableLocales() %}
+                                            {% for localeData in availableLocales %}
+                                                {% if localeData.code == userLocale %}
+                                                    {{ localeData.flag }}
+                                                    {{ localeData.label }}
+                                                {% endif %}
+                                            {% endfor %}
+                                        {% else %}
+                                            {{ t('account-settings.preferences.language.none') }}
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <select
+                                    id="language-selector-settings"
+                                    class="appearance-none bg-background border border-border text-sm font-medium text-foreground px-3 py-2 pr-8
+                                        focus:outline-none focus:ring-2 focus:ring-ring focus:border-border transition-colors">
+                                    {% set availableLocales = getAvailableLocales() %}
+                                    {% for localeData in availableLocales %}
+                                        <option value="{{ localeData.code }}" {% if localeData.code == userLocale %} selected {% endif %}>
+                                            {{ localeData.flag }}
+                                            {{ localeData.label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Timezone Settings -->
+                    <div class="bg-muted/50 p-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="flex items-start sm:items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                        <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-foreground">{{ t('account-settings.preferences.timezone.title') }}</p>
+                                    <p class="text-sm text-muted-foreground mt-1">
+                                        {{ t('account-settings.preferences.timezone.current') }} {{ pageUser.zoneinfo or 'UTC' }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <select
+                                    id="timezone-selector-settings"
+                                    class="appearance-none bg-background border border-border text-sm font-medium text-foreground px-3 py-2 pr-8
+                                        focus:outline-none focus:ring-2 focus:ring-ring focus:border-border transition-colors">
+                                    <optgroup label="Africa">
+                                        <option value="Africa/Abidjan" {% if pageUser.zoneinfo == 'Africa/Abidjan' %}selected{% endif %}>Abidjan</option>
+                                        <option value="Africa/Accra" {% if pageUser.zoneinfo == 'Africa/Accra' %}selected{% endif %}>Accra</option>
+                                        <option value="Africa/Addis_Ababa" {% if pageUser.zoneinfo == 'Africa/Addis_Ababa' %}selected{% endif %}>Addis Ababa</option>
+                                        <option value="Africa/Algiers" {% if pageUser.zoneinfo == 'Africa/Algiers' %}selected{% endif %}>Algiers</option>
+                                        <option value="Africa/Cairo" {% if pageUser.zoneinfo == 'Africa/Cairo' %}selected{% endif %}>Cairo</option>
+                                        <option value="Africa/Casablanca" {% if pageUser.zoneinfo == 'Africa/Casablanca' %}selected{% endif %}>Casablanca</option>
+                                        <option value="Africa/Johannesburg" {% if pageUser.zoneinfo == 'Africa/Johannesburg' %}selected{% endif %}>Johannesburg</option>
+                                        <option value="Africa/Lagos" {% if pageUser.zoneinfo == 'Africa/Lagos' %}selected{% endif %}>Lagos</option>
+                                        <option value="Africa/Nairobi" {% if pageUser.zoneinfo == 'Africa/Nairobi' %}selected{% endif %}>Nairobi</option>
+                                        <option value="Africa/Porto-Novo" {% if pageUser.zoneinfo == 'Africa/Porto-Novo' %}selected{% endif %}>Porto-Novo</option>
+                                        <option value="Africa/Tunis" {% if pageUser.zoneinfo == 'Africa/Tunis' %}selected{% endif %}>Tunis</option>
+                                    </optgroup>
+                                    <optgroup label="Americas">
+                                        <option value="America/Anchorage" {% if pageUser.zoneinfo == 'America/Anchorage' %}selected{% endif %}>Anchorage</option>
+                                        <option value="America/Argentina/Buenos_Aires" {% if pageUser.zoneinfo == 'America/Argentina/Buenos_Aires' %}selected{% endif %}>Buenos Aires</option>
+                                        <option value="America/Chicago" {% if pageUser.zoneinfo == 'America/Chicago' %}selected{% endif %}>Chicago</option>
+                                        <option value="America/Denver" {% if pageUser.zoneinfo == 'America/Denver' %}selected{% endif %}>Denver</option>
+                                        <option value="America/Los_Angeles" {% if pageUser.zoneinfo == 'America/Los_Angeles' %}selected{% endif %}>Los Angeles</option>
+                                        <option value="America/Mexico_City" {% if pageUser.zoneinfo == 'America/Mexico_City' %}selected{% endif %}>Mexico City</option>
+                                        <option value="America/New_York" {% if pageUser.zoneinfo == 'America/New_York' %}selected{% endif %}>New York</option>
+                                        <option value="America/Sao_Paulo" {% if pageUser.zoneinfo == 'America/Sao_Paulo' %}selected{% endif %}>Sao Paulo</option>
+                                        <option value="America/Toronto" {% if pageUser.zoneinfo == 'America/Toronto' %}selected{% endif %}>Toronto</option>
+                                        <option value="America/Vancouver" {% if pageUser.zoneinfo == 'America/Vancouver' %}selected{% endif %}>Vancouver</option>
+                                    </optgroup>
+                                    <optgroup label="Asia">
+                                        <option value="Asia/Bangkok" {% if pageUser.zoneinfo == 'Asia/Bangkok' %}selected{% endif %}>Bangkok</option>
+                                        <option value="Asia/Dubai" {% if pageUser.zoneinfo == 'Asia/Dubai' %}selected{% endif %}>Dubai</option>
+                                        <option value="Asia/Hong_Kong" {% if pageUser.zoneinfo == 'Asia/Hong_Kong' %}selected{% endif %}>Hong Kong</option>
+                                        <option value="Asia/Jakarta" {% if pageUser.zoneinfo == 'Asia/Jakarta' %}selected{% endif %}>Jakarta</option>
+                                        <option value="Asia/Kolkata" {% if pageUser.zoneinfo == 'Asia/Kolkata' %}selected{% endif %}>Kolkata</option>
+                                        <option value="Asia/Seoul" {% if pageUser.zoneinfo == 'Asia/Seoul' %}selected{% endif %}>Seoul</option>
+                                        <option value="Asia/Shanghai" {% if pageUser.zoneinfo == 'Asia/Shanghai' %}selected{% endif %}>Shanghai</option>
+                                        <option value="Asia/Singapore" {% if pageUser.zoneinfo == 'Asia/Singapore' %}selected{% endif %}>Singapore</option>
+                                        <option value="Asia/Tokyo" {% if pageUser.zoneinfo == 'Asia/Tokyo' %}selected{% endif %}>Tokyo</option>
+                                    </optgroup>
+                                    <optgroup label="Australia">
+                                        <option value="Australia/Melbourne" {% if pageUser.zoneinfo == 'Australia/Melbourne' %}selected{% endif %}>Melbourne</option>
+                                        <option value="Australia/Perth" {% if pageUser.zoneinfo == 'Australia/Perth' %}selected{% endif %}>Perth</option>
+                                        <option value="Australia/Sydney" {% if pageUser.zoneinfo == 'Australia/Sydney' %}selected{% endif %}>Sydney</option>
+                                    </optgroup>
+                                    <optgroup label="Europe">
+                                        <option value="Europe/Amsterdam" {% if pageUser.zoneinfo == 'Europe/Amsterdam' %}selected{% endif %}>Amsterdam</option>
+                                        <option value="Europe/Berlin" {% if pageUser.zoneinfo == 'Europe/Berlin' %}selected{% endif %}>Berlin</option>
+                                        <option value="Europe/Dublin" {% if pageUser.zoneinfo == 'Europe/Dublin' %}selected{% endif %}>Dublin</option>
+                                        <option value="Europe/Istanbul" {% if pageUser.zoneinfo == 'Europe/Istanbul' %}selected{% endif %}>Istanbul</option>
+                                        <option value="Europe/London" {% if pageUser.zoneinfo == 'Europe/London' %}selected{% endif %}>London</option>
+                                        <option value="Europe/Madrid" {% if pageUser.zoneinfo == 'Europe/Madrid' %}selected{% endif %}>Madrid</option>
+                                        <option value="Europe/Moscow" {% if pageUser.zoneinfo == 'Europe/Moscow' %}selected{% endif %}>Moscow</option>
+                                        <option value="Europe/Paris" {% if pageUser.zoneinfo == 'Europe/Paris' %}selected{% endif %}>Paris</option>
+                                        <option value="Europe/Rome" {% if pageUser.zoneinfo == 'Europe/Rome' %}selected{% endif %}>Rome</option>
+                                        <option value="Europe/Zurich" {% if pageUser.zoneinfo == 'Europe/Zurich' %}selected{% endif %}>Zurich</option>
+                                    </optgroup>
+                                    <optgroup label="Pacific">
+                                        <option value="Pacific/Auckland" {% if pageUser.zoneinfo == 'Pacific/Auckland' %}selected{% endif %}>Auckland</option>
+                                        <option value="Pacific/Fiji" {% if pageUser.zoneinfo == 'Pacific/Fiji' %}selected{% endif %}>Fiji</option>
+                                        <option value="Pacific/Honolulu" {% if pageUser.zoneinfo == 'Pacific/Honolulu' %}selected{% endif %}>Honolulu</option>
+                                    </optgroup>
+                                    <optgroup label="Other">
+                                        <option value="UTC" {% if pageUser.zoneinfo == 'UTC' %}selected{% endif %}>UTC</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script id="___SETTINGS_STATE___" type="application/json">
+    {
+      "updateLocaleUrl": "{{ routes.authFull.update_locale }}",
+      "csrfToken": {{ csrfToken | tojson | safe }},
+      "translations": {
+        "languageUpdateError": {{ t('account-settings.preferences.language.update_error') | tojson | safe }}
+      },
+      "debug": {{ (app.env === 'development') | tojson }}
+    }
+    </script>
+    <script src="/js/account/settings/language.js"></script>
+    <script src="/js/account/settings/index.js"></script>
+{% endblock %}

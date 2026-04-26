@@ -1,0 +1,25 @@
+{
+  "title": "Two-Factor Authentication Enabled!",
+  "subtitle": "Now let's set up backup options so you can always get back into your account, even if you lose access to your {{method}}.",
+  "method_email": "email",
+  "method_app": "authenticator app",
+  "setup_recovery": {
+    "title": "Set Up Account Recovery",
+    "description": "We'll create backup codes for your account and optionally set up a backup email address."
+  },
+  "backup_codes": {
+    "title": "Backup Codes (Required)",
+    "description": "We'll create backup codes that you can use to get back into your account if you lose access to your {{method}}. Each code can only be used once.",
+    "method_email_account": "email account"
+  },
+  "backup_email": {
+    "label": "Backup Email (Optional)",
+    "placeholder": "Enter backup email address (optional)",
+    "help_text": "If provided, you'll receive a verification email to confirm this backup email address."
+  },
+  "button": {
+    "submit": "Set Up Backup Options",
+    "skip": "Skip for now",
+    "continue": "Continue to Settings"
+  }
+}

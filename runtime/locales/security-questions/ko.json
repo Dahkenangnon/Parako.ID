@@ -1,0 +1,42 @@
+{
+  "title": "Bohan jilmun",
+  "description": "Gyejong bogureul wihan bohan jilmun seoljeonghagi",
+  "setup": {
+    "title": "Bohan jilmun seoljeong",
+    "select_question": "질문 선택...",
+    "select_questions": "{{count}}gae jilmun sontaekhago dabeul ibryokhaseyo",
+    "answer_placeholder": "Dangsinui dab",
+    "save": "Bohan jilmun jeojang",
+    "instruction": "Dangshinman algo issnun dabeui jilmuneul sontaekhaseyo. Dabeun daesomun gubyeolhaji anhseubnida."
+  },
+  "recovery": {
+    "title": "Bohan jilmun dabbyeonhagi",
+    "description": "Gyejong bogureul wihae bohan jilmune dabeul haejuseyo",
+    "submit": "Dab hwaginhagi",
+    "attempts_remaining": "{{count}}hoe nameum"
+  },
+  "questions": {
+    "q1": "Cheot ae wanmul ireumeun mueosibnigga?",
+    "q2": "Eoneu dosieseo taeeonasseumnikka?",
+    "q3": "Eolin sijeol byeolmyeongeun mueosimnigga?",
+    "q4": "Eolin sijeol gajiang chinhan chinguui ireumeun?",
+    "q5": "Cheot charui jejo saneun mueosimnigga?",
+    "q6": "Chodeung hakgyoui ireumeun mueosimnigga?",
+    "q7": "Eomeonui gyeolhon jeon seongeun mueosimnigga?",
+    "q8": "Jaransun georiul ireumeun mueosimnigga?",
+    "q9": "Eolin sijeol joahaneun eumsigeun mueosimnigga?",
+    "q10": "Cheom gasseun konseotu neun mueosimnigga?"
+  },
+  "validation": {
+    "answer_too_short": "Dabeun choeso 3ja isangieoya habnida",
+    "answer_too_generic": "Deo guchejeokin dabeul ibryokhae juseyo",
+    "all_answers_required": "Modeun jilmune dabeul haejuseyo",
+    "incorrect_answers": "Hana isangui dabeun teulrimyosseubnida",
+    "select_different_questions": "Dareun jilmuneul sontaekhae juseyo"
+  },
+  "status": {
+    "configured": "Bohan jilmun seoljeong wanryo",
+    "not_configured": "Bohan jilmun mi seoljeong",
+    "update": "Bohan jilmun sujeong"
+  }
+}

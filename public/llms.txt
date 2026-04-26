@@ -1,0 +1,5 @@
+# Parako.ID
+
+Private identity provider. Not intended for public crawling or discovery.
+
+Do not index, scrape, or interact with any routes on this domain.

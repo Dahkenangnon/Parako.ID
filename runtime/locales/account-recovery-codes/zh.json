@@ -1,0 +1,28 @@
+{
+  "title": "账户恢复代码已创建",
+  "subtitle": "将这些代码保存在安全的地方。如果您无法访问其他登录方法，可以使用它们重新访问您的账户。",
+  "security_notice": {
+    "title": "重要安全提示",
+    "description": "立即下载您的恢复代码。每个代码只能使用一次，离开此页面后将无法再次查看。"
+  },
+  "download_section": {
+    "title": "下载您的恢复代码",
+    "description": "点击下面的按钮下载包含您的{{count}}个恢复代码的文本文件。",
+    "download_button": "下载为文本文件",
+    "copy_button": "复制到剪贴板",
+    "print_button": "打印代码",
+    "downloaded": "已下载！",
+    "copied": "已复制！",
+    "printed": "已打印！"
+  },
+  "back_to_settings": "返回设置",
+  "file_content": {
+    "title": "账户恢复代码",
+    "generated": "生成时间",
+    "important": "重要提示：将这些代码保存在安全的地方。每个代码只能使用一次。",
+    "total_codes": "代码总数"
+  },
+  "error": {
+    "copy_failed": "复制代码失败。请重试。"
+  }
+}

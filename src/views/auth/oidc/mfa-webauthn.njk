@@ -1,0 +1,108 @@
+{% extends "layouts/auth-layout.njk" %}
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto"/>
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto"/>
+                </div>
+                <!-- MFA Header -->
+                <div class="text-center mb-5">
+                    <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">{{ t('common.auth.webauthn.mfa.title', 'Passkey Verification') }}</h2>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mt-1">{{ t('common.auth.webauthn.mfa.description', 'Use your passkey to verify your identity') }}</p>
+                </div>
+                <!-- WebAuthn Method Info -->
+                <div class="flex items-center justify-center p-3 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border mb-5">
+                    <div class="flex items-center">
+                        <div class="bg-primary dark:bg-primary p-2 mr-3 border-2 border-primary dark:border-primary">
+                            <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0
+                                        1121 9z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('common.auth.webauthn.mfa.passkeyMethod', 'Passkey') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('common.auth.webauthn.mfa.passkeyMethodDescription', 'Use Touch ID, Face ID, Windows Hello, or your security key') }}</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Status Message -->
+                <div id="webauthn-status" class="hidden mb-4 p-3 border-2" role="alert"></div>
+                <!-- Client Device Infos -->
+                <div id="client-device-infos-container"></div>
+                <!-- Authenticate Button -->
+                <button
+                    type="button"
+                    id="webauthn-auth-btn"
+                    class="auth-btn w-full h-12 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2
+                        focus:border-gray-900 dark:focus:border-white flex items-center justify-center space-x-2">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203
+                                3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8
+                                1-4.364 0-1.457.39-2.823 1.07-4"></path>
+                    </svg>
+                    <span id="auth-btn-text">{{ t('common.auth.webauthn.mfa.authenticateButton', 'Authenticate with Passkey') }}</span>
+                </button>
+                <!-- Timer -->
+                <div class="text-center mt-4">
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground">{{ t('common.auth.webauthn.mfa.timeout', 'Session expires in') }}
+                        <span id="timer" class="font-medium">5:00</span>
+                    </p>
+                </div>
+                <!-- Secondary Actions -->
+                <div class="flex justify-center mt-4 text-xs text-gray-600 dark:text-muted-foreground">
+                    <a href="{{ oidc.path }}/interaction/{{ uid }}/mfa/select" class="hover:text-primary hover:underline">
+                        {{ t('common.auth.webauthn.mfa.tryAnotherMethod', 'Try another method') }}
+                    </a>
+                </div>
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.login }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.auth.webauthn.mfa.cancelLogin') }}</a>
+                    </p>
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground mt-1">
+                        <a href="{{ routes.authFull.account_recovery }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.navigation.account_recovery') }}</a>
+                    </p>
+                </div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script src="/js/webauthn/authenticate.js"></script>
+
+<!-- Configuration for WebAuthn Authentication (OIDC Flow) -->
+<script id="___WEBAUTHN_AUTH_STATE___" type="application/json">
+{
+  "config": {
+    "uid": {{ uid | tojson | safe }},
+    "oidcPath": {{ oidc.path | tojson | safe }},
+    "optionsUrl": "{{ oidc.path }}/interaction/{{ uid }}/webauthn/options",
+    "verifyUrl": "{{ oidc.path }}/interaction/{{ uid }}/webauthn/verify",
+    "mfaSelectUrl": "{{ oidc.path }}/interaction/{{ uid }}/mfa/select",
+    "timerDuration": 300,
+    "autoTrigger": false,
+    "csrfToken": {{ csrfToken | tojson | safe }},
+    "debug": {{ (app.env === 'development') | tojson }},
+    "isOidcFlow": true
+  },
+  "translations": {
+    "authenticateButton": {{ t('common.auth.webauthn.mfa.authenticateButton', 'Authenticate with Passkey') | tojson | safe }},
+    "authenticating": {{ t('common.auth.webauthn.mfa.authenticating', 'Authenticating...') | tojson | safe }},
+    "successTitle": {{ t('common.auth.webauthn.mfa.successTitle', 'Verified') | tojson | safe }},
+    "successMessage": {{ t('common.auth.webauthn.mfa.successMessage', 'Authentication successful. Redirecting...') | tojson | safe }},
+    "errorTitle": {{ t('common.auth.webauthn.mfa.errorTitle', 'Authentication Failed') | tojson | safe }},
+    "errorNotSecure": {{ t('common.auth.webauthn.mfa.errorNotSecure', 'Passkeys require a secure connection (HTTPS). Please access this site over HTTPS to use passkeys.') | tojson | safe }},
+    "errorNotSupported": {{ t('common.auth.webauthn.mfa.errorNotSupported', 'Your browser does not support passkeys. Please use another verification method.') | tojson | safe }},
+    "errorCancelled": {{ t('common.auth.webauthn.mfa.errorCancelled', 'Authentication was cancelled. Please try again.') | tojson | safe }},
+    "errorNoCredentials": {{ t('common.auth.webauthn.mfa.errorNoCredentials', 'No passkeys found for this account. Please use another verification method.') | tojson | safe }},
+    "errorGeneric": {{ t('common.auth.webauthn.mfa.errorGeneric', 'An error occurred during authentication. Please try again.') | tojson | safe }},
+    "errorTimeout": {{ t('common.auth.webauthn.mfa.errorTimeout', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+{% endblock %}

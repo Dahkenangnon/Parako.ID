@@ -1,0 +1,42 @@
+{
+  "title": "活动会话",
+  "description": "这是您当前登录的设备。请定期检查此列表，并从您不认识或不再使用的设备中注销。",
+  "sign_out_all": {
+    "button": "注销所有其他设备",
+    "button_short": "注销所有其他",
+    "confirm": "您确定要注销所有其他设备吗？这将立即注销所有其他设备，并可能断开这些设备上已连接的应用程序。"
+  },
+  "table": {
+    "device_location": "设备和位置",
+    "ip_address": "IP地址",
+    "started": "开始时间",
+    "last_active": "最后活跃",
+    "status": "状态",
+    "action": "操作"
+  },
+  "status": {
+    "current": "当前",
+    "active": "活跃",
+    "this_device": "此设备"
+  },
+  "unknown": {
+    "device": "未知设备",
+    "location": "未知位置",
+    "general": "未知"
+  },
+  "action": {
+    "sign_out": "注销",
+    "confirm_sign_out": "您确定要注销此设备吗？这将立即注销并可能断开已连接的应用程序。"
+  },
+  "empty_state": {
+    "title": "没有其他设备",
+    "description": "您没有在任何其他设备上登录。"
+  },
+  "mobile_labels": {
+    "device": "设备",
+    "location": "位置",
+    "ip_address": "IP地址",
+    "started": "开始时间",
+    "last_active": "最后活跃"
+  }
+}

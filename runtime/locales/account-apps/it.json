@@ -1,0 +1,17 @@
+{
+  "title": "App collegate",
+  "description": "Queste sono le app e i siti web a cui hai dato il permesso di utilizzare il tuo account. Puoi rimuovere l'accesso a qualsiasi app che non usi più o di cui non ti fidi.",
+  "remove_all_access": "Rimuovi tutti gli accessi",
+  "remove_access": "Rimuovi accesso",
+  "last_used": "Ultimo utilizzo",
+  "connected": "Connesso",
+  "what_app_can_do": "Cosa può fare questa app",
+  "empty_state": {
+    "title": "Nessuna app collegata",
+    "description": "Non hai ancora collegato nessuna app o sito web al tuo account."
+  },
+  "confirm": {
+    "remove_all": "Sei sicuro di voler rimuovere l'accesso per tutte le app collegate? Questa azione non può essere annullata.",
+    "remove_single": "Sei sicuro di voler rimuovere l'accesso per \"{{appName}}\"? Questa azione non può essere annullata."
+  }
+}

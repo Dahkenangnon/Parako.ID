@@ -1,0 +1,35 @@
+name: Deploy to Staging
+
+on:
+  workflow_run:
+    workflows: ['CI & Release']
+    types: [completed]
+    branches: [dev]
+
+jobs:
+  deploy:
+    name: Deploy to Staging VPS
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 15
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+    permissions: {}
+    environment: staging
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            git fetch origin dev
+            git checkout dev
+            git reset --hard origin/dev
+            yarn install --frozen-lockfile
+            yarn build
+            pm2 startOrRestart ecosystem.config.cjs --env production

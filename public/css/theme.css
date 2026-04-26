@@ -1,0 +1,281 @@
+/**
+ * ============================================================================
+ * CUSTOM THEME & STYLES - Application Customization File
+ * ============================================================================
+ *
+ * This file customizes the default look and color scheme of the application.
+ * It overrides Tailwind CSS design tokens and provides a unified visual theme.
+ *
+ * HOW IT WORKS:
+ * - CSS variables defined here override Tailwind's default color palette
+ * - The :root selector defines Light Mode colors
+ * - The .dark selector defines Dark Mode colors
+ * - Changes apply immediately on browser refresh
+ *
+ * CUSTOMIZATION GUIDE:
+ * - Primary colors: Define brand identity (buttons, links, focus states)
+ * - Secondary colors: Supporting UI elements
+ * - Destructive/Success/Warning/Info: Semantic feedback colors
+ * - Surface colors (card, popover): Container backgrounds
+ * - Sidebar colors: Navigation panel theming
+ *
+ * CURRENT THEME: Parako.ID Brand Theme
+ * ============================================================================
+ */
+
+/* ============================================================================
+   TAILWIND CSS DESIGN TOKENS
+   ============================================================================
+   These CSS variables integrate with Tailwind's utility classes:
+   - bg-primary, text-primary-foreground, border-primary, etc.
+   - bg-card, text-card-foreground, etc.
+   - All standard Tailwind color utilities are mapped to these tokens
+   ============================================================================ */
+
+:root {
+  /* -------------------------------------------------------------------------
+     BASE COLORS - Light Mode
+     ------------------------------------------------------------------------- */
+  --background: #eef0f5;
+  --foreground: #2b2b2b;
+  --muted: #e8e9ef;
+  --muted-foreground: #5b5c62;
+
+  /* -------------------------------------------------------------------------
+     INTERACTIVE COLORS - Light Mode
+     Primary: Main brand color for buttons, links, focus rings
+     Secondary: Alternative interactive elements
+     Accent: Hover states, highlights
+     ------------------------------------------------------------------------- */
+  --primary: #2563eb;
+  --primary-foreground: #fefeff;
+  --secondary: #e2e4ea;
+  --secondary-foreground: #2b2b2b;
+  --accent: #e0e3eb;
+  --accent-foreground: #2b2b2b;
+
+  /* -------------------------------------------------------------------------
+     SEMANTIC COLORS - Light Mode
+     Used for status indicators and feedback
+     ------------------------------------------------------------------------- */
+  --destructive: #c53030;
+  --destructive-foreground: #ffffff;
+  --success: #16803c;
+  --success-foreground: #ffffff;
+  --warning: #c49a1b;
+  --warning-foreground: #2b2b2b;
+  --info: #2558d1;
+  --info-foreground: #ffffff;
+
+  /* -------------------------------------------------------------------------
+     SURFACE COLORS - Light Mode
+     Card: Elevated content containers
+     Popover: Dropdowns, tooltips, modals
+     ------------------------------------------------------------------------- */
+  --card: #f3f4f8;
+  --card-foreground: #2b2b2b;
+  --popover: #f3f4f8;
+  --popover-foreground: #2b2b2b;
+
+  /* -------------------------------------------------------------------------
+     FORM COLORS - Light Mode
+     Input: Form field backgrounds
+     Border: Dividers and borders
+     Ring: Focus ring color
+     ------------------------------------------------------------------------- */
+  --input: #e3e4e9;
+  --border: #d4d6de;
+  --ring: #2563eb;
+
+  /* -------------------------------------------------------------------------
+     BORDER RADIUS
+     ------------------------------------------------------------------------- */
+  --radius: 0.5rem;
+
+  /* -------------------------------------------------------------------------
+     CHART COLORS - Light Mode
+     Data visualization palette
+     ------------------------------------------------------------------------- */
+  --chart-1: #2563eb;
+  --chart-2: #7c3aed;
+  --chart-3: #a855f7;
+  --chart-4: #16803c;
+  --chart-5: #c53030;
+
+  /* -------------------------------------------------------------------------
+     SIDEBAR COLORS - Light Mode
+     Navigation panel theming
+     ------------------------------------------------------------------------- */
+  --sidebar: #e2e4ea;
+  --sidebar-foreground: #2b2b2b;
+  --sidebar-primary: #2563eb;
+  --sidebar-primary-foreground: #fefeff;
+  --sidebar-accent: #d4d6de;
+  --sidebar-accent-foreground: #2b2b2b;
+  --sidebar-border: #d4d6de;
+  --sidebar-ring: #2563eb;
+
+  /* -------------------------------------------------------------------------
+     EFFECTS & OVERLAYS - Light Mode
+     Gradients, patterns, and decorative elements
+     ------------------------------------------------------------------------- */
+  --gradient-from: rgba(37, 99, 235, 0.08);
+  --gradient-via: rgba(238, 240, 245, 0.95);
+  --gradient-to: rgba(124, 58, 237, 0.12);
+  --pattern-tint: rgba(37, 99, 235, 0.04);
+  --pattern-dot: #d4d6de;
+
+  /* -------------------------------------------------------------------------
+     SHADOWS - Light Mode
+     Elevation shadows for depth
+     ------------------------------------------------------------------------- */
+  --shadow-light: rgba(0, 0, 0, 0.05);
+  --shadow-medium: rgba(0, 0, 0, 0.1);
+  --shadow-large: rgba(0, 0, 0, 0.25);
+}
+
+/* ============================================================================
+   DARK MODE THEME
+   ============================================================================
+   Activated when .dark class is applied to <html> or <body>
+   ============================================================================ */
+
+.dark {
+  /* -------------------------------------------------------------------------
+     BASE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --background: #252838;
+  --foreground: #d8dae0;
+  --muted: #2f3240;
+  --muted-foreground: #8b8d96;
+
+  /* -------------------------------------------------------------------------
+     INTERACTIVE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --primary: #6b8aff;
+  --primary-foreground: #ffffff;
+  --secondary: #3e4158;
+  --secondary-foreground: #d8dae0;
+  --accent: #363950;
+  --accent-foreground: #b4b8ff;
+
+  /* -------------------------------------------------------------------------
+     SEMANTIC COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --destructive: #f87171;
+  --destructive-foreground: #252838;
+  --success: #4ade80;
+  --success-foreground: #252838;
+  --warning: #facc15;
+  --warning-foreground: #252838;
+  --info: #93b4ff;
+  --info-foreground: #252838;
+
+  /* -------------------------------------------------------------------------
+     SURFACE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --card: #2f3240;
+  --card-foreground: #d8dae0;
+  --popover: #2f3240;
+  --popover-foreground: #d8dae0;
+
+  /* -------------------------------------------------------------------------
+     FORM COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --input: #3e4158;
+  --border: #3e4158;
+  --ring: #6b8aff;
+
+  /* -------------------------------------------------------------------------
+     CHART COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --chart-1: #6b8aff;
+  --chart-2: #a78bfa;
+  --chart-3: #c084fc;
+  --chart-4: #4ade80;
+  --chart-5: #f87171;
+
+  /* -------------------------------------------------------------------------
+     SIDEBAR COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --sidebar: #2f3240;
+  --sidebar-foreground: #d8dae0;
+  --sidebar-primary: #6b8aff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #363950;
+  --sidebar-accent-foreground: #b4b8ff;
+  --sidebar-border: #3e4158;
+  --sidebar-ring: #6b8aff;
+
+  /* -------------------------------------------------------------------------
+     EFFECTS & OVERLAYS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --gradient-from: rgba(107, 138, 255, 0.1);
+  --gradient-via: rgba(37, 40, 56, 0.9);
+  --gradient-to: rgba(124, 58, 237, 0.25);
+  --pattern-tint: rgba(107, 138, 255, 0.08);
+  --pattern-dot: #3e4158;
+
+  /* -------------------------------------------------------------------------
+     SHADOWS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --shadow-light: rgba(0, 0, 0, 0.3);
+  --shadow-medium: rgba(0, 0, 0, 0.4);
+  --shadow-large: rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   TAILWIND CSS THEME BRIDGE
+   ============================================================================
+   Maps CSS variables to Tailwind's @theme directive for full integration
+   Enables: bg-primary, text-foreground, border-border, etc.
+   ============================================================================ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ============================================================================
+   CUSTOM CSS RULES
+   ============================================================================
+   Add your custom CSS styles below to extend or override default styles.
+   ============================================================================ */
+
+/* Add custom styles here */

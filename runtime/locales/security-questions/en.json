@@ -1,0 +1,42 @@
+{
+  "title": "Security Questions",
+  "description": "Set up security questions to help recover your account",
+  "setup": {
+    "title": "Set Up Security Questions",
+    "select_question": "Select a question...",
+    "select_questions": "Select {{count}} questions and provide your answers",
+    "answer_placeholder": "Your answer",
+    "save": "Save Security Questions",
+    "instruction": "Choose questions with answers only you would know. Answers are case-insensitive."
+  },
+  "recovery": {
+    "title": "Answer Security Questions",
+    "description": "Answer your security questions to recover your account",
+    "submit": "Verify Answers",
+    "attempts_remaining": "{{count}} attempts remaining"
+  },
+  "questions": {
+    "q1": "What was the name of your first pet?",
+    "q2": "In what city were you born?",
+    "q3": "What was your childhood nickname?",
+    "q4": "What is the name of your favorite childhood friend?",
+    "q5": "What was the make of your first car?",
+    "q6": "What was the name of your elementary school?",
+    "q7": "What is your mother's maiden name?",
+    "q8": "What street did you grow up on?",
+    "q9": "What was your favorite food as a child?",
+    "q10": "What was the first concert you attended?"
+  },
+  "validation": {
+    "answer_too_short": "Answer must be at least 3 characters",
+    "answer_too_generic": "Please provide a more specific answer",
+    "all_answers_required": "Please answer all questions",
+    "incorrect_answers": "One or more answers are incorrect",
+    "select_different_questions": "Please select different questions"
+  },
+  "status": {
+    "configured": "Security questions configured",
+    "not_configured": "Security questions not set up",
+    "update": "Update security questions"
+  }
+}

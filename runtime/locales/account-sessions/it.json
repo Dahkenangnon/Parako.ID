@@ -1,0 +1,42 @@
+{
+  "title": "Sessioni attive",
+  "description": "Questi sono i dispositivi su cui sei attualmente connesso. Controlla regolarmente questo elenco e disconnettiti dai dispositivi che non riconosci o che non usi più.",
+  "sign_out_all": {
+    "button": "Disconnetti tutti gli altri dispositivi",
+    "button_short": "Disconnetti altri",
+    "confirm": "Sei sicuro di voler disconnettere tutti gli altri dispositivi? Questo ti disconnetterà immediatamente da tutti gli altri dispositivi e potrebbe disconnettere le app collegate su quei dispositivi."
+  },
+  "table": {
+    "device_location": "Dispositivo e posizione",
+    "ip_address": "Indirizzo IP",
+    "started": "Iniziato",
+    "last_active": "Ultima attività",
+    "status": "Stato",
+    "action": "Azione"
+  },
+  "status": {
+    "current": "Attuale",
+    "active": "Attivo",
+    "this_device": "Questo dispositivo"
+  },
+  "unknown": {
+    "device": "Dispositivo sconosciuto",
+    "location": "Posizione sconosciuta",
+    "general": "Sconosciuto"
+  },
+  "action": {
+    "sign_out": "Disconnetti",
+    "confirm_sign_out": "Sei sicuro di voler disconnettere questo dispositivo? Questo ti disconnetterà immediatamente e potrebbe disconnettere le app collegate."
+  },
+  "empty_state": {
+    "title": "Nessun altro dispositivo",
+    "description": "Non sei connesso su nessun altro dispositivo."
+  },
+  "mobile_labels": {
+    "device": "Dispositivo",
+    "location": "Posizione",
+    "ip_address": "Indirizzo IP",
+    "started": "Iniziato",
+    "last_active": "Ultima attività"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "title": "双重认证已启用！",
+  "subtitle": "现在让我们设置恢复选项，以便即使您无法访问{{method}}，也能随时重新进入您的账户。",
+  "method_email": "电子邮件",
+  "method_app": "验证器应用",
+  "setup_recovery": {
+    "title": "设置账户恢复",
+    "description": "我们将为您的账户创建备份代码，并可选择设置备份电子邮件地址。"
+  },
+  "backup_codes": {
+    "title": "备份代码（必填）",
+    "description": "我们将创建备份代码，如果您无法访问{{method}}，可以使用这些代码重新进入您的账户。每个代码只能使用一次。",
+    "method_email_account": "电子邮件账户"
+  },
+  "backup_email": {
+    "label": "备份电子邮件（可选）",
+    "placeholder": "输入备份电子邮件地址（可选）",
+    "help_text": "如果提供，您将收到一封验证电子邮件以确认此备份电子邮件地址。"
+  },
+  "button": {
+    "submit": "设置备份选项",
+    "skip": "暂时跳过",
+    "continue": "继续设置"
+  }
+}

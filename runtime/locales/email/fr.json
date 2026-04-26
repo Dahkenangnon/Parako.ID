@@ -1,0 +1,72 @@
+{
+  "subject": {
+    "welcome": "Bienvenue sur {{appName}}",
+    "email_verification": "Vérifiez votre adresse e-mail",
+    "password_reset": "Réinitialisez votre mot de passe",
+    "password_changed": "Votre mot de passe a été modifié",
+    "account_recovery": "Récupérez votre compte",
+    "security_alert": "Alerte de sécurité pour votre compte",
+    "new_session": "Nouvelle connexion à votre compte {{appName}}",
+    "new_device_otp": "{{appName}} - Vérifier le nouvel appareil"
+  },
+  "greeting": {
+    "hello": "Bonjour {{name}}",
+    "hello_user": "Bonjour"
+  },
+  "verification": {
+    "title": "Vérifiez votre adresse e-mail",
+    "body": "Merci de vous être inscrit! Veuillez vérifier votre adresse e-mail en cliquant sur le bouton ci-dessous.",
+    "button": "Vérifier l'e-mail",
+    "expires": "Ce lien expirera dans {{hours}} heures.",
+    "ignore": "Si vous n'avez pas créé de compte, vous pouvez ignorer cet e-mail en toute sécurité."
+  },
+  "password_reset": {
+    "title": "Réinitialisez votre mot de passe",
+    "body": "Nous avons reçu une demande de réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour créer un nouveau mot de passe.",
+    "button": "Réinitialiser le mot de passe",
+    "expires": "Ce lien expirera dans {{hours}} heures.",
+    "ignore": "Si vous n'avez pas demandé de réinitialisation de mot de passe, vous pouvez ignorer cet e-mail en toute sécurité."
+  },
+  "welcome": {
+    "title": "Bienvenue sur {{appName}}",
+    "body_intro": "Merci de rejoindre {{appName}}! Nous sommes ravis de vous compter parmi notre communauté.",
+    "body_description": "{{appDescription}}",
+    "features_intro": "Avec {{appName}}, vous pouvez:",
+    "feature_1": "Gérer votre identité numérique en toute sécurité",
+    "feature_2": "Contrôler l'accès à vos applications",
+    "feature_3": "Protéger vos comptes avec l'authentification multi-facteurs",
+    "get_started": "Commencez par explorer votre tableau de bord.",
+    "button": "Gérer votre compte"
+  },
+  "security_alert": {
+    "title": "Alerte de sécurité - {{alertType}}",
+    "body": "Nous avons détecté un événement de sécurité sur votre compte {{appName}}.",
+    "alert_type_label": "Type d'alerte:",
+    "details_label": "Détails:",
+    "not_you": "Si ce n'était pas vous, veuillez sécuriser votre compte immédiatement.",
+    "button": "Sécuriser le compte"
+  },
+  "new_session": {
+    "title": "Nouvelle connexion détectée",
+    "body": "Une nouvelle connexion à votre compte {{appName}} a été détectée.",
+    "time_label": "Heure :",
+    "ip_label": "Adresse IP :",
+    "device_label": "Appareil :",
+    "not_you": "Si ce n'était pas vous, veuillez changer votre mot de passe immédiatement et vérifier la sécurité de votre compte.",
+    "button": "Vérifier les paramètres de sécurité"
+  },
+  "new_device_otp": {
+    "title": "Vérifier le nouvel appareil",
+    "body": "Nous avons détecté une tentative de connexion depuis un nouvel appareil à votre compte {{appName}}. Entrez ce code pour confirmer votre identité :",
+    "device_label": "Appareil :",
+    "ip_label": "Adresse IP :",
+    "expires": "Ce code expire dans 10 minutes.",
+    "not_you": "Si vous n'avez pas tenté de vous connecter, ignorez cet e-mail et changez votre mot de passe immédiatement."
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}. Tous droits réservés.",
+    "contact": "Si vous avez des questions, veuillez nous contacter à {{email}}",
+    "privacy": "Politique de confidentialité",
+    "terms": "Conditions d'utilisation"
+  }
+}

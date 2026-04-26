@@ -1,0 +1,33 @@
+{
+  "title": "Erstellen Sie Ihr Konto",
+  "social_divider": "oder",
+  "social_divider_dynamic": "oder",
+  "tab": {
+    "email": "E-Mail",
+    "phone": "Telefon"
+  },
+  "field": {
+    "full_name": "Vollständiger Name"
+  },
+  "placeholder": {
+    "email_prefilled": "E-Mail bereitgestellt - Sie können sie bei Bedarf ändern"
+  },
+  "password_strength": {
+    "missing_requirements": "Fehlende Anforderungen:"
+  },
+  "terms": {
+    "agreement_prefix": "Durch die Erstellung eines Kontos stimmen Sie den",
+    "and": "und den",
+    "company_suffix": "von"
+  },
+  "hint": {
+    "contact_required": "Mindestens eine Kontaktmethode (E-Mail oder Telefon) ist für die Kontowiederherstellung erforderlich."
+  },
+  "label": {
+    "required": "Erforderlich",
+    "optional": "Optional"
+  },
+  "social": {
+    "sign_up_with": "Registrieren mit {{provider}}"
+  }
+}

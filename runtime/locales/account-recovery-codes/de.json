@@ -1,0 +1,28 @@
+{
+  "title": "Konto-Wiederherstellungscodes erstellt",
+  "subtitle": "Bewahren Sie diese Codes an einem sicheren Ort auf. Sie können sie verwenden, um wieder auf Ihr Konto zuzugreifen, wenn Sie den Zugriff auf Ihre anderen Anmeldemethoden verlieren.",
+  "security_notice": {
+    "title": "Wichtiger Sicherheitshinweis",
+    "description": "Laden Sie Ihre Wiederherstellungscodes sofort herunter. Jeder Code kann nur einmal verwendet werden und kann nach dem Verlassen dieser Seite nicht mehr angezeigt werden."
+  },
+  "download_section": {
+    "title": "Laden Sie Ihre Wiederherstellungscodes herunter",
+    "description": "Klicken Sie auf die Schaltfläche unten, um eine Textdatei mit Ihren {{count}} Wiederherstellungscodes herunterzuladen.",
+    "download_button": "Als Textdatei herunterladen",
+    "copy_button": "In Zwischenablage kopieren",
+    "print_button": "Codes drucken",
+    "downloaded": "Heruntergeladen!",
+    "copied": "Kopiert!",
+    "printed": "Gedruckt!"
+  },
+  "back_to_settings": "Zurück zu den Einstellungen",
+  "file_content": {
+    "title": "Konto-Wiederherstellungscodes",
+    "generated": "Erstellt",
+    "important": "WICHTIG: Bewahren Sie diese Codes an einem sicheren Ort auf. Jeder Code kann nur einmal verwendet werden.",
+    "total_codes": "Gesamtzahl der Codes"
+  },
+  "error": {
+    "copy_failed": "Codes konnten nicht kopiert werden. Bitte versuchen Sie es erneut."
+  }
+}

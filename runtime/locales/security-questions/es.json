@@ -1,0 +1,42 @@
+{
+  "title": "Preguntas de seguridad",
+  "description": "Configure preguntas de seguridad para recuperar su cuenta",
+  "setup": {
+    "title": "Configurar preguntas de seguridad",
+    "select_question": "Seleccione una pregunta...",
+    "select_questions": "Seleccione {{count}} preguntas y proporcione sus respuestas",
+    "answer_placeholder": "Su respuesta",
+    "save": "Guardar preguntas de seguridad",
+    "instruction": "Elija preguntas con respuestas que solo usted conoceria. Las respuestas no distinguen mayusculas."
+  },
+  "recovery": {
+    "title": "Responder preguntas de seguridad",
+    "description": "Responda sus preguntas de seguridad para recuperar su cuenta",
+    "submit": "Verificar respuestas",
+    "attempts_remaining": "{{count}} intentos restantes"
+  },
+  "questions": {
+    "q1": "Cual era el nombre de su primera mascota?",
+    "q2": "En que ciudad nacio?",
+    "q3": "Cual era su apodo de infancia?",
+    "q4": "Cual es el nombre de su mejor amigo de infancia?",
+    "q5": "Cual fue la marca de su primer coche?",
+    "q6": "Cual era el nombre de su escuela primaria?",
+    "q7": "Cual es el apellido de soltera de su madre?",
+    "q8": "En que calle crecio?",
+    "q9": "Cual era su comida favorita de nino?",
+    "q10": "Cual fue el primer concierto al que asistio?"
+  },
+  "validation": {
+    "answer_too_short": "La respuesta debe tener al menos 3 caracteres",
+    "answer_too_generic": "Por favor proporcione una respuesta mas especifica",
+    "all_answers_required": "Por favor responda todas las preguntas",
+    "incorrect_answers": "Una o mas respuestas son incorrectas",
+    "select_different_questions": "Por favor seleccione preguntas diferentes"
+  },
+  "status": {
+    "configured": "Preguntas de seguridad configuradas",
+    "not_configured": "Preguntas de seguridad no configuradas",
+    "update": "Actualizar preguntas de seguridad"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Codici di recupero account creati",
+  "subtitle": "Salva questi codici in un luogo sicuro. Puoi usarli per riottenere l'accesso al tuo account se perdi l'accesso agli altri metodi di accesso.",
+  "security_notice": {
+    "title": "Avviso di sicurezza importante",
+    "description": "Scarica immediatamente i tuoi codici di recupero. Ogni codice può essere utilizzato una sola volta e non potrà essere visualizzato nuovamente dopo aver lasciato questa pagina."
+  },
+  "download_section": {
+    "title": "Scarica i tuoi codici di recupero",
+    "description": "Fai clic sul pulsante qui sotto per scaricare un file di testo contenente i tuoi {{count}} codici di recupero.",
+    "download_button": "Scarica come file di testo",
+    "copy_button": "Copia negli appunti",
+    "print_button": "Stampa codici",
+    "downloaded": "Scaricato!",
+    "copied": "Copiato!",
+    "printed": "Stampato!"
+  },
+  "back_to_settings": "Torna alle impostazioni",
+  "file_content": {
+    "title": "Codici di recupero account",
+    "generated": "Generato",
+    "important": "IMPORTANTE: Conserva questi codici in un luogo sicuro. Ogni codice può essere utilizzato una sola volta.",
+    "total_codes": "Codici totali"
+  },
+  "error": {
+    "copy_failed": "Impossibile copiare i codici. Riprova."
+  }
+}

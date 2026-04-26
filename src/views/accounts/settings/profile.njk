@@ -1,0 +1,181 @@
+{% extends "layouts/account-layout.njk" %}
+{% block account_content %}
+    {% include "partials/account-settings-tabs.njk" %}
+
+    <!-- Upload Progress Widget -->
+    <div id="upload-progress-widget" class="hidden mb-6 p-4 bg-primary/10 border border-primary/20">
+        <div class="flex items-center space-x-3">
+            <div class="flex-shrink-0">
+                <div class="animate-spin rounded-full h-5 w-5 border border-primary border-t-transparent"></div>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-foreground">{{ t('account-settings.upload_widget.title') }}</p>
+                <p class="text-xs text-muted-foreground">{{ t('account-settings.upload_widget.description') }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="space-y-10">
+        <!-- Profile Settings -->
+        <div class="mb-8">
+            <div>
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    {{ t('account-settings.profile.title') }}
+                </h2>
+                <form
+                    action="{{ routes.accountFull.update_profile }}" method="POST" enctype="multipart/form-data" class="space-y-6" id="profile-form">
+                    <!-- CSRF Token -->
+                    <input
+                    type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                    <!-- Avatar Upload -->
+                    <div class="space-y-4">
+                        <label class="block text-sm font-medium text-foreground">{{ t('account-settings.profile.picture_label') }}</label>
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                            <div class="flex-shrink-0">
+                                <div class="relative">
+                                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-muted border border-border rounded-full flex items-center justify-center
+                                            overflow-hidden">
+                                        {% if pageUser.picture %}
+                                            <img src="{{ pageUser.picture }}" alt="{{ pageUser.displayName or pageUser.name or pageUser.given_name }}" id="preview-avatar" class="w-full h-full object-cover rounded-full"/>
+                                        {% else %}
+                                            <span class="text-primary font-semibold text-lg sm:text-xl" id="initials-placeholder">{{ pageUser.initials or ((pageUser.given_name or 'U') | slice(0, 1)) + ((pageUser.family_name or 'S') | slice(0, 1)) }}</span>
+                                            <img src="" alt="" id="preview-avatar" class="w-full h-full object-cover rounded-full hidden"/>
+                                        {% endif %}
+                                    </div>
+                                    <!-- Upload Button Overlay -->
+                                    <div class="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity rounded-full">
+                                        <label
+                                            for="avatar-upload"
+                                            class="bg-black/60 rounded-full w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center cursor-pointer">
+                                            <svg class="h-5 w-5 sm:h-6 sm:w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2
+                                                        2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                            </svg>
+                                        </label>
+                                        <input type="file" id="avatar-upload" name="avatar" class="hidden" accept="image/*"/>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm text-muted-foreground mb-3">{{ t('account-settings.profile.upload_description') }}</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        id="upload-button"
+                                        class="inline-flex items-center px-3 py-2 border border-border text-sm font-medium text-foreground bg-background
+                                            hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                        </svg>
+                                        {{ t('account-settings.profile.upload_button') }}
+                                    </button>
+                                    {% if pageUser.picture %}
+                                        <button
+                                            type="button"
+                                            id="remove-button"
+                                            class="inline-flex items-center px-3 py-2 border border-destructive/30 text-sm font-medium text-destructive bg-background
+                                                hover:border-destructive focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1
+                                                        1v3M4 7h16"></path>
+                                            </svg>
+                                            {{ t('account-settings.profile.remove_button') }}
+                                        </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Form Fields Grid -->
+                    <div
+                        class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <!-- First Name -->
+                        <div>
+                            <label for="firstname" class="block text-sm font-medium text-foreground mb-2">{{ t('account-settings.profile.first_name') }}</label>
+                            <input type="text" id="firstname" name="firstname" value="{{ pageUser.given_name or '' }}" class="w-full h-11 px-4 py-2 bg-background border border-border text-sm text-foreground font-mono focus:ring-2 focus:ring-ring focus:border-border focus:outline-none transition-colors" required/>
+                        </div>
+                        <!-- Last Name -->
+                        <div>
+                            <label for="lastname" class="block text-sm font-medium text-foreground mb-2">{{ t('account-settings.profile.last_name') }}</label>
+                            <input type="text" id="lastname" name="lastname" value="{{ pageUser.family_name or '' }}" class="w-full h-11 px-4 py-2 bg-background border border-border text-sm text-foreground font-mono focus:ring-2 focus:ring-ring focus:border-border focus:outline-none transition-colors" required/>
+                        </div>
+                        <!-- Custom Identifier Fields (if enabled and editable) -->
+                        {% for ciField in customIdentifierFields %}
+                        {% if ciField.edit_policy != 'admin_only' %}
+                        <div class="sm:col-span-2">
+                            <label for="custom_identifier_{{ ciField.slot }}" class="block text-sm font-medium text-foreground mb-2">
+                                {{ ciField.name or 'Identifier' }}
+                                {% if ciField.edit_policy == 'set_once' and pageUser['custom_identifier_' + ciField.slot] %}
+                                <svg class="inline h-4 w-4 text-muted-foreground ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="This field cannot be changed once set">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                </svg>
+                                {% endif %}
+                            </label>
+                            <input type="text" id="custom_identifier_{{ ciField.slot }}" name="custom_identifier_{{ ciField.slot }}"
+                                value="{{ pageUser['custom_identifier_' + ciField.slot] or '' }}"
+                                placeholder="{{ ciField.hint_for_user or '' }}"
+                                {% if ciField.edit_policy == 'set_once' and pageUser['custom_identifier_' + ciField.slot] %}readonly{% endif %}
+                                class="w-full h-11 px-4 py-2 bg-background border border-border text-sm text-foreground font-mono focus:ring-2 focus:ring-ring focus:border-border focus:outline-none transition-colors {% if ciField.edit_policy == 'set_once' and pageUser['custom_identifier_' + ciField.slot] %}opacity-60 cursor-not-allowed{% endif %}"/>
+                            {% if ciField.hint_for_user %}
+                            <p class="mt-1 text-xs text-muted-foreground">{{ ciField.hint_for_user }}</p>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                    <!-- Save Button -->
+                    <div class="flex justify-end pt-4 border-t border-border">
+                        <button
+                            type="submit"
+                            class="inline-flex items-center px-6 py-2.5 border border-transparent text-sm font-medium text-primary-foreground
+                                bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring transition-all duration-200">
+                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                            {{ t('account-settings.profile.save_button') }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script id="___SETTINGS_STATE___" type="application/json">
+    {
+      "removeAvatarUrl": "{{ routes.accountFull.remove_avatar }}",
+      "csrfToken": {{ csrfToken | tojson | safe }},
+      "translations": {
+        "removeConfirm": {{ t('account-settings.profile.remove_confirm') | tojson | safe }},
+        "removeError": {{ t('account-settings.profile.remove_error') | tojson | safe }},
+        "fileReadError": {{ t('account-settings.profile.file_read_error') | tojson | safe }},
+        "processingImage": {{ t('account-settings.upload_widget.title') | tojson | safe }}
+      },
+      "debug": {{ (app.env === 'development') | tojson }}
+    }
+    </script>
+    <script src="/js/account/settings/confirm-handler.js"></script>
+    <script src="/js/account/settings/avatar.js"></script>
+    <script src="/js/account/settings/index.js"></script>
+{% endblock %}

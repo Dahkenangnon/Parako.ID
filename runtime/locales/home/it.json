@@ -1,0 +1,24 @@
+{
+  "title": "Accedi per continuare",
+  "choose_method": "Scegli un metodo per continuare",
+  "social_divider": "oppure",
+  "social_divider_dynamic": "oppure",
+  "tab": {
+    "email": "E-mail",
+    "phone": "Telefono"
+  },
+  "link": {
+    "reset_password": "Reimposta password",
+    "recover_account": "Recupera account",
+    "create_account": "Creane uno ora",
+    "sign_up_prompt": "Non hai un account?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Accedi con {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

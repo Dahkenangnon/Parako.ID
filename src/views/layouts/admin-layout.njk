@@ -1,0 +1,583 @@
+{% extends "layouts/base.njk" %}
+{# Define available locales at top level so both mobile and desktop can use it #}
+{% set availableLocales = getAvailableLocales() %}
+{% set currentLocaleData = null %}
+{% for loc in availableLocales %}
+    {% if loc.code == userLocale %}
+        {% set currentLocaleData = loc %}
+    {% endif %}
+{% endfor %}
+{% block head %}
+{{ super() }}
+<!-- CSRF Token for AJAX requests -->
+{% if csrfToken %}
+<meta name="csrf-token" content="{{ csrfToken }}">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="fixed inset-0 bg-background flex overflow-hidden">
+
+    <!-- Collapsible Sidebar -->
+    <aside id="sidebar" class="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:left-0 bg-sidebar border-r border-sidebar-border z-40 {% if sidebar_expanded %}sidebar-expanded{% else %}sidebar-collapsed{% endif %}">
+
+        <!-- Sidebar Header -->
+        <div class="sidebar-header relative px-3 py-3 border-b border-sidebar-border flex-shrink-0">
+            <div class="sidebar-header-content flex items-center justify-between gap-2">
+                <!-- Logo -->
+                <a href="/admin" class="sidebar-brand flex-shrink-0 overflow-hidden">
+                    {% if branding.logo %}
+                        <img id="sidebar-logo-light"
+                             src="{{ branding.logo if sidebar_expanded else (branding.logoIcon or branding.logo) }}"
+                             alt="{{ app.title }} Logo"
+                             class="dark:hidden h-10 w-auto object-contain transition-all"
+                             data-rect="{{ branding.logo }}"
+                             data-icon="{{ branding.logoIcon or branding.logo }}" />
+                        <img id="sidebar-logo-dark"
+                             src="{{ branding.logoDark if sidebar_expanded else (branding.logoIconDark or branding.logoDark) }}"
+                             alt="{{ app.title }} Logo"
+                             class="hidden dark:block h-10 w-auto object-contain transition-all"
+                             data-rect="{{ branding.logoDark }}"
+                             data-icon="{{ branding.logoIconDark or branding.logoDark }}" />
+                    {% else %}
+                        <div class="sidebar-logo-fallback h-10 w-10 bg-muted flex items-center justify-center border border-border">
+                            <i data-lucide="shield-check" class="h-5 w-5 text-muted-foreground"></i>
+                        </div>
+                    {% endif %}
+                </a>
+
+                <!-- Toggle Button -->
+                <button type="button" id="sidebar-toggle" class="sidebar-toggle-btn flex-shrink-0 p-1.5 hover:bg-sidebar-accent focus:outline-none border-2 border-transparent focus:border-primary" aria-label="{{ t('admin-layout.sidebar.toggle') }}">
+                    <i data-lucide="panel-left" class="h-4 w-4 text-sidebar-foreground"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar Content -->
+        <nav class="flex-1 px-2 py-4 space-y-2 overflow-y-auto overflow-x-hidden">
+
+            <!-- Main Navigation -->
+            <div class="space-y-1">
+                <!-- Dashboard -->
+                <a href="/admin"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'dashboard' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.dashboard') }}">
+                    <i data-lucide="home" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.dashboard') }}</span>
+                </a>
+
+                <!-- Users -->
+                <a href="/admin/users"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'users' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.users') }}">
+                    <i data-lucide="users" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.users') }}</span>
+                </a>
+
+                <!-- Clients -->
+                <a href="/admin/oidc-clients"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'oidc-clients' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.clients') }}">
+                    <i data-lucide="key" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.clients') }}</span>
+                </a>
+
+                <!-- JWKS Keys -->
+                <a href="/admin/jwks"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'jwks' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="JWKS Keys">
+                    <i data-lucide="file-key" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">JWKS Keys</span>
+                </a>
+
+                <!-- Sessions -->
+                <a href="/admin/sessions"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'sessions' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.sessions') }}">
+                    <i data-lucide="monitor" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.sessions') }}</span>
+                </a>
+
+                <!-- Grants -->
+                <a href="/admin/user-grants"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'user-grants' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.grants') }}">
+                    <i data-lucide="shield-check" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.grants') }}</span>
+                </a>
+
+                <!-- Activities -->
+                <a href="/admin/activities"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'activities' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.activities') }}">
+                    <i data-lucide="activity" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.activities') }}</span>
+                </a>
+
+                <!-- Data Transfer -->
+                <a href="/admin/data-transfer"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'data-transfer' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.data') }}">
+                    <i data-lucide="arrow-left-right" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.data') }}</span>
+                </a>
+
+                {% if isPlatformTenant %}
+            </div>
+            <!-- Platform Section Separator -->
+            <div class="pt-2 mt-2 border-t border-sidebar-border">
+                <p class="sidebar-text px-3 py-1.5 text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-wider">Platform</p>
+            </div>
+            <div class="space-y-1">
+                {% if isMultiTenancyEnabled %}
+                <!-- Tenants (cross-tenant management — _platforms only) -->
+                <a href="/admin/tenants"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'tenants' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="Tenants">
+                    <i data-lucide="building-2" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">Tenants</span>
+                </a>
+                {% endif %}
+                <!-- Settings (global platform-wide) -->
+                <a href="/admin/settings"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'settings' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="{{ t('admin-layout.sidebar.navigation.settings') }}">
+                    <i data-lucide="settings" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.navigation.settings') }}</span>
+                </a>
+                {% if isMultiTenancyEnabled %}
+                <!-- Configuration (per-tenant overrides for _platforms) -->
+                <a href="/admin/configuration"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'configuration' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="Configuration">
+                    <i data-lucide="sliders-horizontal" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">Configuration</span>
+                </a>
+                {% endif %}
+                {% else %}
+                <!-- Configuration (tenant-level overrides only) -->
+                <a href="/admin/configuration"
+                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'configuration' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+                   data-tooltip="Configuration">
+                    <i data-lucide="sliders-horizontal" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="sidebar-text truncate">Configuration</span>
+                </a>
+                {% endif %}
+            </div>
+        </nav>
+
+        <!-- Sidebar Footer - User Info and Logout -->
+        <div class="border-t border-sidebar-border p-2 flex-shrink-0 space-y-1 overflow-visible">
+            <!-- Logout Button -->
+            <a href="/auth/logout" class="sidebar-logout-btn flex items-center gap-3 px-3 py-2 text-sm text-destructive hover:bg-sidebar-accent border-l-2 border-transparent hover:border-destructive" data-tooltip="{{ t('admin-layout.sidebar.footer.logout') }}">
+                <i data-lucide="log-out" class="h-4 w-4 flex-shrink-0"></i>
+                <span class="sidebar-text truncate">{{ t('admin-layout.sidebar.footer.logout') }}</span>
+            </a>
+
+            <!-- User Info -->
+            <div class="relative overflow-visible">
+                <div class="sidebar-user-btn flex items-center gap-3 w-full px-3 py-2.5" data-tooltip="{{ currentUser.sidebarName }}">
+                    <div class="sidebar-user-avatar h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm flex-shrink-0">
+                        {% if currentUser.picture %}
+                        <img src="{{ currentUser.picture }}" alt="{{ currentUser.sidebarName }}" class="sidebar-user-avatar-img h-8 w-8 rounded-full object-cover">
+                        {% else %}
+                        <span class="sidebar-user-initials">{{ currentUser.initials }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="sidebar-text flex-1 min-w-0 text-left">
+                        <p class="text-sm text-sidebar-foreground truncate">{{ currentUser.sidebarName }}</p>
+                        <p class="text-xs text-muted-foreground truncate">{{ currentUser.accountType }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div id="mobile-sidebar-overlay" class="fixed inset-0 bg-background/75 z-40 md:hidden opacity-0 invisible transition-all duration-300 ease-in-out"></div>
+
+    <!-- Mobile Sidebar -->
+    <aside id="mobile-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 sm:w-72 bg-sidebar border-r-2 border-sidebar-border transform -translate-x-full transition-transform duration-300 ease-in-out md:hidden">
+        <div class="flex flex-col h-full">
+            <!-- Mobile Header -->
+            <div class="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
+                <div class="flex items-center gap-2">
+                    {% if branding.logo %}
+                        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-10 w-auto object-contain" />
+                        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-10 w-auto object-contain" />
+                    {% endif %}
+                    <span class="text-lg font-bold text-sidebar-foreground">{{ app.title }} Admin</span>
+                </div>
+                <button type="button" id="mobile-sidebar-close" class="p-3 hover:bg-sidebar-accent focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center">
+                    <i data-lucide="x" class="h-5 w-5"></i>
+                </button>
+            </div>
+
+            <!-- Mobile Navigation -->
+            <nav class="flex-1 px-2 py-4 space-y-2 overflow-y-auto">
+                <div class="space-y-1">
+                    <!-- Dashboard -->
+                    <a href="/admin" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'dashboard' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="home" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.dashboard') }}</span>
+                    </a>
+
+                    <!-- Users -->
+                    <a href="/admin/users" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'users' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="users" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.users') }}</span>
+                    </a>
+
+                    <!-- Clients -->
+                    <a href="/admin/oidc-clients" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'oidc-clients' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="key" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.clients') }}</span>
+                    </a>
+
+                    <!-- JWKS Keys -->
+                    <a href="/admin/jwks" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'jwks' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="file-key" class="h-4 w-4"></i>
+                        <span>JWKS Keys</span>
+                    </a>
+
+                    <!-- Sessions -->
+                    <a href="/admin/sessions" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'sessions' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="monitor" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.sessions') }}</span>
+                    </a>
+
+                    <!-- Grants -->
+                    <a href="/admin/user-grants" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'user-grants' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="shield-check" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.grants') }}</span>
+                    </a>
+
+                    <!-- Activities -->
+                    <a href="/admin/activities" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'activities' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="activity" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.activities') }}</span>
+                    </a>
+
+                    <!-- Data Transfer -->
+                    <a href="/admin/data-transfer" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'data-transfer' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="arrow-left-right" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.data') }}</span>
+                    </a>
+
+                    {% if isPlatformTenant %}
+                </div>
+                <!-- Platform Section Separator -->
+                <div class="pt-2 mt-2 border-t border-sidebar-border">
+                    <p class="px-3 py-1.5 text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-wider">Platform</p>
+                </div>
+                <div class="space-y-1">
+                    {% if isMultiTenancyEnabled %}
+                    <!-- Tenants (cross-tenant management — _platforms only) -->
+                    <a href="/admin/tenants" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'tenants' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="building-2" class="h-4 w-4"></i>
+                        <span>Tenants</span>
+                    </a>
+                    {% endif %}
+                    <!-- Settings (global platform-wide) -->
+                    <a href="/admin/settings" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'settings' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="settings" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.sidebar.navigation.settings') }}</span>
+                    </a>
+                    {% if isMultiTenancyEnabled %}
+                    <!-- Configuration (per-tenant overrides for _platforms) -->
+                    <a href="/admin/configuration" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'configuration' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
+                        <span>Configuration</span>
+                    </a>
+                    {% endif %}
+                    {% else %}
+                    <!-- Configuration (tenant-level overrides only) -->
+                    <a href="/admin/configuration" class="flex items-center gap-3 px-3 py-2 text-sm font-medium {% if activePage == 'configuration' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent border-l-2 border-transparent{% endif %}">
+                        <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
+                        <span>Configuration</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </nav>
+
+            <!-- Mobile Footer -->
+            <div class="border-t border-sidebar-border p-2 flex-shrink-0 space-y-1">
+                <!-- Logout Button -->
+                <a href="/auth/logout" class="flex items-center gap-3 px-3 py-2.5 text-sm text-destructive hover:bg-sidebar-accent border-l-2 border-transparent hover:border-destructive min-h-[44px]">
+                    <i data-lucide="log-out" class="h-4 w-4 flex-shrink-0"></i>
+                    <span class="truncate">{{ t('admin-layout.sidebar.footer.logout') }}</span>
+                </a>
+
+                <!-- User Info -->
+                <div class="flex items-center gap-3 px-3 py-2.5 min-h-[44px]">
+                    <div class="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm flex-shrink-0">
+                        {% if currentUser.picture %}
+                        <img src="{{ currentUser.picture }}" alt="{{ currentUser.sidebarName }}" class="h-8 w-8 rounded-full object-cover">
+                        {% else %}
+                        <span>{{ currentUser.initials }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex-1 min-w-0 text-left">
+                        <p class="text-sm text-sidebar-foreground truncate">{{ currentUser.sidebarName }}</p>
+                        <p class="text-xs text-muted-foreground truncate">{{ currentUser.accountType }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Header -->
+    <header class="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between bg-card border-b border-border px-4 py-3">
+        <div class="flex items-center gap-3">
+            <button type="button" id="mobile-menu-button" class="p-3 hover:bg-muted focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center">
+                <i data-lucide="menu" class="h-5 w-5"></i>
+            </button>
+            <div class="flex items-center gap-2">
+                {% if branding.logo %}
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-8 w-auto object-contain" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-8 w-auto object-contain" />
+                {% endif %}
+                <span class="text-lg font-semibold">{{ app.title }} Admin</span>
+            </div>
+        </div>
+
+        <!-- Mobile Theme/Language Toggle -->
+        <div class="relative">
+            <button type="button" id="mobile-theme-lang-toggle" class="p-3 hover:bg-muted focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="{{ t('admin-layout.theme_language.settings') }}" aria-expanded="false">
+                <i data-lucide="settings" class="h-5 w-5"></i>
+            </button>
+
+            <!-- Mobile Theme/Language Dropdown -->
+            <div id="mobile-theme-lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-48 bg-card border-2 border-border z-50">
+                <!-- Language Options (first) -->
+                <div class="p-2 border-b border-border">
+                    <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t('admin-layout.theme_language.language') }}</p>
+                    {% for localeData in availableLocales %}
+                        <button type="button" data-locale="{{ localeData.code }}" class="mobile-locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
+                            <span>{{ localeData.flag }}</span>
+                            <span>{{ localeData.label }}</span>
+                        </button>
+                    {% endfor %}
+                </div>
+
+                <!-- Theme Options (second) -->
+                <div class="p-2">
+                    <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t('admin-layout.theme_language.theme') }}</p>
+                    <button type="button" data-theme="light" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'light' %}bg-muted border-primary{% endif %}">
+                        <i data-lucide="sun" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.theme_language.light') }}</span>
+                    </button>
+                    <button type="button" data-theme="dark" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'dark' %}bg-muted border-primary{% endif %}">
+                        <i data-lucide="moon" class="h-4 w-4"></i>
+                        <span>{{ t('admin-layout.theme_language.dark') }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Floating Language and Theme Toggles (Desktop Only) - Side by Side -->
+    <div class="hidden md:flex fixed top-6 right-6 z-30 gap-2 items-center">
+        <!-- Language Toggle (first / left) - shows flag + label -->
+        <div class="relative">
+            <button type="button" id="lang-toggle" class="flex h-9 items-center gap-1.5 px-3 rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="{{ t('admin-layout.theme_language.language') }}" aria-expanded="false">
+                <span class="text-sm">{{ currentLocaleData.flag if currentLocaleData else '' }}</span>
+                <span class="text-xs text-foreground">{{ currentLocaleData.label if currentLocaleData else '' }}</span>
+                <i data-lucide="chevron-down" class="h-3 w-3 text-muted-foreground"></i>
+            </button>
+
+            <!-- Language Dropdown -->
+            <div id="lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-40 bg-card border-2 border-border rounded z-50">
+                <div class="p-1">
+                    {% for localeData in availableLocales %}
+                        <button type="button" data-locale="{{ localeData.code }}" class="locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
+                            <span>{{ localeData.flag }}</span>
+                            <span>{{ localeData.label }}</span>
+                        </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Theme Toggle (second / right edge) -->
+        <div class="relative">
+            <button type="button" id="theme-toggle" class="flex h-9 w-9 items-center justify-center rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="Theme">
+                <i data-lucide="sun" id="theme-icon" class="h-4 w-4"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="flex-1 flex flex-col min-h-0 overflow-hidden bg-background {% if sidebar_expanded %}main-content-expanded{% else %}main-content-collapsed{% endif %}">
+        <!-- Fixed mobile header spacer (non-scrolling) -->
+        <div class="flex-none h-16"></div>
+        <!-- Scrollable content wrapper with padding -->
+        <div class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+            {% block admin_content %}
+            <!-- Content here -->
+            {% endblock %}
+        </div>
+    </main>
+</div>
+
+<!-- Styles for Collapsible Sidebar -->
+<style>
+/* Sidebar width states */
+#sidebar.sidebar-expanded {
+    width: 240px;
+}
+
+#sidebar.sidebar-collapsed {
+    width: 48px;
+    padding-left: 0;
+    padding-right: 0;
+    overflow-x: hidden;
+}
+
+/* Sidebar smooth width transition */
+#sidebar {
+    transition: width 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Sidebar text - smooth collapse animation */
+#sidebar .sidebar-text {
+    opacity: 1;
+    max-width: 200px;
+    overflow: hidden;
+    transition: opacity 200ms ease, max-width 200ms ease;
+}
+
+#sidebar.sidebar-collapsed .sidebar-text {
+    opacity: 0;
+    max-width: 0;
+}
+
+/* Sidebar Header - Expanded State (default) */
+#sidebar.sidebar-expanded .sidebar-header-content {
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+/* Sidebar Header - Collapsed State */
+#sidebar.sidebar-collapsed .sidebar-header-content {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+#sidebar.sidebar-collapsed .sidebar-brand img {
+    height: 2rem;
+    max-width: 2rem;
+}
+
+/* Navigation items */
+#sidebar.sidebar-collapsed .sidebar-nav-item {
+    justify-content: center;
+    padding: 0.5rem 0;
+    border-left: 2px solid transparent !important;
+}
+
+#sidebar.sidebar-collapsed .sidebar-nav-item i {
+    margin: 0;
+}
+
+/* User button */
+#sidebar.sidebar-collapsed .sidebar-user-btn {
+    justify-content: center;
+    padding: 0.625rem 0;
+    cursor: pointer;
+}
+
+#sidebar.sidebar-collapsed .sidebar-user-btn > div:first-child {
+    margin: 0;
+}
+
+#sidebar.sidebar-collapsed .sidebar-user-avatar {
+    width: 24px;
+    height: 24px;
+}
+
+#sidebar.sidebar-collapsed .sidebar-user-avatar-img {
+    width: 24px;
+    height: 24px;
+}
+
+#sidebar.sidebar-collapsed .sidebar-user-initials {
+    font-size: 0.625rem;
+}
+
+/* Logout button in collapsed state */
+#sidebar.sidebar-collapsed .sidebar-logout-btn {
+    justify-content: center;
+    padding: 0.5rem 0;
+    border-left: 2px solid transparent !important;
+}
+
+/* Tooltips for collapsed state */
+#sidebar.sidebar-collapsed [data-tooltip] {
+    position: relative;
+    overflow: visible;
+}
+
+#sidebar.sidebar-collapsed [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: fixed;
+    left: 56px;
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    border: 1px solid hsl(var(--border));
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    z-index: 9999;
+    pointer-events: none;
+}
+
+/* Main content smooth margin transition */
+#main-content {
+    transition: margin-left 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#main-content.main-content-expanded {
+    margin-left: 240px;
+}
+
+#main-content.main-content-collapsed {
+    margin-left: 48px;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    #sidebar {
+        display: none;
+    }
+
+    #main-content {
+        margin-left: 0;
+    }
+
+    #main-content.main-content-expanded,
+    #main-content.main-content-collapsed {
+        margin-left: 0;
+    }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{# Admin Layout Configuration #}
+<script type="application/json" id="___ADMIN_LAYOUT_STATE___">
+{
+  "csrfToken": {{ csrfToken | tojson | safe }},
+  "userTheme": "{{ userTheme or 'light' }}",
+  "routes": {
+    "updateSidebar": "{{ routes.authFull.update_sidebar }}",
+    "updateTheme": "{{ routes.authFull.update_theme }}",
+    "updateLocale": "{{ routes.authFull.update_locale }}"
+  }
+}
+</script>
+<script src="/js/admin/layout.js"></script>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Header -->
+                <div class="text-center mb-5">
+                    <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">{{ t('auth.mfa_select.title', 'Choose Verification Method') }}</h2>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mt-1">{{ t('auth.mfa_select.subtitle', 'Select how you want to verify your identity') }}</p>
+                </div>
+
+                <!-- MFA Method Selection -->
+                <div class="space-y-3">
+                    <!-- TOTP Method -->
+                    {% if enabledMethods.totp %}
+                    <form action="{{ selectUrl }}" method="POST">
+                        <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+                        <input type="hidden" name="method" value="totp" />
+                        <button type="submit" class="w-full p-4 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border hover:border-primary dark:hover:border-primary transition-colors cursor-pointer text-left">
+                            <div class="flex items-center">
+                                <div class="bg-primary dark:bg-primary p-2 mr-4 border-2 border-primary dark:border-primary flex-shrink-0">
+                                    <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                    </svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('auth.mfa_select.totp_title', 'Authenticator App') }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('auth.mfa_select.totp_description', 'Use a code from your authenticator app') }}</p>
+                                </div>
+                                <svg class="h-5 w-5 text-gray-400 dark:text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </div>
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <!-- Email Method -->
+                    {% if enabledMethods.email %}
+                    <form action="{{ selectUrl }}" method="POST">
+                        <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+                        <input type="hidden" name="method" value="email" />
+                        <button type="submit" class="w-full p-4 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border hover:border-primary dark:hover:border-primary transition-colors cursor-pointer text-left">
+                            <div class="flex items-center">
+                                <div class="bg-primary dark:bg-primary p-2 mr-4 border-2 border-primary dark:border-primary flex-shrink-0">
+                                    <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+                                    </svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('auth.mfa_select.email_title', 'Email Verification') }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('auth.mfa_select.email_description', 'Receive a code via email') }}</p>
+                                </div>
+                                <svg class="h-5 w-5 text-gray-400 dark:text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </div>
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <!-- WebAuthn/Passkey Method -->
+                    {% if enabledMethods.webauthn %}
+                    <form action="{{ selectUrl }}" method="POST">
+                        <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+                        <input type="hidden" name="method" value="webauthn" />
+                        <button type="submit" class="w-full p-4 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border hover:border-primary dark:hover:border-primary transition-colors cursor-pointer text-left">
+                            <div class="flex items-center">
+                                <div class="bg-primary dark:bg-primary p-2 mr-4 border-2 border-primary dark:border-primary flex-shrink-0">
+                                    <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                                    </svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('auth.mfa_select.webauthn_title', 'Passkey') }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('auth.mfa_select.webauthn_description', 'Use your security key or biometrics') }}</p>
+                                </div>
+                                <svg class="h-5 w-5 text-gray-400 dark:text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                </svg>
+                            </div>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.login }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.auth.webauthn.mfa.cancelLogin') }}</a>
+                    </p>
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground mt-1">
+                        <a href="{{ routes.authFull.account_recovery }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.navigation.account_recovery') }}</a>
+                    </p>
+                </div>
+{% endblock %}

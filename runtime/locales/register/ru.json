@@ -1,0 +1,33 @@
+{
+  "title": "Создайте свою учетную запись",
+  "social_divider": "или",
+  "social_divider_dynamic": "или",
+  "tab": {
+    "email": "Эл. почта",
+    "phone": "Телефон"
+  },
+  "field": {
+    "full_name": "Полное имя"
+  },
+  "placeholder": {
+    "email_prefilled": "Электронная почта предоставлена - вы можете изменить ее при необходимости"
+  },
+  "password_strength": {
+    "missing_requirements": "Недостающие требования:"
+  },
+  "terms": {
+    "agreement_prefix": "Создавая учетную запись, вы соглашаетесь с",
+    "and": "и",
+    "company_suffix": "компании"
+  },
+  "hint": {
+    "contact_required": "Для восстановления учетной записи требуется хотя бы один способ связи (электронная почта или телефон)."
+  },
+  "label": {
+    "required": "Обязательно",
+    "optional": "Необязательно"
+  },
+  "social": {
+    "sign_up_with": "Зарегистрироваться через {{provider}}"
+  }
+}

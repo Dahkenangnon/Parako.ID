@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "toggle": "Alternar barra lateral",
+    "brand": "Admin",
+    "navigation": {
+      "dashboard": "Painel",
+      "users": "Usuários",
+      "clients": "Clientes",
+      "sessions": "Sessões",
+      "grants": "Autorizações",
+      "activities": "Atividades",
+      "settings": "Configurações",
+      "data": "Dados"
+    },
+    "footer": {
+      "logout": "Sair",
+      "my_account": "Minha conta"
+    }
+  },
+  "mobile": {
+    "close": "Fechar",
+    "menu": "Menu"
+  },
+  "theme_language": {
+    "theme": "Tema",
+    "light": "Claro",
+    "dark": "Escuro",
+    "language": "Idioma",
+    "settings": "Configurações de tema e idioma"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "Scegli metodo di verifica",
+    "subtitle": "Seleziona come vuoi verificare la tua identità",
+    "totp_title": "App di autenticazione",
+    "totp_description": "Usa un codice dalla tua app di autenticazione",
+    "email_title": "Verifica email",
+    "email_description": "Ricevi un codice via email",
+    "webauthn_title": "Passkey",
+    "webauthn_description": "Usa la tua chiave di sicurezza o i dati biometrici"
+  },
+  "mfa_no_fallback": {
+    "title": "Accesso non completabile",
+    "description": "Non possiamo verificare la tua identità con il dispositivo attuale.",
+    "explanation": "Hai l'autenticazione a due fattori attivata, ma nessun metodo di verifica alternativo è disponibile su questo dispositivo. Per accedere al tuo account, dovrai procedere con il recupero dell'account.",
+    "recover_account": "Recupera account",
+    "cancel": "Annulla e torna al login"
+  },
+  "account_recovery_page": {
+    "title": "Recupero account"
+  },
+  "recovery_method_select": {
+    "title": "Scegli metodo di recupero"
+  },
+  "recovery_backup_codes": {
+    "title": "Recupero - Codici di backup"
+  },
+  "recovery_sms": {
+    "title": "Recupero via SMS"
+  },
+  "recovery_verify_code": {
+    "title": "Recupero - Verifica codice"
+  },
+  "recovery_secondary_email": {
+    "title": "Recupero - Email secondaria"
+  },
+  "recovery_security_questions": {
+    "title": "Domande di sicurezza"
+  },
+  "account_recovery": "Recupero account",
+  "enableMFA": "Attiva l'autenticazione a due fattori",
+  "enablingMFA": "Attivazione in corso...",
+  "codeRequired": "Inserisci il codice di verifica",
+  "codeInvalid": "Inserisci un codice di verifica a 6 cifre valido",
+  "errorRecovery": "Sessione scaduta. Riprova.",
+  "setup_mfa": {
+    "title": "Attiva l'autenticazione a due fattori",
+    "description": "Scansiona il codice QR con la tua app di autenticazione (es. Google Authenticator, Authy), poi inserisci il codice qui sotto per verificare.",
+    "code_label": "Codice di verifica",
+    "submit_button": "Conferma e attiva"
+  },
+  "setup_mfa_email": {
+    "title": "Verifica la tua email",
+    "description": "Abbiamo inviato un codice a 6 cifre a",
+    "enter_code": "Inseriscilo qui sotto per attivare la 2FA via email.",
+    "code_expires": "Il codice scade tra 10 minuti."
+  },
+  "recovery_codes": {
+    "title": "Autenticazione a due fattori attivata",
+    "subtitle": "Salva i tuoi codici di recupero in un luogo sicuro",
+    "and_others": "e altri {{count}}",
+    "download": "Scarica",
+    "copy": "Copia",
+    "acknowledge": "Ho salvato i miei codici di recupero in un luogo sicuro",
+    "continue": "Continua",
+    "file_title": "Codici di recupero",
+    "file_generated": "Generato il",
+    "file_important": "Conserva questi codici in un luogo sicuro. Ogni codice può essere usato una sola volta.",
+    "file_total": "Totale codici",
+    "downloaded": "Scaricato!",
+    "copied": "Copiato!",
+    "copy_failed": "Impossibile copiare i codici"
+  }
+}

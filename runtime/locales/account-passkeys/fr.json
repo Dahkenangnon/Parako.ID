@@ -1,0 +1,53 @@
+{
+  "title": "Passkeys",
+  "description": "Gérez vos passkeys pour une authentification sécurisée sans mot de passe. Les passkeys utilisent la biométrie comme Touch ID ou Face ID, ou des clés de sécurité comme YubiKey.",
+  "add_button": "Ajouter un Passkey",
+  "loading": "Chargement des passkeys...",
+  "adding": "Ajout en cours...",
+  "empty": {
+    "title": "Aucun Passkey",
+    "description": "Ajoutez un passkey pour utiliser Touch ID, Face ID, Windows Hello ou une clé de sécurité pour une connexion plus rapide et plus sécurisée."
+  },
+  "info": {
+    "title": "À propos des Passkeys",
+    "point1": "Les passkeys sont plus sécurisées que les mots de passe et protègent contre le phishing",
+    "point2": "Elles fonctionnent sur les appareils synchronisés avec votre compte iCloud, Google ou Microsoft",
+    "point3": "Vous pouvez avoir plusieurs passkeys pour différents appareils"
+  },
+  "actions": {
+    "rename": "Renommer",
+    "delete": "Supprimer"
+  },
+  "rename": {
+    "title": "Renommer le Passkey",
+    "label": "Nom du Passkey",
+    "placeholder": "ex., MacBook Touch ID",
+    "confirm": "Enregistrer",
+    "cancel": "Annuler"
+  },
+  "delete": {
+    "confirmTitle": "Supprimer le Passkey",
+    "confirmMessage": "Êtes-vous sûr de vouloir supprimer ce passkey ? Cette action est irréversible."
+  },
+  "success": {
+    "added": "Passkey ajouté avec succès",
+    "renamed": "Passkey renommé avec succès",
+    "deleted": "Passkey supprimé avec succès"
+  },
+  "error": {
+    "loading": "Échec du chargement des passkeys",
+    "adding": "Échec de l'ajout du passkey",
+    "renaming": "Échec du renommage du passkey",
+    "deleting": "Échec de la suppression du passkey",
+    "notSupported": "Les passkeys ne sont pas pris en charge par votre navigateur"
+  },
+  "lastUsed": "Dernière utilisation",
+  "neverUsed": "Jamais utilisé",
+  "createdOn": "Créé le",
+  "deviceType": {
+    "platform": "Authentificateur de plateforme",
+    "crossPlatform": "Clé de sécurité",
+    "singleDevice": "Appareil unique",
+    "multiDevice": "Synchronisé sur tous les appareils"
+  }
+}

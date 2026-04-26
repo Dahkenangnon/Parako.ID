@@ -1,0 +1,56 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <!-- Logo or Success Icon -->
+                {% if logoUri %}
+                <div class="flex justify-center mb-5">
+                    <img src="{{ logoUri }}" alt="{{ clientName or 'Application' }}" class="h-16 w-auto" />
+                </div>
+                {% else %}
+                <div class="flex justify-center mb-5">
+                    <div class="bg-green-50 dark:bg-green-900 h-16 w-16 flex items-center justify-center border-2 border-green-200 dark:border-green-700 rounded-md">
+                        <svg class="h-8 w-8 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Content -->
+                <h2 class="auth-heading text-2xl font-bold text-gray-900 dark:text-foreground mb-2 text-center">Successfully Signed Out</h2>
+                <p class="text-gray-600 dark:text-muted-foreground mb-6 text-center">
+                    You have been successfully signed out from
+                    <span class="font-semibold">{{ clientName or 'this application' }}</span>
+                </p>
+
+                {% if clientUri %}
+                <div class="mt-6">
+                    <a href="{{ clientUri }}" class="auth-btn w-full inline-block h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white py-2 text-center rounded-md">
+                        Return to {{ clientName or 'Application' }}
+                    </a>
+                </div>
+                {% endif %}
+
+                <!-- Footer Links -->
+                {% if policyUri or tosUri %}
+                <div class="mt-6 pt-4 border-t border-gray-200 dark:border-border text-center">
+                    <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-muted-foreground">
+                        {% if tosUri %}
+                        <a href="{{ tosUri }}" class="hover:text-gray-700 dark:hover:text-foreground">Terms of Service</a>
+                        {% else %}
+                        <a href="{{ urls.terms_of_service }}" class="hover:text-gray-700 dark:hover:text-foreground">Terms of Service</a>
+                        {% endif %}
+
+                        {% if policyUri %}
+                        <a href="{{ policyUri }}" class="hover:text-gray-700 dark:hover:text-foreground">Privacy Policy</a>
+                        {% else %}
+                        <a href="{{ urls.privacy_policy }}" class="hover:text-gray-700 dark:hover:text-foreground">Privacy Policy</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% endblock %}

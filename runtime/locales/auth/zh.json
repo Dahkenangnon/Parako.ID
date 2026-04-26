@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "选择验证方式",
+    "subtitle": "选择您要如何验证身份",
+    "totp_title": "身份验证器应用",
+    "totp_description": "使用身份验证器应用中的代码",
+    "email_title": "邮箱验证",
+    "email_description": "通过邮箱接收验证码",
+    "webauthn_title": "通行密钥",
+    "webauthn_description": "使用安全密钥或生物识别"
+  },
+  "mfa_no_fallback": {
+    "title": "无法完成登录",
+    "description": "我们无法使用您当前的设备验证您的身份。",
+    "explanation": "您已启用双因素认证，但此设备上没有可用的替代验证方式。要访问您的账户，您需要进行账户恢复流程。",
+    "recover_account": "恢复账户",
+    "cancel": "取消并返回登录"
+  },
+  "account_recovery_page": {
+    "title": "账户恢复"
+  },
+  "recovery_method_select": {
+    "title": "选择恢复方式"
+  },
+  "recovery_backup_codes": {
+    "title": "恢复 - 备份代码"
+  },
+  "recovery_sms": {
+    "title": "短信恢复"
+  },
+  "recovery_verify_code": {
+    "title": "恢复 - 验证代码"
+  },
+  "recovery_secondary_email": {
+    "title": "恢复 - 备用邮箱"
+  },
+  "recovery_security_questions": {
+    "title": "安全问题"
+  },
+  "account_recovery": "账户恢复",
+  "enableMFA": "启用双因素认证",
+  "enablingMFA": "正在启用...",
+  "codeRequired": "请输入验证码",
+  "codeInvalid": "请输入有效的6位验证码",
+  "errorRecovery": "会话已过期。请重试。",
+  "setup_mfa": {
+    "title": "启用双因素认证",
+    "description": "使用您的认证应用程序（例如 Google Authenticator、Authy）扫描二维码，然后在下方输入验证码进行确认。",
+    "code_label": "验证码",
+    "submit_button": "确认并启用"
+  },
+  "setup_mfa_email": {
+    "title": "验证您的邮箱",
+    "description": "我们已发送6位验证码到",
+    "enter_code": "在下方输入以启用基于邮箱的双因素认证。",
+    "code_expires": "验证码将在10分钟后过期。"
+  },
+  "recovery_codes": {
+    "title": "双因素认证已启用",
+    "subtitle": "请将恢复代码保存在安全的地方",
+    "and_others": "及其他 {{count}} 个",
+    "download": "下载",
+    "copy": "复制",
+    "acknowledge": "我已将恢复代码保存在安全的地方",
+    "continue": "继续",
+    "file_title": "恢复代码",
+    "file_generated": "生成于",
+    "file_important": "请妥善保管这些代码。每个代码只能使用一次。",
+    "file_total": "代码总数",
+    "downloaded": "已下载！",
+    "copied": "已复制！",
+    "copy_failed": "复制代码失败"
+  }
+}

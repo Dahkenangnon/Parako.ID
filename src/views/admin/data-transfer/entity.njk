@@ -1,0 +1,223 @@
+{% extends "layouts/admin-layout.njk" %}
+{% block admin_content %}
+  <div class="max-w-4xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold text-foreground">{{ entity.displayName }}</h1>
+        <p class="text-sm text-muted-foreground mt-1">{{ entity.description }}</p>
+      </div>
+      <a href="/admin/data-transfer"
+         class="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground border border-border hover:border-foreground/20 transition-colors">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        Back
+      </a>
+    </div>
+
+    <!-- Tab Navigation -->
+    {% if entity.hasImport and entity.hasExport %}
+    <div class="border-b border-border">
+      <nav class="flex space-x-6 -mb-px" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="import"
+                class="tab-btn px-1 py-3 text-sm font-medium border-b-2 border-primary text-primary transition-colors">
+          <i data-lucide="upload" class="h-4 w-4 inline mr-1"></i>
+          Import
+        </button>
+        <button type="button" role="tab" aria-selected="false" data-tab="export"
+                class="tab-btn px-1 py-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors">
+          <i data-lucide="download" class="h-4 w-4 inline mr-1"></i>
+          Export
+        </button>
+      </nav>
+    </div>
+    {% endif %}
+
+    <!-- Import Panel -->
+    {% if entity.hasImport %}
+    <div id="import-panel" class="space-y-4">
+      <!-- File Selection -->
+      <div class="border border-border bg-card p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="font-medium text-foreground">Select File</h3>
+          <a href="/admin/data-transfer/{{ entity.entityId }}/import/template"
+             class="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+            <i data-lucide="file-down" class="h-4 w-4"></i>
+            Download Template
+          </a>
+        </div>
+
+        <div>
+          <input type="file" id="import-file-input"
+                 accept="{% if entity.format === 'csv' %}.csv{% else %}.json{% endif %}"
+                 class="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:border file:border-border file:text-sm file:font-medium file:bg-muted file:text-foreground hover:file:bg-muted/80 file:cursor-pointer">
+          <p class="text-xs text-muted-foreground mt-1">
+            Accepted format: {{ entity.format | upper }}
+            {% if entity.format === 'csv' %} (max 10MB, UTF-8 encoded){% endif %}
+          </p>
+        </div>
+      </div>
+
+      <!-- Preview Area (hidden by default) -->
+      <div id="preview-area" class="hidden space-y-4">
+        <!-- Preview Stats -->
+        <div id="preview-stats" class="border border-border bg-card p-4">
+          <div class="flex items-center gap-4 text-sm">
+            <span class="text-foreground font-medium">Preview:</span>
+            <span id="preview-total" class="text-muted-foreground"></span>
+            <span id="preview-valid" class="text-green-600"></span>
+            <span id="preview-errors" class="text-destructive"></span>
+          </div>
+        </div>
+
+        <!-- Column Matching (CSV only) -->
+        {% if entity.format === 'csv' %}
+        <div id="column-match-area" class="border border-border bg-card p-4 hidden">
+          <h4 class="font-medium text-foreground mb-2">Column Matching</h4>
+          <div id="column-match-table" class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-border text-left">
+                  <th class="py-2 pr-4 font-medium text-muted-foreground">Expected</th>
+                  <th class="py-2 pr-4 font-medium text-muted-foreground">Matched To</th>
+                  <th class="py-2 font-medium text-muted-foreground">Status</th>
+                </tr>
+              </thead>
+              <tbody id="column-match-body"></tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Sample Data -->
+        <div class="border border-border bg-card p-4">
+          <h4 class="font-medium text-foreground mb-2">Sample Data (first 5 rows)</h4>
+          <div id="sample-data" class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead id="sample-header" class="border-b border-border"></thead>
+              <tbody id="sample-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Validation Errors -->
+        <div id="validation-errors" class="hidden border border-destructive/20 bg-destructive/5 p-4">
+          <h4 class="font-medium text-destructive mb-2">Validation Errors</h4>
+          <ul id="error-list" class="text-sm text-destructive space-y-1 max-h-40 overflow-y-auto"></ul>
+        </div>
+
+        <!-- Confirm Import -->
+        <div class="flex items-center gap-3">
+          <button type="button" id="confirm-import-btn" disabled
+                  class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            <i data-lucide="upload" class="h-4 w-4"></i>
+            Confirm Import
+          </button>
+          <button type="button" id="cancel-preview-btn"
+                  class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress Area (hidden by default) -->
+      <div id="progress-area" class="hidden border border-border bg-card p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="font-medium text-foreground">Importing...</h3>
+          <span id="progress-percent" class="text-sm font-medium text-primary">0%</span>
+        </div>
+        <div class="w-full bg-muted h-2 overflow-hidden">
+          <div id="progress-bar" class="h-full bg-primary transition-all duration-300 ease-out" style="width: 0%"></div>
+        </div>
+        <p id="progress-status" class="text-sm text-muted-foreground">Preparing import...</p>
+      </div>
+
+      <!-- Result Summary (hidden by default) -->
+      <div id="result-area" class="hidden space-y-4">
+        <div id="result-summary" class="border border-border bg-card p-5 space-y-3"></div>
+
+        <div id="result-errors" class="hidden border border-destructive/20 bg-destructive/5 p-4">
+          <h4 class="font-medium text-destructive mb-2">Import Errors</h4>
+          <div class="overflow-x-auto max-h-60 overflow-y-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-destructive/20 text-left">
+                  <th class="py-2 pr-4 font-medium text-destructive">Row</th>
+                  <th class="py-2 pr-4 font-medium text-destructive">Error</th>
+                  <th class="py-2 font-medium text-destructive">Fields</th>
+                </tr>
+              </thead>
+              <tbody id="result-error-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <button type="button" id="new-import-btn"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border border-border text-foreground hover:bg-muted transition-colors">
+          <i data-lucide="plus" class="h-4 w-4"></i>
+          New Import
+        </button>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Export Panel -->
+    {% if entity.hasExport %}
+    <div id="export-panel" class="{% if entity.hasImport %}hidden{% endif %} space-y-4">
+      <form action="/admin/data-transfer/{{ entity.entityId }}/export" method="get"
+            class="border border-border bg-card p-5 space-y-4">
+        <h3 class="font-medium text-foreground">Export Options</h3>
+
+        <!-- Field Groups -->
+        <div class="space-y-2">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="includeSensitive" value="true"
+                   class="h-4 w-4 border-border text-primary focus:ring-primary">
+            <span class="text-foreground">Include sensitive fields</span>
+            <span class="text-muted-foreground">(phone numbers, addresses)</span>
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="includeSecrets" value="true" id="include-secrets-checkbox"
+                   class="h-4 w-4 border-border text-primary focus:ring-primary">
+            <span class="text-foreground">Include secrets/internal data</span>
+            <span class="text-destructive text-xs">(password hashes, client secrets — audit logged)</span>
+          </label>
+        </div>
+
+        {% if entity.entityId === 'activities' %}
+        <!-- Activity-specific filters -->
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">From Date</label>
+            <input type="date" name="dateFrom"
+                   class="w-full px-3 py-1.5 text-sm border border-border bg-background text-foreground">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-foreground mb-1">To Date</label>
+            <input type="date" name="dateTo"
+                   class="w-full px-3 py-1.5 text-sm border border-border bg-background text-foreground">
+          </div>
+        </div>
+        {% endif %}
+
+        <button type="submit" id="export-btn"
+                class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <i data-lucide="download" class="h-4 w-4"></i>
+          Export {{ entity.displayName }}
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Pass entity config to client-side JS -->
+  <script>
+    window.__ENTITY_CONFIG__ = {
+      entityId: "{{ entity.entityId }}",
+      format: "{{ entity.format }}",
+      hasImport: {{ "true" if entity.hasImport else "false" }},
+      hasExport: {{ "true" if entity.hasExport else "false" }},
+      importColumns: {{ importColumns | dump | safe if importColumns else "[]" }},
+    };
+  </script>
+  <script src="/js/admin/data-transfer/data-transfer.js" defer></script>
+{% endblock %}

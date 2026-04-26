@@ -1,0 +1,53 @@
+{
+  "title": "패스키",
+  "description": "안전한 비밀번호 없는 인증을 위해 패스키를 관리하세요. 패스키는 Touch ID나 Face ID 같은 생체 인식 또는 YubiKey 같은 보안 키를 사용합니다.",
+  "add_button": "패스키 추가",
+  "loading": "패스키 로딩 중...",
+  "adding": "추가 중...",
+  "empty": {
+    "title": "패스키 없음",
+    "description": "패스키를 추가하여 Touch ID, Face ID, Windows Hello 또는 보안 키로 더 빠르고 안전하게 로그인하세요."
+  },
+  "info": {
+    "title": "패스키 정보",
+    "point1": "패스키는 비밀번호보다 안전하며 피싱으로부터 보호합니다",
+    "point2": "iCloud, Google 또는 Microsoft 계정과 동기화된 기기에서 작동합니다",
+    "point3": "다양한 기기에 여러 패스키를 가질 수 있습니다"
+  },
+  "actions": {
+    "rename": "이름 변경",
+    "delete": "삭제"
+  },
+  "rename": {
+    "title": "패스키 이름 변경",
+    "label": "패스키 이름",
+    "placeholder": "예: MacBook Touch ID",
+    "confirm": "저장",
+    "cancel": "취소"
+  },
+  "delete": {
+    "confirmTitle": "패스키 삭제",
+    "confirmMessage": "이 패스키를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
+  },
+  "success": {
+    "added": "패스키가 성공적으로 추가되었습니다",
+    "renamed": "패스키 이름이 성공적으로 변경되었습니다",
+    "deleted": "패스키가 성공적으로 삭제되었습니다"
+  },
+  "error": {
+    "loading": "패스키를 불러오지 못했습니다",
+    "adding": "패스키를 추가하지 못했습니다",
+    "renaming": "패스키 이름을 변경하지 못했습니다",
+    "deleting": "패스키를 삭제하지 못했습니다",
+    "notSupported": "브라우저에서 패스키를 지원하지 않습니다"
+  },
+  "lastUsed": "마지막 사용",
+  "neverUsed": "사용 안 함",
+  "createdOn": "생성일",
+  "deviceType": {
+    "platform": "플랫폼 인증기",
+    "crossPlatform": "보안 키",
+    "singleDevice": "단일 기기",
+    "multiDevice": "기기 간 동기화"
+  }
+}

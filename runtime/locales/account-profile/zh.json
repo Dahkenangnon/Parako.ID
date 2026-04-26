@@ -1,0 +1,43 @@
+{
+  "last_activity": "最后活动",
+  "security_account": {
+    "title": "安全与账户",
+    "two_factor_auth": "双因素认证",
+    "enabled": "已启用",
+    "not_enabled": "未启用",
+    "manage": "管理",
+    "enable": "启用",
+    "active_sessions": "活动会话",
+    "devices": "{{count}}台设备",
+    "view": "查看",
+    "connected_apps": "已连接的应用",
+    "apps_count": "{{count}}个应用",
+    "language": "语言",
+    "language_default": "英语（默认）",
+    "change": "更改",
+    "not_available": "不可用"
+  },
+  "quick_actions": {
+    "title": "快速操作",
+    "edit_profile": {
+      "title": "编辑个人资料",
+      "description": "更新您的个人信息"
+    },
+    "security_settings": {
+      "title": "安全设置",
+      "description": "管理密码和2FA"
+    },
+    "view_sessions": {
+      "title": "查看会话",
+      "description": "管理活动设备"
+    },
+    "connected_applications": {
+      "title": "已连接的应用程序",
+      "description": "管理应用权限"
+    },
+    "sign_out": {
+      "title": "退出登录",
+      "description": "退出您的账户"
+    }
+  }
+}

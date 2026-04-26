@@ -1,0 +1,135 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <h1 class="auth-heading text-2xl font-bold text-center text-gray-900 dark:text-foreground mb-2">
+                    Two-Factor Authentication
+                </h1>
+
+                <p class="text-gray-600 dark:text-muted-foreground text-center mb-6 text-sm">
+                    Please enter your verification code to continue
+                </p>
+
+
+
+                <!-- MFA Method Display -->
+                <div class="flex items-center justify-center p-3 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border mb-5">
+                    {% if user.mfa_method == 'totp' %}
+                    <div class="flex items-center">
+                        <div class="bg-primary dark:bg-primary p-2 mr-3 border-2 border-primary dark:border-primary">
+                            <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900 dark:text-foreground">Authenticator App</p>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">Open your authenticator app to view the code</p>
+                        </div>
+                    </div>
+                    {% elif user.mfa_method == 'email' %}
+                    <div class="flex items-center">
+                        <div class="bg-primary dark:bg-primary p-2 mr-3 border-2 border-primary dark:border-primary">
+                            <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900 dark:text-foreground">Email Verification</p>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">
+                                Code sent to {% if maskedEmail %}{{ maskedEmail }}{% else %}{{ user.email }}{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Verification Form -->
+                <form action="{{ routes.authFull.mfa_verify }}" method="POST" class="space-y-4">
+                    <!-- CSRF Token -->
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    <!-- Client Device Infos -->
+                    <div id="client-device-infos-container"></div>
+
+                    <!-- Code Input -->
+                    <!-- Verification Code Input -->
+                    <div class="flex justify-center mb-2">
+                        <div class="flex space-x-2" id="otp-container">
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                        </div>
+                    </div>
+                    <!-- Hidden input to store the complete code -->
+                    <input type="hidden" id="code" name="code" />
+
+                    <!-- Verify Button -->
+                    <button type="submit" class="auth-btn w-full h-12 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Verify Code
+                    </button>
+                </form>
+
+                <!-- Secondary Actions -->
+                <div class="flex justify-between mt-4 text-xs text-gray-600 dark:text-muted-foreground">
+                    {% if user.mfa_method == 'email' %}
+                    <form action="{{ routes.authFull.mfa_resend }}" method="POST" class="inline">
+                        <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+                        <button type="submit" class="hover:text-primary hover:underline">
+                            Resend code
+                        </button>
+                    </form>
+                    {% else %}
+                    <span></span>
+                    {% endif %}
+                    <a href="{{ routes.authFull.mfa_select }}" class="hover:text-primary hover:underline">
+                        Try another method
+                    </a>
+                </div>
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.login }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.auth.webauthn.mfa.cancelLogin') }}</a>
+                    </p>
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground mt-1">
+                        <a href="{{ routes.authFull.account_recovery }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.navigation.account_recovery') }}</a>
+                    </p>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/mfa-verify.js"></script>
+
+<!-- Complete configuration and translations for MFAVerifyManager -->
+<script id="___MFA_VERIFY_STATE___" type="application/json">
+{
+  "config": {
+    "codeLength": 6,
+    "autoFocus": true,
+    "enablePaste": true,
+    "enableBackspace": true,
+    "shakeAnimationDuration": 500,
+    "mfaMethod": {{ (user.mfa_method or 'totp') | tojson | safe }},
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "verifyCode": {{ t('auth.verifyCode', 'Verify Code') | tojson | safe }},
+    "verifyingCode": {{ t('auth.verifyingCode', 'Verifying...') | tojson | safe }},
+    "codeRequired": {{ t('auth.codeRequired', 'Please enter the verification code') | tojson | safe }},
+    "codeInvalid": {{ t('auth.codeInvalid', 'Please enter a valid 6-digit verification code') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,283 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        {% set activePage = "security" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure multi-factor authentication methods: TOTP, Email, SMS, and WebAuthn</p>
+        </div>
+    </div>
+
+    {% include "partials/admin-security-subtabs.njk" %}
+
+    <form method="POST" action="/admin/settings/security/mfa" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Multi-Factor Authentication -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="shield-check" class="h-5 w-5 mr-2 text-primary"></i>
+                        Multi-Factor Authentication
+                    </h2>
+                    <div class="space-y-6">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[multi_factor][enabled]" value="">
+                            <input type="checkbox" id="authentication.multi_factor.enabled"
+                                   name="authentication[multi_factor][enabled]"
+                                   {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="authentication.multi_factor.enabled" class="text-sm font-medium text-foreground">
+                                Enable Multi-Factor Authentication
+                            </label>
+                        </div>
+                        <p class="text-xs text-muted-foreground">Users can enable multiple MFA methods and choose which to use during login.</p>
+
+                        <!-- TOTP Section -->
+                        <div class="bg-muted/30 p-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-base font-medium text-foreground flex items-center">
+                                        <i data-lucide="smartphone" class="h-4 w-4 mr-2 text-muted-foreground"></i>
+                                        TOTP (Time-based One-Time Password)
+                                    </h3>
+                                    <p class="text-xs text-muted-foreground mt-1">Authenticator app codes (Google Authenticator, Authy, etc.)</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[multi_factor][totp][enabled]" value="">
+                                    <input type="checkbox" id="authentication.multi_factor.totp.enabled"
+                                           name="authentication[multi_factor][totp][enabled]"
+                                           {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.totp and config.authentication.multi_factor.totp.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.multi_factor.totp.enabled" class="text-sm font-medium text-foreground">Enable</label>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="authentication.multi_factor.totp.issuer_name" class="block text-sm font-medium text-foreground mb-2">Issuer Name</label>
+                                    <input type="text" id="authentication.multi_factor.totp.issuer_name"
+                                           name="authentication[multi_factor][totp][issuer_name]"
+                                           value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.totp and config.authentication.multi_factor.totp.issuer_name or '' }}"
+                                           placeholder="My App"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Displayed in authenticator apps</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Email MFA Section -->
+                        <div class="bg-muted/30 p-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-base font-medium text-foreground flex items-center">
+                                        <i data-lucide="mail" class="h-4 w-4 mr-2 text-muted-foreground"></i>
+                                        Email Verification
+                                    </h3>
+                                    <p class="text-xs text-muted-foreground mt-1">One-time codes sent to user's email address</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[multi_factor][email][enabled]" value="">
+                                    <input type="checkbox" id="authentication.multi_factor.email.enabled"
+                                           name="authentication[multi_factor][email][enabled]"
+                                           {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.email and config.authentication.multi_factor.email.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.multi_factor.email.enabled" class="text-sm font-medium text-foreground">Enable</label>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="authentication.multi_factor.email.code_ttl_seconds" class="block text-sm font-medium text-foreground mb-2">Code Expiry (seconds)</label>
+                                    <input type="number" id="authentication.multi_factor.email.code_ttl_seconds"
+                                           name="authentication[multi_factor][email][code_ttl_seconds]"
+                                           value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.email and config.authentication.multi_factor.email.code_ttl_seconds or 600 }}"
+                                           min="60" max="3600"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">How long email codes remain valid (60-3600 seconds)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- SMS Section -->
+                        <div class="bg-muted/30 p-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-base font-medium text-foreground flex items-center">
+                                        <i data-lucide="message-square" class="h-4 w-4 mr-2 text-muted-foreground"></i>
+                                        SMS
+                                    </h3>
+                                    <p class="text-xs text-muted-foreground mt-1">One-time codes sent via text message</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[multi_factor][sms][enabled]" value="">
+                                    <input type="checkbox" id="authentication.multi_factor.sms.enabled"
+                                           name="authentication[multi_factor][sms][enabled]"
+                                           {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.sms and config.authentication.multi_factor.sms.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.multi_factor.sms.enabled" class="text-sm font-medium text-foreground">Enable</label>
+                                </div>
+                            </div>
+                            <p class="text-xs text-muted-foreground">
+                                <i data-lucide="info" class="h-3 w-3 inline mr-1"></i>
+                                Requires SMS provider configuration in
+                                <a href="{{ routes.adminFull.settings_integrations }}" class="text-primary hover:underline">Integrations</a>
+                            </p>
+                        </div>
+
+                        <!-- WebAuthn Section -->
+                        <div class="bg-muted/30 p-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h3 class="text-base font-medium text-foreground flex items-center">
+                                        <i data-lucide="key" class="h-4 w-4 mr-2 text-muted-foreground"></i>
+                                        WebAuthn / Passkeys
+                                    </h3>
+                                    <p class="text-xs text-muted-foreground mt-1">Hardware security keys and platform authenticators (Touch ID, Face ID, Windows Hello)</p>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[multi_factor][webauthn][enabled]" value="">
+                                    <input type="checkbox" id="authentication.multi_factor.webauthn.enabled"
+                                           name="authentication[multi_factor][webauthn][enabled]"
+                                           {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.multi_factor.webauthn.enabled" class="text-sm font-medium text-foreground">Enable</label>
+                                </div>
+                            </div>
+
+                            <!-- Relying Party Settings -->
+                            <div class="border-t border-border pt-4">
+                                <h4 class="text-sm font-medium text-foreground mb-3">Relying Party Settings</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.rp_name" class="block text-sm font-medium text-foreground mb-2">Relying Party Name</label>
+                                        <input type="text" id="authentication.multi_factor.webauthn.rp_name"
+                                               name="authentication[multi_factor][webauthn][rp_name]"
+                                               value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.rp_name or '' }}"
+                                               placeholder="My Application"
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Display name shown during passkey registration</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.rp_id" class="block text-sm font-medium text-foreground mb-2">Relying Party ID</label>
+                                        <input type="text" id="authentication.multi_factor.webauthn.rp_id"
+                                               name="authentication[multi_factor][webauthn][rp_id]"
+                                               value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.rp_id or '' }}"
+                                               placeholder="example.com"
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Your domain (must match the origin)</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Authentication Options -->
+                            <div class="border-t border-border pt-4">
+                                <h4 class="text-sm font-medium text-foreground mb-3">Authentication Options</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.timeout" class="block text-sm font-medium text-foreground mb-2">Timeout (ms)</label>
+                                        <input type="number" id="authentication.multi_factor.webauthn.timeout"
+                                               name="authentication[multi_factor][webauthn][timeout]"
+                                               value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.timeout or 60000 }}"
+                                               min="30000" max="300000" step="1000"
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Ceremony timeout (30-300 seconds)</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.user_verification" class="block text-sm font-medium text-foreground mb-2">User Verification</label>
+                                        <select id="authentication.multi_factor.webauthn.user_verification"
+                                                name="authentication[multi_factor][webauthn][user_verification]"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="preferred" {% if not config.authentication or not config.authentication.multi_factor or not config.authentication.multi_factor.webauthn or config.authentication.multi_factor.webauthn.user_verification == 'preferred' %}selected{% endif %}>Preferred (Default)</option>
+                                            <option value="required" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.user_verification == 'required' %}selected{% endif %}>Required</option>
+                                            <option value="discouraged" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.user_verification == 'discouraged' %}selected{% endif %}>Discouraged</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Require biometric/PIN verification</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.attestation" class="block text-sm font-medium text-foreground mb-2">Attestation</label>
+                                        <select id="authentication.multi_factor.webauthn.attestation"
+                                                name="authentication[multi_factor][webauthn][attestation]"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="none" {% if not config.authentication or not config.authentication.multi_factor or not config.authentication.multi_factor.webauthn or config.authentication.multi_factor.webauthn.attestation == 'none' %}selected{% endif %}>None (Default)</option>
+                                            <option value="indirect" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.attestation == 'indirect' %}selected{% endif %}>Indirect</option>
+                                            <option value="direct" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.attestation == 'direct' %}selected{% endif %}>Direct</option>
+                                            <option value="enterprise" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.attestation == 'enterprise' %}selected{% endif %}>Enterprise</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Authenticator attestation conveyance</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Advanced Options -->
+                            <div class="border-t border-border pt-4">
+                                <h4 class="text-sm font-medium text-foreground mb-3">Advanced Options</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.authenticator_attachment" class="block text-sm font-medium text-foreground mb-2">Authenticator Type</label>
+                                        <select id="authentication.multi_factor.webauthn.authenticator_attachment"
+                                                name="authentication[multi_factor][webauthn][authenticator_attachment]"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="" {% if not config.authentication or not config.authentication.multi_factor or not config.authentication.multi_factor.webauthn or not config.authentication.multi_factor.webauthn.authenticator_attachment %}selected{% endif %}>Any (Default)</option>
+                                            <option value="platform" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.authenticator_attachment == 'platform' %}selected{% endif %}>Platform Only</option>
+                                            <option value="cross-platform" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.authenticator_attachment == 'cross-platform' %}selected{% endif %}>Cross-Platform Only</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Platform = built-in, Cross-platform = USB keys</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.resident_key" class="block text-sm font-medium text-foreground mb-2">Resident Key</label>
+                                        <select id="authentication.multi_factor.webauthn.resident_key"
+                                                name="authentication[multi_factor][webauthn][resident_key]"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="preferred" {% if not config.authentication or not config.authentication.multi_factor or not config.authentication.multi_factor.webauthn or config.authentication.multi_factor.webauthn.resident_key == 'preferred' %}selected{% endif %}>Preferred (Default)</option>
+                                            <option value="required" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.resident_key == 'required' %}selected{% endif %}>Required</option>
+                                            <option value="discouraged" {% if config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.resident_key == 'discouraged' %}selected{% endif %}>Discouraged</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Discoverable credentials for passwordless</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.multi_factor.webauthn.max_credentials_per_user" class="block text-sm font-medium text-foreground mb-2">Max Credentials</label>
+                                        <input type="number" id="authentication.multi_factor.webauthn.max_credentials_per_user"
+                                               name="authentication[multi_factor][webauthn][max_credentials_per_user]"
+                                               value="{{ config.authentication and config.authentication.multi_factor and config.authentication.multi_factor.webauthn and config.authentication.multi_factor.webauthn.max_credentials_per_user or 10 }}"
+                                               min="1" max="50"
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Maximum passkeys per user (1-50)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                    <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                        Cancel
+                    </a>
+                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                        Reset Form
+                    </button>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                            Save Changes
+                        </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings.js"></script>
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/security.js"></script>
+{% endblock %}

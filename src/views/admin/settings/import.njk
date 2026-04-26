@@ -1,0 +1,149 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-bold text-foreground flex items-center gap-2">
+                    <i data-lucide="upload" class="h-6 w-6 text-primary"></i>
+                    Import Configuration
+                </h1>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Upload or paste a configuration JSON file to preview and apply changes
+                </p>
+            </div>
+            <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium w-full sm:w-auto">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back to Settings
+            </a>
+        </div>
+    </div>
+
+    <!-- Import Form -->
+    <div class="mb-6 bg-card border border-border p-6">
+        <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+            <i data-lucide="file-json" class="h-5 w-5 text-primary"></i>
+            Configuration Source
+        </h2>
+
+        <div class="space-y-4">
+            <!-- File Upload Option -->
+            <div>
+                <label for="configFile" class="block text-sm font-medium text-foreground mb-2">
+                    Upload JSON File
+                </label>
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <input
+                        type="file"
+                        id="configFile"
+                        accept=".json"
+                        class="block w-full text-sm text-foreground file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 file:cursor-pointer border border-input cursor-pointer bg-background"
+                    />
+                    <button
+                        type="button"
+                        onclick="loadFromFile()"
+                        class="inline-flex items-center justify-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium whitespace-nowrap w-full sm:w-auto"
+                    >
+                        <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
+                        Load File
+                    </button>
+                </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="relative">
+                <div class="absolute inset-0 flex items-center">
+                    <div class="w-full border-t border-border"></div>
+                </div>
+                <div class="relative flex justify-center text-xs uppercase">
+                    <span class="bg-card px-2 text-muted-foreground">Or</span>
+                </div>
+            </div>
+
+            <!-- Paste JSON Option -->
+            <div>
+                <label for="configJson" class="block text-sm font-medium text-foreground mb-2">
+                    Paste JSON Configuration
+                </label>
+                <textarea
+                    id="configJson"
+                    rows="12"
+                    placeholder='{"deployment": {...}, "security": {...}, ...}'
+                    class="w-full px-3 py-2 bg-background border border-input focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent text-foreground font-mono text-sm"
+                ></textarea>
+            </div>
+
+            <!-- Preview Button -->
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button
+                    type="button"
+                    onclick="previewImport()"
+                    class="inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium w-full sm:w-auto"
+                >
+                    <i data-lucide="eye" class="h-4 w-4 mr-2"></i>
+                    Preview Changes
+                </button>
+                <button
+                    type="button"
+                    onclick="clearForm()"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium w-full sm:w-auto"
+                >
+                    <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                    Clear
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Section -->
+    <div id="previewSection" class="hidden space-y-6">
+        <!-- Impact Analysis -->
+        <div id="impactSection" class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="h-5 w-5 text-amber-500"></i>
+                Impact Analysis
+            </h2>
+            <div id="impactContent" class="space-y-3"></div>
+        </div>
+
+        <!-- Configuration Diff -->
+        <div id="diffSection" class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+                <i data-lucide="git-compare" class="h-5 w-5 text-blue-500"></i>
+                Configuration Changes
+            </h2>
+            <div id="diffContent" class="space-y-2"></div>
+        </div>
+
+        <!-- Apply Actions -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-end bg-card border border-border p-4">
+            <button
+                type="button"
+                onclick="hidePreview()"
+                class="inline-flex items-center justify-center px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium w-full sm:w-auto"
+            >
+                <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                Cancel
+            </button>
+            <button
+                type="button"
+                id="applyButton"
+                onclick="applyConfigImport()"
+                class="inline-flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-medium w-full sm:w-auto"
+            >
+                <i data-lucide="check" class="h-4 w-4 mr-2"></i>
+                Apply Configuration
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings/import.js"></script>
+{% endblock %}

@@ -1,0 +1,14 @@
+{
+  "title": "创建新密码",
+  "placeholder": {
+    "new_password": "输入新密码",
+    "confirm_password": "确认新密码"
+  },
+  "button": {
+    "reset_password": "重置密码",
+    "resetting": "正在重置密码..."
+  },
+  "link": {
+    "remember_password": "记得您的密码？"
+  }
+}

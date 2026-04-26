@@ -1,0 +1,43 @@
+{
+  "last_activity": "最終アクティビティ",
+  "security_account": {
+    "title": "セキュリティとアカウント",
+    "two_factor_auth": "二要素認証",
+    "enabled": "有効",
+    "not_enabled": "無効",
+    "manage": "管理",
+    "enable": "有効化",
+    "active_sessions": "アクティブセッション",
+    "devices": "{{count}}台のデバイス",
+    "view": "表示",
+    "connected_apps": "接続されたアプリ",
+    "apps_count": "{{count}}個のアプリ",
+    "language": "言語",
+    "language_default": "英語（デフォルト）",
+    "change": "変更",
+    "not_available": "利用不可"
+  },
+  "quick_actions": {
+    "title": "クイックアクション",
+    "edit_profile": {
+      "title": "プロフィールを編集",
+      "description": "個人情報を更新"
+    },
+    "security_settings": {
+      "title": "セキュリティ設定",
+      "description": "パスワードと2FAを管理"
+    },
+    "view_sessions": {
+      "title": "セッションを表示",
+      "description": "アクティブなデバイスを管理"
+    },
+    "connected_applications": {
+      "title": "接続されたアプリケーション",
+      "description": "アプリの権限を管理"
+    },
+    "sign_out": {
+      "title": "サインアウト",
+      "description": "アカウントからログアウト"
+    }
+  }
+}

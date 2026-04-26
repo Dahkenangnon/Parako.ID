@@ -1,0 +1,132 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-2">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <div class="mb-4 flex justify-center">
+                    <h1 class="auth-heading text-center font-bold text-primary text-lg sm:text-xl md:text-2xl lg:text-3xl leading-tight break-words">
+                        <span class="block max-w-full" style="display: block; width: 100%;">
+                            <span class="block w-full" style="display: block; width: 100%; font-size: clamp(1rem, 2.5vw, 2rem);">
+                                {{ t('security-questions.recovery.title') }}
+                            </span>
+                        </span>
+                    </h1>
+                </div>
+
+                <p class="text-center text-sm text-gray-600 dark:text-muted-foreground mb-4">
+                    {{ t('security-questions.recovery.description') }}
+                </p>
+
+                <!-- Error Message -->
+                {% if error %}
+                <div class="bg-red-50 dark:bg-red-900 border-2 border-red-200 dark:border-red-700 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-800 dark:text-red-200">{{ error }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Lockout Warning -->
+                {% if lockout and lockout.locked %}
+                <div class="bg-red-50 dark:bg-red-900 border-2 border-red-200 dark:border-red-700 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-800 dark:text-red-200">
+                                {{ t('common.recovery.locked_out', { minutes: lockout.minutesRemaining or 15 }) }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+
+                <!-- Attempts Remaining Warning -->
+                {% if lockout and lockout.remainingAttempts and lockout.remainingAttempts <= 2 %}
+                <div class="bg-yellow-50 dark:bg-yellow-900/30 border-2 border-yellow-200 dark:border-yellow-700 p-3 mb-4">
+                    <div class="flex items-center">
+                        <svg class="h-4 w-4 text-yellow-500 dark:text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                        <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                            {{ t('security-questions.recovery.attempts_remaining', { count: lockout.remainingAttempts }) }}
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Security Questions Form -->
+                <form action="{{ routes.authFull.recovery_security_questions }}" method="POST" class="space-y-4" id="security-questions-form">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    {% if questions and questions.length > 0 %}
+                        {% for question in questions %}
+                        <div class="space-y-1">
+                            <label for="answer_{{ loop.index0 }}" class="block text-sm font-semibold text-gray-900 dark:text-foreground">
+                                {{ t('security-questions.questions.' + question.question_key) }}
+                            </label>
+                            <input type="hidden" name="questionIds[]" value="{{ question.id }}" />
+                            <div class="relative">
+                                <input
+                                    id="answer_{{ loop.index0 }}"
+                                    name="answers[]"
+                                    type="text"
+                                    autocomplete="off"
+                                    required
+                                    minlength="3"
+                                    class="w-full h-10 px-3 py-2 pl-9 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-sm text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary"
+                                    placeholder="{{ t('security-questions.setup.answer_placeholder') }}"
+                                />
+                                <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                                    <svg class="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+
+                        <!-- Submit Button -->
+                        <button type="submit" id="submit-btn" class="auth-btn w-full h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white text-sm">
+                            {{ t('security-questions.recovery.submit') }}
+                        </button>
+                    {% else %}
+                        <div class="text-center text-gray-600 dark:text-muted-foreground">
+                            <p class="text-sm">{{ t('common.recovery.no_methods_available') }}</p>
+                        </div>
+                    {% endif %}
+                </form>
+                {% endif %}
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.recovery_method_select }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.recovery.back_to_methods', 'Back to recovery options') }}</a>
+                    </p>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script id="___RECOVERY_SECURITY_QUESTIONS_STATE___" type="application/json">
+{
+  "translations": {
+    "processing": {{ t("common.action.processing") | tojson | safe }}
+  }
+}
+</script>
+<script src="/js/auth/recovery-security-questions.js"></script>
+{% endblock %}

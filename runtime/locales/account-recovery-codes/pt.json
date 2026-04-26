@@ -1,0 +1,28 @@
+{
+  "title": "Códigos de recuperação de conta criados",
+  "subtitle": "Salve esses códigos em um local seguro. Você pode usá-los para recuperar o acesso à sua conta se perder o acesso aos seus outros métodos de login.",
+  "security_notice": {
+    "title": "Aviso de segurança importante",
+    "description": "Baixe seus códigos de recuperação imediatamente. Cada código só pode ser usado uma vez e não poderá ser visualizado novamente após sair desta página."
+  },
+  "download_section": {
+    "title": "Baixe seus códigos de recuperação",
+    "description": "Clique no botão abaixo para baixar um arquivo de texto contendo seus {{count}} códigos de recuperação.",
+    "download_button": "Baixar como arquivo de texto",
+    "copy_button": "Copiar para a área de transferência",
+    "print_button": "Imprimir códigos",
+    "downloaded": "Baixado!",
+    "copied": "Copiado!",
+    "printed": "Impresso!"
+  },
+  "back_to_settings": "Voltar para configurações",
+  "file_content": {
+    "title": "Códigos de recuperação de conta",
+    "generated": "Gerado",
+    "important": "IMPORTANTE: Mantenha esses códigos em um local seguro. Cada código só pode ser usado uma vez.",
+    "total_codes": "Total de códigos"
+  },
+  "error": {
+    "copy_failed": "Falha ao copiar códigos. Tente novamente."
+  }
+}

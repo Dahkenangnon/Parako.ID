@@ -1,0 +1,94 @@
+{# Color picker section for theme customization #}
+{# Variables expected: colorMode ('light' or 'dark'), colorValues (object with color values) #}
+
+{% set mode = colorMode | default('light') %}
+{% set colors = colorValues | default({}) %}
+
+{# Macro for color input row #}
+{% macro colorInput(name, label, placeholder, currentValue) %}
+<div class="flex items-center gap-2" x-data="{ color: '{{ currentValue | default('') }}' }">
+    <input type="color"
+           :value="color || '{{ placeholder }}'"
+           @input="color = $event.target.value; $refs.textInput.value = $event.target.value"
+           class="w-8 h-8 border border-border rounded cursor-pointer bg-transparent">
+    <input type="text"
+           name="colors[{{ mode }}][{{ name }}]"
+           x-ref="textInput"
+           x-model="color"
+           placeholder="{{ placeholder }}"
+           pattern="^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+           class="flex-1 px-2 py-1 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+    <span class="text-xs text-muted-foreground w-24">{{ label }}</span>
+</div>
+{% endmacro %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {# Core Colors #}
+    <div class="space-y-3">
+        <h4 class="text-sm font-medium text-foreground flex items-center">
+            <i data-lucide="circle" class="h-4 w-4 mr-2 text-primary"></i>
+            Core Colors
+        </h4>
+        <div class="space-y-2">
+            {{ colorInput('primary', 'Primary', '#c6785c', colors.primary) }}
+            {{ colorInput('primaryForeground', 'Primary FG', '#ffffff', colors.primaryForeground) }}
+            {{ colorInput('secondary', 'Secondary', '#e6e0d4', colors.secondary) }}
+            {{ colorInput('accent', 'Accent', '#c6785c', colors.accent) }}
+        </div>
+    </div>
+
+    {# Semantic Colors #}
+    <div class="space-y-3">
+        <h4 class="text-sm font-medium text-foreground flex items-center">
+            <i data-lucide="alert-circle" class="h-4 w-4 mr-2 text-primary"></i>
+            Semantic Colors
+        </h4>
+        <div class="space-y-2">
+            {{ colorInput('destructive', 'Destructive', '#ef4444', colors.destructive) }}
+            {{ colorInput('success', 'Success', '#22c55e', colors.success) }}
+            {{ colorInput('warning', 'Warning', '#f59e0b', colors.warning) }}
+            {{ colorInput('info', 'Info', '#3b82f6', colors.info) }}
+        </div>
+    </div>
+
+    {# Surface Colors #}
+    <div class="space-y-3">
+        <h4 class="text-sm font-medium text-foreground flex items-center">
+            <i data-lucide="layers" class="h-4 w-4 mr-2 text-primary"></i>
+            Surface Colors
+        </h4>
+        <div class="space-y-2">
+            {{ colorInput('background', 'Background', '#f7f5f0', colors.background) }}
+            {{ colorInput('foreground', 'Foreground', '#171715', colors.foreground) }}
+            {{ colorInput('card', 'Card', '#f7f5f0', colors.card) }}
+            {{ colorInput('muted', 'Muted', '#e6e0d4', colors.muted) }}
+        </div>
+    </div>
+
+    {# Form Colors #}
+    <div class="space-y-3">
+        <h4 class="text-sm font-medium text-foreground flex items-center">
+            <i data-lucide="text-cursor-input" class="h-4 w-4 mr-2 text-primary"></i>
+            Form Colors
+        </h4>
+        <div class="space-y-2">
+            {{ colorInput('border', 'Border', '#ccc5b5', colors.border) }}
+            {{ colorInput('input', 'Input', '#ccc5b5', colors.input) }}
+            {{ colorInput('ring', 'Ring', '#c6785c', colors.ring) }}
+        </div>
+    </div>
+
+    {# Sidebar Colors #}
+    <div class="space-y-3 sm:col-span-2 lg:col-span-2">
+        <h4 class="text-sm font-medium text-foreground flex items-center">
+            <i data-lucide="panel-left" class="h-4 w-4 mr-2 text-primary"></i>
+            Sidebar Colors
+        </h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {{ colorInput('sidebar', 'Sidebar', '#f5f5f5', colors.sidebar) }}
+            {{ colorInput('sidebarForeground', 'Sidebar FG', '#171715', colors.sidebarForeground) }}
+            {{ colorInput('sidebarPrimary', 'Sidebar Primary', '#c6785c', colors.sidebarPrimary) }}
+            {{ colorInput('sidebarAccent', 'Sidebar Accent', '#e5e5e5', colors.sidebarAccent) }}
+        </div>
+    </div>
+</div>

@@ -1,0 +1,466 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        {% set activePage = "branding" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure company branding, themes, and UI customization</p>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/settings/branding" enctype="multipart/form-data" class="space-y-6" id="branding-form">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        
+        <div class="max-w-6xl mx-auto space-y-6">
+            <!-- Company Information -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="building" class="h-5 w-5 mr-2 text-primary"></i>
+                    Company Information
+                </h2>
+
+                <!-- Company Name -->
+                <div class="mb-6">
+                    <label for="companyName" class="block text-sm font-medium text-foreground mb-2">Company Name</label>
+                    <input type="text" id="companyName" name="companyName"
+                           value="{{ config.companyName or '' }}" required
+                           class="w-full max-w-md px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">The name of your company or organization</p>
+                </div>
+
+                <!-- Logo, Dark Logo, and Favicon Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Light Mode Logo -->
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">
+                            <i data-lucide="sun" class="h-4 w-4 inline mr-1"></i>
+                            Logo (Light Mode)
+                        </label>
+                        <div class="space-y-3">
+                            <!-- Preview -->
+                            <div class="relative group">
+                                <div class="w-20 h-20 bg-muted border border-border rounded flex items-center justify-center overflow-hidden">
+                                    {% if config.logo %}
+                                        <img src="{{ config.logo }}" alt="Logo" id="preview-logo" class="max-w-full max-h-full object-contain"/>
+                                    {% else %}
+                                        <span class="text-muted-foreground text-xs" id="no-logo-text">No logo</span>
+                                        <img src="" alt="" id="preview-logo" class="max-w-full max-h-full object-contain hidden"/>
+                                    {% endif %}
+                                </div>
+                                <div class="absolute inset-0 w-20 h-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label for="logo-upload" class="bg-black/60 rounded w-20 h-20 flex items-center justify-center cursor-pointer">
+                                        <i data-lucide="camera" class="h-5 w-5 text-white"></i>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Controls -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="upload-logo-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
+                                    Upload
+                                </button>
+                                <button type="button" id="remove-logo-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.logo %}hidden{% endif %}">
+                                    <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
+                                    Remove
+                                </button>
+                            </div>
+                            <input type="file" id="logo-upload" name="logo" class="hidden" accept="image/*"/>
+                            <p class="text-xs text-muted-foreground">Used on light backgrounds</p>
+                        </div>
+                    </div>
+
+                    <!-- Dark Mode Logo -->
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">
+                            <i data-lucide="moon" class="h-4 w-4 inline mr-1"></i>
+                            Logo (Dark Mode)
+                        </label>
+                        <div class="space-y-3">
+                            <!-- Preview -->
+                            <div class="relative group">
+                                <div class="w-20 h-20 bg-zinc-800 border border-border rounded flex items-center justify-center overflow-hidden">
+                                    {% if config.logoDark %}
+                                        <img src="{{ config.logoDark }}" alt="Dark Logo" id="preview-logo-dark" class="max-w-full max-h-full object-contain"/>
+                                    {% else %}
+                                        <span class="text-muted-foreground text-xs" id="no-logo-dark-text">No logo</span>
+                                        <img src="" alt="" id="preview-logo-dark" class="max-w-full max-h-full object-contain hidden"/>
+                                    {% endif %}
+                                </div>
+                                <div class="absolute inset-0 w-20 h-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label for="logo-dark-upload" class="bg-black/60 rounded w-20 h-20 flex items-center justify-center cursor-pointer">
+                                        <i data-lucide="camera" class="h-5 w-5 text-white"></i>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Controls -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="upload-logo-dark-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
+                                    Upload
+                                </button>
+                                <button type="button" id="remove-logo-dark-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.logoDark %}hidden{% endif %}">
+                                    <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
+                                    Remove
+                                </button>
+                            </div>
+                            <input type="file" id="logo-dark-upload" name="logoDark" class="hidden" accept="image/*"/>
+                            <p class="text-xs text-muted-foreground">Optional. Falls back to light logo.</p>
+                        </div>
+                    </div>
+
+                    <!-- Icon Logo (Light Mode) -->
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">
+                            <i data-lucide="square" class="h-4 w-4 inline mr-1"></i>
+                            Icon Logo (Light)
+                        </label>
+                        <div class="space-y-3">
+                            <!-- Preview -->
+                            <div class="relative group">
+                                <div class="w-20 h-20 bg-muted border border-border rounded flex items-center justify-center overflow-hidden">
+                                    {% if config.logoIcon %}
+                                        <img src="{{ config.logoIcon }}" alt="Icon Logo" id="preview-logo-icon" class="max-w-full max-h-full object-contain"/>
+                                    {% else %}
+                                        <span class="text-muted-foreground text-xs" id="no-logo-icon-text">No icon</span>
+                                        <img src="" alt="" id="preview-logo-icon" class="max-w-full max-h-full object-contain hidden"/>
+                                    {% endif %}
+                                </div>
+                                <div class="absolute inset-0 w-20 h-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label for="logo-icon-upload" class="bg-black/60 rounded w-20 h-20 flex items-center justify-center cursor-pointer">
+                                        <i data-lucide="camera" class="h-5 w-5 text-white"></i>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Controls -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="upload-logo-icon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
+                                    Upload
+                                </button>
+                                <button type="button" id="remove-logo-icon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.logoIcon %}hidden{% endif %}">
+                                    <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
+                                    Remove
+                                </button>
+                            </div>
+                            <input type="file" id="logo-icon-upload" name="logoIcon" class="hidden" accept="image/*"/>
+                            <p class="text-xs text-muted-foreground">Square icon for collapsed sidebar</p>
+                        </div>
+                    </div>
+
+                    <!-- Icon Logo (Dark Mode) -->
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">
+                            <i data-lucide="square" class="h-4 w-4 inline mr-1"></i>
+                            Icon Logo (Dark)
+                        </label>
+                        <div class="space-y-3">
+                            <!-- Preview -->
+                            <div class="relative group">
+                                <div class="w-20 h-20 bg-zinc-800 border border-border rounded flex items-center justify-center overflow-hidden">
+                                    {% if config.logoIconDark %}
+                                        <img src="{{ config.logoIconDark }}" alt="Dark Icon Logo" id="preview-logo-icon-dark" class="max-w-full max-h-full object-contain"/>
+                                    {% else %}
+                                        <span class="text-muted-foreground text-xs" id="no-logo-icon-dark-text">No icon</span>
+                                        <img src="" alt="" id="preview-logo-icon-dark" class="max-w-full max-h-full object-contain hidden"/>
+                                    {% endif %}
+                                </div>
+                                <div class="absolute inset-0 w-20 h-20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label for="logo-icon-dark-upload" class="bg-black/60 rounded w-20 h-20 flex items-center justify-center cursor-pointer">
+                                        <i data-lucide="camera" class="h-5 w-5 text-white"></i>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Controls -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="upload-logo-icon-dark-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
+                                    Upload
+                                </button>
+                                <button type="button" id="remove-logo-icon-dark-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.logoIconDark %}hidden{% endif %}">
+                                    <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
+                                    Remove
+                                </button>
+                            </div>
+                            <input type="file" id="logo-icon-dark-upload" name="logoIconDark" class="hidden" accept="image/*"/>
+                            <p class="text-xs text-muted-foreground">Optional. Falls back to light icon.</p>
+                        </div>
+                    </div>
+                    <!-- Favicon -->
+                    <div>
+                        <label class="block text-sm font-medium text-foreground mb-2">
+                            <i data-lucide="image" class="h-4 w-4 inline mr-1"></i>
+                            Favicon
+                        </label>
+                        <div class="space-y-3">
+                            <!-- Preview -->
+                            <div class="relative group">
+                                <div class="w-16 h-16 bg-muted border border-border rounded flex items-center justify-center overflow-hidden">
+                                    {% if config.favicon and config.favicon != '/favicon.ico' and config.favicon != '/favicon.svg' %}
+                                        <img src="{{ config.favicon }}" alt="Favicon" id="preview-favicon" class="max-w-full max-h-full object-contain"/>
+                                    {% else %}
+                                        <span class="text-muted-foreground text-xs" id="no-favicon-text">Default</span>
+                                        <img src="" alt="" id="preview-favicon" class="max-w-full max-h-full object-contain hidden"/>
+                                    {% endif %}
+                                </div>
+                                <div class="absolute inset-0 w-16 h-16 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label for="favicon-upload" class="bg-black/60 rounded w-16 h-16 flex items-center justify-center cursor-pointer">
+                                        <i data-lucide="camera" class="h-4 w-4 text-white"></i>
+                                    </label>
+                                </div>
+                            </div>
+                            <!-- Controls -->
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" id="upload-favicon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-foreground bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
+                                    Upload
+                                </button>
+                                <button type="button" id="remove-favicon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.favicon or config.favicon == '/favicon.ico' or config.favicon == '/favicon.svg' %}hidden{% endif %}">
+                                    <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
+                                    Remove
+                                </button>
+                            </div>
+                            <input type="file" id="favicon-upload" name="favicon" class="hidden" accept=".ico,.png,.svg,image/x-icon,image/png,image/svg+xml"/>
+                            <p class="text-xs text-muted-foreground">32x32 or 64x64 (.ico, .png, .svg)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- UI Customization -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="settings" class="h-5 w-5 mr-2 text-primary"></i>
+                    UI Customization
+                </h2>
+                <div class="space-y-6">
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="ui.customization.enabled"
+                               name="ui[customization][enabled]"
+                               {% if config.ui and config.ui.customization and config.ui.customization.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="ui.customization.enabled" class="text-sm font-medium text-foreground">
+                            Enable UI Customization
+                        </label>
+                    </div>
+
+                    <div>
+                        <label for="ui.customization.rootPath" class="block text-sm font-medium text-foreground mb-2">Custom Views Root Path</label>
+                        <input type="text" id="ui.customization.rootPath"
+                               name="ui[customization][rootPath]"
+                               value="{{ config.ui and config.ui.customization and config.ui.customization.rootPath or 'runtime/views' }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Root path for custom view templates. Templates here override defaults with the same directory structure.</p>
+                    </div>
+
+                    <!-- Custom View Templates Information -->
+                    <div class="bg-muted/30 p-4 border border-border">
+                        <h3 class="text-sm font-semibold text-foreground mb-2 flex items-center">
+                            <i data-lucide="info" class="h-4 w-4 mr-2 text-primary"></i>
+                            Custom View Templates
+                        </h3>
+                        <div class="space-y-2 text-sm text-muted-foreground">
+                            <p>Place custom Nunjucks templates in <code class="bg-muted px-1 py-0.5 text-xs font-mono">runtime/views/</code> to override default views. Mirror the same directory structure as the default views (e.g., <code class="bg-muted px-1 py-0.5 text-xs font-mono">runtime/views/auth/login.njk</code> overrides the login page).</p>
+                            <p>Templates you don't customize will use the default views. See the <a href="https://github.com/Dahkenangnon/Parako.ID/tree/master/src/views" target="_blank" rel="noopener noreferrer" class="text-primary hover:text-primary/80 inline-flex items-center">
+                                <i data-lucide="external-link" class="h-3 w-3 mr-1"></i>
+                                default templates
+                            </a> for reference.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Theme Colors -->
+            <div class="bg-card border border-border p-6" x-data="{ activeTab: 'light' }">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="palette" class="h-5 w-5 mr-2 text-primary"></i>
+                    Theme Colors
+                </h2>
+                <p class="text-sm text-muted-foreground mb-6">
+                    Customize theme colors for light and dark modes. Leave empty to use CSS defaults.
+                </p>
+
+                <!-- Light/Dark Tabs -->
+                <div class="flex space-x-2 border-b border-border mb-6">
+                    <button type="button" @click="activeTab = 'light'"
+                        :class="activeTab === 'light' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'"
+                        class="px-4 py-2 text-sm font-medium transition-colors">
+                        <i data-lucide="sun" class="h-4 w-4 inline-block mr-1"></i>
+                        Light Mode
+                    </button>
+                    <button type="button" @click="activeTab = 'dark'"
+                        :class="activeTab === 'dark' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'"
+                        class="px-4 py-2 text-sm font-medium transition-colors">
+                        <i data-lucide="moon" class="h-4 w-4 inline-block mr-1"></i>
+                        Dark Mode
+                    </button>
+                </div>
+
+                <!-- Light Mode Colors -->
+                <div x-show="activeTab === 'light'" x-cloak>
+                    {% set colorMode = 'light' %}
+                    {% set colorValues = config.colors.light if config.colors else {} %}
+                    {% include "partials/admin-color-section.njk" %}
+                </div>
+
+                <!-- Dark Mode Colors -->
+                <div x-show="activeTab === 'dark'" x-cloak>
+                    {% set colorMode = 'dark' %}
+                    {% set colorValues = config.colors.dark if config.colors else {} %}
+                    {% include "partials/admin-color-section.njk" %}
+                </div>
+
+                <!-- Help Text and Action Buttons -->
+                <div class="mt-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div class="bg-muted/30 p-4 border border-border flex-1">
+                        <h3 class="text-sm font-semibold text-foreground mb-2 flex items-center">
+                            <i data-lucide="info" class="h-4 w-4 mr-2 text-primary"></i>
+                            Color Format
+                        </h3>
+                        <div class="space-y-2 text-sm text-muted-foreground">
+                            <p>Enter colors in hex format (e.g., <code class="bg-muted px-1 py-0.5 text-xs font-mono">#ff5733</code>).</p>
+                            <p>Colors are converted to HSL and override the CSS defaults.</p>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <button type="button" id="randomize-colors-button"
+                            class="inline-flex items-center px-4 py-2 border border-primary text-sm font-medium text-primary hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary whitespace-nowrap">
+                            <i data-lucide="sparkles" class="h-4 w-4 mr-2"></i>
+                            Randomize
+                        </button>
+                        <button type="button" id="reset-colors-button"
+                            class="inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary whitespace-nowrap">
+                            <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                            Reset to Defaults
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Typography -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="type" class="h-5 w-5 mr-2 text-primary"></i>
+                    Typography
+                </h2>
+                <p class="text-sm text-muted-foreground mb-6">
+                    Customize font families for your application. These are web-safe fonts available on most devices.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Primary Font (Sans) -->
+                    <div>
+                        <label for="fonts-sans" class="block text-sm font-medium text-foreground mb-2">Primary Font</label>
+                        <select id="fonts-sans" name="fonts[sans]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="">System Default</option>
+                            {% for font in webSafeFonts.sans %}
+                            <option value="{{ font.value }}" {% if config.fonts and config.fonts.sans == font.value %}selected{% endif %}>
+                                {{ font.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Used for body text and UI elements</p>
+                    </div>
+
+                    <!-- Heading Font -->
+                    <div>
+                        <label for="fonts-heading" class="block text-sm font-medium text-foreground mb-2">Heading Font</label>
+                        <select id="fonts-heading" name="fonts[heading]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="">Same as Primary</option>
+                            {% for font in webSafeFonts.sans %}
+                            <option value="{{ font.value }}" {% if config.fonts and config.fonts.heading == font.value %}selected{% endif %}>
+                                {{ font.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Used for titles and headlines</p>
+                    </div>
+
+                    <!-- Monospace Font -->
+                    <div>
+                        <label for="fonts-mono" class="block text-sm font-medium text-foreground mb-2">Monospace Font</label>
+                        <select id="fonts-mono" name="fonts[mono]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="">System Monospace</option>
+                            {% for font in webSafeFonts.mono %}
+                            <option value="{{ font.value }}" {% if config.fonts and config.fonts.mono == font.value %}selected{% endif %}>
+                                {{ font.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Used for code and technical content</p>
+                    </div>
+                </div>
+
+                <!-- Font Preview and Reset -->
+                <div class="mt-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div class="bg-muted/30 p-4 border border-border flex-1">
+                        <h3 class="text-sm font-semibold text-foreground mb-3 flex items-center">
+                            <i data-lucide="eye" class="h-4 w-4 mr-2 text-primary"></i>
+                            Font Preview
+                        </h3>
+                        <div class="space-y-3">
+                            <p id="preview-sans" class="text-foreground">The quick brown fox jumps over the lazy dog.</p>
+                            <p id="preview-heading" class="text-lg font-semibold text-foreground">Heading Text Sample</p>
+                            <code id="preview-mono" class="block bg-muted px-2 py-1 text-sm">const example = "monospace";</code>
+                        </div>
+                    </div>
+                    <button type="button" id="reset-fonts-button"
+                        class="inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary whitespace-nowrap">
+                        <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                        Reset to Defaults
+                    </button>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                    Cancel
+                </a>
+                <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                    Reset Form
+                </button>
+                <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                    <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script type="application/json" id="___ADMIN_BRANDING_STATE___">
+{
+  "csrfToken": {{ csrfToken | tojson | safe }},
+  "routes": {
+    "removeLogo": "/admin/settings/branding/remove-logo",
+    "uploadLogoDark": "/admin/settings/branding/logo-dark",
+    "removeLogoDark": "/admin/settings/branding/remove-logo-dark",
+    "uploadLogoIcon": "/admin/settings/branding/logo-icon",
+    "removeLogoIcon": "/admin/settings/branding/remove-logo-icon",
+    "uploadLogoIconDark": "/admin/settings/branding/logo-icon-dark",
+    "removeLogoIconDark": "/admin/settings/branding/remove-logo-icon-dark",
+    "uploadFavicon": "/admin/settings/branding/favicon",
+    "removeFavicon": "/admin/settings/branding/remove-favicon",
+    "resetColors": "/admin/settings/branding/reset-colors",
+    "resetFonts": "/admin/settings/branding/reset-fonts"
+  }
+}
+</script>
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/branding.js"></script>
+{% endblock %}

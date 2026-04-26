@@ -1,0 +1,14 @@
+{
+  "title": "Créer un nouveau mot de passe",
+  "placeholder": {
+    "new_password": "Entrez le nouveau mot de passe",
+    "confirm_password": "Confirmez le nouveau mot de passe"
+  },
+  "button": {
+    "reset_password": "Réinitialiser le mot de passe",
+    "resetting": "Réinitialisation du mot de passe..."
+  },
+  "link": {
+    "remember_password": "Vous vous souvenez de votre mot de passe ?"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "title": "パスキー",
+  "description": "安全なパスワードレス認証のためにパスキーを管理します。パスキーはTouch IDやFace IDなどの生体認証、またはYubiKeyなどのセキュリティキーを使用します。",
+  "add_button": "パスキーを追加",
+  "loading": "パスキーを読み込み中...",
+  "adding": "追加中...",
+  "empty": {
+    "title": "パスキーがありません",
+    "description": "パスキーを追加して、Touch ID、Face ID、Windows Hello、またはセキュリティキーを使用して、より速く安全にサインインできます。"
+  },
+  "info": {
+    "title": "パスキーについて",
+    "point1": "パスキーはパスワードより安全で、フィッシングから保護します",
+    "point2": "iCloud、Google、またはMicrosoftアカウントと同期されたデバイス間で機能します",
+    "point3": "異なるデバイス用に複数のパスキーを持つことができます"
+  },
+  "actions": {
+    "rename": "名前を変更",
+    "delete": "削除"
+  },
+  "rename": {
+    "title": "パスキーの名前を変更",
+    "label": "パスキー名",
+    "placeholder": "例：MacBook Touch ID",
+    "confirm": "保存",
+    "cancel": "キャンセル"
+  },
+  "delete": {
+    "confirmTitle": "パスキーを削除",
+    "confirmMessage": "このパスキーを削除してもよろしいですか？この操作は元に戻せません。"
+  },
+  "success": {
+    "added": "パスキーが正常に追加されました",
+    "renamed": "パスキーの名前が正常に変更されました",
+    "deleted": "パスキーが正常に削除されました"
+  },
+  "error": {
+    "loading": "パスキーの読み込みに失敗しました",
+    "adding": "パスキーの追加に失敗しました",
+    "renaming": "パスキーの名前変更に失敗しました",
+    "deleting": "パスキーの削除に失敗しました",
+    "notSupported": "お使いのブラウザではパスキーがサポートされていません"
+  },
+  "lastUsed": "最終使用",
+  "neverUsed": "未使用",
+  "createdOn": "作成日",
+  "deviceType": {
+    "platform": "プラットフォーム認証器",
+    "crossPlatform": "セキュリティキー",
+    "singleDevice": "単一デバイス",
+    "multiDevice": "デバイス間で同期"
+  }
+}

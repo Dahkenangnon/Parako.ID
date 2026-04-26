@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "Toggle sidebar",
+    "navigation": {
+      "home": "Home",
+      "my_profile": "My Profile",
+      "apps": "Apps",
+      "sessions": "Sessions",
+      "settings": "Settings"
+    },
+    "admin_section": {
+      "title": "Admin",
+      "admin_panel": "Admin Panel"
+    },
+    "footer": {
+      "logout": "Logout",
+      "switch_account": "Switch account",
+      "my_account": "My Account"
+    },
+    "account_switcher": {
+      "add_account": "Add account",
+      "loading": "Loading...",
+      "failed_to_load": "Failed to load",
+      "retry": "Retry",
+      "no_other_accounts": "No other accounts"
+    }
+  },
+  "mobile": {
+    "close": "Close",
+    "menu": "Menu"
+  },
+  "theme_language": {
+    "theme": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "language": "Language",
+    "settings": "Theme and language settings"
+  }
+}

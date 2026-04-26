@@ -1,0 +1,12 @@
+{
+  "title": "Restablece tu contraseña",
+  "description": "Te enviaremos un enlace para restablecer tu contraseña.",
+  "button": {
+    "send_reset_link": "Enviar enlace",
+    "sending": "Enviando..."
+  },
+  "link": {
+    "need_more_help": "¿Necesitas más ayuda?",
+    "remember_password": "¿Recuerdas tu contraseña?"
+  }
+}

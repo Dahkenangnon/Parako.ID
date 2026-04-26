@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+yarn.lock
+package-lock.json
+
+# Build outputs
+dist/
+build/
+coverage/
+test-results/
+
+# Generated files
+*.min.js
+*.min.css
+*.bundle.js
+public/js/
+public/css/styles.css
+runtime/locales/.merged/
+options/locales/.merged/
+
+# Logs
+*.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# dotenv environment variables file
+.env
+.env.*
+
+# Editor directories and files
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Release artifacts
+parako-id-v*.tar.gz
+parako-id-v*.zip
+
+# Git
+.git/
+
+# Database files
+data/
+
+# Local-only files
+CLAUDE.md

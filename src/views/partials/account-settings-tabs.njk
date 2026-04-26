@@ -1,0 +1,32 @@
+{# Account Settings Tab Navigation #}
+{# Usage: {% include "partials/account-settings-tabs.njk" %} #}
+{# Requires activePage to be set via localsMiddleware.setActivePage() #}
+
+<div class="border-b border-border mb-6">
+    <nav class="flex space-x-6 overflow-x-auto -mb-px" aria-label="{{ t('account-settings.tabs.aria_label') }}">
+        <a href="{{ routes.accountFull.settings_profile }}"
+           class="{% if activePage == 'settings-profile' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.profile') }}
+        </a>
+        <a href="{{ routes.accountFull.settings_preferences }}"
+           class="{% if activePage == 'settings-preferences' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.preferences') }}
+        </a>
+        <a href="{{ routes.accountFull.settings_notifications }}"
+           class="{% if activePage == 'settings-notifications' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.notifications') }}
+        </a>
+        <a href="{{ routes.accountFull.settings_security }}"
+           class="{% if activePage == 'settings-security' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.security') }}
+        </a>
+        <a href="{{ routes.accountFull.settings_recovery }}"
+           class="{% if activePage == 'settings-recovery' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.recovery') }}
+        </a>
+        <a href="{{ routes.accountFull.settings_social }}"
+           class="{% if activePage == 'settings-social' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            {{ t('account-settings.tabs.social') }}
+        </a>
+    </nav>
+</div>

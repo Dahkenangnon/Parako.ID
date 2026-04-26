@@ -1,0 +1,333 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex-1">
+                <h1 class="text-xl sm:text-2xl font-bold text-foreground">Edit OIDC Client</h1>
+                <p class="mt-2 text-sm text-muted-foreground">Edit {{ client.client_name or 'Unnamed Client' }}</p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <a href="/admin/oidc-clients/view/{{ client.client_id }}" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="eye" class="h-4 w-4 mr-2"></i>
+                    View Client
+                </a>
+                <a href="/admin/oidc-clients" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Clients
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/oidc-clients/edit/{{ client.client_id }}" class="space-y-8" id="oidc-client-form" data-mode="edit" data-preset="{{ client.preset or '' }}">
+        <input type="hidden" name="_method" value="PUT">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <!-- Basic Information -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+                Basic Information
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="client_name" class="block text-sm font-medium text-foreground mb-2">Client Name *</label>
+                    <input type="text" id="client_name" name="client_name" value="{{ client.client_name or '' }}" required class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="My Application">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Application Type</label>
+                    <div class="flex items-center gap-2 px-3 py-2 border border-border bg-muted/50 text-foreground">
+                        {% if client.preset == 'api_management' %}
+                            <i data-lucide="shield" class="h-4 w-4 text-primary"></i>
+                            <span>Management API</span>
+                        {% elif client.preset == 'm2m' %}
+                            <i data-lucide="cpu" class="h-4 w-4 text-primary"></i>
+                            <span>Machine-to-Machine (M2M)</span>
+                        {% elif client.preset == 'spa' %}
+                            <i data-lucide="layout" class="h-4 w-4 text-primary"></i>
+                            <span>Single Page Application</span>
+                        {% elif client.preset == 'device' %}
+                            <i data-lucide="tv" class="h-4 w-4 text-primary"></i>
+                            <span>Device Flow</span>
+                        {% elif client.preset == 'native' %}
+                            <i data-lucide="smartphone" class="h-4 w-4 text-primary"></i>
+                            <span>Native / Mobile</span>
+                        {% elif client.preset == 'web' %}
+                            <i data-lucide="globe" class="h-4 w-4 text-primary"></i>
+                            <span>Regular Web Application</span>
+                        {% else %}
+                            <i data-lucide="{{ 'globe' if client.application_type == 'web' else 'smartphone' }}" class="h-4 w-4 text-primary"></i>
+                            <span>{{ client.application_type | title }}</span>
+                        {% endif %}
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">Application type cannot be changed after creation.</p>
+                    <input type="hidden" id="application_type" name="application_type" value="{{ client.application_type }}">
+                </div>
+
+                <div class="md:col-span-2">
+                    <label for="description" class="block text-sm font-medium text-foreground mb-2">Description</label>
+                    <textarea id="description" name="description" rows="2" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="Brief description of the application">{{ client.description or '' }}</textarea>
+                </div>
+
+                <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                    <label class="flex items-center">
+                        <input type="checkbox" name="active" {{ 'checked' if client.active else '' }} class="border-border text-primary focus:ring-primary focus:ring-offset-0">
+                        <span class="ml-2 text-sm text-foreground">Active</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- OIDC Configuration -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="settings" class="h-5 w-5 mr-2 text-primary"></i>
+                OIDC Configuration
+            </h2>
+
+            <div class="space-y-6">
+                <!-- Redirect URIs -->
+                <div>
+                    <label for="redirect_uris" class="block text-sm font-medium text-foreground mb-2">Redirect URIs</label>
+                    <textarea id="redirect_uris" name="redirect_uris" rows="3" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com/callback&#10;https://example.com/auth/callback">{% if client.redirect_uris %}{{ client.redirect_uris | join('&#10;') }}{% endif %}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">One URI per line. Required for web and SPA. Use <code class="bg-muted px-1">http://localhost:*</code> for development.</p>
+                </div>
+
+                <!-- Post Logout Redirect URIs -->
+                <div>
+                    <label for="post_logout_redirect_uris" class="block text-sm font-medium text-foreground mb-2">Post Logout Redirect URIs</label>
+                    <textarea id="post_logout_redirect_uris" name="post_logout_redirect_uris" rows="2" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com/logout">{% if client.post_logout_redirect_uris %}{{ client.post_logout_redirect_uris | join('&#10;') }}{% endif %}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">Where to redirect after logout. One URI per line.</p>
+                </div>
+
+                <!-- Scope -->
+                <div>
+                    <label for="scope" class="block text-sm font-medium text-foreground mb-2">Scope</label>
+                    <input type="text" id="scope" name="scope" value="{{ client.scope or 'openid profile email' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="openid profile email">
+                    <p class="mt-1 text-xs text-muted-foreground">Space-separated list of requested scopes.</p>
+                </div>
+
+                <!-- Resource Access (shown for M2M/client_credentials clients) -->
+                <div id="management-api-scopes-section" class="{{ 'block' if client.grant_types and 'client_credentials' in client.grant_types else 'hidden' }} space-y-4">
+                    <!-- Custom Resource Servers (M2M) -->
+                    <div id="custom-resource-sub-section" class="{{ 'hidden' if client.preset == 'api_management' else '' }} space-y-4">
+                        <div class="border border-border bg-muted/30 p-4">
+                            <h3 class="text-sm font-semibold text-foreground mb-1 flex items-center">
+                                <i data-lucide="server" class="h-4 w-4 mr-2 text-primary"></i>
+                                Resource Servers
+                            </h3>
+                            <p class="text-xs text-muted-foreground mb-3">URIs of resource servers this client is allowed to request tokens for. One per line.</p>
+                            <textarea id="allowedResources" name="allowedResources" rows="2" class="w-full px-3 py-2 border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="urn:parako:api:v1&#10;urn:custom:my-service">{% if client.allowedResources %}{{ client.allowedResources | join('\n') }}{% endif %}</textarea>
+                        </div>
+
+                        <div class="border border-border bg-muted/30 p-4">
+                            <h3 class="text-sm font-semibold text-foreground mb-1 flex items-center">
+                                <i data-lucide="lock" class="h-4 w-4 mr-2 text-primary"></i>
+                                Resource Scopes
+                            </h3>
+                            <p class="text-xs text-muted-foreground mb-3">Space-separated scopes the client is allowed to request across all its resource servers.</p>
+                            <textarea id="resourcesScopes" name="resourcesScopes" rows="2" class="w-full px-3 py-2 border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="api:read api:write service:manage">{{ client.resourcesScopes or '' }}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Management API Scope Picker (API Management) -->
+                    <div id="mgmt-api-scope-sub-section" class="{{ 'hidden' if client.preset == 'm2m' else '' }}">
+                        <div class="border border-border bg-muted/30 p-4">
+                            <h3 class="text-sm font-semibold text-foreground mb-3 flex items-center">
+                                <i data-lucide="shield" class="h-4 w-4 mr-2 text-primary"></i>
+                                Management API Scopes
+                            </h3>
+                            <p class="text-xs text-muted-foreground mb-3">Select scopes for the built-in Management API (<code class="bg-muted px-1">{{ managementApiResourceUri }}</code>)</p>
+                            {% set currentDomain = '' %}
+                            {% for scopeDef in scopeDefinitions %}
+                                {% if scopeDef.domain != currentDomain %}
+                                    {% if currentDomain != '' %}
+                                        </div>
+                                    {% endif %}
+                                    {% set currentDomain = scopeDef.domain %}
+                                    <div class="mb-3">
+                                        <h4 class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{{ scopeDef.domain }}</h4>
+                                {% endif %}
+                                <label class="flex items-start mb-1.5">
+                                    <input type="checkbox" name="api_scopes" value="{{ scopeDef.value }}" {{ 'checked' if client.resourcesScopes and scopeDef.value in client.resourcesScopes else '' }} class="mt-0.5 border-border text-primary focus:ring-primary focus:ring-offset-0">
+                                    <span class="ml-2">
+                                        <span class="text-sm text-foreground">{{ scopeDef.label }}</span>
+                                        <span class="block text-xs text-muted-foreground">{{ scopeDef.description }}</span>
+                                    </span>
+                                </label>
+                            {% endfor %}
+                            {% if currentDomain != '' %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authentication Method -->
+                <div>
+                    <label for="token_endpoint_auth_method" class="block text-sm font-medium text-foreground mb-2">Authentication Method</label>
+                    <select id="token_endpoint_auth_method" name="token_endpoint_auth_method" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        {% for authMethod in authMethods %}
+                        <option value="{{ authMethod.value }}" {{ 'selected' if client.token_endpoint_auth_method == authMethod.value else '' }}>{{ authMethod.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-xs text-muted-foreground">How the client proves its identity to the token endpoint.</p>
+                </div>
+
+                <!-- PKCE -->
+                <div class="flex items-center">
+                    <input type="checkbox" id="require_pkce" name="require_pkce" {{ 'checked' if client.require_pkce else '' }} class="border-border text-primary focus:ring-primary focus:ring-offset-0">
+                    <label for="require_pkce" class="ml-2 text-sm text-foreground">Require PKCE</label>
+                    <span class="ml-2 text-xs text-muted-foreground">Required for public clients (SPAs, native apps). Recommended for all.</span>
+                </div>
+
+                <!-- Grant Types -->
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Grant Types</label>
+                    <div class="space-y-2">
+                        {% for grantType in grantTypes %}
+                        <label class="flex items-start">
+                            <input type="checkbox" name="grant_types" value="{{ grantType.value }}" {{ 'checked' if client.grant_types and grantType.value in client.grant_types else '' }} class="mt-0.5 border-border text-primary focus:ring-primary focus:ring-offset-0">
+                            <span class="ml-2">
+                                <span class="text-sm text-foreground">{{ grantType.label }}</span>
+                                <span class="block text-xs text-muted-foreground">{{ grantType.description }}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Response Types -->
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Response Types</label>
+                    <div class="space-y-2">
+                        {% for responseType in responseTypes %}
+                        <label class="flex items-start">
+                            <input type="checkbox" name="response_types" value="{{ responseType.value }}" {{ 'checked' if client.response_types and responseType.value in client.response_types else '' }} class="mt-0.5 border-border text-primary focus:ring-primary focus:ring-offset-0">
+                            <span class="ml-2">
+                                <span class="text-sm text-foreground">{{ responseType.label }}</span>
+                                <span class="block text-xs text-muted-foreground">{{ responseType.description }}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced Settings (collapsed) -->
+        <details class="bg-card border border-border" {{ 'open' if client.id_token_signed_response_alg or client.default_max_age or client.client_uri or client.logo_uri or client.policy_uri or client.tos_uri or client.isInternalClient }}>
+            <summary class="p-6 cursor-pointer select-none">
+                <h2 class="text-lg font-semibold text-foreground inline-flex items-center">
+                    <i data-lucide="sliders-horizontal" class="h-5 w-5 mr-2 text-primary"></i>
+                    Advanced Settings
+                </h2>
+            </summary>
+            <div class="px-6 pb-6 space-y-6 border-t border-border pt-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- ID Token Signing Algorithm -->
+                    <div>
+                        <label for="id_token_signed_response_alg" class="block text-sm font-medium text-foreground mb-2">ID Token Signing Algorithm</label>
+                        <select id="id_token_signed_response_alg" name="id_token_signed_response_alg" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            {% for alg in signingAlgorithms %}
+                            <option value="{{ alg.value }}" {{ 'selected' if client.id_token_signed_response_alg == alg.value else '' }}>{{ alg.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-muted-foreground">Leave default unless you have specific requirements.</p>
+                    </div>
+
+                    <!-- Subject Type -->
+                    <div>
+                        <label for="subject_type" class="block text-sm font-medium text-foreground mb-2">Subject Type</label>
+                        <select id="subject_type" name="subject_type" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            {% for st in subjectTypes %}
+                            <option value="{{ st.value }}" {{ 'selected' if client.subject_type == st.value else '' }}>{{ st.label }} &mdash; {{ st.description }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Default Max Age -->
+                    <div>
+                        <label for="default_max_age" class="block text-sm font-medium text-foreground mb-2">Default Max Age (seconds)</label>
+                        <input type="number" id="default_max_age" name="default_max_age" min="0" value="{{ client.default_max_age or '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="Optional">
+                        <p class="mt-1 text-xs text-muted-foreground">Forces re-authentication after this period.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Client URI -->
+                    <div>
+                        <label for="client_uri" class="block text-sm font-medium text-foreground mb-2">Client URI</label>
+                        <input type="url" id="client_uri" name="client_uri" value="{{ client.client_uri or '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com">
+                        <p class="mt-1 text-xs text-muted-foreground">Homepage URL shown on consent screen.</p>
+                    </div>
+
+                    <!-- Logo URI -->
+                    <div>
+                        <label for="logo_uri" class="block text-sm font-medium text-foreground mb-2">Logo URI</label>
+                        <input type="url" id="logo_uri" name="logo_uri" value="{{ client.logo_uri or '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com/logo.png">
+                        <p class="mt-1 text-xs text-muted-foreground">Logo shown on login/consent screens.</p>
+                    </div>
+
+                    <!-- Policy URI -->
+                    <div>
+                        <label for="policy_uri" class="block text-sm font-medium text-foreground mb-2">Policy URI</label>
+                        <input type="url" id="policy_uri" name="policy_uri" value="{{ client.policy_uri or '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com/privacy">
+                        <p class="mt-1 text-xs text-muted-foreground">Privacy policy URL shown on consent screen.</p>
+                    </div>
+
+                    <!-- ToS URI -->
+                    <div>
+                        <label for="tos_uri" class="block text-sm font-medium text-foreground mb-2">Terms of Service URI</label>
+                        <input type="url" id="tos_uri" name="tos_uri" value="{{ client.tos_uri or '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="https://example.com/terms">
+                        <p class="mt-1 text-xs text-muted-foreground">Terms of service URL shown on consent screen.</p>
+                    </div>
+
+                    <!-- Tags -->
+                    <div>
+                        <label for="tags" class="block text-sm font-medium text-foreground mb-2">Tags</label>
+                        <input type="text" id="tags" name="tags" value="{{ client.tags | join(', ') if client.tags else '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="production, internal, api">
+                        <p class="mt-1 text-xs text-muted-foreground">Comma-separated. For organizing clients.</p>
+                    </div>
+
+                    <!-- Contacts -->
+                    <div>
+                        <label for="contacts" class="block text-sm font-medium text-foreground mb-2">Contacts</label>
+                        <input type="text" id="contacts" name="contacts" value="{{ client.contacts | join(', ') if client.contacts else '' }}" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="admin@example.com, support@example.com">
+                        <p class="mt-1 text-xs text-muted-foreground">Comma-separated emails. Responsible parties per RFC 7591.</p>
+                    </div>
+                </div>
+
+                <!-- Internal Client -->
+                <div class="flex items-center">
+                    <input type="checkbox" name="isInternalClient" id="isInternalClient" {{ 'checked' if client.isInternalClient else '' }} class="border-border text-primary focus:ring-primary focus:ring-offset-0">
+                    <label for="isInternalClient" class="ml-2 text-sm text-foreground">Internal Client</label>
+                    <span class="ml-2 text-xs text-muted-foreground">Mark as first-party / internal application.</span>
+                </div>
+            </div>
+        </details>
+
+        <!-- Form Actions -->
+        <div class="flex justify-end space-x-4">
+            <a href="/admin/oidc-clients/view/{{ client.client_id }}" class="inline-flex items-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                Cancel
+            </a>
+            <button type="submit" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Update Client
+            </button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/oidc-clients/form.js"></script>
+{% endblock %}

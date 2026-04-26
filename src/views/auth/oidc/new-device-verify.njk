@@ -1,0 +1,151 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Header -->
+                <div class="text-center mb-5">
+                    <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">{{ t('auth.new_device_verify.title', 'New Device Detected') }}</h2>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mt-1">{{ t('auth.new_device_verify.subtitle', 'Please verify your identity to continue') }}</p>
+                </div>
+
+                <!-- Security Notice -->
+                <div class="flex items-center p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-5">
+                    <div class="flex items-center">
+                        <div class="bg-amber-500 dark:bg-amber-600 p-2 mr-3 border-2 border-amber-500 dark:border-amber-600">
+                            <svg class="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-amber-800 dark:text-amber-200">{{ t('auth.new_device_verify.security_notice', 'Security Verification Required') }}</p>
+                            <p class="text-xs text-amber-700 dark:text-amber-300">{{ t('auth.new_device_verify.security_reason', 'We detected a login from an unrecognized device') }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Verification Method Info -->
+                <div class="flex items-center justify-center p-3 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border mb-5">
+                    {% if method == 'totp' %}
+                    <div class="flex items-center">
+                        <div class="bg-primary dark:bg-primary p-2 mr-3 border-2 border-primary dark:border-primary">
+                            <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('auth.new_device_verify.method_totp', 'Authenticator App') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('auth.new_device_verify.method_totp_desc', 'Open your authenticator app to view the code') }}</p>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="flex items-center">
+                        <div class="bg-primary dark:bg-primary p-2 mr-3 border-2 border-primary dark:border-primary">
+                            <svg class="h-6 w-6 text-white dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-900 dark:text-foreground">{{ t('auth.new_device_verify.method_email', 'Email Verification') }}</p>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">{{ t('auth.new_device_verify.method_email_desc', 'Code sent to') }} {{ maskedEmail }}</p>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Code Input Form -->
+                <form action="{{ oidc.path }}/interaction/{{ uid }}/new-device-verify" method="POST" class="space-y-4">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    <!-- Client Device Infos -->
+                    <div id="client-device-infos-container"></div>
+
+                    <!-- Verification Code Input -->
+                    <div class="flex justify-center mb-2">
+                        <div class="flex space-x-2" id="otp-container">
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                            <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-white dark:bg-input border-2 border-gray-300 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-muted-foreground focus:outline-none focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+                        </div>
+                    </div>
+                    <!-- Hidden input to store the complete code -->
+                    <input type="hidden" name="code" id="code" />
+
+                    <!-- Timer for email OTP -->
+                    {% if method == 'email' %}
+                    <div class="text-center mb-4">
+                        <p class="text-sm text-gray-600 dark:text-muted-foreground">{{ t('auth.new_device_verify.code_expires', 'Code expires in') }} <span id="timer" class="font-medium">10:00</span></p>
+                    </div>
+                    {% endif %}
+
+                    <!-- Trust Device Checkbox -->
+                    <div class="flex items-center mt-2 mb-4">
+                        <input id="trust_this_device" name="trust_this_device" type="checkbox" value="true"
+                               class="h-4 w-4 border-2 border-gray-300 dark:border-border text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"/>
+                        <label for="trust_this_device" class="ml-2 text-sm text-gray-600 dark:text-muted-foreground cursor-pointer select-none">
+                            {{ t('auth.new_device_verify.trust_device', 'Trust this device for ' ~ (config.security.protection.device_matching.trust_duration_days | default(30)) ~ ' days') }}
+                        </label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        {{ t('auth.new_device_verify.verify_button', 'Verify Device') }}
+                    </button>
+
+                    <!-- Secondary Actions -->
+                    {% if method == 'email' %}
+                    <div class="flex justify-center text-xs text-gray-600 dark:text-muted-foreground">
+                        <button type="button" id="resend-code" class="hover:text-primary hover:underline">
+                            {{ t('auth.new_device_verify.resend_code', 'Resend code') }}
+                        </button>
+                    </div>
+                    {% endif %}
+                </form>
+
+                <!-- Cancel Link -->
+                <div class="mt-4 text-center">
+                    <a href="{{ routes.authFull.login }}" class="text-sm text-gray-600 dark:text-muted-foreground hover:text-gray-900 dark:hover:text-foreground">
+                        {{ t('auth.new_device_verify.cancel', 'Cancel and return to login') }}
+                    </a>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/oidc/mfa.js"></script>
+
+<!-- Configuration for OTP input -->
+<script id="___OIDC_MFA_STATE___" type="application/json">
+{
+  "config": {
+    "codeLength": 6,
+    "autoFocus": true,
+    "enablePaste": true,
+    "enableBackspace": true,
+    "shakeAnimationDuration": 500,
+    "timerDuration": {% if method == 'email' %}600{% else %}300{% endif %},
+    "enableCustomDialog": true,
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "verify": {{ t('auth.verify', 'Verify') | tojson | safe }},
+    "verifying": {{ t('auth.verifying', 'Verifying...') | tojson | safe }},
+    "resendCode": {{ t('auth.resendCode', 'Resend code') | tojson | safe }},
+    "codeRequired": {{ t('auth.codeRequired', 'Please enter the verification code') | tojson | safe }},
+    "codeInvalid": {{ t('auth.codeInvalid', 'Please enter a valid 6-digit verification code') | tojson | safe }},
+    "codeResent": {{ t('auth.codeResent', 'Code Resent') | tojson | safe }},
+    "codeResentMessage": {{ t('auth.codeResentMessage', 'A new verification code has been sent to your email.') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

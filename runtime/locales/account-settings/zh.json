@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "设置导航",
+    "profile": "个人资料",
+    "preferences": "偏好设置",
+    "notifications": "通知",
+    "security": "安全",
+    "recovery": "恢复",
+    "social": "社交账户"
+  },
+  "upload_widget": {
+    "title": "正在上传个人资料图片...",
+    "description": "请稍候，我们正在处理您的图片"
+  },
+  "profile": {
+    "title": "个人资料信息",
+    "picture_label": "个人资料图片",
+    "upload_description": "上传新的个人资料图片。点击您的照片或上传按钮选择图片。",
+    "upload_button": "上传图片",
+    "remove_button": "移除",
+    "first_name": "名",
+    "last_name": "姓",
+    "save_button": "保存更改",
+    "remove_confirm": "您确定要移除个人资料图片吗？",
+    "remove_error": "无法移除头像。请重试。",
+    "file_read_error": "读取所选文件时出错。请重试。"
+  },
+  "preferences": {
+    "title": "偏好设置",
+    "language": {
+      "title": "语言偏好",
+      "current": "当前设置为：",
+      "none": "未设置语言偏好。默认为英语。",
+      "update_error": "无法更新语言偏好。请重试。"
+    },
+    "timezone": {
+      "title": "时区",
+      "current": "当前设置为：",
+      "update_error": "无法更新时区。请重试。"
+    }
+  },
+  "email_verification": {
+    "title": "电子邮件验证",
+    "primary_email": "主要电子邮件地址",
+    "verified": "已验证",
+    "unverified": "未验证",
+    "verify_prompt": "请验证您的电子邮件地址以使用所有功能",
+    "resend_button": "重发验证邮件",
+    "verify_manually": "手动验证"
+  },
+  "phone_verification": {
+    "title": "电话验证",
+    "primary_phone": "主要电话号码",
+    "verified": "已验证",
+    "unverified": "未验证"
+  },
+  "add_email": {
+    "title": "添加电子邮件地址",
+    "description": "添加电子邮件地址可使您的账户更易恢复。您可以使用它来重置密码和恢复账户。",
+    "button": "添加邮箱"
+  },
+  "security": {
+    "title": "安全",
+    "mfa": {
+      "active_title": "双重认证已激活",
+      "active_description": "您的账户受2FA保护",
+      "active_description_multi": "您已启用 {{count}} 种验证方式。",
+      "totp_title": "身份验证器应用",
+      "email_title": "邮箱验证",
+      "webauthn_title": "通行密钥",
+      "passkeys_count": "个通行密钥已注册",
+      "manage_passkeys": "管理通行密钥",
+      "using": "使用中：{{method}}",
+      "using_email": "使用中：电子邮件",
+      "using_app": "使用中：身份验证应用",
+      "using_method": "使用中：{{method}}",
+      "inactive_title": "双重认证未启用",
+      "inactive_description": "启用2FA以增加账户安全性",
+      "title": "双重认证",
+      "enabled_status": "已启用",
+      "enabled_text": "您的账户受2FA保护",
+      "disabled_status": "未启用",
+      "disabled_text": "增加账户安全性",
+      "disable_button": "禁用2FA",
+      "enable_app_button": "通过应用启用",
+      "enable_email_button": "通过邮件启用",
+      "already_enabled_message": "您的账户已启用双重认证。",
+      "method_already_enabled": "此MFA方式已启用。",
+      "not_enabled_message": "您的账户未启用双重认证。",
+      "disable_confirm": "您确定要禁用双重认证吗？这将降低您账户的安全性。",
+      "enable_app_confirm": "启用认证器应用 2FA？",
+      "enable_email_confirm": "启用基于电子邮件的 2FA？"
+    },
+    "password": {
+      "set_title": "设置密码",
+      "set_description": "您目前仅启用了社交登录。设置密码以确保即使取消关联社交账户，您也能随时访问您的账户。",
+      "current_label": "当前密码",
+      "new_label": "新密码",
+      "confirm_label": "确认新密码",
+      "requirements_title": "密码要求",
+      "min_length": "至少{{count}}个字符",
+      "uppercase": "至少一个大写字母",
+      "lowercase": "至少一个小写字母",
+      "number": "至少一个数字",
+      "symbol": "至少一个特殊字符",
+      "mismatch_error": "密码不匹配",
+      "mismatch": "密码不匹配",
+      "change_success": "密码更改成功",
+      "change_button": "更改密码"
+    }
+  },
+  "recovery": {
+    "title": "账户恢复",
+    "active_title": "账户恢复已激活",
+    "active_description": "您已设置备份方法以帮助恢复账户访问权限",
+    "inactive_title": "账户恢复未设置",
+    "inactive_description": "设置备份方法，以便在丢失密码或2FA设备时恢复账户访问权限",
+    "dashboard": {
+      "backup_codes": "备份代码",
+      "backup_email": "备份电子邮件",
+      "security_questions": "安全问题",
+      "codes_available": "个代码可用",
+      "not_configured": "未配置",
+      "configured": "已配置",
+      "verified": "已验证",
+      "score_title": "恢复状态",
+      "score_critical": "未配置恢复方法。请至少设置一种方法。",
+      "score_warning": "仅配置了一种恢复方法。添加更多以获得更好的保护。",
+      "score_low_codes": "备份代码即将用尽。请尽快生成新代码。",
+      "score_good": "您的账户恢复选项配置良好。",
+      "methods_active": "种方法活跃"
+    },
+    "backup_codes": {
+      "title": "备份代码",
+      "setup_status": "已设置",
+      "low_status": "即将用尽",
+      "depleted_status": "已用尽",
+      "depleted_text": "请立即生成新代码",
+      "remaining": "剩余{{count}}个代码",
+      "created_at": "创建于：{{date}}",
+      "not_setup_status": "未设置",
+      "not_setup_text": "创建一次性代码以恢复账户访问权限",
+      "codes_created_badge": "代码已创建",
+      "create_new_button": "创建新代码",
+      "remove_button": "移除代码",
+      "create_button": "创建代码",
+      "confirm_new": "您确定要创建新的备份代码吗？这将使所有当前代码失效。",
+      "confirm_remove": "您确定要移除备份代码吗？",
+      "view_once_tooltip": "出于安全考虑，备份代码只能查看一次"
+    },
+    "backup_email": {
+      "title": "备份电子邮件",
+      "verified_status": "已验证",
+      "verified_text": "可用于恢复账户访问权限",
+      "pending_status": "等待验证",
+      "pending_text": "检查邮件以获取验证链接",
+      "not_setup_status": "未设置",
+      "not_setup_text": "添加备份电子邮件以恢复账户访问权限",
+      "remove_button": "移除电子邮件",
+      "add_button": "添加电子邮件",
+      "placeholder": "输入备份电子邮件地址",
+      "confirm_remove": "您确定要移除备份电子邮件吗？",
+      "cancel_button": "取消验证",
+      "cancel_confirm": "您确定要取消待处理的电子邮件验证吗？"
+    },
+    "security_questions": {
+      "title": "安全问题",
+      "setup_status": "已设置",
+      "setup_text": "已配置 {{count}} 个问题",
+      "not_setup_status": "未设置",
+      "not_setup_text": "添加安全问题以恢复您的账户",
+      "setup_button": "设置问题",
+      "update_button": "更新问题",
+      "remove_button": "移除问题",
+      "confirm_remove": "您确定要移除安全问题吗？",
+      "last_used": "上次使用：{{date}}"
+    }
+  },
+  "social": {
+    "title": "关联账户",
+    "description": "关联您的社交账户以实现快速安全登录。您可以关联多个账户并在此处管理。",
+    "connected": "已关联",
+    "not_connected": "未关联",
+    "unlink_button": "取消关联",
+    "set_password_first": "先设置密码",
+    "set_password_first_tooltip": "您必须先设置密码才能断开唯一的社交账户",
+    "connect_button": "关联",
+    "no_accounts": "无可用社交账户",
+    "confirm_unlink": "您确定要取消关联{{provider}}账户吗？"
+  },
+  "notifications": {
+    "title": "通知偏好设置",
+    "preferred_channel": "首选通知方式",
+    "preferred_channel_desc": "选择您希望接收通知的方式",
+    "channel_email": "电子邮件",
+    "channel_sms": "短信",
+    "channel_auto": "自动",
+    "security_alerts": "安全警报",
+    "security_alerts_desc": "接收有关可疑登录尝试和安全事件的通知",
+    "new_session_alerts": "新会话警报",
+    "new_session_alerts_desc": "当新设备登录您的账户时接收通知",
+    "marketing": "产品更新",
+    "marketing_desc": "接收有关新功能和改进的更新",
+    "save_button": "保存偏好"
+  }
+}

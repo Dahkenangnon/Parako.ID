@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "인증 방법 선택",
+    "subtitle": "본인 확인 방법을 선택하세요",
+    "totp_title": "인증 앱",
+    "totp_description": "인증 앱의 코드 사용",
+    "email_title": "이메일 인증",
+    "email_description": "이메일로 코드 받기",
+    "webauthn_title": "패스키",
+    "webauthn_description": "보안 키 또는 생체 인증 사용"
+  },
+  "mfa_no_fallback": {
+    "title": "로그인을 완료할 수 없습니다",
+    "description": "현재 기기로 본인 확인을 할 수 없습니다.",
+    "explanation": "이중 인증이 활성화되어 있지만 이 기기에서 사용할 수 있는 대체 인증 방법이 없습니다. 계정에 접근하려면 계정 복구 절차를 진행해야 합니다.",
+    "recover_account": "계정 복구",
+    "cancel": "취소하고 로그인으로 돌아가기"
+  },
+  "account_recovery_page": {
+    "title": "계정 복구"
+  },
+  "recovery_method_select": {
+    "title": "복구 방법 선택"
+  },
+  "recovery_backup_codes": {
+    "title": "복구 - 백업 코드"
+  },
+  "recovery_sms": {
+    "title": "SMS 복구"
+  },
+  "recovery_verify_code": {
+    "title": "복구 - 코드 확인"
+  },
+  "recovery_secondary_email": {
+    "title": "복구 - 보조 이메일"
+  },
+  "recovery_security_questions": {
+    "title": "보안 질문"
+  },
+  "account_recovery": "계정 복구",
+  "enableMFA": "이중 인증 활성화",
+  "enablingMFA": "활성화 중...",
+  "codeRequired": "인증 코드를 입력해 주세요",
+  "codeInvalid": "유효한 6자리 인증 코드를 입력해 주세요",
+  "errorRecovery": "세션이 만료되었습니다. 다시 시도해 주세요.",
+  "setup_mfa": {
+    "title": "이중 인증 활성화",
+    "description": "인증 앱(예: Google Authenticator, Authy)으로 QR 코드를 스캔한 후 아래에 코드를 입력하여 확인하세요.",
+    "code_label": "인증 코드",
+    "submit_button": "확인 및 활성화"
+  },
+  "setup_mfa_email": {
+    "title": "이메일 확인",
+    "description": "6자리 코드를 다음 주소로 보냈습니다:",
+    "enter_code": "아래에 입력하여 이메일 기반 2FA를 활성화하세요.",
+    "code_expires": "코드는 10분 후에 만료됩니다."
+  },
+  "recovery_codes": {
+    "title": "이중 인증이 활성화되었습니다",
+    "subtitle": "복구 코드를 안전한 곳에 저장하세요",
+    "and_others": "외 {{count}}개",
+    "download": "다운로드",
+    "copy": "복사",
+    "acknowledge": "복구 코드를 안전한 곳에 저장했습니다",
+    "continue": "계속",
+    "file_title": "복구 코드",
+    "file_generated": "생성일",
+    "file_important": "이 코드를 안전하게 보관하세요. 각 코드는 한 번만 사용할 수 있습니다.",
+    "file_total": "총 코드 수",
+    "downloaded": "다운로드 완료!",
+    "copied": "복사 완료!",
+    "copy_failed": "코드 복사에 실패했습니다"
+  }
+}

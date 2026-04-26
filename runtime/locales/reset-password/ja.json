@@ -1,0 +1,14 @@
+{
+  "title": "新しいパスワードを作成",
+  "placeholder": {
+    "new_password": "新しいパスワードを入力",
+    "confirm_password": "新しいパスワードを確認"
+  },
+  "button": {
+    "reset_password": "パスワードをリセット",
+    "resetting": "パスワードをリセット中..."
+  },
+  "link": {
+    "remember_password": "パスワードを覚えていますか？"
+  }
+}

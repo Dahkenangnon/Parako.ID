@@ -1,0 +1,24 @@
+{
+  "title": "Connectez-vous pour continuer",
+  "choose_method": "Choisissez une méthode pour continuer",
+  "social_divider": "ou",
+  "social_divider_dynamic": "ou",
+  "tab": {
+    "email": "E-mail",
+    "phone": "Téléphone"
+  },
+  "link": {
+    "reset_password": "Réinitialiser le mot de passe",
+    "recover_account": "Récupérer le compte",
+    "create_account": "Créez-en un maintenant",
+    "sign_up_prompt": "Vous n'avez pas de compte?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Se connecter avec {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

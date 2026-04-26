@@ -1,0 +1,138 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Customize the application identity for your organization: name, description, and language preferences.
+            </p>
+        </div>
+    </div>
+
+    <form id="config-form" method="POST" action="/admin/configuration/{{ section }}" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <!-- Basic Information -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+                Basic Information
+            </h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <label for="title" class="block text-sm font-medium text-foreground mb-2">Application Title</label>
+                    <input type="text" id="title" name="title"
+                           value="{{ config.title or '' }}"
+                           placeholder="My Application"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">The display name shown to users. Leave empty to use the default.</p>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <label for="description" class="block text-sm font-medium text-foreground mb-2">Description</label>
+                    <textarea id="description" name="description" rows="3"
+                              placeholder="A brief description of your application"
+                              class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.description or '' }}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">Brief description displayed in meta tags and UI.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Localization -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="globe" class="h-5 w-5 mr-2 text-primary"></i>
+                Localization
+            </h2>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    <label for="locales_default" class="block text-sm font-medium text-foreground mb-2">Default Language</label>
+                    <select id="locales_default" name="locales[default]"
+                            class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="">Use default</option>
+                        {% set currentDefault = config.locales.default if config.locales else '' %}
+                        <option value="en" {% if currentDefault == 'en' %}selected{% endif %}>English</option>
+                        <option value="fr" {% if currentDefault == 'fr' %}selected{% endif %}>Français</option>
+                        <option value="es" {% if currentDefault == 'es' %}selected{% endif %}>Español</option>
+                        <option value="de" {% if currentDefault == 'de' %}selected{% endif %}>Deutsch</option>
+                        <option value="it" {% if currentDefault == 'it' %}selected{% endif %}>Italiano</option>
+                        <option value="pt" {% if currentDefault == 'pt' %}selected{% endif %}>Português</option>
+                        <option value="ru" {% if currentDefault == 'ru' %}selected{% endif %}>Русский</option>
+                        <option value="zh" {% if currentDefault == 'zh' %}selected{% endif %}>中文</option>
+                        <option value="ja" {% if currentDefault == 'ja' %}selected{% endif %}>日本語</option>
+                        <option value="ko" {% if currentDefault == 'ko' %}selected{% endif %}>한국어</option>
+                    </select>
+                    <p class="mt-1 text-xs text-muted-foreground">The default language when no user preference is set.</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Available Languages</label>
+                    <input type="hidden" name="locales[available]" value="">
+                    <div class="bg-muted/30 border border-border p-4 max-h-48 overflow-y-auto">
+                        {% set allLocaleCodes = ['en', 'fr', 'es', 'de', 'it', 'pt', 'ru', 'zh', 'ja', 'ko'] %}
+                        {% set availableLocales = config.locales.available if config.locales and config.locales.available else allLocaleCodes %}
+                        {% for item in [
+                            {code: 'en', label: 'English'},
+                            {code: 'fr', label: 'Français'},
+                            {code: 'es', label: 'Español'},
+                            {code: 'de', label: 'Deutsch'},
+                            {code: 'it', label: 'Italiano'},
+                            {code: 'pt', label: 'Português'},
+                            {code: 'ru', label: 'Русский'},
+                            {code: 'zh', label: '中文'},
+                            {code: 'ja', label: '日本語'},
+                            {code: 'ko', label: '한국어'}
+                        ] %}
+                        <div class="flex items-center space-x-2 mb-2">
+                            <input type="checkbox" id="locale_{{ item.code }}" name="locales[available][]"
+                                   value="{{ item.code }}"
+                                   {% if item.code in availableLocales %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="locale_{{ item.code }}" class="text-sm text-foreground">{{ item.label }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <p class="mt-2 text-xs text-muted-foreground">Languages available to users of your organization.</p>
+                </div>
+            </div>
+        </div>
+
+    </form>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border">
+        <div>
+            {% if hasOverride %}
+            <form method="POST" action="/admin/configuration/{{ section }}/reset"
+                  onsubmit="return confirm('Are you sure you want to reset Application configuration to defaults? This cannot be undone.')">
+                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Reset to Defaults
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="flex gap-3">
+            <a href="/admin/configuration"
+               class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back
+            </a>
+            <button type="submit" form="config-form"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}

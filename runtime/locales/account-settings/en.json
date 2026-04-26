@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "Settings navigation",
+    "profile": "Profile",
+    "preferences": "Preferences",
+    "notifications": "Notifications",
+    "security": "Security",
+    "recovery": "Recovery",
+    "social": "Social Accounts"
+  },
+  "upload_widget": {
+    "title": "Uploading Profile Picture...",
+    "description": "Please wait while we process your image"
+  },
+  "profile": {
+    "title": "Profile Information",
+    "picture_label": "Profile Picture",
+    "upload_description": "Upload a new profile picture. Click on your photo or the upload button to choose an image.",
+    "upload_button": "Upload Image",
+    "remove_button": "Remove",
+    "first_name": "First Name",
+    "last_name": "Last Name",
+    "save_button": "Save Changes",
+    "remove_confirm": "Are you sure you want to remove your profile picture?",
+    "remove_error": "Failed to remove avatar. Please try again.",
+    "file_read_error": "Error reading the selected file. Please try again."
+  },
+  "preferences": {
+    "title": "Preferences",
+    "language": {
+      "title": "Language Preference",
+      "current": "Currently set to:",
+      "none": "No language preference set. Defaulting to English.",
+      "update_error": "Failed to update language preference. Please try again."
+    },
+    "timezone": {
+      "title": "Timezone",
+      "current": "Currently set to:",
+      "update_error": "Failed to update timezone. Please try again."
+    }
+  },
+  "email_verification": {
+    "title": "Email Verification",
+    "primary_email": "Primary Email Address",
+    "verified": "Verified",
+    "unverified": "Unverified",
+    "verify_prompt": "Please verify your email address to use all features",
+    "resend_button": "Resend Verification Email",
+    "verify_manually": "Verify Manually"
+  },
+  "phone_verification": {
+    "title": "Phone Verification",
+    "primary_phone": "Primary Phone Number",
+    "verified": "Verified",
+    "unverified": "Unverified"
+  },
+  "add_email": {
+    "title": "Add an Email Address",
+    "description": "Adding an email address makes your account more recoverable. You can use it for password resets and account recovery.",
+    "button": "Add Email"
+  },
+  "security": {
+    "title": "Security",
+    "mfa": {
+      "active_title": "Two-Factor Authentication is Active",
+      "active_description": "Your account is protected with 2FA",
+      "active_description_multi": "You have {{count}} verification method(s) enabled.",
+      "using": "Using: {{method}}",
+      "using_email": "Using: Email",
+      "using_app": "Using: Authenticator App",
+      "using_method": "Using: {{method}}",
+      "inactive_title": "Two-Factor Authentication is Not Enabled",
+      "inactive_description": "Enable 2FA to add extra security to your account",
+      "title": "Two-Factor Authentication",
+      "totp_title": "Authenticator App",
+      "email_title": "Email Verification",
+      "webauthn_title": "Passkeys",
+      "passkeys_count": "passkey(s) registered",
+      "manage_passkeys": "Manage Passkeys",
+      "enabled_status": "Enabled",
+      "enabled_text": "Your account is protected with 2FA",
+      "disabled_status": "Not enabled",
+      "disabled_text": "Add extra security to your account",
+      "disable_button": "Disable 2FA",
+      "enable_app_button": "Enable via App",
+      "enable_email_button": "Enable via Email",
+      "already_enabled_message": "Two-factor authentication is already enabled for your account.",
+      "method_already_enabled": "This MFA method is already enabled.",
+      "not_enabled_message": "Two-factor authentication is not enabled for your account.",
+      "disable_confirm": "Are you sure you want to disable two-factor authentication? This will make your account less secure.",
+      "enable_app_confirm": "Enable authenticator app 2FA?",
+      "enable_email_confirm": "Enable email-based 2FA?"
+    },
+    "password": {
+      "set_title": "Set Your Password",
+      "set_description": "You currently only have social login enabled. Set a password to ensure you can always access your account, even if you unlink your social accounts.",
+      "current_label": "Current Password",
+      "new_label": "New Password",
+      "confirm_label": "Confirm New Password",
+      "requirements_title": "Password Requirements",
+      "min_length": "At least {{count}} characters long",
+      "uppercase": "At least one uppercase letter",
+      "lowercase": "At least one lowercase letter",
+      "number": "At least one number",
+      "symbol": "At least one special character",
+      "mismatch_error": "Passwords do not match",
+      "mismatch": "Passwords do not match",
+      "change_success": "Password changed successfully",
+      "change_button": "Change Password"
+    }
+  },
+  "recovery": {
+    "title": "Account Recovery",
+    "active_title": "Account Recovery is Active",
+    "active_description": "You have backup methods set up to help you get back into your account",
+    "inactive_title": "Account Recovery is Not Set Up",
+    "inactive_description": "Set up backup methods to help you get back into your account if you lose your password or 2FA device",
+    "dashboard": {
+      "backup_codes": "Backup Codes",
+      "backup_email": "Backup Email",
+      "security_questions": "Security Questions",
+      "codes_available": "codes available",
+      "not_configured": "Not configured",
+      "configured": "Configured",
+      "verified": "Verified",
+      "score_title": "Recovery Status",
+      "score_critical": "No recovery methods configured. Set up at least one method to protect your account.",
+      "score_warning": "Only one recovery method configured. Add more for better protection.",
+      "score_low_codes": "Backup codes running low. Generate new codes soon.",
+      "score_good": "Your account recovery options are well configured.",
+      "methods_active": "methods active"
+    },
+    "backup_codes": {
+      "title": "Backup Codes",
+      "setup_status": "Set up",
+      "low_status": "Running low",
+      "depleted_status": "Depleted",
+      "depleted_text": "Generate new codes immediately",
+      "remaining": "{{count}} codes remaining",
+      "created_at": "Created: {{date}}",
+      "not_setup_status": "Not set up",
+      "not_setup_text": "Create one-time codes to get back into your account",
+      "codes_created_badge": "Codes Created",
+      "create_new_button": "Create New Codes",
+      "remove_button": "Remove Codes",
+      "create_button": "Create Codes",
+      "confirm_new": "Are you sure you want to create new backup codes? This will make all current codes unusable.",
+      "confirm_remove": "Are you sure you want to remove backup codes?",
+      "view_once_tooltip": "Backup codes can only be viewed once for security"
+    },
+    "backup_email": {
+      "title": "Backup Email",
+      "verified_status": "Verified",
+      "verified_text": "Can be used to get back into your account",
+      "pending_status": "Pending verification",
+      "pending_text": "Check your email for verification link",
+      "not_setup_status": "Not set up",
+      "not_setup_text": "Add a backup email to get back into your account",
+      "remove_button": "Remove Email",
+      "add_button": "Add Email",
+      "placeholder": "Enter backup email address",
+      "confirm_remove": "Are you sure you want to remove the backup email?",
+      "cancel_button": "Cancel Verification",
+      "cancel_confirm": "Are you sure you want to cancel the pending email verification?"
+    },
+    "security_questions": {
+      "title": "Security Questions",
+      "setup_status": "Set up",
+      "setup_text": "{{count}} questions configured",
+      "not_setup_status": "Not set up",
+      "not_setup_text": "Add security questions to help recover your account",
+      "setup_button": "Set Up Questions",
+      "update_button": "Update Questions",
+      "remove_button": "Remove Questions",
+      "confirm_remove": "Are you sure you want to remove your security questions?",
+      "last_used": "Last used: {{date}}"
+    }
+  },
+  "social": {
+    "title": "Connected Accounts",
+    "description": "Connect your social accounts for quick and secure sign-in. You can connect multiple accounts and manage them from here.",
+    "connected": "Connected",
+    "not_connected": "Not connected",
+    "unlink_button": "Unlink",
+    "set_password_first": "Set Password First",
+    "set_password_first_tooltip": "You must set a password before disconnecting your only social account",
+    "connect_button": "Connect",
+    "no_accounts": "No social accounts available",
+    "confirm_unlink": "Are you sure you want to unlink your {{provider}} account?"
+  },
+  "notifications": {
+    "title": "Notification Preferences",
+    "preferred_channel": "Preferred notification method",
+    "preferred_channel_desc": "Choose how you want to receive notifications",
+    "channel_email": "Email",
+    "channel_sms": "SMS",
+    "channel_auto": "Automatic",
+    "security_alerts": "Security alerts",
+    "security_alerts_desc": "Get notified about suspicious login attempts and security events",
+    "new_session_alerts": "New session alerts",
+    "new_session_alerts_desc": "Get notified when a new device signs in to your account",
+    "marketing": "Product updates",
+    "marketing_desc": "Receive updates about new features and improvements",
+    "save_button": "Save Preferences"
+  }
+}

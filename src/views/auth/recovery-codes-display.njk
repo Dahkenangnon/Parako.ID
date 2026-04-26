@@ -1,0 +1,81 @@
+{% extends "layouts/auth-layout.njk" %}
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Header -->
+                <div class="text-center mb-6">
+                    <h1 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">{{ t('auth.recovery_codes.title') }}</h1>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mt-2">{{ t('auth.recovery_codes.subtitle') }}</p>
+                </div>
+
+                <!-- Recovery Codes Preview -->
+                <div class="mb-6">
+                    <div id="recovery-codes-data" class="flex flex-col gap-2 font-mono text-sm">
+                        {% for code in backup_codes %}
+                        <div class="{% if loop.index > 2 %}hidden{% endif %} bg-gray-50 dark:bg-muted px-4 py-2.5 border border-gray-200 dark:border-border text-center text-gray-900 dark:text-foreground tracking-wider" data-code="{{ code | e }}">
+                            {{ code }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if backup_codes | length > 2 %}
+                    <p class="text-xs text-muted-foreground text-center mt-2">{{ t('auth.recovery_codes.and_others', {count: backup_codes | length - 2}) }}</p>
+                    {% endif %}
+                </div>
+
+                <!-- Actions -->
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <button type="button" id="download-codes"
+                        class="flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium border border-gray-200 dark:border-border text-gray-700 dark:text-foreground bg-white dark:bg-card hover:bg-gray-50 dark:hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                        <svg class="h-4 w-4 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        {{ t('auth.recovery_codes.download') }}
+                    </button>
+                    <button type="button" id="copy-all-codes"
+                        class="flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium border border-gray-200 dark:border-border text-gray-700 dark:text-foreground bg-white dark:bg-card hover:bg-gray-50 dark:hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                        <svg class="h-4 w-4 opacity-60" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                        </svg>
+                        {{ t('auth.recovery_codes.copy') }}
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div class="border-t border-gray-200 dark:border-border mb-6"></div>
+
+                <!-- Acknowledgment Form -->
+                <form action="{{ continueUrl or routes.accountFull.settings_security }}" method="GET">
+                    <div class="flex items-start mb-5">
+                        <input type="checkbox" id="acknowledge" name="acknowledge" required
+                            class="mt-0.5 h-4 w-4 border-gray-300 dark:border-border text-primary focus:ring-primary" />
+                        <label for="acknowledge" class="ml-2.5 text-sm text-gray-600 dark:text-muted-foreground leading-snug">
+                            {{ t('auth.recovery_codes.acknowledge') }}
+                        </label>
+                    </div>
+                    <button type="submit" class="auth-btn w-full h-11 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        {{ t('auth.recovery_codes.continue') }}
+                    </button>
+                </form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script id="___RECOVERY_CODES_STATE___" type="application/json">
+{
+    "translations": {
+        "fileContentTitle": {{ t('auth.recovery_codes.file_title') | tojson | safe }},
+        "fileContentGenerated": {{ t('auth.recovery_codes.file_generated') | tojson | safe }},
+        "fileContentImportant": {{ t('auth.recovery_codes.file_important') | tojson | safe }},
+        "fileContentTotalCodes": {{ t('auth.recovery_codes.file_total') | tojson | safe }},
+        "downloadedFeedback": {{ t('auth.recovery_codes.downloaded') | tojson | safe }},
+        "copiedFeedback": {{ t('auth.recovery_codes.copied') | tojson | safe }},
+        "copyFailedError": {{ t('auth.recovery_codes.copy_failed') | tojson | safe }}
+    },
+    "debug": {{ (app.env === 'development') | tojson }}
+}
+</script>
+<script src="/js/account/recovery-codes.js"></script>
+{% endblock %}

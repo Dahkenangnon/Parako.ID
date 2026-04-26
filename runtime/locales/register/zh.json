@@ -1,0 +1,33 @@
+{
+  "title": "创建您的账户",
+  "social_divider": "或",
+  "social_divider_dynamic": "或",
+  "tab": {
+    "email": "电子邮件",
+    "phone": "电话"
+  },
+  "field": {
+    "full_name": "全名"
+  },
+  "placeholder": {
+    "email_prefilled": "已提供电子邮件 - 如需要可以更改"
+  },
+  "password_strength": {
+    "missing_requirements": "缺少要求："
+  },
+  "terms": {
+    "agreement_prefix": "创建账户即表示您同意",
+    "and": "和",
+    "company_suffix": "的"
+  },
+  "hint": {
+    "contact_required": "账户恢复至少需要一种联系方式（电子邮件或电话）。"
+  },
+  "label": {
+    "required": "必填",
+    "optional": "选填"
+  },
+  "social": {
+    "sign_up_with": "使用{{provider}}注册"
+  }
+}

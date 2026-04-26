@@ -1,0 +1,132 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-2">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <p class="auth-heading text-gray-800 dark:text-foreground text-center mb-4 text-base font-semibold">
+                    Confirm Device
+                </p>
+
+                <p class="text-gray-600 dark:text-muted-foreground text-center mb-4 text-sm">
+                    Verify the device requesting access
+                </p>
+
+                <!-- Client Information -->
+                <div class="bg-primary dark:bg-primary border-2 border-primary dark:border-primary p-3 mb-3 rounded-md">
+                    <div class="flex items-center">
+                        <div class="bg-white dark:bg-card p-1.5 mr-2 rounded-md">
+                            <svg class="h-4 w-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-xs font-semibold text-white dark:text-white">{{ clientName or 'Application' }}</p>
+                            <p class="text-2xs text-white dark:text-white">wants to access your account</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Information -->
+                <div class="bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border p-3 mb-3 rounded-md">
+                    <div class="flex items-center mb-2">
+                        <svg class="h-4 w-4 text-gray-600 dark:text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                        <h3 class="text-xs font-semibold text-gray-900 dark:text-foreground">Device Information</h3>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-2xs">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 dark:text-muted-foreground">Type:</span>
+                            <span class="font-medium text-gray-900 dark:text-foreground">{{ deviceInfo.deviceType or 'Unknown' }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 dark:text-muted-foreground">Browser:</span>
+                            <span class="font-medium text-gray-900 dark:text-foreground">{{ deviceInfo.browser or 'Unknown' }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 dark:text-muted-foreground">IP:</span>
+                            <span class="font-medium text-gray-900 dark:text-foreground">{{ deviceInfo.ip or 'Unknown' }}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 dark:text-muted-foreground">Time:</span>
+                            <span class="font-medium text-gray-900 dark:text-foreground">{{ formatTime(deviceInfo.timestamp) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+
+                <!-- Security Warning -->
+                <div class="bg-amber-50 dark:bg-card border-2 border-amber-200 dark:border-amber-700 p-3 mb-4 rounded-md">
+                    <div class="flex items-start">
+                        <svg class="h-4 w-4 text-amber-600 dark:text-amber-500 mr-2 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                        </svg>
+                        <div>
+                            <p class="text-xs font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                                Security Notice
+                            </p>
+                            <p class="text-2xs text-amber-700 dark:text-amber-300">
+                                Only authorize if you recognize this device and initiated this login attempt.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Confirmation Form  -->
+                {{ form | safe }}
+
+                <!-- Action Buttons -->
+                <div class="flex gap-2">
+                    <button type="submit" form="op.deviceConfirmForm" class="auth-btn flex-1 h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white flex items-center justify-center text-sm rounded-md">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                        Continue
+                    </button>
+                    <button type="submit" form="op.deviceConfirmForm" name="abort" value="yes" class="flex-1 h-9 bg-red-600 text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white flex items-center justify-center text-sm rounded-md">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                        Abort
+                    </button>
+                </div>
+
+                <!-- Help Text -->
+                <div class="text-center mt-3">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <strong>Need help?</strong> Make sure the code matches and you're authorizing the correct application.
+                    </p>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/oidc/device-flow-confirm-code.js"></script>
+
+<!-- Complete configuration and translations for DeviceFlowConfirmCodeManager -->
+<script id="___OIDC_DEVICE_FLOW_CONFIRM_CODE_STATE___" type="application/json">
+{
+  "config": {
+    "enableLoadingStates": true,
+    "enableErrorRecovery": true,
+    "errorRecoveryTimeout": 10000,
+    "enableBackButtonPrevention": true,
+    "enableFormResubmissionPrevention": true,
+    "enableDoubleSubmissionPrevention": true,
+    "submissionTimeout": 10000,
+    "debug": {{ (app.env === 'development') | tojson }}
+  },
+  "translations": {
+    "continue": {{ t('auth.continue', 'Continue') | tojson | safe }},
+    "processing": {{ t('auth.processing', 'Processing...') | tojson | safe }},
+    "abort": {{ t('auth.abort', 'Abort') | tojson | safe }},
+    "aborting": {{ t('auth.aborting', 'Aborting...') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

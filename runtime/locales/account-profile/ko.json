@@ -1,0 +1,43 @@
+{
+  "last_activity": "마지막 활동",
+  "security_account": {
+    "title": "보안 및 계정",
+    "two_factor_auth": "2단계 인증",
+    "enabled": "활성화됨",
+    "not_enabled": "비활성화됨",
+    "manage": "관리",
+    "enable": "활성화",
+    "active_sessions": "활성 세션",
+    "devices": "{{count}}개 기기",
+    "view": "보기",
+    "connected_apps": "연결된 앱",
+    "apps_count": "{{count}}개 앱",
+    "language": "언어",
+    "language_default": "영어 (기본값)",
+    "change": "변경",
+    "not_available": "사용 불가"
+  },
+  "quick_actions": {
+    "title": "빠른 작업",
+    "edit_profile": {
+      "title": "프로필 편집",
+      "description": "개인 정보 업데이트"
+    },
+    "security_settings": {
+      "title": "보안 설정",
+      "description": "비밀번호 및 2FA 관리"
+    },
+    "view_sessions": {
+      "title": "세션 보기",
+      "description": "활성 기기 관리"
+    },
+    "connected_applications": {
+      "title": "연결된 애플리케이션",
+      "description": "앱 권한 관리"
+    },
+    "sign_out": {
+      "title": "로그아웃",
+      "description": "계정에서 로그아웃"
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "認証方法を選択",
+    "subtitle": "本人確認の方法を選択してください",
+    "totp_title": "認証アプリ",
+    "totp_description": "認証アプリのコードを使用",
+    "email_title": "メール認証",
+    "email_description": "メールでコードを受け取る",
+    "webauthn_title": "パスキー",
+    "webauthn_description": "セキュリティキーまたは生体認証を使用"
+  },
+  "mfa_no_fallback": {
+    "title": "ログインを完了できません",
+    "description": "お使いのデバイスでは本人確認ができません。",
+    "explanation": "二要素認証が有効になっていますが、このデバイスでは代替の認証方法が利用できません。アカウントにアクセスするには、アカウント回復プロセスを行う必要があります。",
+    "recover_account": "アカウントを回復",
+    "cancel": "キャンセルしてログインに戻る"
+  },
+  "account_recovery_page": {
+    "title": "アカウントの回復"
+  },
+  "recovery_method_select": {
+    "title": "回復方法を選択"
+  },
+  "recovery_backup_codes": {
+    "title": "回復 - バックアップコード"
+  },
+  "recovery_sms": {
+    "title": "SMS回復"
+  },
+  "recovery_verify_code": {
+    "title": "回復 - コード確認"
+  },
+  "recovery_secondary_email": {
+    "title": "回復 - セカンダリメール"
+  },
+  "recovery_security_questions": {
+    "title": "セキュリティの質問"
+  },
+  "account_recovery": "アカウントの回復",
+  "enableMFA": "二要素認証を有効にする",
+  "enablingMFA": "有効化中...",
+  "codeRequired": "確認コードを入力してください",
+  "codeInvalid": "有効な6桁の確認コードを入力してください",
+  "errorRecovery": "セッションがタイムアウトしました。もう一度お試しください。",
+  "setup_mfa": {
+    "title": "二要素認証を有効にする",
+    "description": "認証アプリ（Google Authenticator、Authyなど）でQRコードをスキャンし、以下にコードを入力して確認してください。",
+    "code_label": "確認コード",
+    "submit_button": "確認して有効にする"
+  },
+  "setup_mfa_email": {
+    "title": "メールアドレスを確認",
+    "description": "6桁のコードを送信しました：",
+    "enter_code": "以下に入力してメールベースの2FAを有効にしてください。",
+    "code_expires": "コードは10分で期限切れになります。"
+  },
+  "recovery_codes": {
+    "title": "二要素認証が有効になりました",
+    "subtitle": "リカバリーコードを安全な場所に保存してください",
+    "and_others": "他{{count}}件",
+    "download": "ダウンロード",
+    "copy": "コピー",
+    "acknowledge": "リカバリーコードを安全な場所に保存しました",
+    "continue": "続行",
+    "file_title": "リカバリーコード",
+    "file_generated": "生成日",
+    "file_important": "これらのコードを安全に保管してください。各コードは一度だけ使用できます。",
+    "file_total": "コード総数",
+    "downloaded": "ダウンロード完了！",
+    "copied": "コピー完了！",
+    "copy_failed": "コードのコピーに失敗しました"
+  }
+}

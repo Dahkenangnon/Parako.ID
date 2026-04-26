@@ -1,0 +1,144 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-2">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+                <p class="auth-heading text-gray-800 dark:text-foreground text-center mb-2 text-base font-semibold">
+                    Complete Your Registration
+                </p>
+                <p class="text-gray-600 dark:text-muted-foreground text-center mb-6 text-sm">
+                    We could not retrieve your contact information from your chosen provider. Please provide the required details below to complete your registration.
+                </p>
+
+
+
+                <!-- Contact Info Form -->
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    <!-- Email Field -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 dark:text-muted-foreground mb-2">
+                            Email Address <span class="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="email"
+                            id="email"
+                            name="email"
+                            required
+                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-border placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-2 focus:border-primary bg-gray-50 dark:bg-muted text-gray-900 dark:text-foreground rounded-md"
+                            placeholder="Enter your email address"
+                            value="{{ providerData.email or '' }}"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
+                            We'll use this to send you important account updates
+                        </p>
+                    </div>
+
+                    <!-- Phone Number Field -->
+                    <div>
+                        <label for="phone_number" class="block text-sm font-medium text-gray-700 dark:text-muted-foreground mb-2">
+                            Phone Number <span class="text-gray-400">(optional)</span>
+                        </label>
+                        <input
+                            type="tel"
+                            id="phone_number"
+                            name="phone_number"
+                            class="w-full px-3 py-2 border-2 border-gray-200 dark:border-border placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-2 focus:border-primary bg-gray-50 dark:bg-muted text-gray-900 dark:text-foreground rounded-md"
+                            placeholder="Enter your phone number"
+                            value="{{ providerData.phone_number or '' }}"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
+                            Include country code (e.g., +1 555 123 4567)
+                        </p>
+                    </div>
+
+                    <!-- Provider Info -->
+                    <div class="bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border p-3 rounded-md">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                {% if provider === 'google' %}
+                                    <svg class="h-5 w-5" viewBox="0 0 24 24">
+                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                                    </svg>
+                                {% elif provider === 'github' %}
+                                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V19c0 .27.16.59.67.5C17.14 18.16 20 14.42 20 10A10 10 0 0010 0z" clip-rule="evenodd"/>
+                                    </svg>
+                                {% elif provider === 'facebook' %}
+                                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                    </svg>
+                                {% else %}
+                                    <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                                    </svg>
+                                {% endif %}
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-gray-700 dark:text-muted-foreground">
+                                    Connected with {{ provider | title }}
+                                </p>
+                                <p class="text-xs text-gray-500 dark:text-muted-foreground">
+                                    {{ providerData.name or providerData.given_name or 'User' }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button
+                        type="submit"
+                        class="auth-btn w-full flex justify-center py-2 px-4 border-2 border-transparent text-sm font-medium text-white bg-primary hover:bg-primary/90 focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white rounded-md"
+                    >
+                        Complete Registration
+                    </button>
+                </form>
+
+                <!-- Back to Registration -->
+                <div class="mt-6 text-center">
+                    <a
+                        href="{{ routes.authFull.register }}"
+                        class="text-sm text-primary hover:text-primary/80"
+                    >
+                        ← Back to Registration
+                    </a>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/social-contact-info.js"></script>
+
+<!-- Complete configuration and translations for SocialContactInfoManager -->
+<script id="___SOCIAL_CONTACT_INFO_STATE___" type="application/json">
+{
+  "config": {
+    "requireEmail": {{ (contactChannels.email.required if contactChannels and contactChannels.email else true) | tojson }},
+    "requirePhone": {{ (contactChannels.phone.required if contactChannels and contactChannels.phone else false) | tojson }},
+    "allowBoth": {{ (contactChannels.email.enabled and contactChannels.phone.enabled if contactChannels and contactChannels.email and contactChannels.phone else true) | tojson }},
+    "emailPlaceholder": {{ t('auth.emailPlaceholder', 'Enter your email address') | tojson | safe }},
+    "phonePlaceholder": {{ t('auth.phonePlaceholder', 'Enter your phone number') | tojson | safe }},
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "completeRegistration": {{ t('auth.completeRegistration', 'Complete Registration') | tojson | safe }},
+    "completingRegistration": {{ t('auth.completingRegistration', 'Completing registration...') | tojson | safe }},
+    "emailRequired": {{ t('auth.emailRequired', 'Please enter your email address') | tojson | safe }},
+    "phoneRequired": {{ t('auth.phoneRequired', 'Please enter your phone number') | tojson | safe }},
+    "emailInvalid": {{ t('auth.emailInvalid', 'Please enter a valid email address') | tojson | safe }},
+    "phoneInvalid": {{ t('auth.phoneInvalid', 'Please enter a valid phone number') | tojson | safe }},
+    "contactInfoRequired": {{ t('auth.contactInfoRequired', 'Please provide either an email address or phone number') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,14 @@
+{
+  "title": "Crea una nuova password",
+  "placeholder": {
+    "new_password": "Inserisci nuova password",
+    "confirm_password": "Conferma nuova password"
+  },
+  "button": {
+    "reset_password": "Reimposta password",
+    "resetting": "Reimpostazione password..."
+  },
+  "link": {
+    "remember_password": "Ricordi la tua password?"
+  }
+}

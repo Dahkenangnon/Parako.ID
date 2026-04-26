@@ -1,0 +1,33 @@
+{
+  "title": "Crea il tuo account",
+  "social_divider": "oppure",
+  "social_divider_dynamic": "oppure",
+  "tab": {
+    "email": "Email",
+    "phone": "Telefono"
+  },
+  "field": {
+    "full_name": "Nome completo"
+  },
+  "placeholder": {
+    "email_prefilled": "Email fornita - puoi modificarla se necessario"
+  },
+  "password_strength": {
+    "missing_requirements": "Requisiti mancanti:"
+  },
+  "terms": {
+    "agreement_prefix": "Creando un account, accetti i",
+    "and": "e l'",
+    "company_suffix": "di"
+  },
+  "hint": {
+    "contact_required": "È richiesto almeno un metodo di contatto (email o telefono) per il recupero dell'account."
+  },
+  "label": {
+    "required": "Obbligatorio",
+    "optional": "Facoltativo"
+  },
+  "social": {
+    "sign_up_with": "Registrati con {{provider}}"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "title": "Verbundene Apps",
+  "description": "Dies sind die Apps und Websites, denen Sie die Erlaubnis erteilt haben, Ihr Konto zu verwenden. Sie können den Zugriff für jede App entfernen, die Sie nicht mehr verwenden oder der Sie nicht mehr vertrauen.",
+  "remove_all_access": "Alle Zugriffe entfernen",
+  "remove_access": "Zugriff entfernen",
+  "last_used": "Zuletzt verwendet",
+  "connected": "Verbunden",
+  "what_app_can_do": "Was diese App tun kann",
+  "empty_state": {
+    "title": "Keine verbundenen Apps",
+    "description": "Sie haben noch keine Apps oder Websites mit Ihrem Konto verbunden."
+  },
+  "confirm": {
+    "remove_all": "Sind Sie sicher, dass Sie den Zugriff für alle verbundenen Apps entfernen möchten? Dies kann nicht rückgängig gemacht werden.",
+    "remove_single": "Sind Sie sicher, dass Sie den Zugriff für \"{{appName}}\" entfernen möchten? Dies kann nicht rückgängig gemacht werden."
+  }
+}

@@ -1,0 +1,242 @@
+{% extends "layouts/admin-layout.njk" %}
+{% block admin_content %}
+  <div
+    class="max-w-[1600px] mx-auto space-y-8">
+    <!-- Header Section -->
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center justify-center mb-4">
+        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-24 w-auto" />
+        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-24 w-auto" />
+      </div>
+        <h1 class="text-3xl font-bold text-foreground mb-2">Your Parako.ID Control Panel</h1>
+        <p class="text-sm text-muted-foreground">Manage system settings, users and oidc/oauth2 applications</p>
+      </div>
+      <!-- Quick Access & Resources Section -->
+      <div
+        class="space-y-6">
+        <!-- Quick Access Cards -->
+        <div>
+          <h2 class="text-lg font-semibold text-foreground mb-4">Quick Access</h2>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Add User -->
+            <a href="/admin/users/new" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="user-plus" class="h-5 w-5 text-primary"></i>
+                </div>
+                <span class="font-semibold text-foreground">Add User</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Create new account</p>
+            </a>
+            <!-- New Application -->
+            <a href="/admin/oidc-clients/create" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="plus" class="h-5 w-5 text-primary"></i>
+                </div>
+                <span class="font-semibold text-foreground">Connect App</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Add application</p>
+            </a>
+            <!-- Settings / Configuration -->
+            {% if isPlatformTenant %}
+            <a href="/admin/settings" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="settings" class="h-5 w-5 text-primary"></i>
+                </div>
+                <span class="font-semibold text-foreground">Settings</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Configure system</p>
+            </a>
+            {% else %}
+            <a href="/admin/configuration" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="sliders-horizontal" class="h-5 w-5 text-primary"></i>
+                </div>
+                <span class="font-semibold text-foreground">Configuration</span>
+              </div>
+              <p class="text-sm text-muted-foreground">Tenant settings</p>
+            </a>
+            {% endif %}
+            <!-- Documentation -->
+            <a
+              href="https://docs.parako.id"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-2">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="book-open" class="h-5 w-5 text-primary"></i>
+                </div>
+                <span class="font-semibold text-foreground">Documentation</span>
+                <i data-lucide="external-link" class="h-4 w-4 text-muted-foreground ml-1"></i>
+              </div>
+              <p class="text-sm text-muted-foreground">Help & guides</p>
+            </a>
+          </div>
+        </div>
+        <!-- System Metrics -->
+        <div>
+          <h2 class="text-lg font-semibold text-foreground mb-4">Overview</h2>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Users Metric -->
+            <a href="/admin/users" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="users" class="h-5 w-5 text-primary"></i>
+                </div>
+                <div>
+                  <div class="text-2xl font-bold text-foreground">{{ stats.users.total | default(0) }}</div>
+                  <div class="text-sm text-muted-foreground">Users</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                <span>{{ stats.users.active | default(0) }} active</span>
+                <span>{{ stats.users.admins | default(0) }} admin</span>
+              </div>
+            </a>
+            <!-- Applications Metric -->
+            <a href="/admin/oidc-clients" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
+                </div>
+                <div>
+                  <div class="text-2xl font-bold text-foreground">{{ stats.oidc.clients | default(0) }}</div>
+                  <div class="text-sm text-muted-foreground">Applications</div>
+                </div>
+              </div>
+              <div class="text-xs text-muted-foreground">Connected apps</div>
+            </a>
+            <!-- Active Sessions Metric -->
+            <a href="/admin/sessions" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="user-check" class="h-5 w-5 text-primary"></i>
+                </div>
+                <div>
+                  <div class="text-2xl font-bold text-foreground">{{ stats.sessions.active | default(0) }}</div>
+                  <div class="text-sm text-muted-foreground">Online</div>
+                </div>
+              </div>
+              <div class="text-xs text-muted-foreground">{{ stats.grants.active | default(0) }} active</div>
+            </a>
+            <!-- Activity Metric -->
+            <a href="/admin/activities" class="bg-background border border-border p-4 hover:border-primary">
+              <div class="flex items-center gap-3 mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="activity" class="h-5 w-5 text-primary"></i>
+                </div>
+                <div>
+                  <div class="text-2xl font-bold text-foreground">{{ stats.activities.today | default(0) }}</div>
+                  <div class="text-sm text-muted-foreground">Logins Today</div>
+                </div>
+              </div>
+              <div class="text-xs text-muted-foreground">Activity log</div>
+            </a>
+          </div>
+        </div>
+      </div>
+      <!-- Management Sections -->
+      <div
+        class="space-y-6">
+        <!-- User & System Management -->
+        <div>
+          <h2 class="text-lg font-semibold text-foreground mb-4">Management</h2>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Users Management -->
+            <a href="/admin/users" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="users" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Users</h3>
+              <p class="text-sm text-muted-foreground mb-3">Manage accounts & roles</p>
+              <div class="text-xs text-muted-foreground">
+                {{ stats.users.total | default(0) }} total ·
+                {{ stats.users.admins | default(0) }} admins
+              </div>
+            </a>
+            <!-- Applications -->
+            <a href="/admin/oidc-clients" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Applications</h3>
+              <p class="text-sm text-muted-foreground mb-3">Connected apps</p>
+              <div class="text-xs text-muted-foreground">
+                {{ stats.oidc.clients | default(0) }} apps
+              </div>
+            </a>
+            <!-- Active Sessions -->
+            <a href="/admin/sessions" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="users-round" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Sessions</h3>
+              <p class="text-sm text-muted-foreground mb-3">Active users</p>
+              <div class="text-xs text-muted-foreground">
+                {{ stats.sessions.active | default(0) }} online
+              </div>
+            </a>
+            <!-- Permissions -->
+            <a href="/admin/user-grants" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="shield-check" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Authorizations</h3>
+              <p class="text-sm text-muted-foreground mb-3">App access control</p>
+              <div class="text-xs text-muted-foreground">
+                {{ stats.grants.active | default(0) }} active
+              </div>
+            </a>
+          </div>
+        </div>
+        <!-- System & Data -->
+        <div>
+          <h2 class="text-lg font-semibold text-foreground mb-4">System</h2>
+          <div
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Data Management -->
+            <a href="/admin/data-transfer" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="database" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Data</h3>
+              <p class="text-sm text-muted-foreground mb-3">Import & export</p>
+              <div class="text-xs text-muted-foreground">
+                Backup tools
+              </div>
+            </a>
+            <!-- Activity Logs -->
+            <a href="/admin/activities" class="bg-card border border-border p-5 hover:border-primary">
+              <div class="flex items-center justify-between mb-3">
+                <div class="p-2 bg-primary/10">
+                  <i data-lucide="file-text" class="h-5 w-5 text-primary"></i>
+                </div>
+              </div>
+              <h3 class="font-semibold text-foreground mb-2">Activity</h3>
+              <p class="text-sm text-muted-foreground mb-3">Logs & events</p>
+              <div class="text-xs text-muted-foreground">
+                {{ stats.activities.today | default(0) }} today
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endblock %}

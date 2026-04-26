@@ -1,0 +1,12 @@
+{
+  "title": "Reimposta la tua password",
+  "description": "Ti invieremo un link per reimpostare la tua password.",
+  "button": {
+    "send_reset_link": "Invia link",
+    "sending": "Invio in corso..."
+  },
+  "link": {
+    "need_more_help": "Hai bisogno di aiuto?",
+    "remember_password": "Ricordi la tua password?"
+  }
+}

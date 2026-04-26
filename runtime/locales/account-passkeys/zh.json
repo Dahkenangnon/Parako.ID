@@ -1,0 +1,53 @@
+{
+  "title": "通行密钥",
+  "description": "管理您的通行密钥以实现安全的无密码身份验证。通行密钥使用生物识别技术（如 Touch ID 或 Face ID）或安全密钥（如 YubiKey）。",
+  "add_button": "添加通行密钥",
+  "loading": "正在加载通行密钥...",
+  "adding": "正在添加...",
+  "empty": {
+    "title": "暂无通行密钥",
+    "description": "添加通行密钥以使用 Touch ID、Face ID、Windows Hello 或安全密钥进行更快、更安全的登录。"
+  },
+  "info": {
+    "title": "关于通行密钥",
+    "point1": "通行密钥比密码更安全，可防止网络钓鱼",
+    "point2": "它们可在与您的 iCloud、Google 或 Microsoft 帐户同步的设备上使用",
+    "point3": "您可以为不同设备设置多个通行密钥"
+  },
+  "actions": {
+    "rename": "重命名",
+    "delete": "删除"
+  },
+  "rename": {
+    "title": "重命名通行密钥",
+    "label": "通行密钥名称",
+    "placeholder": "例如：MacBook Touch ID",
+    "confirm": "保存",
+    "cancel": "取消"
+  },
+  "delete": {
+    "confirmTitle": "删除通行密钥",
+    "confirmMessage": "您确定要删除此通行密钥吗？此操作无法撤消。"
+  },
+  "success": {
+    "added": "通行密钥添加成功",
+    "renamed": "通行密钥重命名成功",
+    "deleted": "通行密钥删除成功"
+  },
+  "error": {
+    "loading": "无法加载通行密钥",
+    "adding": "无法添加通行密钥",
+    "renaming": "无法重命名通行密钥",
+    "deleting": "无法删除通行密钥",
+    "notSupported": "您的浏览器不支持通行密钥"
+  },
+  "lastUsed": "上次使用",
+  "neverUsed": "从未使用",
+  "createdOn": "创建于",
+  "deviceType": {
+    "platform": "平台验证器",
+    "crossPlatform": "安全密钥",
+    "singleDevice": "单设备",
+    "multiDevice": "跨设备同步"
+  }
+}

@@ -1,0 +1,158 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        {% set activePage = "deployment" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure deployment environment, server settings, and cookie policies</p>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/settings/deployment" class="space-y-6" id="deployment-form">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Application Settings -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                        <i data-lucide="settings" class="h-5 w-5 mr-2 text-primary"></i>
+                        Application Settings
+                    </h2>
+
+                    <div class="space-y-6">
+                        <!-- Deployment Configuration -->
+                        <div>
+                            <h3 class="text-base font-medium text-foreground mb-4">Deployment Configuration</h3>
+                            <div class="grid grid-cols-1 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-foreground mb-2">Application URL</label>
+                                    <div class="px-3 py-2 bg-muted/50 border border-border text-foreground text-sm font-mono">
+                                        {{ config.url or 'Not configured' }}
+                                    </div>
+                                    <p class="mt-1 text-xs text-muted-foreground">Set via environment configuration or database settings. Change requires server restart.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Server Configuration -->
+                        <div>
+                            <h3 class="text-base font-medium text-foreground mb-4">Server Configuration</h3>
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="server.allowed_origins" class="block text-sm font-medium text-foreground mb-2">Allowed Origins</label>
+                                    <input type="text" id="server.allowed_origins" name="server[allowed_origins]"
+                                           value="{{ config.server and config.server.allowed_origins or '' }}" required
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of allowed origins (e.g., https://yourdomain.com, https://app.yourdomain.com)</p>
+                                </div>
+                                <div class="flex items-start space-x-2 pt-8">
+                                    <input type="checkbox" id="server.proxy"
+                                           name="server[proxy]"
+                                           {% if config.server and config.server.proxy %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2 mt-0.5">
+                                    <div>
+                                        <label for="server.proxy" class="text-sm font-medium text-foreground">
+                                            Behind Proxy
+                                        </label>
+                                        <p class="text-xs text-muted-foreground mt-1">Enable when behind a reverse proxy (nginx, Apache, etc.)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cookie Configuration -->
+                        <div>
+                            <h3 class="text-base font-medium text-foreground mb-4">Cookie Configuration</h3>
+                            <div class="space-y-6">
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div>
+                                        <label for="cookies.defaults.maxAge" class="block text-sm font-medium text-foreground mb-2">Max Age (milliseconds)</label>
+                                        <input type="number" id="cookies.defaults.maxAge"
+                                               name="cookies[defaults][maxAge]"
+                                               value="{{ config.cookies and config.cookies.defaults and config.cookies.defaults.maxAge or 31536000000 }}" required
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Default cookie expiration time in milliseconds (31536000000 = 1 year)</p>
+                                    </div>
+                                    <div>
+                                        <label for="cookies.defaults.path" class="block text-sm font-medium text-foreground mb-2">Path</label>
+                                        <input type="text" id="cookies.defaults.path"
+                                               name="cookies[defaults][path]"
+                                               value="{{ config.cookies and config.cookies.defaults and config.cookies.defaults.path or '/' }}" required
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Default path for cookies (usually "/" for site-wide cookies)</p>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div>
+                                        <label for="cookies.defaults.sameSite" class="block text-sm font-medium text-foreground mb-2">SameSite Policy</label>
+                                        <select id="cookies.defaults.sameSite" name="cookies[defaults][sameSite]" required
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="">Select SameSite policy</option>
+                                            <option value="strict" {% if config.cookies and config.cookies.defaults and config.cookies.defaults.sameSite == 'strict' %}selected{% endif %}>Strict</option>
+                                            <option value="lax" {% if config.cookies and config.cookies.defaults and config.cookies.defaults.sameSite == 'lax' %}selected{% endif %}>Lax</option>
+                                            <option value="none" {% if config.cookies and config.cookies.defaults and config.cookies.defaults.sameSite == 'none' %}selected{% endif %}>None</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Controls when cookies are sent with cross-site requests (Lax recommended for most cases)</p>
+                                    </div>
+                                    <div class="space-y-4">
+                                        <div class="flex items-center space-x-2">
+                                            <input type="checkbox" id="cookies.defaults.httpOnly"
+                                                   name="cookies[defaults][httpOnly]"
+                                                   {% if config.cookies and config.cookies.defaults and config.cookies.defaults.httpOnly %}checked{% endif %}
+                                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                            <label for="cookies.defaults.httpOnly" class="text-sm font-medium text-foreground">
+                                                HTTP Only
+                                            </label>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground">Prevents client-side JavaScript from accessing cookies (recommended for security)</p>
+
+                                        <div class="flex items-center space-x-2">
+                                            <input type="checkbox" id="cookies.defaults.secure"
+                                                   name="cookies[defaults][secure]"
+                                                   {% if config.cookies and config.cookies.defaults and config.cookies.defaults.secure %}checked{% endif %}
+                                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                            <label for="cookies.defaults.secure" class="text-sm font-medium text-foreground">
+                                                Secure
+                                            </label>
+                                        </div>
+                                        <p class="text-xs text-muted-foreground">Only send cookies over HTTPS connections (enable in production)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                    <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                        Cancel
+                    </a>
+                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                        Reset Form
+                    </button>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                        <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/deployment.js"></script>
+{% endblock %}

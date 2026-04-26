@@ -1,0 +1,159 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Application Info -->
+                <div class="flex items-center justify-center mb-4">
+                    <div class="bg-white dark:bg-card h-14 w-14 flex items-center justify-center border-2 border-gray-200 dark:border-border mr-3">
+                        <img src="{{ clientLogo or 'https://placehold.co/40X40?text=Parako.ID' }}" alt="{{ clientName }}" class="h-10 w-10 object-cover" />
+                    </div>
+                    <div class="flex flex-col">
+                        <h3 class="auth-heading text-base font-semibold text-gray-900 dark:text-foreground">{{ clientName or 'App Name' }}</h3>
+                        <p class="text-xs text-gray-500 dark:text-muted-foreground">Choose an account to continue</p>
+                    </div>
+                </div>
+
+                <!-- Account Selection List -->
+                <div class="space-y-3 mb-4">
+                    {% if accounts and accounts.length > 0 %}
+                        {% if interactionUid %}
+                            <!-- OIDC select_account form -->
+                            <form method="POST" action="{{ oidc.path }}/interaction/{{ interactionUid }}/select_account" class="space-y-3">
+                                <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+                                {% for account in accounts %}
+                                    <button type="submit" name="account_id" value="{{ account.id }}" class="block w-full">
+                                        <div class="flex items-center p-3 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border hover:bg-gray-100 dark:hover:bg-accent">
+                                            <div class="flex-shrink-0 mr-3">
+                                                {% if account.avatar %}
+                                                    <img class="h-10 w-10 object-cover" src="{{ account.avatar }}" alt="{{ account.name }}">
+                                                {% else %}
+                                                    <div class="h-10 w-10 bg-indigo-500 border-2 border-indigo-600 flex items-center justify-center">
+                                                        <span class="text-sm font-medium text-white">{{ account.initials or 'U' }}</span>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                            <div class="flex-1 min-w-0 text-left">
+                                                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ account.name }}</p>
+                                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ account.email }}</p>
+                                                {% if account.is_active %}
+                                                    <p class="text-xs text-indigo-600 dark:text-indigo-400">Currently signed in</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="flex-shrink-0 ml-2">
+                                                <svg class="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    </button>
+                                {% endfor %}
+                            </form>
+                        {% else %}
+                            <!-- Regular account selection links -->
+                            {% for account in accounts %}
+                                <a href="{{ routes.authFull.continue }}?account_id={{ account.id }}{% if interactionUid %}&interaction_uid={{ interactionUid }}{% endif %}" class="block">
+                                    <div class="flex items-center p-3 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border hover:bg-gray-100 dark:hover:bg-accent">
+                                        <div class="flex-shrink-0 mr-3">
+                                            {% if account.avatar %}
+                                                <img class="h-10 w-10 object-cover" src="{{ account.avatar }}" alt="{{ account.name }}">
+                                            {% else %}
+                                                <div class="h-10 w-10 bg-indigo-500 border-2 border-indigo-600 flex items-center justify-center">
+                                                    <span class="text-sm font-medium text-white">{{ account.initials or 'U' }}</span>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ account.name }}</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ account.email }}</p>
+                                            {% if account.is_active %}
+                                                <p class="text-xs text-indigo-600 dark:text-indigo-400">Currently signed in</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="flex-shrink-0 ml-2">
+                                            <svg class="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </a>
+                            {% endfor %}
+                        {% endif %}
+                    {% else %}
+                        <!-- No accounts available -->
+                        <div class="text-center py-8">
+                            <div class="text-gray-500 dark:text-muted-foreground">
+                                <svg class="mx-auto h-12 w-12 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                </svg>
+                                <p class="text-sm font-medium">No accounts available</p>
+                                <p class="text-xs mt-1">Please sign in to continue</p>
+                            </div>
+                            <div class="mt-4">
+                                {% if continueUrl %}
+                                    <a href="{{ routes.authFull.login }}?continue={{ continueUrl | urlencode }}&prompt=select_account" class="auth-btn inline-flex items-center px-4 py-2 bg-primary text-white text-sm font-medium border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                                        </svg>
+                                        Sign In
+                                    </a>
+                                {% else %}
+                                    <a href="{{routes.authFull.login}}" class="auth-btn inline-flex items-center px-4 py-2 bg-primary text-white text-sm font-medium border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                                        </svg>
+                                        Sign In
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <!-- Use Another Account Button - Only show when there are accounts available -->
+                {% if accounts and accounts.length > 0 %}
+                <div class="mb-2">
+                    {% if continueUrl %}
+                        <a href="{{ routes.authFull.login }}?continue={{ continueUrl | urlencode }}&prompt=select_account" class="flex items-center justify-center w-full h-10 bg-gray-100 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-medium hover:bg-gray-200 dark:hover:bg-accent focus:outline-none">
+                            <svg class="h-5 w-5 mr-2 text-gray-500 dark:text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                            <span>Use another account</span>
+                        </a>
+                    {% else %}
+                        <a href="{{ routes.authFull.login }}" class="flex items-center justify-center w-full h-10 bg-gray-100 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-medium hover:bg-gray-200 dark:hover:bg-accent focus:outline-none">
+                            <svg class="h-5 w-5 mr-2 text-gray-500 dark:text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                            <span>Use another account</span>
+                        </a>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Cancel Button -->
+                <div>
+                    {% if interactionUid %}
+                        <a href="{{ oidc.path }}/interaction/{{ interactionUid }}/abort" class="flex items-center justify-center w-full h-10 text-gray-600 dark:text-muted-foreground font-medium hover:text-gray-900 dark:hover:text-foreground focus:outline-none">
+                            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                            </svg>
+                            <span>Cancel</span>
+                        </a>
+                    {% else %}
+                        <button type="button" onclick="window.history.back()" class="flex items-center justify-center w-full h-10 text-gray-600 dark:text-muted-foreground font-medium hover:text-gray-900 dark:hover:text-foreground focus:outline-none">
+                            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                            </svg>
+                            <span>Cancel</span>
+                        </button>
+                    {% endif %}
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% endblock %}

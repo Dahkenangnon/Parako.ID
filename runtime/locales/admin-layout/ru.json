@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "toggle": "Переключить боковую панель",
+    "brand": "Админ",
+    "navigation": {
+      "dashboard": "Панель управления",
+      "users": "Пользователи",
+      "clients": "Клиенты",
+      "sessions": "Сеансы",
+      "grants": "Авторизации",
+      "activities": "Активность",
+      "settings": "Настройки",
+      "data": "Данные"
+    },
+    "footer": {
+      "logout": "Выйти",
+      "my_account": "Мой аккаунт"
+    }
+  },
+  "mobile": {
+    "close": "Закрыть",
+    "menu": "Меню"
+  },
+  "theme_language": {
+    "theme": "Тема",
+    "light": "Светлая",
+    "dark": "Тёмная",
+    "language": "Язык",
+    "settings": "Настройки темы и языка"
+  }
+}

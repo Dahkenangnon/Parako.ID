@@ -1,0 +1,36 @@
+{% extends "layouts/base.njk" %}
+
+{% block content %}
+<div class="relative z-10 flex flex-col items-center justify-center min-h-svh px-4 py-6">
+    <div class="w-full max-w-sm">
+
+        {# Auth card #}
+        <div class="bg-card border border-border rounded-lg p-5 sm:p-6">
+            {% block auth_content %}{% endblock %}
+        </div>
+
+        {# Copyright footer #}
+        {% if branding and branding.companyName %}
+        <div class="mt-4 flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+            <span>&copy;</span>
+            <span class="font-medium">{{ branding.companyName }}</span>
+        </div>
+        {% endif %}
+
+        {# Language switcher #}
+        {% if availableLocales and availableLocales.length > 1 %}
+        <div class="mt-3 flex justify-center">
+            <select
+                id="locale-switcher"
+                class="text-[10px] bg-transparent border-none text-muted-foreground cursor-pointer focus:outline-none"
+                onchange="if(this.value) window.location.href='?locale='+this.value"
+            >
+                {% for loc in availableLocales %}
+                <option value="{{ loc }}" {% if loc == userLocale %}selected{% endif %}>{{ loc | upper }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,14 @@
+{
+  "title": "Create a new password",
+  "placeholder": {
+    "new_password": "Enter new password",
+    "confirm_password": "Confirm new password"
+  },
+  "button": {
+    "reset_password": "Reset password",
+    "resetting": "Resetting password..."
+  },
+  "link": {
+    "remember_password": "Remember your password?"
+  }
+}

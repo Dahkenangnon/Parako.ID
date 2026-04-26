@@ -1,0 +1,33 @@
+{
+  "title": "Create your account",
+  "social_divider": "or",
+  "social_divider_dynamic": "or",
+  "tab": {
+    "email": "Email",
+    "phone": "Phone"
+  },
+  "field": {
+    "full_name": "Full name"
+  },
+  "placeholder": {
+    "email_prefilled": "Email provided - you can change it if needed"
+  },
+  "password_strength": {
+    "missing_requirements": "Missing requirements:"
+  },
+  "terms": {
+    "agreement_prefix": "By creating an account, you agree to the",
+    "and": "and",
+    "company_suffix": "of"
+  },
+  "hint": {
+    "contact_required": "At least one contact method (email or phone) is required for account recovery."
+  },
+  "label": {
+    "required": "Required",
+    "optional": "Optional"
+  },
+  "social": {
+    "sign_up_with": "Sign up with {{provider}}"
+  }
+}

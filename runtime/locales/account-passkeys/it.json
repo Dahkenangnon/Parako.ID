@@ -1,0 +1,53 @@
+{
+  "title": "Passkey",
+  "description": "Gestisci le tue passkey per un'autenticazione sicura senza password. Le passkey utilizzano biometria come Touch ID o Face ID, o chiavi di sicurezza come YubiKey.",
+  "add_button": "Aggiungi Passkey",
+  "loading": "Caricamento passkey...",
+  "adding": "Aggiunta in corso...",
+  "empty": {
+    "title": "Nessuna Passkey",
+    "description": "Aggiungi una passkey per utilizzare Touch ID, Face ID, Windows Hello o una chiave di sicurezza per un accesso più veloce e sicuro."
+  },
+  "info": {
+    "title": "Informazioni sulle Passkey",
+    "point1": "Le passkey sono più sicure delle password e proteggono dal phishing",
+    "point2": "Funzionano su dispositivi sincronizzati con il tuo account iCloud, Google o Microsoft",
+    "point3": "Puoi avere più passkey per dispositivi diversi"
+  },
+  "actions": {
+    "rename": "Rinomina",
+    "delete": "Elimina"
+  },
+  "rename": {
+    "title": "Rinomina Passkey",
+    "label": "Nome Passkey",
+    "placeholder": "es., MacBook Touch ID",
+    "confirm": "Salva",
+    "cancel": "Annulla"
+  },
+  "delete": {
+    "confirmTitle": "Elimina Passkey",
+    "confirmMessage": "Sei sicuro di voler eliminare questa passkey? Questa azione non può essere annullata."
+  },
+  "success": {
+    "added": "Passkey aggiunta con successo",
+    "renamed": "Passkey rinominata con successo",
+    "deleted": "Passkey eliminata con successo"
+  },
+  "error": {
+    "loading": "Impossibile caricare le passkey",
+    "adding": "Impossibile aggiungere la passkey",
+    "renaming": "Impossibile rinominare la passkey",
+    "deleting": "Impossibile eliminare la passkey",
+    "notSupported": "Le passkey non sono supportate dal tuo browser"
+  },
+  "lastUsed": "Ultimo utilizzo",
+  "neverUsed": "Mai utilizzata",
+  "createdOn": "Creata il",
+  "deviceType": {
+    "platform": "Autenticatore di piattaforma",
+    "crossPlatform": "Chiave di sicurezza",
+    "singleDevice": "Dispositivo singolo",
+    "multiDevice": "Sincronizzata su tutti i dispositivi"
+  }
+}

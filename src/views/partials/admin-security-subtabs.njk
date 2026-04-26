@@ -1,0 +1,30 @@
+{# Security Sub-Tab Navigation #}
+<div class="border-b border-border mb-6">
+    <nav class="flex space-x-4 overflow-x-auto -mb-px" aria-label="Security settings navigation">
+        <a href="/admin/settings/security"
+           class="{% if securityTab == 'authentication' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-1.5">
+            <i data-lucide="log-in" class="h-3.5 w-3.5"></i>
+            Authentication
+        </a>
+        <a href="/admin/settings/security/mfa"
+           class="{% if securityTab == 'mfa' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-1.5">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i>
+            MFA
+        </a>
+        <a href="/admin/settings/security/sessions"
+           class="{% if securityTab == 'sessions' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-1.5">
+            <i data-lucide="monitor" class="h-3.5 w-3.5"></i>
+            Sessions
+        </a>
+        <a href="/admin/settings/security/protection"
+           class="{% if securityTab == 'protection' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-1.5">
+            <i data-lucide="shield" class="h-3.5 w-3.5"></i>
+            Protection
+        </a>
+        <a href="/admin/settings/security/secrets"
+           class="{% if securityTab == 'secrets' %}text-orange-600 dark:text-orange-400 border-orange-500{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-2.5 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-1.5">
+            <i data-lucide="key" class="h-3.5 w-3.5"></i>
+            Secrets
+        </a>
+    </nav>
+</div>

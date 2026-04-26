@@ -1,0 +1,339 @@
+{% extends "layouts/account-layout.njk" %}
+{% block account_content %}
+<div class="space-y-6">
+    <!-- Back to My Account Link -->
+    <a href="{{ routes.accountFull.dashboard }}" class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+        {{ t('common.back_to_my_account', 'Back to My Account') }}
+    </a>
+
+    <!-- Header Section -->
+    <div class="mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+                <h2 class="text-lg font-semibold text-foreground mb-2 flex items-center">
+                    <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                    </svg>
+                    {{ t('account-sessions.title') }}
+                </h2>
+                <p class="text-sm text-muted-foreground max-w-3xl">
+                    {{ t('account-sessions.description') }}
+                </p>
+            </div>
+            {% if otherSessions and otherSessions.length > 0 %}
+                <form method="post" action="{{ routes.accountFull.logout_all_other_sessions }}" class="w-full sm:w-auto">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <input type="hidden" name="currentSessionId" value="{{ currentSession.id if currentSession else '' }}">
+                    <button
+                        type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive/30 text-sm font-medium
+                            text-destructive bg-background hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring transition-colors
+                            w-full sm:w-auto confirm-action"
+                        data-confirm-title="Sign Out All Sessions"
+                        data-confirm-message="{{ t('account-sessions.sign_out_all.confirm') }}"
+                        data-confirm-variant="warning">
+                        <svg class="h-4 w-4 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        <span class="hidden sm:inline">{{ t('account-sessions.sign_out_all.button') }}</span>
+                        <span class="sm:hidden">{{ t('account-sessions.sign_out_all.button_short') }}</span>
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Unified Sessions Container -->
+    <div class="bg-card border border-border overflow-hidden">
+        <!-- Desktop Table View (hidden on mobile) -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.device_location') }}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.ip_address') }}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.started') }}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.last_active') }}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.status') }}
+                        </th>
+                        <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            {{ t('account-sessions.table.action') }}
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-background divide-y divide-border">
+                    <!-- Current Session Row (highlighted) -->
+                    {% if currentSession %}
+                        <tr class="bg-primary/5 border-l-4 border-primary">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="flex-shrink-0 mr-3">
+                                        <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824
+                                                    10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-foreground">{{ currentSession.device or t('account-sessions.unknown.device') }}</div>
+                                        <div class="text-xs text-muted-foreground">{{ currentSession.location or t('account-sessions.unknown.location') }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-foreground font-mono">{{ currentSession.ip or t('account-sessions.unknown.general') }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-foreground">{{ currentSession.startTime or t('account-sessions.unknown.general') }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-foreground">{{ currentSession.lastActive or t('account-sessions.unknown.general') }}</div>
+                                <div class="text-xs text-muted-foreground">{{ currentSession.lastActiveLabel }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="flex flex-col gap-1">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                        <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4"></path>
+                                        </svg>
+                                        {{ t('account-sessions.status.current') }}
+                                    </span>
+                                    <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium
+                                        {% if currentSession.sessionType == 'express' %}bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20{% else %}bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20{% endif %}">
+                                        {% if currentSession.sessionType == 'express' %}Direct Login{% else %}OIDC{% endif %}
+                                    </span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <span class="text-muted-foreground italic">{{ t('account-sessions.status.this_device') }}</span>
+                            </td>
+                        </tr>
+                    {% endif %}
+                    <!-- Other Sessions Rows -->
+                    {% if otherSessions and otherSessions.length > 0 %}
+                        {% for session in otherSessions %}
+                            <tr class="hover:bg-muted/30 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 mr-3">
+                                            <svg class="h-5 w-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm font-medium text-foreground">{{ session.device or t('account-sessions.unknown.device') }}</div>
+                                            <div class="text-xs text-muted-foreground">{{ session.location or t('account-sessions.unknown.location') }}</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-foreground font-mono">{{ session.ip or t('account-sessions.unknown.general') }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-foreground">{{ session.startTime or t('account-sessions.unknown.general') }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-foreground">{{ session.lastActive or t('account-sessions.unknown.general') }}</div>
+                                    <div class="text-xs text-muted-foreground">{{ session.lastActiveLabel }}</div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex flex-col gap-1">
+                                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary border border-secondary/20">
+                                            {{ t('account-sessions.status.active') }}
+                                        </span>
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium
+                                            {% if session.sessionType == 'express' %}bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20{% else %}bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20{% endif %}">
+                                            {% if session.sessionType == 'express' %}Direct Login{% else %}OIDC{% endif %}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <form method="post" action="{{ routes.accountFull.logout_session }}" class="inline">
+                                        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                        <input type="hidden" name="sessionId" value="{{ session.id }}">
+                                        <input type="hidden" name="sessionType" value="{{ session.sessionType }}">
+                                        <button
+                                            type="submit"
+                                            class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-xs font-medium text-destructive
+                                                bg-background hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring transition-colors confirm-action"
+                                            data-confirm-title="Sign Out Session"
+                                            data-confirm-message="{{ t('account-sessions.action.confirm_sign_out') }}"
+                                            data-confirm-variant="warning">
+                                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                                            </svg>
+                                            {{ t('account-sessions.action.sign_out') }}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+            <!-- No other sessions message (in table) -->
+            {% if not otherSessions or otherSessions.length == 0 %}
+                {% if currentSession %}
+                    <div class="p-8 text-center border-t border-border">
+                        <svg class="h-12 w-12 text-muted-foreground mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                        </svg>
+                        <h4 class="text-sm font-medium text-foreground mb-1">{{ t('account-sessions.empty_state.title') }}</h4>
+                        <p class="text-sm text-muted-foreground">{{ t('account-sessions.empty_state.description') }}</p>
+                    </div>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        <!-- Mobile Card View (visible on mobile only) -->
+        <div class="md:hidden divide-y divide-border">
+            <!-- Current Session Card (highlighted) -->
+            {% if currentSession %}
+                <div class="p-4 bg-primary/5 border-l-4 border-primary">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <svg class="h-5 w-5 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824
+                                        10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                            </svg>
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary border border-primary/20">
+                                {{ t('account-sessions.status.current') }}
+                            </span>
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium
+                                {% if currentSession.sessionType == 'express' %}bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20{% else %}bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20{% endif %}">
+                                {% if currentSession.sessionType == 'express' %}Direct Login{% else %}OIDC{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        <div>
+                            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.device') }}</p>
+                            <p class="text-sm text-foreground">{{ currentSession.device or t('account-sessions.unknown.device') }}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.location') }}</p>
+                            <p class="text-sm text-foreground">{{ currentSession.location or t('account-sessions.unknown.location') }}</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.ip_address') }}</p>
+                                <p class="text-xs text-foreground font-mono break-all">{{ currentSession.ip or t('account-sessions.unknown.general') }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.started') }}</p>
+                                <p class="text-xs text-foreground">{{ currentSession.startTime or t('account-sessions.unknown.general') }}</p>
+                            </div>
+                        </div>
+                        {% if currentSession.lastActive %}
+                            <div>
+                                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ currentSession.lastActiveLabel or t('account-sessions.mobile_labels.last_active') }}</p>
+                                <p class="text-sm text-foreground">{{ currentSession.lastActive }}</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+            <!-- Other Sessions Cards -->
+            {% if otherSessions and otherSessions.length > 0 %}
+                {% for session in otherSessions %}
+                    <div class="p-4 hover:bg-muted/30 transition-colors">
+                        <div class="flex items-start justify-between mb-3">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <svg class="h-5 w-5 text-muted-foreground flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                </svg>
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-secondary/10 text-secondary border border-secondary/20">
+                                    {{ t('account-sessions.status.active') }}
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium
+                                    {% if session.sessionType == 'express' %}bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20{% else %}bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20{% endif %}">
+                                    {% if session.sessionType == 'express' %}Direct Login{% else %}OIDC{% endif %}
+                                </span>
+                            </div>
+                            <form method="post" action="{{ routes.accountFull.logout_session }}">
+                                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                <input type="hidden" name="sessionId" value="{{ session.id }}">
+                                <input type="hidden" name="sessionType" value="{{ session.sessionType }}">
+                                <button
+                                    type="submit"
+                                    class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-xs font-medium text-destructive
+                                        bg-background hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring transition-colors confirm-action"
+                                    data-confirm-title="Sign Out Session"
+                                    data-confirm-message="{{ t('account-sessions.action.confirm_sign_out') }}"
+                                    data-confirm-variant="warning">
+                                    <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                                    </svg>
+                                    {{ t('account-sessions.action.sign_out') }}
+                                </button>
+                            </form>
+                        </div>
+                        <div class="space-y-3">
+                            <div>
+                                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.device') }}</p>
+                                <p class="text-sm text-foreground">{{ session.device or t('account-sessions.unknown.device') }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.location') }}</p>
+                                <p class="text-sm text-foreground">{{ session.location or t('account-sessions.unknown.location') }}</p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.ip_address') }}</p>
+                                    <p class="text-xs text-foreground font-mono break-all">{{ session.ip or t('account-sessions.unknown.general') }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ t('account-sessions.mobile_labels.started') }}</p>
+                                    <p class="text-xs text-foreground">{{ session.startTime or t('account-sessions.unknown.general') }}</p>
+                                </div>
+                            </div>
+                            {% if session.lastActive %}
+                                <div>
+                                    <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">{{ session.lastActiveLabel or t('account-sessions.mobile_labels.last_active') }}</p>
+                                    <p class="text-sm text-foreground">{{ session.lastActive }}</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+            <!-- No other sessions message (in mobile view) -->
+            {% if (not otherSessions or otherSessions.length == 0) and currentSession %}
+                <div class="p-8 text-center">
+                    <svg class="h-12 w-12 text-muted-foreground mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                    </svg>
+                    <h4 class="text-sm font-medium text-foreground mb-1">{{ t('account-sessions.empty_state.title') }}</h4>
+                    <p class="text-sm text-muted-foreground">{{ t('account-sessions.empty_state.description') }}</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/account/sessions.js"></script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{
+  "title": "Authentification à deux facteurs activée !",
+  "subtitle": "Configurons maintenant des options de récupération afin que vous puissiez toujours accéder à votre compte, même si vous perdez l'accès à votre {{method}}.",
+  "method_email": "e-mail",
+  "method_app": "application d'authentification",
+  "setup_recovery": {
+    "title": "Configurer la récupération de compte",
+    "description": "Nous allons créer des codes de secours pour votre compte et éventuellement configurer une adresse e-mail de secours."
+  },
+  "backup_codes": {
+    "title": "Codes de secours (Requis)",
+    "description": "Nous allons créer des codes de secours que vous pourrez utiliser pour récupérer l'accès à votre compte si vous perdez l'accès à votre {{method}}. Chaque code ne peut être utilisé qu'une seule fois.",
+    "method_email_account": "compte e-mail"
+  },
+  "backup_email": {
+    "label": "E-mail de secours (Facultatif)",
+    "placeholder": "Entrez l'adresse e-mail de secours (facultatif)",
+    "help_text": "Si fourni, vous recevrez un e-mail de vérification pour confirmer cette adresse e-mail de secours."
+  },
+  "button": {
+    "submit": "Configurer les options de secours",
+    "skip": "Passer pour l'instant",
+    "continue": "Continuer vers les paramètres"
+  }
+}

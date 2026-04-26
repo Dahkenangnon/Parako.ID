@@ -1,0 +1,69 @@
+{
+  "subject": {
+    "welcome": "Willkommen bei {{appName}}",
+    "email_verification": "Bestätigen Sie Ihre E-Mail-Adresse",
+    "password_reset": "Setzen Sie Ihr Passwort zurück",
+    "password_changed": "Ihr Passwort wurde geändert",
+    "account_recovery": "Stellen Sie Ihr Konto wieder her",
+    "security_alert": "Sicherheitswarnung für Ihr Konto",
+    "new_session": "Neue Anmeldung bei Ihrem {{appName}}-Konto",
+    "new_device_otp": "{{appName}} - Neues Gerät verifizieren"
+  },
+  "greeting": { "hello": "Hallo {{name}}", "hello_user": "Hallo" },
+  "verification": {
+    "title": "Bestätigen Sie Ihre E-Mail-Adresse",
+    "body": "Vielen Dank für Ihre Registrierung! Bitte bestätigen Sie Ihre E-Mail-Adresse, indem Sie auf die Schaltfläche unten klicken.",
+    "button": "E-Mail bestätigen",
+    "expires": "Dieser Link läuft in {{hours}} Stunden ab.",
+    "ignore": "Wenn Sie kein Konto erstellt haben, können Sie diese E-Mail ignorieren."
+  },
+  "password_reset": {
+    "title": "Setzen Sie Ihr Passwort zurück",
+    "body": "Wir haben eine Anfrage zum Zurücksetzen Ihres Passworts erhalten. Klicken Sie auf die Schaltfläche unten, um ein neues Passwort zu erstellen.",
+    "button": "Passwort zurücksetzen",
+    "expires": "Dieser Link läuft in {{hours}} Stunden ab.",
+    "ignore": "Wenn Sie kein Passwort-Reset angefordert haben, können Sie diese E-Mail ignorieren."
+  },
+  "welcome": {
+    "title": "Willkommen bei {{appName}}",
+    "body_intro": "Vielen Dank, dass Sie sich {{appName}} angeschlossen haben! Wir freuen uns, Sie als Teil unserer Community zu haben.",
+    "body_description": "{{appDescription}}",
+    "features_intro": "Mit {{appName}} können Sie:",
+    "feature_1": "Ihre digitale Identität sicher verwalten",
+    "feature_2": "Den Zugriff auf Ihre Anwendungen kontrollieren",
+    "feature_3": "Ihre Konten mit Multi-Faktor-Authentifizierung schützen",
+    "get_started": "Beginnen Sie, indem Sie Ihr Konto-Dashboard erkunden.",
+    "button": "Konto verwalten"
+  },
+  "security_alert": {
+    "title": "Sicherheitswarnung - {{alertType}}",
+    "body": "Wir haben ein Sicherheitsereignis in Ihrem {{appName}}-Konto erkannt.",
+    "alert_type_label": "Warnungstyp:",
+    "details_label": "Details:",
+    "not_you": "Wenn Sie das nicht waren, sichern Sie bitte sofort Ihr Konto.",
+    "button": "Konto sichern"
+  },
+  "new_session": {
+    "title": "Neue Anmeldung erkannt",
+    "body": "Eine neue Anmeldung bei Ihrem {{appName}}-Konto wurde erkannt.",
+    "time_label": "Zeitpunkt:",
+    "ip_label": "IP-Adresse:",
+    "device_label": "Gerät:",
+    "not_you": "Wenn Sie das nicht waren, ändern Sie bitte sofort Ihr Passwort und überprüfen Sie die Sicherheit Ihres Kontos.",
+    "button": "Sicherheitseinstellungen überprüfen"
+  },
+  "new_device_otp": {
+    "title": "Neues Gerät verifizieren",
+    "body": "Wir haben einen Anmeldeversuch von einem neuen Gerät bei Ihrem {{appName}}-Konto erkannt. Geben Sie diesen Code ein, um Ihre Identität zu bestätigen:",
+    "device_label": "Gerät:",
+    "ip_label": "IP-Adresse:",
+    "expires": "Dieser Code läuft in 10 Minuten ab.",
+    "not_you": "Wenn Sie sich nicht anmelden wollten, ignorieren Sie diese E-Mail und ändern Sie sofort Ihr Passwort."
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}. Alle Rechte vorbehalten.",
+    "contact": "Wenn Sie Fragen haben, kontaktieren Sie uns bitte unter {{email}}",
+    "privacy": "Datenschutzrichtlinie",
+    "terms": "Nutzungsbedingungen"
+  }
+}

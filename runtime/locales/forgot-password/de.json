@@ -1,0 +1,12 @@
+{
+  "title": "Passwort zurücksetzen",
+  "description": "Wir senden Ihnen einen Link zum Zurücksetzen Ihres Passworts.",
+  "button": {
+    "send_reset_link": "Link senden",
+    "sending": "Wird gesendet..."
+  },
+  "link": {
+    "need_more_help": "Brauchen Sie mehr Hilfe?",
+    "remember_password": "Erinnern Sie sich an Ihr Passwort?"
+  }
+}

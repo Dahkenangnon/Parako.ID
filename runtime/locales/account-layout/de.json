@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "Seitenleiste umschalten",
+    "navigation": {
+      "home": "Startseite",
+      "my_profile": "Mein Profil",
+      "apps": "Apps",
+      "sessions": "Sitzungen",
+      "settings": "Einstellungen"
+    },
+    "admin_section": {
+      "title": "Admin",
+      "admin_panel": "Admin-Panel"
+    },
+    "footer": {
+      "logout": "Abmelden",
+      "switch_account": "Konto wechseln",
+      "my_account": "Mein Konto"
+    },
+    "account_switcher": {
+      "add_account": "Konto hinzufügen",
+      "loading": "Lädt...",
+      "failed_to_load": "Laden fehlgeschlagen",
+      "retry": "Wiederholen",
+      "no_other_accounts": "Keine anderen Konten"
+    }
+  },
+  "mobile": {
+    "close": "Schließen",
+    "menu": "Menü"
+  },
+  "theme_language": {
+    "theme": "Design",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "language": "Sprache",
+    "settings": "Design- und Spracheinstellungen"
+  }
+}

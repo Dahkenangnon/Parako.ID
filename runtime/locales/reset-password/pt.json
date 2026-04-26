@@ -1,0 +1,14 @@
+{
+  "title": "Crie uma nova senha",
+  "placeholder": {
+    "new_password": "Digite nova senha",
+    "confirm_password": "Confirme nova senha"
+  },
+  "button": {
+    "reset_password": "Redefinir senha",
+    "resetting": "Redefinindo senha..."
+  },
+  "link": {
+    "remember_password": "Lembra da sua senha?"
+  }
+}

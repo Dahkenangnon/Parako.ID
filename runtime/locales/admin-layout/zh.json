@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "toggle": "切换侧边栏",
+    "brand": "管理员",
+    "navigation": {
+      "dashboard": "仪表板",
+      "users": "用户",
+      "clients": "客户端",
+      "sessions": "会话",
+      "grants": "授权",
+      "activities": "活动",
+      "settings": "设置",
+      "data": "数据"
+    },
+    "footer": {
+      "logout": "退出登录",
+      "my_account": "我的账户"
+    }
+  },
+  "mobile": {
+    "close": "关闭",
+    "menu": "菜单"
+  },
+  "theme_language": {
+    "theme": "主题",
+    "light": "浅色",
+    "dark": "深色",
+    "language": "语言",
+    "settings": "主题和语言设置"
+  }
+}

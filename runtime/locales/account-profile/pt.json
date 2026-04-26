@@ -1,0 +1,43 @@
+{
+  "last_activity": "Última atividade",
+  "security_account": {
+    "title": "Segurança e conta",
+    "two_factor_auth": "Autenticação de dois fatores",
+    "enabled": "Ativado",
+    "not_enabled": "Não ativado",
+    "manage": "Gerenciar",
+    "enable": "Ativar",
+    "active_sessions": "Sessões ativas",
+    "devices": "{{count}} dispositivos",
+    "view": "Ver",
+    "connected_apps": "Aplicativos conectados",
+    "apps_count": "{{count}} aplicativos",
+    "language": "Idioma",
+    "language_default": "Inglês (padrão)",
+    "change": "Alterar",
+    "not_available": "Não disponível"
+  },
+  "quick_actions": {
+    "title": "Ações rápidas",
+    "edit_profile": {
+      "title": "Editar perfil",
+      "description": "Atualizar suas informações pessoais"
+    },
+    "security_settings": {
+      "title": "Configurações de segurança",
+      "description": "Gerenciar senha e 2FA"
+    },
+    "view_sessions": {
+      "title": "Ver sessões",
+      "description": "Gerenciar dispositivos ativos"
+    },
+    "connected_applications": {
+      "title": "Aplicativos conectados",
+      "description": "Gerenciar permissões de aplicativos"
+    },
+    "sign_out": {
+      "title": "Sair",
+      "description": "Sair da sua conta"
+    }
+  }
+}

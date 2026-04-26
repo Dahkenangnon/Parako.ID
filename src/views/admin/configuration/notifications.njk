@@ -1,0 +1,249 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Configure notification channels, SMS providers, and default notification preferences for your organization.
+                Leave fields empty to use defaults.
+            </p>
+        </div>
+    </div>
+
+    <form id="config-form" method="POST" action="/admin/configuration/{{ section }}" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        {% set channels = config.channels if config.channels else {} %}
+        {% set emailChannel = channels.email if channels.email else {} %}
+        {% set sms = channels.sms if channels.sms else {} %}
+        {% set rateLimits = sms.rate_limits if sms.rate_limits else {} %}
+        {% set defaults = config.defaults if config.defaults else {} %}
+        {% set pNotif = platformNotifications if platformNotifications else {} %}
+        {% set pChannels = pNotif.channels if pNotif.channels else {} %}
+        {% set pSms = pChannels.sms if pChannels.sms else {} %}
+        {% set pSmsRateLimits = pSms.rate_limits if pSms.rate_limits else {} %}
+
+        <!-- Email Channel -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="mail" class="h-5 w-5 mr-2 text-primary"></i>
+                Email Channel
+            </h2>
+            <div class="flex items-center justify-between p-4 border border-border">
+                <div>
+                    <label for="channel_email_enabled" class="text-sm font-medium text-foreground">Email Notifications</label>
+                    <p class="text-xs text-muted-foreground mt-1">Send notifications via email. Requires SMTP configuration in Integrations.</p>
+                </div>
+                <input type="hidden" name="channels[email][enabled]" value="">
+                <input type="checkbox" id="channel_email_enabled" name="channels[email][enabled]"
+                       value="on"
+                       {% if emailChannel.enabled != false %}checked{% endif %}
+                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+            </div>
+        </div>
+
+        <!-- SMS Channel -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="smartphone" class="h-5 w-5 mr-2 text-primary"></i>
+                SMS Channel
+            </h2>
+
+            <div class="flex items-center justify-between p-4 border border-border mb-6">
+                <div>
+                    <label for="channel_sms_enabled" class="text-sm font-medium text-foreground">SMS Notifications</label>
+                    <p class="text-xs text-muted-foreground mt-1">Send notifications via SMS. Requires provider configuration below.</p>
+                </div>
+                <input type="hidden" name="channels[sms][enabled]" value="">
+                <input type="checkbox" id="channel_sms_enabled" name="channels[sms][enabled]"
+                       value="on"
+                       {% if sms.enabled %}checked{% endif %}
+                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="sms_provider" class="block text-sm font-medium text-foreground mb-2">SMS Provider</label>
+                    <select id="sms_provider" name="channels[sms][provider]"
+                            class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <option value="">Select provider</option>
+                        <option value="twilio" {% if sms.provider == 'twilio' %}selected{% endif %}>Twilio</option>
+                        <option value="vonage" {% if sms.provider == 'vonage' %}selected{% endif %}>Vonage</option>
+                        <option value="messagebird" {% if sms.provider == 'messagebird' %}selected{% endif %}>MessageBird</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="sms_from_number" class="block text-sm font-medium text-foreground mb-2">From Number / Sender ID</label>
+                    <input type="text" id="sms_from_number" name="channels[sms][from_number]"
+                           value="{{ sms.from_number or '' }}"
+                           placeholder="+1234567890"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                </div>
+                <div>
+                    <label for="sms_api_key" class="block text-sm font-medium text-foreground mb-2">API Key</label>
+                    <div class="relative">
+                        <input type="password" id="sms_api_key" name="channels[sms][api_key]"
+                               value="{{ sms.api_key or '' }}"
+                               data-field-path="notifications.channels.sms.api_key"
+                               placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;"
+                               class="w-full px-3 py-2 pr-20 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <button type="button"
+                                onclick="revealTenantSecret('notifications.channels.sms.api_key', 'sms_api_key')"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90">
+                            <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                            Reveal
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label for="sms_api_secret" class="block text-sm font-medium text-foreground mb-2">API Secret</label>
+                    <div class="relative">
+                        <input type="password" id="sms_api_secret" name="channels[sms][api_secret]"
+                               value="{{ sms.api_secret or '' }}"
+                               data-field-path="notifications.channels.sms.api_secret"
+                               placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;"
+                               class="w-full px-3 py-2 pr-20 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <button type="button"
+                                onclick="revealTenantSecret('notifications.channels.sms.api_secret', 'sms_api_secret')"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90">
+                            <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                            Reveal
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SMS Rate Limits -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="gauge" class="h-5 w-5 mr-2 text-primary"></i>
+                SMS Rate Limits
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                Rate limits protect against SMS abuse. Values can only be stricter (lower) than system defaults.
+                Leave empty to use defaults.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label for="sms_rate_per_phone" class="block text-sm font-medium text-foreground mb-2">Per Phone Per Hour</label>
+                    <input type="number" id="sms_rate_per_phone" name="channels[sms][rate_limits][per_phone_per_hour]"
+                           value="{{ rateLimits.per_phone_per_hour if rateLimits.per_phone_per_hour != undefined else '' }}"
+                           placeholder="{{ pSmsRateLimits.per_phone_per_hour or 'Default' }}"
+                           min="1"{% if pSmsRateLimits.per_phone_per_hour %} max="{{ pSmsRateLimits.per_phone_per_hour }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Max SMS per phone number per hour. Maximum allowed: {{ pSmsRateLimits.per_phone_per_hour or 'unlimited' }}.</p>
+                </div>
+                <div>
+                    <label for="sms_rate_per_ip" class="block text-sm font-medium text-foreground mb-2">Per IP Per Day</label>
+                    <input type="number" id="sms_rate_per_ip" name="channels[sms][rate_limits][per_ip_per_day]"
+                           value="{{ rateLimits.per_ip_per_day if rateLimits.per_ip_per_day != undefined else '' }}"
+                           placeholder="{{ pSmsRateLimits.per_ip_per_day or 'Default' }}"
+                           min="1"{% if pSmsRateLimits.per_ip_per_day %} max="{{ pSmsRateLimits.per_ip_per_day }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Max SMS per IP address per day. Maximum allowed: {{ pSmsRateLimits.per_ip_per_day or 'unlimited' }}.</p>
+                </div>
+                <div>
+                    <label for="sms_rate_cooldown" class="block text-sm font-medium text-foreground mb-2">Cooldown (seconds)</label>
+                    <input type="number" id="sms_rate_cooldown" name="channels[sms][rate_limits][cooldown_seconds]"
+                           value="{{ rateLimits.cooldown_seconds if rateLimits.cooldown_seconds != undefined else '' }}"
+                           placeholder="{{ pSmsRateLimits.cooldown_seconds or 'Default' }}"
+                           min="1"{% if pSmsRateLimits.cooldown_seconds %} max="{{ pSmsRateLimits.cooldown_seconds }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Minimum seconds between SMS to the same number. Maximum allowed: {{ pSmsRateLimits.cooldown_seconds or 'unlimited' }}.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Default Notification Preferences -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="sliders" class="h-5 w-5 mr-2 text-primary"></i>
+                Default Notification Preferences
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                These defaults apply to new user accounts. Existing users keep their current preferences.
+            </p>
+            <div class="space-y-4">
+                <div class="flex items-center justify-between p-4 border border-border">
+                    <div>
+                        <label for="defaults_security_alerts" class="text-sm font-medium text-foreground">Security Alerts</label>
+                        <p class="text-xs text-muted-foreground mt-1">Notify users about suspicious login attempts, password changes, and new devices.</p>
+                    </div>
+                    <input type="hidden" name="defaults[security_alerts]" value="">
+                    <input type="checkbox" id="defaults_security_alerts" name="defaults[security_alerts]"
+                           value="on"
+                           {% if defaults.security_alerts != false %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                </div>
+                <div class="flex items-center justify-between p-4 border border-border">
+                    <div>
+                        <label for="defaults_new_session_alerts" class="text-sm font-medium text-foreground">New Session Alerts</label>
+                        <p class="text-xs text-muted-foreground mt-1">Notify users when a new session is created from an unrecognized device or location.</p>
+                    </div>
+                    <input type="hidden" name="defaults[new_session_alerts]" value="">
+                    <input type="checkbox" id="defaults_new_session_alerts" name="defaults[new_session_alerts]"
+                           value="on"
+                           {% if defaults.new_session_alerts != false %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                </div>
+                <div class="flex items-center justify-between p-4 border border-border">
+                    <div>
+                        <label for="defaults_allow_user_prefs" class="text-sm font-medium text-foreground">Allow User Preferences</label>
+                        <p class="text-xs text-muted-foreground mt-1">Let users customize their own notification preferences. When disabled, admin settings apply to everyone.</p>
+                    </div>
+                    <input type="hidden" name="defaults[allow_user_preferences]" value="">
+                    <input type="checkbox" id="defaults_allow_user_prefs" name="defaults[allow_user_preferences]"
+                           value="on"
+                           {% if defaults.allow_user_preferences != false %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                </div>
+            </div>
+        </div>
+
+    </form>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border">
+        <div>
+            {% if hasOverride %}
+            <form method="POST" action="/admin/configuration/{{ section }}/reset"
+                  onsubmit="return confirm('Are you sure you want to reset Notifications configuration to defaults? This cannot be undone.')">
+                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Reset to Defaults
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="flex gap-3">
+            <a href="/admin/configuration"
+               class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back
+            </a>
+            <button type="submit" form="config-form"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/configuration/common.js"></script>
+<script src="/js/admin/configuration/validation.js"></script>
+{% endblock %}

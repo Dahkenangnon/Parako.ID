@@ -1,0 +1,438 @@
+// ─── Generator ───────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Datasource ───────────────────────────────────────────────────────────────
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─── USERS DOMAIN (9 tables) ──────────────────────────────────────────────────
+
+model User {
+  id                         String    @id @default(uuid())
+  email                      String?
+  username                   String?   @unique
+  custom_identifier_1        String?   @unique
+  custom_identifier_2        String?   @unique
+  custom_identifier_3        String?   @unique
+  sub                        String?   @unique
+  given_name                 String?
+  family_name                String?
+  name                       String?
+  nickname                   String?
+  middle_name                String?
+  gender                     String?   @default("M")
+  birthdate                  DateTime?
+  phone_number               String?
+  profile                    String?
+  website                    String?
+  picture                    String?
+  locale                     String?   @default("fr")
+  country                    String?   @default("bj")
+  zoneinfo                   String?   @default("Africa/Porto-Novo")
+  city                       String?
+  address                    String?
+  street_address             String?
+  region                     String?
+  postal_code                String?
+  roles                      String    @default("[\"user\"]")
+  phone_number_verified      Boolean   @default(false)
+  email_verified             Boolean   @default(false)
+  theme                      String?
+  sidebar_expanded           Boolean   @default(false)
+  last_login                 DateTime?
+  password                   String?
+  password_hash_algo         String?
+  password_updated_at        DateTime?
+  password_force_reset       Boolean   @default(false)
+  reset_password_token       String?
+  reset_password_expires     DateTime?
+  email_verification_token   String?
+  email_verification_expires DateTime?
+  blocked_from               String    @default("[]")
+  account_is_anonymized      Boolean   @default(false)
+  register_with              String    @default("email")
+  auth_provider              String?
+  account_enabled            Boolean   @default(true)
+  tenant_id                  String    @default("default")
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt
+
+  mfa                  UserMfa?
+  mfa_totp             UserMfaTotp?
+  mfa_email_otp        UserMfaEmailOtp?
+  webauthn_credentials UserWebauthnCredential[]
+  recovery             UserRecovery?
+  backup_codes         UserBackupCode[]
+  security_questions   UserSecurityQuestion[]
+  notification_prefs   UserNotificationPref?
+
+  @@index([tenant_id])
+  @@map("users")
+}
+
+model UserMfa {
+  id               String  @id @default(uuid())
+  user_id          String  @unique
+  enabled          Boolean @default(false)
+  preferred_method String?
+  tenant_id        String  @default("default")
+  user             User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("user_mfa")
+}
+
+model UserMfaTotp {
+  id          String    @id @default(uuid())
+  user_id     String    @unique
+  enabled     Boolean   @default(false)
+  secret      String?
+  verified_at DateTime?
+  tenant_id   String    @default("default")
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("user_mfa_totp")
+}
+
+model UserMfaEmailOtp {
+  id         String    @id @default(uuid())
+  user_id    String    @unique
+  otp_hash   String?
+  expires_at DateTime?
+  tenant_id  String    @default("default")
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("user_mfa_email_otp")
+}
+
+model UserWebauthnCredential {
+  id            String   @id @default(uuid())
+  user_id       String
+  credential_id String   @unique
+  public_key    String
+  counter       Int      @default(0)
+  device_type   String?
+  backed_up     Boolean  @default(false)
+  transports    String   @default("[]")
+  tenant_id     String   @default("default")
+  created_at    DateTime @default(now())
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("user_webauthn_credentials")
+}
+
+model UserRecovery {
+  id                        String    @id @default(uuid())
+  user_id                   String    @unique
+  enabled                   Boolean   @default(false)
+  methods                   String    @default("[]")
+  secondary_email           String?
+  secondary_email_verified  Boolean   @default(false)
+  secondary_email_token     String?
+  secondary_email_token_exp DateTime?
+  sms_phone_number          String?
+  sms_verified              Boolean   @default(false)
+  sms_code                  String?
+  sms_code_exp              DateTime?
+  backup_codes_generated_at DateTime?
+  backup_codes_expires_at   DateTime?
+  sq_setup_at               DateTime?
+  sq_last_used_at           DateTime?
+  sq_failed_attempts        Int       @default(0)
+  sq_last_failed_at         DateTime?
+  sq_locked_until           DateTime?
+  tenant_id                 String    @default("default")
+  user                      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  backup_codes              UserBackupCode[]
+  security_questions        UserSecurityQuestion[]
+
+  @@index([tenant_id])
+  @@map("user_recovery")
+}
+
+model UserBackupCode {
+  id          String       @id @default(uuid())
+  user_id     String
+  recovery_id String?
+  code_hash   String
+  used        Boolean      @default(false)
+  tenant_id   String       @default("default")
+  created_at  DateTime     @default(now())
+  user        User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  recovery    UserRecovery? @relation(fields: [recovery_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("user_backup_codes")
+}
+
+model UserSecurityQuestion {
+  id           String        @id @default(uuid())
+  user_id      String
+  recovery_id  String?
+  question_key String
+  answer_hash  String
+  tenant_id    String        @default("default")
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  recovery     UserRecovery? @relation(fields: [recovery_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("user_security_questions")
+}
+
+model UserNotificationPref {
+  id                 String  @id @default(uuid())
+  user_id            String  @unique
+  preferred_channel  String  @default("auto")
+  security_alerts    Boolean @default(true)
+  new_session_alerts Boolean @default(true)
+  marketing          Boolean @default(false)
+  tenant_id          String  @default("default")
+  user               User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("user_notification_prefs")
+}
+
+// ─── ACTIVITY DOMAIN (4 tables) ───────────────────────────────────────────────
+
+model Activity {
+  id                  String          @id @default(uuid())
+  type                String
+  description         String
+  timestamp           DateTime        @default(now())
+  status              String          @default("info")
+  ip_address          String?
+  user_agent          String?
+  client_id           String?
+  is_private          Boolean         @default(false)
+  related_activity_id String?
+  tenant_id           String          @default("default")
+  created_at          DateTime        @default(now())
+  actor               ActivityActor?
+  target              ActivityTarget?
+  device              ActivityDevice?
+
+  @@index([type])
+  @@index([status])
+  @@index([timestamp])
+  @@index([tenant_id])
+  @@map("activities")
+}
+
+model ActivityActor {
+  id          String   @id @default(uuid())
+  activity_id String   @unique
+  actor_type  String   @default("anonymous")
+  user_id     String?
+  username    String?
+  email       String?
+  full_name   String?
+  given_name  String?
+  family_name String?
+  tenant_id   String   @default("default")
+  activity    Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("activity_actors")
+}
+
+model ActivityTarget {
+  id          String   @id @default(uuid())
+  activity_id String   @unique
+  target_type String   @default("none")
+  user_id     String?
+  username    String?
+  email       String?
+  full_name   String?
+  entity_id   String?
+  entity_name String?
+  entity_data String?
+  tenant_id   String   @default("default")
+  activity    Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("activity_targets")
+}
+
+model ActivityDevice {
+  id                      String   @id @default(uuid())
+  activity_id             String   @unique
+  fingerprint             String?
+  fingerprint_js_id       String?
+  browser_name            String?
+  browser_version         String?
+  os_name                 String?
+  os_version              String?
+  device_type             String?
+  device_vendor           String?
+  device_model            String?
+  language                String?
+  platform                String?
+  screen_width            Int?
+  screen_height           Int?
+  screen_pixel_ratio      Float?
+  hardware_concurrency    Int?
+  memory                  Float?
+  is_new_device           Boolean?
+  is_suspicious           Boolean?
+  confidence_score        Float?
+  risk_level              String?
+  matched_device_id       String?
+  reason                  String?
+  geo_country             String?
+  geo_region              String?
+  geo_city                String?
+  geo_lat                 Float?
+  geo_lon                 Float?
+  geo_timezone            String?
+  device_trust_trusted    Boolean?
+  device_trust_trusted_at DateTime?
+  device_trust_until      DateTime?
+  tenant_id               String   @default("default")
+  activity                Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@index([fingerprint])
+  @@index([tenant_id])
+  @@map("activity_devices")
+}
+
+// ─── SETTINGS (versioning via rows) ──────────────────────────────────────────
+
+model Settings {
+  id             String   @id @default(uuid())
+  key            String
+  version        String   @default("1.0.0")
+  schema_version String   @default("1.0.0")
+  int_version    Int      @default(0)
+  is_active      Boolean  @default(true)
+  value          String
+  metadata       String   @default("{}")
+  created_at     DateTime @default(now())
+
+  @@index([key, is_active])
+  @@map("settings")
+}
+
+// ─── TENANT SETTINGS OVERRIDES (per-tenant config customization) ────────────
+
+model TenantSettingsOverride {
+  id          String   @id @default(uuid())
+  tenant_id   String   @default("default")
+  key         String   @default("parako_config")
+  version     String   @default("1.0.0")
+  int_version Int      @default(0)
+  is_active   Boolean  @default(true)
+  value       String   @default("{}")
+  metadata    String   @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@index([tenant_id])
+  @@index([key, is_active])
+  @@map("tenant_settings_overrides")
+}
+
+// ─── SOCIAL INTEGRATIONS ─────────────────────────────────────────────────────
+
+model SocialIntegration {
+  id                String    @id @default(uuid())
+  user_id           String
+  method            String
+  provider_sub      String
+  provider_username String?
+  provider_data     String
+  tokens            String?
+  is_active         Boolean   @default(true)
+  last_used         DateTime?
+  metadata          String?
+  tenant_id         String    @default("default")
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  @@index([user_id])
+  @@index([user_id, method])
+  @@index([tenant_id])
+  @@map("social_integrations")
+}
+
+// ─── JWKS KEY STORE ─────────────────────────────────────────────────────────
+
+model JwksKey {
+  id                    String    @id @default(uuid())
+  kid                   String
+  alg                   String
+  use                   String    @default("sig")
+  status                String    @default("active")
+  promoted              Boolean   @default(true)
+  encrypted_private_key String
+  public_key            String
+  tenant_id             String    @default("default")
+  created_at            DateTime  @default(now())
+  rotated_at            DateTime?
+
+  @@unique([tenant_id, kid])
+  @@index([tenant_id, status])
+  @@map("jwks_keys")
+}
+
+// ─── OIDC EPHEMERAL STORE ────────────────────────────────────────────────────
+
+model OidcStore {
+  id         String    @id
+  model      String
+  payload    String
+  grant_id   String?
+  user_code  String?
+  uid        String?
+  account_id String?
+  client_id  String?
+  consumed   DateTime?
+  expires_at DateTime?
+  tenant_id  String    @default("default")
+  created_at DateTime  @default(now())
+
+  @@index([model, id])
+  @@index([grant_id])
+  @@index([user_code])
+  @@index([uid])
+  @@index([model, account_id])
+  @@index([model, client_id])
+  @@index([expires_at])
+  @@index([tenant_id])
+  @@map("oidc_store")
+}
+
+// ─── SESSION STORE ───────────────────────────────────────────────────────────
+
+model Session {
+  sid        String   @id
+  data       String
+  expires_at DateTime
+  tenant_id  String   @default("default")
+
+  @@index([tenant_id])
+  @@map("sessions")
+}
+
+// ─── TENANT REGISTRY ────────────────────────────────────────────────────────
+
+model Tenant {
+  id           String   @id @default(uuid())
+  slug         String   @unique
+  display_name String
+  domain       String?  @unique
+  status       String   @default("active")
+  issuer_url   String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("tenants")
+}

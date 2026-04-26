@@ -1,0 +1,4 @@
+uploads/
+js/
+css/*
+!css/theme.css

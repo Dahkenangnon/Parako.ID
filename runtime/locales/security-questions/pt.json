@@ -1,0 +1,42 @@
+{
+  "title": "Perguntas de seguranca",
+  "description": "Configure perguntas de seguranca para recuperar sua conta",
+  "setup": {
+    "title": "Configurar perguntas de seguranca",
+    "select_question": "Selecione uma pergunta...",
+    "select_questions": "Selecione {{count}} perguntas e forneca suas respostas",
+    "answer_placeholder": "Sua resposta",
+    "save": "Salvar perguntas de seguranca",
+    "instruction": "Escolha perguntas com respostas que so voce saberia. As respostas nao diferenciam maiusculas."
+  },
+  "recovery": {
+    "title": "Responder perguntas de seguranca",
+    "description": "Responda suas perguntas de seguranca para recuperar sua conta",
+    "submit": "Verificar respostas",
+    "attempts_remaining": "{{count}} tentativas restantes"
+  },
+  "questions": {
+    "q1": "Qual era o nome do seu primeiro animal de estimacao?",
+    "q2": "Em que cidade voce nasceu?",
+    "q3": "Qual era seu apelido de infancia?",
+    "q4": "Qual e o nome do seu melhor amigo de infancia?",
+    "q5": "Qual foi a marca do seu primeiro carro?",
+    "q6": "Qual era o nome da sua escola primaria?",
+    "q7": "Qual e o nome de solteira da sua mae?",
+    "q8": "Em que rua voce cresceu?",
+    "q9": "Qual era sua comida favorita quando crianca?",
+    "q10": "Qual foi o primeiro show que voce assistiu?"
+  },
+  "validation": {
+    "answer_too_short": "A resposta deve ter pelo menos 3 caracteres",
+    "answer_too_generic": "Por favor, forneca uma resposta mais especifica",
+    "all_answers_required": "Por favor, responda todas as perguntas",
+    "incorrect_answers": "Uma ou mais respostas estao incorretas",
+    "select_different_questions": "Por favor, selecione perguntas diferentes"
+  },
+  "status": {
+    "configured": "Perguntas de seguranca configuradas",
+    "not_configured": "Perguntas de seguranca nao configuradas",
+    "update": "Atualizar perguntas de seguranca"
+  }
+}

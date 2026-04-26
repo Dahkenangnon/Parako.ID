@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "toggle": "サイドバーを切り替え",
+    "brand": "管理者",
+    "navigation": {
+      "dashboard": "ダッシュボード",
+      "users": "ユーザー",
+      "clients": "クライアント",
+      "sessions": "セッション",
+      "grants": "認証",
+      "activities": "アクティビティ",
+      "settings": "設定",
+      "data": "データ"
+    },
+    "footer": {
+      "logout": "ログアウト",
+      "my_account": "マイアカウント"
+    }
+  },
+  "mobile": {
+    "close": "閉じる",
+    "menu": "メニュー"
+  },
+  "theme_language": {
+    "theme": "テーマ",
+    "light": "ライト",
+    "dark": "ダーク",
+    "language": "言語",
+    "settings": "テーマと言語の設定"
+  }
+}

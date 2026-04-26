@@ -1,0 +1,28 @@
+{
+  "title": "Codes de récupération de compte créés",
+  "subtitle": "Conservez ces codes dans un endroit sûr. Vous pouvez les utiliser pour récupérer l'accès à votre compte si vous perdez l'accès à vos autres méthodes de connexion.",
+  "security_notice": {
+    "title": "Avis de sécurité important",
+    "description": "Téléchargez vos codes de récupération immédiatement. Chaque code ne peut être utilisé qu'une seule fois et ne pourra plus être consulté après avoir quitté cette page."
+  },
+  "download_section": {
+    "title": "Téléchargez vos codes de récupération",
+    "description": "Cliquez sur le bouton ci-dessous pour télécharger un fichier texte contenant vos {{count}} codes de récupération.",
+    "download_button": "Télécharger en tant que fichier texte",
+    "copy_button": "Copier dans le presse-papiers",
+    "print_button": "Imprimer les codes",
+    "downloaded": "Téléchargé !",
+    "copied": "Copié !",
+    "printed": "Imprimé !"
+  },
+  "back_to_settings": "Retour aux paramètres",
+  "file_content": {
+    "title": "Codes de récupération de compte",
+    "generated": "Généré",
+    "important": "IMPORTANT : Conservez ces codes dans un endroit sûr. Chaque code ne peut être utilisé qu'une seule fois.",
+    "total_codes": "Total des codes"
+  },
+  "error": {
+    "copy_failed": "Échec de la copie des codes. Veuillez réessayer."
+  }
+}

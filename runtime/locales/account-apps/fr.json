@@ -1,0 +1,17 @@
+{
+  "title": "Applications connectées",
+  "description": "Voici les applications et sites web auxquels vous avez donné la permission d'utiliser votre compte. Vous pouvez supprimer l'accès à toute application que vous n'utilisez plus ou en laquelle vous n'avez plus confiance.",
+  "remove_all_access": "Supprimer tous les accès",
+  "remove_access": "Supprimer l'accès",
+  "last_used": "Dernière utilisation",
+  "connected": "Connecté",
+  "what_app_can_do": "Ce que cette application peut faire",
+  "empty_state": {
+    "title": "Aucune application connectée",
+    "description": "Vous n'avez encore connecté aucune application ou site web à votre compte."
+  },
+  "confirm": {
+    "remove_all": "Êtes-vous sûr de vouloir supprimer l'accès pour toutes les applications connectées ? Cette action est irréversible.",
+    "remove_single": "Êtes-vous sûr de vouloir supprimer l'accès pour \"{{appName}}\" ? Cette action est irréversible."
+  }
+}

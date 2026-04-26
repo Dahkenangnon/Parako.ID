@@ -1,0 +1,1238 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Customize authentication policies, registration settings, and rate limiting for your organization.
+            </p>
+        </div>
+    </div>
+
+    <form id="config-form" method="POST" action="/admin/configuration/{{ section }}" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        {% set auth = config.authentication if config.authentication else {} %}
+        {% set mfa = auth.multi_factor if auth.multi_factor else {} %}
+        {% set pSec = platformSecurity if platformSecurity else {} %}
+        {% set pAuth = pSec.authentication if pSec.authentication else {} %}
+        {% set pLogin = pAuth.login if pAuth.login else {} %}
+        {% set pPwPolicy = pLogin.password_policy if pLogin.password_policy else {} %}
+        {% set pSession = pAuth.session if pAuth.session else {} %}
+        {% set pProtection = pSec.protection if pSec.protection else {} %}
+        {% set pRateLimit = pProtection.rate_limiting if pProtection.rate_limiting else {} %}
+
+        {% set pMfa = pAuth.multi_factor if pAuth.multi_factor else {} %}
+        {% set pTotp = pMfa.totp if pMfa.totp else {} %}
+        {% set pEmailMfa = pMfa.email if pMfa.email else {} %}
+        {% set pWebauthn = pMfa.webauthn if pMfa.webauthn else {} %}
+        {% set pSignup = pAuth.signup if pAuth.signup else {} %}
+        {% set pRecovery = pAuth.recovery if pAuth.recovery else {} %}
+        {% set pRoles = pAuth.roles if pAuth.roles else {} %}
+        {% set pCustomIdentifiers = pAuth.custom_identifiers if pAuth.custom_identifiers else {} %}
+        {% set pDeviceMatching = pProtection.device_matching if pProtection.device_matching else {} %}
+        {% set pSessionMgmt = pAuth.session_management if pAuth.session_management else {} %}
+
+        {% set session = auth.session if auth.session else {} %}
+        {% set sessionMgmt = auth.session_management if auth.session_management else {} %}
+        {% set multiAccounts = sessionMgmt.multiple_accounts if sessionMgmt.multiple_accounts else {} %}
+        {% set login = auth.login if auth.login else {} %}
+        {% set signup = auth.signup if auth.signup else {} %}
+        {% set autoApproval = signup.auto_approval if signup.auto_approval else {} %}
+        {% set contactChannels = signup.contact_channels if signup.contact_channels else {} %}
+        {% set roles = auth.roles if auth.roles else {} %}
+        {% set customIdentifiers = auth.custom_identifiers if auth.custom_identifiers else {} %}
+        {% set ciFields = customIdentifiers.fields if customIdentifiers.fields else [] %}
+        {% set recovery = auth.recovery if auth.recovery else {} %}
+        {% set backupCodes = recovery.backup_codes if recovery.backup_codes else {} %}
+        {% set protection = config.protection if config.protection else {} %}
+        {% set deviceMatching = protection.device_matching if protection.device_matching else {} %}
+
+        {# ── Section 1: Multi-Factor Authentication (expanded) ──────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="shield-check" class="h-5 w-5 mr-2 text-primary"></i>
+                Multi-Factor Authentication
+            </h2>
+            <div class="space-y-4">
+                <div class="flex items-center space-x-2">
+                    <input type="hidden" name="authentication[multi_factor][enabled]" value="">
+                    <input type="checkbox" id="mfa_enabled" name="authentication[multi_factor][enabled]"
+                           value="on"
+                           {% if mfa.enabled %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    <label for="mfa_enabled" class="text-sm font-medium text-foreground">Enable Multi-Factor Authentication</label>
+                </div>
+
+                {# ── TOTP ── #}
+                <div class="ml-6 space-y-3">
+                    {% set totp = mfa.totp if mfa.totp else {} %}
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[multi_factor][totp][enabled]" value="">
+                        <input type="checkbox" id="mfa_totp" name="authentication[multi_factor][totp][enabled]"
+                               value="on"
+                               {% if totp.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="mfa_totp" class="text-sm text-foreground">TOTP (Authenticator App)</label>
+                    </div>
+                    <div class="ml-6">
+                        <label for="totp_issuer" class="block text-sm font-medium text-foreground mb-2">Issuer Name</label>
+                        <input type="text" id="totp_issuer" name="authentication[multi_factor][totp][issuer_name]"
+                               value="{{ totp.issuer_name or '' }}"
+                               placeholder="{{ pTotp.issuer_name or 'My Organization' }}"
+                               class="w-full max-w-md px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Display name shown in authenticator apps (e.g., "Acme Corp").</p>
+                    </div>
+                </div>
+
+                {# ── Email OTP ── #}
+                <div class="ml-6 space-y-3">
+                    {% set emailMfa = mfa.email if mfa.email else {} %}
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[multi_factor][email][enabled]" value="">
+                        <input type="checkbox" id="mfa_email" name="authentication[multi_factor][email][enabled]"
+                               value="on"
+                               {% if emailMfa.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="mfa_email" class="text-sm text-foreground">Email OTP</label>
+                    </div>
+                    <div class="ml-6">
+                        <label for="email_code_ttl" class="block text-sm font-medium text-foreground mb-2">OTP Validity (seconds)</label>
+                        <input type="number" id="email_code_ttl" name="authentication[multi_factor][email][code_ttl_seconds]"
+                               value="{{ emailMfa.code_ttl_seconds or '' }}"
+                               min="60"
+                               max="{{ pEmailMfa.code_ttl_seconds or 900 }}"
+                               placeholder="{{ pEmailMfa.code_ttl_seconds or 600 }}"
+                               class="w-full max-w-xs px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Cannot exceed platform maximum of {{ pEmailMfa.code_ttl_seconds or 900 }} seconds.</p>
+                    </div>
+                </div>
+
+                {# ── SMS OTP ── #}
+                <div class="ml-6">
+                    {% set smsMfa = mfa.sms if mfa.sms else {} %}
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[multi_factor][sms][enabled]" value="">
+                        <input type="checkbox" id="mfa_sms" name="authentication[multi_factor][sms][enabled]"
+                               value="on"
+                               {% if smsMfa.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="mfa_sms" class="text-sm text-foreground">SMS OTP</label>
+                    </div>
+                </div>
+
+                {# ── WebAuthn / Passkeys ── #}
+                <div class="ml-6 space-y-3">
+                    {% set webauthnMfa = mfa.webauthn if mfa.webauthn else {} %}
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[multi_factor][webauthn][enabled]" value="">
+                        <input type="checkbox" id="mfa_webauthn" name="authentication[multi_factor][webauthn][enabled]"
+                               value="on"
+                               {% if webauthnMfa.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="mfa_webauthn" class="text-sm text-foreground">WebAuthn / Passkeys</label>
+                    </div>
+                    <div class="ml-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="webauthn_rp_name" class="block text-sm font-medium text-foreground mb-2">Relying Party Name</label>
+                            <input type="text" id="webauthn_rp_name" name="authentication[multi_factor][webauthn][rp_name]"
+                                   value="{{ webauthnMfa.rp_name or '' }}"
+                                   placeholder="{{ pWebauthn.rp_name or '' }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Name shown during WebAuthn prompts.</p>
+                        </div>
+                        <div>
+                            <label for="webauthn_timeout" class="block text-sm font-medium text-foreground mb-2">Prompt Timeout (ms)</label>
+                            <input type="number" id="webauthn_timeout" name="authentication[multi_factor][webauthn][timeout]"
+                                   value="{{ webauthnMfa.timeout or '' }}"
+                                   min="15000" max="300000"
+                                   placeholder="{{ pWebauthn.timeout or 60000 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">WebAuthn prompt timeout in milliseconds.</p>
+                        </div>
+                        <div>
+                            <label for="webauthn_uv" class="block text-sm font-medium text-foreground mb-2">User Verification</label>
+                            <select id="webauthn_uv" name="authentication[multi_factor][webauthn][user_verification]"
+                                    class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option value="">Use platform default ({{ pWebauthn.user_verification or 'preferred' }})</option>
+                                <option value="discouraged" {% if webauthnMfa.user_verification == 'discouraged' %}selected{% endif %}>Discouraged</option>
+                                <option value="preferred" {% if webauthnMfa.user_verification == 'preferred' %}selected{% endif %}>Preferred</option>
+                                <option value="required" {% if webauthnMfa.user_verification == 'required' %}selected{% endif %}>Required</option>
+                            </select>
+                            <p class="mt-1 text-xs text-muted-foreground">Cannot weaken below platform minimum.</p>
+                        </div>
+                        <div>
+                            <label for="webauthn_attachment" class="block text-sm font-medium text-foreground mb-2">Authenticator Attachment</label>
+                            <select id="webauthn_attachment" name="authentication[multi_factor][webauthn][authenticator_attachment]"
+                                    class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option value="" {% if not webauthnMfa.authenticator_attachment %}selected{% endif %}>Any (platform default)</option>
+                                <option value="platform" {% if webauthnMfa.authenticator_attachment == 'platform' %}selected{% endif %}>Platform (built-in)</option>
+                                <option value="cross-platform" {% if webauthnMfa.authenticator_attachment == 'cross-platform' %}selected{% endif %}>Cross-Platform (USB/NFC key)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="webauthn_rk" class="block text-sm font-medium text-foreground mb-2">Resident Key</label>
+                            <select id="webauthn_rk" name="authentication[multi_factor][webauthn][resident_key]"
+                                    class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option value="">Use platform default</option>
+                                <option value="required" {% if webauthnMfa.resident_key == 'required' %}selected{% endif %}>Required</option>
+                                <option value="preferred" {% if webauthnMfa.resident_key == 'preferred' %}selected{% endif %}>Preferred</option>
+                                <option value="discouraged" {% if webauthnMfa.resident_key == 'discouraged' %}selected{% endif %}>Discouraged</option>
+                            </select>
+                            <p class="mt-1 text-xs text-muted-foreground">Discoverable credential preference.</p>
+                        </div>
+                        <div>
+                            <label for="webauthn_max_creds" class="block text-sm font-medium text-foreground mb-2">Max Credentials per User</label>
+                            <input type="number" id="webauthn_max_creds" name="authentication[multi_factor][webauthn][max_credentials_per_user]"
+                                   value="{{ webauthnMfa.max_credentials_per_user or '' }}"
+                                   min="1"
+                                   max="{{ pWebauthn.max_credentials_per_user or 20 }}"
+                                   placeholder="{{ pWebauthn.max_credentials_per_user or 10 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Cannot exceed platform maximum of {{ pWebauthn.max_credentials_per_user or 20 }}.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 2: Session Management ──────────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="users" class="h-5 w-5 mr-2 text-primary"></i>
+                Session Management
+            </h2>
+            <div class="flex items-center space-x-2">
+                <input type="hidden" name="authentication[session_management][multiple_accounts][enabled]" value="">
+                <input type="checkbox" id="multi_account_enabled" name="authentication[session_management][multiple_accounts][enabled]"
+                       value="on"
+                       {% if multiAccounts.enabled %}checked{% endif %}
+                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                <label for="multi_account_enabled" class="text-sm font-medium text-foreground">Enable multiple accounts per session</label>
+            </div>
+            <p class="mt-1 text-xs text-muted-foreground ml-6">Allow users to maintain multiple logged-in accounts within a single session.</p>
+        </div>
+
+        {# ── Section 3: Session Security ────────────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="timer" class="h-5 w-5 mr-2 text-primary"></i>
+                Session Security
+            </h2>
+            <div class="space-y-6">
+                {# Session Timeouts #}
+                <div>
+                    <h3 class="text-sm font-medium text-foreground mb-3">Session Timeouts</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="session_idle" class="block text-sm font-medium text-foreground mb-2">Idle Timeout (minutes)</label>
+                            <input type="number" id="session_idle" name="authentication[session][idle_timeout_minutes]"
+                                   value="{{ session.idle_timeout_minutes or '' }}"
+                                   min="0"
+                                   max="{{ pSession.idle_timeout_minutes or 1440 }}"
+                                   placeholder="{{ pSession.idle_timeout_minutes or 30 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Auto-logout after inactivity. 0 = no idle timeout. Cannot exceed {{ pSession.idle_timeout_minutes or 1440 }}.</p>
+                        </div>
+                        <div>
+                            <label for="session_absolute" class="block text-sm font-medium text-foreground mb-2">Absolute Timeout (hours)</label>
+                            <input type="number" id="session_absolute" name="authentication[session][absolute_timeout_hours]"
+                                   value="{{ session.absolute_timeout_hours or '' }}"
+                                   min="1"
+                                   max="{{ pSession.absolute_timeout_hours or 720 }}"
+                                   placeholder="{{ pSession.absolute_timeout_hours or 24 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Force re-login after this period regardless of activity. Cannot exceed {{ pSession.absolute_timeout_hours or 720 }}.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {# Session Limits #}
+                <div>
+                    <h3 class="text-sm font-medium text-foreground mb-3">Session Limits</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="session_max_concurrent" class="block text-sm font-medium text-foreground mb-2">Max Concurrent Sessions</label>
+                            <input type="number" id="session_max_concurrent" name="authentication[session][max_concurrent_sessions]"
+                                   value="{{ session.max_concurrent_sessions or '' }}"
+                                   min="0"
+                                   max="{{ pSession.max_concurrent_sessions or 100 }}"
+                                   placeholder="{{ pSession.max_concurrent_sessions or 5 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">0 = unlimited. Oldest session terminated when exceeded.</p>
+                        </div>
+                        <div>
+                            <label for="session_max_accounts" class="block text-sm font-medium text-foreground mb-2">Max Accounts per Session</label>
+                            <input type="number" id="session_max_accounts" name="authentication[session][max_accounts_per_session]"
+                                   value="{{ session.max_accounts_per_session or '' }}"
+                                   min="1"
+                                   max="{{ pSession.max_accounts_per_session or 10 }}"
+                                   placeholder="{{ pSession.max_accounts_per_session or 3 }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Maximum accounts in multi-account mode.</p>
+                        </div>
+                    </div>
+                </div>
+
+                {# Session Binding #}
+                <div>
+                    <h3 class="text-sm font-medium text-foreground mb-3">Session Binding</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][bind_ip]" value="">
+                            {% if pSession.bind_ip %}
+                            <input type="hidden" name="authentication[session][bind_ip]" value="on">
+                            <input type="checkbox" id="session_bind_ip" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_bind_ip" name="authentication[session][bind_ip]"
+                                   value="on"
+                                   {% if session.bind_ip %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_bind_ip" class="text-sm text-foreground">Bind to IP</label>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][bind_user_agent]" value="">
+                            {% if pSession.bind_user_agent %}
+                            <input type="hidden" name="authentication[session][bind_user_agent]" value="on">
+                            <input type="checkbox" id="session_bind_ua" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_bind_ua" name="authentication[session][bind_user_agent]"
+                                   value="on"
+                                   {% if session.bind_user_agent %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_bind_ua" class="text-sm text-foreground">Bind to user agent</label>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][bind_device]" value="">
+                            {% if pSession.bind_device %}
+                            <input type="hidden" name="authentication[session][bind_device]" value="on">
+                            <input type="checkbox" id="session_bind_device" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_bind_device" name="authentication[session][bind_device]"
+                                   value="on"
+                                   {% if session.bind_device %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_bind_device" class="text-sm text-foreground">Bind to device</label>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-muted-foreground">{% if pSession.bind_ip or pSession.bind_user_agent or pSession.bind_device %}Greyed-out options are enforced by the platform and cannot be weakened.{% else %}Bind sessions to specific identifiers. Stricter settings may affect mobile users.{% endif %}</p>
+                </div>
+
+                {# Session Options #}
+                <div>
+                    <h3 class="text-sm font-medium text-foreground mb-3">Session Options</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][encrypt_session_data]" value="">
+                            {% if pSession.encrypt_session_data %}
+                            <input type="hidden" name="authentication[session][encrypt_session_data]" value="on">
+                            <input type="checkbox" id="session_encrypt" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_encrypt" name="authentication[session][encrypt_session_data]"
+                                   value="on"
+                                   {% if session.encrypt_session_data %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_encrypt" class="text-sm text-foreground">Encrypt session data</label>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][notify_new_session]" value="">
+                            <input type="checkbox" id="session_notify" name="authentication[session][notify_new_session]"
+                                   value="on"
+                                   {% if session.notify_new_session %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="session_notify" class="text-sm text-foreground">Notify on new session</label>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][require_reauth_on_switch]" value="">
+                            {% if pSession.require_reauth_on_switch %}
+                            <input type="hidden" name="authentication[session][require_reauth_on_switch]" value="on">
+                            <input type="checkbox" id="session_reauth" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_reauth" name="authentication[session][require_reauth_on_switch]"
+                                   value="on"
+                                   {% if session.require_reauth_on_switch %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_reauth" class="text-sm text-foreground">Re-auth on account switch</label>
+                        </div>
+                    </div>
+                </div>
+
+                {# New Device Verification #}
+                <div class="bg-muted/30 p-4">
+                    <h3 class="text-sm font-medium text-foreground mb-3">New Device Verification</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session][require_2fa_for_new_device]" value="">
+                            {% if pSession.require_2fa_for_new_device %}
+                            <input type="hidden" name="authentication[session][require_2fa_for_new_device]" value="on">
+                            <input type="checkbox" id="session_new_device_2fa" checked disabled
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% else %}
+                            <input type="checkbox" id="session_new_device_2fa" name="authentication[session][require_2fa_for_new_device]"
+                                   value="on"
+                                   {% if session.require_2fa_for_new_device %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            {% endif %}
+                            <label for="session_new_device_2fa" class="text-sm font-medium text-foreground">Require 2FA for new device login</label>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="session_2fa_method" class="block text-sm font-medium text-foreground mb-2">Verification Method</label>
+                                <select id="session_2fa_method" name="authentication[session][new_device_2fa_method]"
+                                        class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <option value="auto" {% if not session.new_device_2fa_method or session.new_device_2fa_method == 'auto' %}selected{% endif %}>Auto (TOTP if enabled, else Email)</option>
+                                    <option value="totp" {% if session.new_device_2fa_method == 'totp' %}selected{% endif %}>TOTP Only</option>
+                                    <option value="email" {% if session.new_device_2fa_method == 'email' %}selected{% endif %}>Email Only</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="session_confidence" class="block text-sm font-medium text-foreground mb-2">Device Confidence Threshold</label>
+                                <input type="number" id="session_confidence" name="authentication[session][new_device_confidence_threshold]"
+                                       value="{{ session.new_device_confidence_threshold or '' }}"
+                                       min="{{ pSession.new_device_confidence_threshold or 0 }}"
+                                       max="100"
+                                       placeholder="{{ pSession.new_device_confidence_threshold or 70 }}"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <p class="mt-1 text-xs text-muted-foreground">Minimum device confidence score to skip verification (0-100). Higher = stricter.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 4: Login Configuration ─────────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="log-in" class="h-5 w-5 mr-2 text-primary"></i>
+                Login Configuration
+            </h2>
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-2">Login Methods</label>
+                <p class="text-sm text-muted-foreground mb-3">Select which authentication methods users can use to log in.</p>
+                {% set loginMethods = login.login_methods if login.login_methods else [] %}
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                        <input type="checkbox" name="authentication[login][login_methods][]" value="email"
+                               {% if 'email' in loginMethods %}checked{% endif %}
+                               class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                        <div>
+                            <span class="text-sm font-medium text-foreground">Email + Password</span>
+                            <span class="text-xs text-muted-foreground ml-1">— User enters email address and password</span>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                        <input type="checkbox" name="authentication[login][login_methods][]" value="phone"
+                               {% if 'phone' in loginMethods %}checked{% endif %}
+                               class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                        <div>
+                            <span class="text-sm font-medium text-foreground">Phone + Password</span>
+                            <span class="text-xs text-muted-foreground ml-1">— User enters phone number and password</span>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                        <input type="checkbox" name="authentication[login][login_methods][]" value="custom_identifier"
+                               {% if 'custom_identifier' in loginMethods %}checked{% endif %}
+                               class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                        <div>
+                            <span class="text-sm font-medium text-foreground">Custom Identifier + Password</span>
+                            <span class="text-xs text-muted-foreground ml-1">— User enters a custom field (e.g., employee ID) and password. Configure below.</span>
+                        </div>
+                    </label>
+                </div>
+                <p class="mt-2 text-xs text-muted-foreground">At least one method must be selected.</p>
+            </div>
+        </div>
+
+        {# ── Section 5: Password Policy ─────────────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="lock" class="h-5 w-5 mr-2 text-primary"></i>
+                Password Policy
+            </h2>
+            {% set pwPolicy = login.password_policy if login.password_policy else {} %}
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div>
+                    <label for="pw_min_length" class="block text-sm font-medium text-foreground mb-2">Minimum Password Length</label>
+                    <input type="number" id="pw_min_length" name="authentication[login][password_policy][min_length]"
+                           value="{{ pwPolicy.min_length or '' }}"
+                           min="{{ [8, pPwPolicy.min_length or 8] | max }}"
+                           max="128"
+                           placeholder="{{ pPwPolicy.min_length or 8 }}"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Minimum {{ [8, pPwPolicy.min_length or 8] | max }} characters (cannot be lower than system default).</p>
+                </div>
+                <div>
+                    <label for="pw_max_age" class="block text-sm font-medium text-foreground mb-2">Password Max Age (days)</label>
+                    <input type="number" id="pw_max_age" name="authentication[login][password_policy][max_age_days]"
+                           value="{{ pwPolicy.max_age_days or '' }}" min="1"
+                           max="{{ pPwPolicy.max_age_days or 365 }}"
+                           placeholder="{{ pPwPolicy.max_age_days or 90 }}"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Maximum allowed: {{ pPwPolicy.max_age_days or 365 }} days.</p>
+                </div>
+                <div class="flex flex-col gap-3 justify-center">
+                    <div class="flex items-center space-x-2">
+                        {% if pPwPolicy.require_uppercase %}
+                        <input type="hidden" name="authentication[login][password_policy][require_uppercase]" value="on">
+                        <input type="checkbox" id="pw_uppercase" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[login][password_policy][require_uppercase]" value="">
+                        <input type="checkbox" id="pw_uppercase" name="authentication[login][password_policy][require_uppercase]"
+                               value="on"
+                               {% if pwPolicy.require_uppercase %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="pw_uppercase" class="text-sm text-foreground">Require uppercase</label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        {% if pPwPolicy.require_lowercase %}
+                        <input type="hidden" name="authentication[login][password_policy][require_lowercase]" value="on">
+                        <input type="checkbox" id="pw_lowercase" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[login][password_policy][require_lowercase]" value="">
+                        <input type="checkbox" id="pw_lowercase" name="authentication[login][password_policy][require_lowercase]"
+                               value="on"
+                               {% if pwPolicy.require_lowercase %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="pw_lowercase" class="text-sm text-foreground">Require lowercase</label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        {% if pPwPolicy.require_numbers %}
+                        <input type="hidden" name="authentication[login][password_policy][require_numbers]" value="on">
+                        <input type="checkbox" id="pw_numbers" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[login][password_policy][require_numbers]" value="">
+                        <input type="checkbox" id="pw_numbers" name="authentication[login][password_policy][require_numbers]"
+                               value="on"
+                               {% if pwPolicy.require_numbers %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="pw_numbers" class="text-sm text-foreground">Require numbers</label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        {% if pPwPolicy.require_symbols %}
+                        <input type="hidden" name="authentication[login][password_policy][require_symbols]" value="on">
+                        <input type="checkbox" id="pw_symbols" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[login][password_policy][require_symbols]" value="">
+                        <input type="checkbox" id="pw_symbols" name="authentication[login][password_policy][require_symbols]"
+                               value="on"
+                               {% if pwPolicy.require_symbols %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="pw_symbols" class="text-sm text-foreground">Require symbols</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 6: Registration (expanded) ─────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="user-plus" class="h-5 w-5 mr-2 text-primary"></i>
+                Registration
+            </h2>
+            <div class="space-y-4">
+                {# Signup Methods #}
+                <div>
+                    <label class="block text-sm font-medium text-foreground mb-2">Signup Methods</label>
+                    <p class="text-sm text-muted-foreground mb-3">Select which authentication methods users can use to sign up.</p>
+                    {% set signupMethods = signup.signup_methods if signup.signup_methods else [] %}
+                    <div class="space-y-3">
+                        <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                            <input type="checkbox" name="authentication[signup][signup_methods][]" value="email"
+                                   {% if 'email' in signupMethods %}checked{% endif %}
+                                   class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                            <div>
+                                <span class="text-sm font-medium text-foreground">Email + Password</span>
+                                <span class="text-xs text-muted-foreground ml-1">— User enters email address and password</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                            <input type="checkbox" name="authentication[signup][signup_methods][]" value="phone"
+                                   {% if 'phone' in signupMethods %}checked{% endif %}
+                                   class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                            <div>
+                                <span class="text-sm font-medium text-foreground">Phone + Password</span>
+                                <span class="text-xs text-muted-foreground ml-1">— User enters phone number and password</span>
+                            </div>
+                        </label>
+                        <label class="flex items-start gap-3 p-3 border border-border cursor-pointer hover:bg-muted/30">
+                            <input type="checkbox" name="authentication[signup][signup_methods][]" value="custom_identifier"
+                                   {% if 'custom_identifier' in signupMethods %}checked{% endif %}
+                                   class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                            <div>
+                                <span class="text-sm font-medium text-foreground">Custom Identifier + Password</span>
+                                <span class="text-xs text-muted-foreground ml-1">— User enters a custom field (e.g., employee ID) and password. Configure below.</span>
+                            </div>
+                        </label>
+                    </div>
+                    <p class="mt-2 text-xs text-muted-foreground">At least one method must be selected.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="flex items-center space-x-2">
+                        {% if pSignup.require_email_verification %}
+                        <input type="hidden" name="authentication[signup][require_email_verification]" value="on">
+                        <input type="checkbox" id="signup_email_verify" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[signup][require_email_verification]" value="">
+                        <input type="checkbox" id="signup_email_verify" name="authentication[signup][require_email_verification]"
+                               value="on"
+                               {% if signup.require_email_verification %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="signup_email_verify" class="text-sm font-medium text-foreground">Require email verification</label>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        {% if pSignup.require_phone_verification %}
+                        <input type="hidden" name="authentication[signup][require_phone_verification]" value="on">
+                        <input type="checkbox" id="signup_phone_verify" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
+                        <input type="hidden" name="authentication[signup][require_phone_verification]" value="">
+                        <input type="checkbox" id="signup_phone_verify" name="authentication[signup][require_phone_verification]"
+                               value="on"
+                               {% if signup.require_phone_verification %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
+                        <label for="signup_phone_verify" class="text-sm font-medium text-foreground">Require phone verification</label>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[signup][auto_approval][enabled]" value="">
+                        <input type="checkbox" id="signup_auto_approve" name="authentication[signup][auto_approval][enabled]"
+                               value="on"
+                               {% if autoApproval.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="signup_auto_approve" class="text-sm font-medium text-foreground">Auto-approve new accounts</label>
+                    </div>
+                </div>
+
+                {# Domains Whitelist #}
+                <div>
+                    <label for="signup_domains" class="block text-sm font-medium text-foreground mb-2">Auto-Approval Domain Whitelist</label>
+                    <textarea id="signup_domains" name="authentication[signup][auto_approval][domains_whitelist]" rows="3"
+                              class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                              placeholder="example.com">{{ autoApproval.domains_whitelist | join('\n') if autoApproval.domains_whitelist else '' }}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">One domain per line. Users from these domains are auto-approved.</p>
+                </div>
+
+                {# Contact Channels #}
+                <div class="bg-muted/30 p-4">
+                    <h3 class="text-sm font-medium text-foreground mb-3">Contact Channels</h3>
+                    <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3 mb-3">
+                        <div class="flex items-start">
+                            <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                            <span class="text-xs text-blue-800 dark:text-blue-200">
+                                Users must provide at least one contact channel for account recovery.
+                            </span>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[signup][contact_channels][require_at_least_one]" value="">
+                            <input type="checkbox" id="cc_require_one" name="authentication[signup][contact_channels][require_at_least_one]"
+                                   value="on"
+                                   {% if contactChannels.require_at_least_one != false %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="cc_require_one" class="text-sm font-medium text-foreground">Require at least one contact channel</label>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {% set ccEmail = contactChannels.email if contactChannels.email else {} %}
+                            <div class="bg-background p-3 border border-border">
+                                <h4 class="text-sm font-medium text-foreground mb-2">Email</h4>
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[signup][contact_channels][email][enabled]" value="">
+                                        <input type="checkbox" id="cc_email_enabled" name="authentication[signup][contact_channels][email][enabled]"
+                                               value="on"
+                                               {% if ccEmail.enabled != false %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="cc_email_enabled" class="text-sm text-foreground">Enable email field</label>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[signup][contact_channels][email][required]" value="">
+                                        <input type="checkbox" id="cc_email_required" name="authentication[signup][contact_channels][email][required]"
+                                               value="on"
+                                               {% if ccEmail.required %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="cc_email_required" class="text-sm text-foreground">Make email required</label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% set ccPhone = contactChannels.phone if contactChannels.phone else {} %}
+                            <div class="bg-background p-3 border border-border">
+                                <h4 class="text-sm font-medium text-foreground mb-2">Phone</h4>
+                                <div class="space-y-2">
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[signup][contact_channels][phone][enabled]" value="">
+                                        <input type="checkbox" id="cc_phone_enabled" name="authentication[signup][contact_channels][phone][enabled]"
+                                               value="on"
+                                               {% if ccPhone.enabled != false %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="cc_phone_enabled" class="text-sm text-foreground">Enable phone field</label>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[signup][contact_channels][phone][required]" value="">
+                                        <input type="checkbox" id="cc_phone_required" name="authentication[signup][contact_channels][phone][required]"
+                                               value="on"
+                                               {% if ccPhone.required %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="cc_phone_required" class="text-sm text-foreground">Make phone required</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between p-3 border border-border">
+                            <div>
+                                <label class="text-sm font-medium text-foreground">Full Name</label>
+                                <p class="text-xs text-muted-foreground mt-0.5">Collect user's full name during registration.</p>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-1.5 text-xs">
+                                    <input type="hidden" name="authentication[signup][contact_channels][full_name][enabled]" value="">
+                                    <input type="checkbox" name="authentication[signup][contact_channels][full_name][enabled]"
+                                           value="on" {% if contactChannels.full_name.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border">
+                                    Enabled
+                                </label>
+                                <label class="flex items-center gap-1.5 text-xs">
+                                    <input type="hidden" name="authentication[signup][contact_channels][full_name][required]" value="">
+                                    <input type="checkbox" name="authentication[signup][contact_channels][full_name][required]"
+                                           value="on" {% if contactChannels.full_name.required %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border">
+                                    Required
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 7: Custom Identifiers ──────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="id-card" class="h-5 w-5 mr-2 text-primary"></i>
+                Custom Identifiers
+            </h2>
+            <div class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 mb-4">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0"></i>
+                    <span class="text-xs text-blue-700 dark:text-blue-300">
+                        Configure up to 3 custom identifier fields (e.g., employee ID, student number) that users can use to login alongside email/phone. Setting "Usable for Login" on a field below is not sufficient — you must also enable <strong>"Custom Identifier + Password"</strong> in the <strong>Login Methods</strong> section above.
+                    </span>
+                </div>
+            </div>
+            <div class="space-y-4">
+
+                <div id="tenant-ci-fields-container" class="space-y-4">
+                    {% for field in ciFields %}
+                    <div class="ci-field-card border border-border p-4 bg-muted/20" data-ci-index="{{ loop.index0 }}">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-foreground">Slot {{ field.slot or loop.index }} — {{ field.name or 'Unnamed' }}</h3>
+                            <button type="button" class="ci-remove-btn text-destructive hover:text-destructive/80 text-xs" data-ci-index="{{ loop.index0 }}">
+                                <i data-lucide="trash-2" class="h-4 w-4"></i>
+                            </button>
+                        </div>
+
+                        <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][slot]" value="{{ field.slot or loop.index }}">
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Key (internal)</label>
+                                <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][key]"
+                                       value="{{ field.key or '' }}" placeholder="employee_id"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Display Name</label>
+                                <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][name]"
+                                       value="{{ field.name or '' }}" placeholder="Employee ID"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Placeholder / Hint</label>
+                                <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][hint_for_user]"
+                                       value="{{ field.hint_for_user or '' }}" placeholder="Enter your employee ID"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Validation Type</label>
+                                <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][validation_type]"
+                                        class="ci-validation-type w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <option value="none" {% if not field.validation_type or field.validation_type == 'none' %}selected{% endif %}>None (length only)</option>
+                                    <option value="regex" {% if field.validation_type == 'regex' %}selected{% endif %}>Regex Pattern</option>
+                                    <option value="charset_mask" {% if field.validation_type == 'charset_mask' %}selected{% endif %}>Charset + Mask</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Regex Pattern</label>
+                                <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][pattern]"
+                                       value="{{ field.pattern or '' }}" placeholder="^[A-Z]{2}\d{6}$"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Charset</label>
+                                <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][charset]"
+                                        class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <option value="" {% if not field.charset %}selected{% endif %}>— Select —</option>
+                                    <option value="digits" {% if field.charset == 'digits' %}selected{% endif %}>Digits (0-9)</option>
+                                    <option value="alphanumeric" {% if field.charset == 'alphanumeric' %}selected{% endif %}>Alphanumeric</option>
+                                    <option value="uppercase_alphanumeric" {% if field.charset == 'uppercase_alphanumeric' %}selected{% endif %}>Uppercase Alphanumeric</option>
+                                    <option value="hex" {% if field.charset == 'hex' %}selected{% endif %}>Hex (0-9, A-F)</option>
+                                    <option value="base20" {% if field.charset == 'base20' %}selected{% endif %}>Base20</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Mask</label>
+                                <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][mask]"
+                                       value="{{ field.mask or '' }}" placeholder="***-*-***"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                                <p class="mt-0.5 text-xs text-muted-foreground">* = charset char, others literal</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Min Length</label>
+                                <input type="number" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][min_length]"
+                                       value="{{ field.min_length if field.min_length else '' }}" min="1" max="100"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Max Length</label>
+                                <input type="number" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][max_length]"
+                                       value="{{ field.max_length if field.max_length else '' }}" min="1" max="100"
+                                       class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-foreground mb-1">Edit Policy</label>
+                                <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][edit_policy]"
+                                        class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                    <option value="set_once" {% if not field.edit_policy or field.edit_policy == 'set_once' %}selected{% endif %}>Set Once</option>
+                                    <option value="admin_only" {% if field.edit_policy == 'admin_only' %}selected{% endif %}>Admin Only</option>
+                                    <option value="editable" {% if field.edit_policy == 'editable' %}selected{% endif %}>Editable</option>
+                                    <option value="full" {% if field.edit_policy == 'full' %}selected{% endif %}>Full (edit + delete)</option>
+                                </select>
+                            </div>
+                            <div class="flex flex-col justify-end gap-1.5 pt-1">
+                                <label class="flex items-center space-x-2 text-xs">
+                                    <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][case_sensitive]" value="">
+                                    <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][case_sensitive]"
+                                           {% if field.case_sensitive %}checked{% endif %}
+                                           class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                    <span class="text-foreground">Case Sensitive</span>
+                                </label>
+                                <label class="flex items-center space-x-2 text-xs">
+                                    <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][required_for_registration]" value="">
+                                    <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][required_for_registration]"
+                                           {% if field.required_for_registration %}checked{% endif %}
+                                           class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                    <span class="text-foreground">Required for Registration</span>
+                                </label>
+                                <label class="flex items-center space-x-2 text-xs">
+                                    <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][usable_for_login]" value="">
+                                    <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][usable_for_login]"
+                                           {% if field.usable_for_login %}checked{% endif %}
+                                           class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                    <span class="text-foreground">Usable for Login</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if ciFields | length < 3 %}
+                <button type="button" id="tenant-ci-add-btn" class="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors">
+                    <i data-lucide="plus" class="h-4 w-4"></i>
+                    Add Custom Identifier ({{ ciFields | length }}/3)
+                </button>
+                {% endif %}
+
+                <script>
+                (function() {
+                    var container = document.getElementById('tenant-ci-fields-container');
+                    var addBtn = document.getElementById('tenant-ci-add-btn');
+
+                    function getFieldCount() {
+                        return container.querySelectorAll('.ci-field-card').length;
+                    }
+
+                    function getUsedSlots() {
+                        var slots = [];
+                        container.querySelectorAll('.ci-field-card input[name$="[slot]"]').forEach(function(input) {
+                            slots.push(parseInt(input.value, 10));
+                        });
+                        return slots;
+                    }
+
+                    function getNextAvailableSlot() {
+                        var used = getUsedSlots();
+                        for (var s = 1; s <= 3; s++) {
+                            if (used.indexOf(s) === -1) return s;
+                        }
+                        return null;
+                    }
+
+                    function reindexFields() {
+                        var cards = container.querySelectorAll('.ci-field-card');
+                        cards.forEach(function(card, idx) {
+                            card.dataset.ciIndex = idx;
+                            card.querySelectorAll('[name]').forEach(function(el) {
+                                el.name = el.name.replace(/\[fields\]\[\d+\]/, '[fields][' + idx + ']');
+                            });
+                            var removeBtn = card.querySelector('.ci-remove-btn');
+                            if (removeBtn) removeBtn.dataset.ciIndex = idx;
+                        });
+                    }
+
+                    function updateAddBtn() {
+                        var count = getFieldCount();
+                        if (addBtn) {
+                            if (count >= 3) addBtn.style.display = 'none';
+                            else {
+                                addBtn.style.display = '';
+                                addBtn.innerHTML = '<i data-lucide="plus" class="h-4 w-4"></i> Add Custom Identifier (' + count + '/3)';
+                            }
+                            if (window.lucide) window.lucide.createIcons();
+                        }
+                    }
+
+                    if (addBtn) {
+                        addBtn.addEventListener('click', function() {
+                            var count = getFieldCount();
+                            if (count >= 3) return;
+                            var slot = getNextAvailableSlot();
+                            if (!slot) return;
+                            var idx = count;
+                            var card = document.createElement('div');
+                            card.className = 'ci-field-card border border-border p-4 bg-muted/20';
+                            card.dataset.ciIndex = idx;
+                            card.innerHTML = `
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-sm font-semibold text-foreground">Slot ${slot} — New Field</h3>
+                                    <button type="button" class="ci-remove-btn text-destructive hover:text-destructive/80 text-xs" data-ci-index="${idx}"><i data-lucide="trash-2" class="h-4 w-4"></i></button>
+                                </div>
+                                <input type="hidden" name="authentication[custom_identifiers][fields][${idx}][slot]" value="${slot}">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Key (internal)</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][key]" placeholder="employee_id" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Display Name</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][name]" placeholder="Employee ID" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Placeholder / Hint</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][hint_for_user]" placeholder="Enter your employee ID" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Validation Type</label><select name="authentication[custom_identifiers][fields][${idx}][validation_type]" class="ci-validation-type w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="none" selected>None (length only)</option><option value="regex">Regex Pattern</option><option value="charset_mask">Charset + Mask</option></select></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Regex Pattern</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][pattern]" placeholder="^[A-Z]{2}\\d{6}$" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Charset</label><select name="authentication[custom_identifiers][fields][${idx}][charset]" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="" selected>— Select —</option><option value="digits">Digits (0-9)</option><option value="alphanumeric">Alphanumeric</option><option value="uppercase_alphanumeric">Uppercase Alphanumeric</option><option value="hex">Hex (0-9, A-F)</option><option value="base20">Base20</option></select></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Mask</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][mask]" placeholder="***-*-***" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"><p class="mt-0.5 text-xs text-muted-foreground">* = charset char, others literal</p></div>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Min Length</label><input type="number" name="authentication[custom_identifiers][fields][${idx}][min_length]" min="1" max="100" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Max Length</label><input type="number" name="authentication[custom_identifiers][fields][${idx}][max_length]" min="1" max="100" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                    <div><label class="block text-xs font-medium text-foreground mb-1">Edit Policy</label><select name="authentication[custom_identifiers][fields][${idx}][edit_policy]" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="set_once" selected>Set Once</option><option value="admin_only">Admin Only</option><option value="editable">Editable</option><option value="full">Full (edit + delete)</option></select></div>
+                                    <div class="flex flex-col justify-end gap-1.5 pt-1">
+                                        <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][case_sensitive]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][case_sensitive]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Case Sensitive</span></label>
+                                        <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][required_for_registration]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][required_for_registration]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Required for Registration</span></label>
+                                        <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][usable_for_login]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][usable_for_login]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Usable for Login</span></label>
+                                    </div>
+                                </div>
+                            `;
+                            container.appendChild(card);
+                            updateAddBtn();
+                            if (window.lucide) window.lucide.createIcons();
+                        });
+                    }
+
+                    container.addEventListener('click', function(e) {
+                        var btn = e.target.closest('.ci-remove-btn');
+                        if (btn) {
+                            var card = btn.closest('.ci-field-card');
+                            if (card) card.remove();
+                            reindexFields();
+                            updateAddBtn();
+                        }
+                    });
+                })();
+                </script>
+            </div>
+        </div>
+
+        {# ── Section 8: User Roles ──────────────────────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                User Roles
+            </h2>
+            <div>
+                <label for="roles_default" class="block text-sm font-medium text-foreground mb-2">Default Role</label>
+                <input type="text" id="roles_default" name="authentication[roles][default]"
+                       value="{{ roles.default or '' }}"
+                       placeholder="{{ pRoles.default or 'user' }}"
+                       class="w-full max-w-md px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                <p class="mt-1 text-xs text-muted-foreground">Role assigned to new users by default. Must be one of the platform's available roles.</p>
+            </div>
+        </div>
+
+        {# ── Section 9: Account Recovery (expanded) ─────────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="key" class="h-5 w-5 mr-2 text-primary"></i>
+                Account Recovery
+            </h2>
+            <div class="space-y-4">
+                <div class="flex items-center space-x-2">
+                    <input type="hidden" name="authentication[recovery][enabled]" value="">
+                    <input type="checkbox" id="recovery_enabled" name="authentication[recovery][enabled]"
+                           value="on"
+                           {% if recovery.enabled != false %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    <label for="recovery_enabled" class="text-sm font-medium text-foreground">Enable account recovery</label>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 ml-6">
+                    <div class="flex items-center space-x-2">
+                        <input type="hidden" name="authentication[recovery][backup_codes][enabled]" value="">
+                        <input type="checkbox" id="backup_codes_enabled" name="authentication[recovery][backup_codes][enabled]"
+                               value="on"
+                               {% if backupCodes.enabled != false %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="backup_codes_enabled" class="text-sm text-foreground">Enable backup codes</label>
+                    </div>
+                    <div>
+                        <label for="backup_code_count" class="block text-sm font-medium text-foreground mb-2">Number of codes</label>
+                        <input type="number" id="backup_code_count" name="authentication[recovery][backup_codes][count]"
+                               value="{{ backupCodes.count or '' }}" min="1" max="50"
+                               placeholder="10"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="backup_code_expiry" class="block text-sm font-medium text-foreground mb-2">Expiry (days)</label>
+                        <input type="number" id="backup_code_expiry" name="authentication[recovery][backup_codes][expiry_days]"
+                               value="{{ backupCodes.expiry_days or '' }}" min="1" max="3650"
+                               placeholder="365"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+                </div>
+
+                {# Recovery Methods #}
+                <div class="bg-muted/30 p-4 ml-6">
+                    <h3 class="text-sm font-medium text-foreground mb-3">Recovery Methods</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {% set secondaryEmail = recovery.secondary_email if recovery.secondary_email else {} %}
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[recovery][secondary_email][enabled]" value="">
+                            <input type="checkbox" id="recovery_secondary_email" name="authentication[recovery][secondary_email][enabled]"
+                                   value="on"
+                                   {% if secondaryEmail.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="recovery_secondary_email" class="text-sm text-foreground">Secondary email</label>
+                        </div>
+                        {% set recoverySms = recovery.sms if recovery.sms else {} %}
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[recovery][sms][enabled]" value="">
+                            <input type="checkbox" id="recovery_sms" name="authentication[recovery][sms][enabled]"
+                                   value="on"
+                                   {% if recoverySms.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="recovery_sms" class="text-sm text-foreground">SMS recovery</label>
+                        </div>
+                        {% set securityQuestions = recovery.security_questions if recovery.security_questions else {} %}
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[recovery][security_questions][enabled]" value="">
+                            <input type="checkbox" id="recovery_security_q" name="authentication[recovery][security_questions][enabled]"
+                                   value="on"
+                                   {% if securityQuestions.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="recovery_security_q" class="text-sm text-foreground">Security questions</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 10: Device Matching & Protection ───────────────────────── #}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="fingerprint" class="h-5 w-5 mr-2 text-primary"></i>
+                Device Matching &amp; Protection
+            </h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="high_risk_countries" class="block text-sm font-medium text-foreground mb-2">High Risk Countries</label>
+                    <textarea id="high_risk_countries" name="protection[high_risk_countries]" rows="3"
+                              class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                              placeholder="KP&#10;IR">{{ protection.high_risk_countries | join('\n') if protection.high_risk_countries else '' }}</textarea>
+                    <p class="mt-1 text-xs text-muted-foreground">ISO 3166-1 country codes, one per line. Logins from these countries trigger extra verification.</p>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <input type="hidden" name="protection[encrypt_device_data]" value="">
+                    {% if pProtection.encrypt_device_data %}
+                    <input type="hidden" name="protection[encrypt_device_data]" value="on">
+                    <input type="checkbox" id="encrypt_device" checked disabled
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    {% else %}
+                    <input type="checkbox" id="encrypt_device" name="protection[encrypt_device_data]"
+                           value="on"
+                           {% if protection.encrypt_device_data %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    {% endif %}
+                    <label for="encrypt_device" class="text-sm font-medium text-foreground">Encrypt stored device fingerprints</label>
+                </div>
+                {% if pProtection.encrypt_device_data %}
+                <p class="mt-1 text-xs text-muted-foreground ml-6">Cannot disable — enforced by platform.</p>
+                {% endif %}
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="dm_confidence" class="block text-sm font-medium text-foreground mb-2">Min Confidence Score</label>
+                        <input type="number" id="dm_confidence" name="protection[device_matching][min_confidence_score]"
+                               value="{{ deviceMatching.min_confidence_score or '' }}"
+                               min="{{ pDeviceMatching.min_confidence_score or 0 }}"
+                               max="100"
+                               placeholder="{{ pDeviceMatching.min_confidence_score or 70 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Minimum score to consider a device match (0-100). Higher = stricter.</p>
+                    </div>
+                    <div>
+                        <label for="dm_ip_threshold" class="block text-sm font-medium text-foreground mb-2">IP Similarity Threshold</label>
+                        <input type="number" id="dm_ip_threshold" name="protection[device_matching][ip_similarity_threshold]"
+                               value="{{ deviceMatching.ip_similarity_threshold or '' }}"
+                               min="{{ pDeviceMatching.ip_similarity_threshold or 0 }}"
+                               max="1" step="0.1"
+                               placeholder="{{ pDeviceMatching.ip_similarity_threshold or 0.8 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">IP similarity required for device matching (0-1). Higher = stricter.</p>
+                    </div>
+                    <div>
+                        <label for="dm_travel_speed" class="block text-sm font-medium text-foreground mb-2">Impossible Travel Max Speed (km/h)</label>
+                        <input type="number" id="dm_travel_speed" name="protection[device_matching][impossible_travel_max_speed_kmh]"
+                               value="{{ deviceMatching.impossible_travel_max_speed_kmh or '' }}"
+                               min="100"
+                               max="{{ pDeviceMatching.impossible_travel_max_speed_kmh or 5000 }}"
+                               placeholder="{{ pDeviceMatching.impossible_travel_max_speed_kmh or 1000 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Max travel speed before flagging. Lower = stricter. Cannot exceed {{ pDeviceMatching.impossible_travel_max_speed_kmh or 5000 }}.</p>
+                    </div>
+                    <div>
+                        <label for="dm_trust_days" class="block text-sm font-medium text-foreground mb-2">Trust Duration (days)</label>
+                        <input type="number" id="dm_trust_days" name="protection[device_matching][trust_duration_days]"
+                               value="{{ deviceMatching.trust_duration_days or '' }}"
+                               min="1"
+                               max="{{ pDeviceMatching.trust_duration_days or 365 }}"
+                               placeholder="{{ pDeviceMatching.trust_duration_days or 30 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">How long a trusted device stays trusted. Cannot exceed {{ pDeviceMatching.trust_duration_days or 365 }}.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# ── Section 11: Rate Limiting (unchanged) ──────────────────────────── #}
+        {% set rateLimiting = protection.rate_limiting if protection.rate_limiting else {} %}
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="gauge" class="h-5 w-5 mr-2 text-primary"></i>
+                Rate Limiting
+            </h2>
+            <div class="space-y-4">
+                <div class="flex items-center space-x-2">
+                    <input type="hidden" name="protection[rate_limiting][enabled]" value="">
+                    <input type="checkbox" id="rate_limit_enabled" name="protection[rate_limiting][enabled]"
+                           value="on"
+                           {% if rateLimiting.enabled %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    <label for="rate_limit_enabled" class="text-sm font-medium text-foreground">Enable rate limiting</label>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 ml-6">
+                    <div>
+                        <label for="rate_limit_rpm" class="block text-sm font-medium text-foreground mb-2">Requests per Minute</label>
+                        <input type="number" id="rate_limit_rpm" name="protection[rate_limiting][requests_per_minute]"
+                               value="{{ rateLimiting.requests_per_minute or '' }}" min="1"
+                               max="{{ pRateLimit.requests_per_minute or 1000 }}"
+                               placeholder="{{ pRateLimit.requests_per_minute or 60 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Maximum allowed: {{ pRateLimit.requests_per_minute or 1000 }}.</p>
+                    </div>
+                    <div>
+                        <label for="rate_limit_window" class="block text-sm font-medium text-foreground mb-2">Window (minutes)</label>
+                        <input type="number" id="rate_limit_window" name="protection[rate_limiting][window_minutes]"
+                               value="{{ rateLimiting.window_minutes or '' }}" min="1"
+                               max="{{ pRateLimit.window_minutes or 60 }}"
+                               placeholder="{{ pRateLimit.window_minutes or 1 }}"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Maximum allowed: {{ pRateLimit.window_minutes or 60 }} minutes.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </form>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border">
+        <div>
+            {% if hasOverride %}
+            <form method="POST" action="/admin/configuration/{{ section }}/reset"
+                  onsubmit="return confirm('Are you sure you want to reset Security configuration to defaults? This cannot be undone.')">
+                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Reset to Defaults
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="flex gap-3">
+            <a href="/admin/configuration"
+               class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back
+            </a>
+            <button type="submit" form="config-form"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/configuration/validation.js"></script>
+<script src="/js/admin/configuration/security.js"></script>
+{% endblock %}

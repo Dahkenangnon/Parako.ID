@@ -1,0 +1,72 @@
+{
+  "subject": {
+    "welcome": "{{appName}}へようこそ",
+    "email_verification": "メールアドレスを確認",
+    "password_reset": "パスワードをリセット",
+    "password_changed": "パスワードが変更されました",
+    "account_recovery": "アカウントを回復",
+    "security_alert": "アカウントのセキュリティ警告",
+    "new_session": "{{appName}}アカウントへの新しいログイン",
+    "new_device_otp": "{{appName}} - 新しいデバイスの確認"
+  },
+  "greeting": {
+    "hello": "こんにちは、{{name}}さん",
+    "hello_user": "こんにちは"
+  },
+  "verification": {
+    "title": "メールアドレスを確認",
+    "body": "ご登録ありがとうございます！下のボタンをクリックしてメールアドレスを確認してください。",
+    "button": "メールを確認",
+    "expires": "このリンクは{{hours}}時間後に期限切れになります。",
+    "ignore": "アカウントを作成していない場合は、このメールを無視しても問題ありません。"
+  },
+  "password_reset": {
+    "title": "パスワードをリセット",
+    "body": "パスワードのリセットリクエストを受け取りました。下のボタンをクリックして新しいパスワードを作成してください。",
+    "button": "パスワードをリセット",
+    "expires": "このリンクは{{hours}}時間後に期限切れになります。",
+    "ignore": "パスワードのリセットをリクエストしていない場合は、このメールを無視しても問題ありません。"
+  },
+  "welcome": {
+    "title": "{{appName}}へようこそ",
+    "body_intro": "{{appName}}にご参加いただきありがとうございます！コミュニティの一員として迎えられることを嬉しく思います。",
+    "body_description": "{{appDescription}}",
+    "features_intro": "{{appName}}では、以下のことができます：",
+    "feature_1": "デジタルIDを安全に管理",
+    "feature_2": "アプリケーションへのアクセスを制御",
+    "feature_3": "多要素認証でアカウントを保護",
+    "get_started": "アカウントダッシュボードを探索して始めましょう。",
+    "button": "アカウントを管理"
+  },
+  "security_alert": {
+    "title": "セキュリティ警告 - {{alertType}}",
+    "body": "{{appName}}アカウントでセキュリティイベントを検出しました。",
+    "alert_type_label": "警告タイプ：",
+    "details_label": "詳細：",
+    "not_you": "ご自身でない場合は、直ちにアカウントを保護してください。",
+    "button": "アカウントを保護"
+  },
+  "new_session": {
+    "title": "新しいログインが検出されました",
+    "body": "{{appName}}アカウントへの新しいログインが検出されました。",
+    "time_label": "日時：",
+    "ip_label": "IPアドレス：",
+    "device_label": "デバイス：",
+    "not_you": "ご自身でない場合は、直ちにパスワードを変更し、アカウントのセキュリティを確認してください。",
+    "button": "セキュリティ設定を確認"
+  },
+  "new_device_otp": {
+    "title": "新しいデバイスの確認",
+    "body": "{{appName}}アカウントへの新しいデバイスからのログイン試行が検出されました。本人確認のため、このコードを入力してください：",
+    "device_label": "デバイス：",
+    "ip_label": "IPアドレス：",
+    "expires": "このコードは10分後に期限切れになります。",
+    "not_you": "ログインを試みていない場合は、このメールを無視して、直ちにパスワードを変更してください。"
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}。全著作権所有。",
+    "contact": "ご質問がある場合は、{{email}}までお問い合わせください",
+    "privacy": "プライバシーポリシー",
+    "terms": "利用規約"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Redefina sua senha",
+  "description": "Enviaremos um link para redefinir sua senha.",
+  "button": {
+    "send_reset_link": "Enviar link",
+    "sending": "Enviando..."
+  },
+  "link": {
+    "need_more_help": "Precisa de mais ajuda?",
+    "remember_password": "Lembra da sua senha?"
+  }
+}

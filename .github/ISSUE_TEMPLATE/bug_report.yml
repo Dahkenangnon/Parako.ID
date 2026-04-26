@@ -1,0 +1,224 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        Please provide as much detail as possible so maintainers can reproduce quickly.
+        If this is a security vulnerability, please do not open a public issue. Use the security policy instead.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Configure '...'
+        2. Start the server with '...'
+        3. Navigate to '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened. Include error messages or logs if available.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Parako.ID Version
+      description: What version are you running?
+      placeholder: e.g., 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      placeholder: e.g., 24.14.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Mode
+      description: Where are you running Parako.ID?
+      options:
+        - Local development
+        - Docker / Compose
+        - PM2 on VM / bare metal
+        - Kubernetes
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      description: Select all storage engines involved in this setup.
+      multiple: true
+      options:
+        - MongoDB
+        - SQLite
+        - PostgreSQL
+    validations:
+      required: true
+
+  - type: dropdown
+    id: storage-adapter
+    attributes:
+      label: Main Storage Adapter (STORAGE_ADAPTER)
+      options:
+        - mongodb
+        - sqlite
+        - postgresql
+    validations:
+      required: true
+
+  - type: dropdown
+    id: oidc-storage-adapter
+    attributes:
+      label: OIDC/Session Storage Adapter (OIDC_STORAGE_ADAPTER)
+      description: Select all that apply. If unset, choose the same as main storage.
+      multiple: true
+      options:
+        - mongodb
+        - redis
+        - sqlite
+        - postgresql
+        - Same as STORAGE_ADAPTER
+        - Not sure
+
+  - type: dropdown
+    id: multi-tenancy-enabled
+    attributes:
+      label: Multi-Tenancy Enabled (MULTI_TENANCY_ENABLED)
+      options:
+        - true
+        - false
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: multi-tenancy-extraction-priority
+    attributes:
+      label: Tenant Extraction Priority (MULTI_TENANCY_EXTRACTION_PRIORITY)
+      description: Select all strategies configured, in rough priority order.
+      multiple: true
+      options:
+        - header
+        - subdomain
+        - Not configured
+        - Not sure
+
+  - type: input
+    id: multi-tenancy-header
+    attributes:
+      label: Tenant Header (MULTI_TENANCY_TENANT_HEADER)
+      placeholder: e.g., x-tenant-id
+
+  - type: input
+    id: db-version
+    attributes:
+      label: Database Version(s)
+      description: 'Example: MongoDB 8.0, PostgreSQL 16, SQLite 3.45'
+      placeholder: e.g., MongoDB 8.0.4
+
+  - type: dropdown
+    id: config-source
+    attributes:
+      label: Configuration Source
+      description: How is application config loaded?
+      options:
+        - Database config
+        - File config (USE_FILE_CONFIG=true)
+        - Not sure
+
+  - type: dropdown
+    id: oidc-flow
+    attributes:
+      label: Affected OIDC/Auth Flow
+      multiple: true
+      options:
+        - Authorization Code
+        - Authorization Code + PKCE
+        - Device Authorization
+        - Client Credentials
+        - Refresh Token
+        - Logout
+        - Consent / Interaction
+        - MFA (TOTP)
+        - Passkeys / WebAuthn
+        - Social Login / Federation
+        - Dynamic Client Registration
+        - Other
+
+  - type: textarea
+    id: oidc-context
+    attributes:
+      label: OIDC Context
+      description: Provide details that help reproduce protocol-related issues.
+      placeholder: |
+        - Issuer URL:
+        - Client ID:
+        - Grant type / response type:
+        - Requested scopes:
+        - Redirect URI used:
+        - Is PKCE used? (yes/no)
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Include sanitized server logs around the failure window.
+      render: shell
+      placeholder: |
+        [timestamp] error: ...
+        [timestamp] warn: ...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or log output.

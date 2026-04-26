@@ -1,0 +1,42 @@
+{
+  "title": "활성 세션",
+  "description": "현재 로그인되어 있는 기기들입니다. 이 목록을 정기적으로 확인하고 인식할 수 없거나 더 이상 사용하지 않는 기기에서 로그아웃하세요.",
+  "sign_out_all": {
+    "button": "모든 다른 기기에서 로그아웃",
+    "button_short": "다른 모든 기기 로그아웃",
+    "confirm": "모든 다른 기기에서 로그아웃하시겠습니까? 이렇게 하면 다른 모든 기기에서 즉시 로그아웃되며 해당 기기의 연결된 앱 연결이 끊길 수 있습니다."
+  },
+  "table": {
+    "device_location": "기기 및 위치",
+    "ip_address": "IP 주소",
+    "started": "시작됨",
+    "last_active": "마지막 활동",
+    "status": "상태",
+    "action": "작업"
+  },
+  "status": {
+    "current": "현재",
+    "active": "활성",
+    "this_device": "이 기기"
+  },
+  "unknown": {
+    "device": "알 수 없는 기기",
+    "location": "알 수 없는 위치",
+    "general": "알 수 없음"
+  },
+  "action": {
+    "sign_out": "로그아웃",
+    "confirm_sign_out": "이 기기에서 로그아웃하시겠습니까? 이렇게 하면 즉시 로그아웃되며 연결된 앱 연결이 끊길 수 있습니다."
+  },
+  "empty_state": {
+    "title": "다른 기기 없음",
+    "description": "다른 기기에 로그인되어 있지 않습니다."
+  },
+  "mobile_labels": {
+    "device": "기기",
+    "location": "위치",
+    "ip_address": "IP 주소",
+    "started": "시작됨",
+    "last_active": "마지막 활동"
+  }
+}

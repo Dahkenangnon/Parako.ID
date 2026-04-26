@@ -1,0 +1,42 @@
+{
+  "title": "Kontrol'nye voprosy",
+  "description": "Nastroyte kontrol'nye voprosy dlya vosstanovleniya akkaunta",
+  "setup": {
+    "title": "Nastroyka kontrol'nykh voprosov",
+    "select_question": "Выберите вопрос...",
+    "select_questions": "Vyberie {{count}} voprosov i ukazhite otvety",
+    "answer_placeholder": "Vash otvet",
+    "save": "Sokhranit' kontrol'nye voprosy",
+    "instruction": "Vybirajte voprosy s otvetami, kotorye znayete tol'ko vy. Otvety ne uchityvayut registr."
+  },
+  "recovery": {
+    "title": "Otvet'te na kontrol'nye voprosy",
+    "description": "Otvet'te na kontrol'nye voprosy dlya vosstanovleniya akkaunta",
+    "submit": "Proverit' otvety",
+    "attempts_remaining": "Ostalos' {{count}} popytok"
+  },
+  "questions": {
+    "q1": "Kak zvali vashego pervogo pitomtsa?",
+    "q2": "V kakom gorode vy rodilis'?",
+    "q3": "Kak vas zvali v detstve?",
+    "q4": "Kak zovut vashego luchshego druga detstva?",
+    "q5": "Kakoy marki byl vash pervyy avtomobil'?",
+    "q6": "Kak nazyvalas' vasha nachal'naya shkola?",
+    "q7": "Kakaya devich'ya familiya vashey materi?",
+    "q8": "Na kakoy ulitse vy vyrosli?",
+    "q9": "Kakoe bylo vashe lyubimoe blyudo v detstve?",
+    "q10": "Na kakom kontserte vy byli vpervye?"
+  },
+  "validation": {
+    "answer_too_short": "Otvet dolzhen byt' ne menee 3 simvolov",
+    "answer_too_generic": "Pozhaluysta, ukazhite bolee konkretnyy otvet",
+    "all_answers_required": "Pozhaluysta, otvet'te na vse voprosy",
+    "incorrect_answers": "Odin ili neskol'ko otvetov neverno",
+    "select_different_questions": "Pozhaluysta, vyberite raznye voprosy"
+  },
+  "status": {
+    "configured": "Kontrol'nye voprosy nastroeny",
+    "not_configured": "Kontrol'nye voprosy ne nastroeny",
+    "update": "Obnovit' kontrol'nye voprosy"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "subject": {
+    "welcome": "Welcome to {{appName}}",
+    "email_verification": "Verify your email address",
+    "password_reset": "Reset your password",
+    "password_changed": "Your password has been changed",
+    "account_recovery": "Recover your account",
+    "security_alert": "Security alert for your account",
+    "new_session": "New login to your {{appName}} account",
+    "new_device_otp": "{{appName}} - Verify New Device"
+  },
+  "greeting": {
+    "hello": "Hello {{name}}",
+    "hello_user": "Hello"
+  },
+  "verification": {
+    "title": "Verify your email address",
+    "body": "Thank you for signing up! Please verify your email address by clicking the button below.",
+    "button": "Verify Email",
+    "expires": "This link will expire in {{hours}} hours.",
+    "ignore": "If you didn't create an account, you can safely ignore this email."
+  },
+  "password_reset": {
+    "title": "Reset your password",
+    "body": "We received a request to reset your password. Click the button below to create a new password.",
+    "button": "Reset Password",
+    "expires": "This link will expire in {{hours}} hours.",
+    "ignore": "If you didn't request a password reset, you can safely ignore this email."
+  },
+  "welcome": {
+    "title": "Welcome to {{appName}}",
+    "body_intro": "Thank you for joining {{appName}}! We're excited to have you as part of our community.",
+    "body_description": "{{appDescription}}",
+    "features_intro": "With {{appName}}, you can:",
+    "feature_1": "Manage your digital identity securely",
+    "feature_2": "Control access to your applications",
+    "feature_3": "Protect your accounts with multi-factor authentication",
+    "get_started": "Get started by exploring your account dashboard.",
+    "button": "Manage your account"
+  },
+  "security_alert": {
+    "title": "Security Alert - {{alertType}}",
+    "body": "We detected a security event on your {{appName}} account.",
+    "alert_type_label": "Alert Type:",
+    "details_label": "Details:",
+    "not_you": "If this was not you, please secure your account immediately.",
+    "button": "Secure Account"
+  },
+  "new_session": {
+    "title": "New Login Detected",
+    "body": "A new login to your {{appName}} account was detected.",
+    "time_label": "Time:",
+    "ip_label": "IP Address:",
+    "device_label": "Device:",
+    "not_you": "If this was not you, please change your password immediately and review your account security.",
+    "button": "Review Security Settings"
+  },
+  "new_device_otp": {
+    "title": "Verify New Device",
+    "body": "We detected a login attempt from a new device to your {{appName}} account. Enter this code to verify it's you:",
+    "device_label": "Device:",
+    "ip_label": "IP Address:",
+    "expires": "This code expires in 10 minutes.",
+    "not_you": "If you didn't attempt to log in, please ignore this email and change your password immediately."
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}. All rights reserved.",
+    "contact": "If you have any questions, please contact us at {{email}}",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service"
+  }
+}

@@ -1,0 +1,114 @@
+{% extends "layouts/account-layout.njk" %}
+{% block account_content %}
+    <div class="space-y-6">
+        <!-- Back to Settings Link -->
+        <a href="{{ routes.accountFull.settings_recovery }}" class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+            {{ t('common.back_to_settings', 'Back to Settings') }}
+        </a>
+
+        <!-- Header -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-2 flex items-center">
+                <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                {{ t('account-recovery-codes.title') }}
+            </h2>
+            <p class="text-sm text-muted-foreground max-w-3xl">{{ t('account-recovery-codes.subtitle') }}</p>
+        </div>
+
+        <!-- Important Notice -->
+        <div class="bg-destructive/10 border border-destructive/20 p-4">
+            <div class="space-y-2">
+                <h3 class="text-sm font-semibold text-foreground">{{ t('account-recovery-codes.security_notice.title') }}</h3>
+                <p class="text-sm text-muted-foreground">{{ t('account-recovery-codes.security_notice.description') }}</p>
+            </div>
+        </div>
+        <!-- Download Codes Section -->
+        <div class="bg-background border border-border p-8 text-center">
+            <div class="mb-6">
+                <div class="mx-auto flex items-center justify-center h-16 w-16 bg-primary/10 border border-primary/20 mb-4">
+                    <svg class="h-8 w-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                    </svg>
+                </div>
+                <h2 class="text-lg font-semibold text-foreground mb-2">{{ t('account-recovery-codes.download_section.title') }}</h2>
+                <p class="text-sm text-muted-foreground">{{ t('account-recovery-codes.download_section.description', { count: backup_codes.length }) }}</p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                    type="button"
+                    id="download-codes"
+                    class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-medium
+                        text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                    </svg>
+                    {{ t('account-recovery-codes.download_section.download_button') }}
+                </button>
+                <button
+                    type="button"
+                    id="copy-all-codes"
+                    class="inline-flex items-center justify-center px-6 py-3 border border-border text-sm font-medium text-foreground
+                        bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    {{ t('account-recovery-codes.download_section.copy_button') }}
+                </button>
+                <button
+                    type="button"
+                    id="print-codes"
+                    class="inline-flex items-center justify-center px-6 py-3 border border-border text-sm font-medium text-foreground
+                        bg-background hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                    <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                    </svg>
+                    {{ t('account-recovery-codes.download_section.print_button') }}
+                </button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+{% block scripts %}
+    {{ super() }}
+    {# Hidden elements for JS to read codes from DOM instead of JSON state (security: no codes in JSON) #}
+    <div id="recovery-codes-data" class="hidden" aria-hidden="true">
+      {% for code in backup_codes %}<span data-code="{{ code | e }}"></span>{% endfor %}
+    </div>
+    <script id="___RECOVERY_CODES_STATE___" type="application/json">
+    {
+      "translations": {
+        "fileContentTitle": {{ t('account-recovery-codes.file_content.title') | tojson | safe }},
+        "fileContentGenerated": {{ t('account-recovery-codes.file_content.generated') | tojson | safe }},
+        "fileContentImportant": {{ t('account-recovery-codes.file_content.important') | tojson | safe }},
+        "fileContentTotalCodes": {{ t('account-recovery-codes.file_content.total_codes') | tojson | safe }},
+        "downloadedFeedback": {{ t('account-recovery-codes.download_section.downloaded') | tojson | safe }},
+        "copiedFeedback": {{ t('account-recovery-codes.download_section.copied') | tojson | safe }},
+        "printedFeedback": {{ t('account-recovery-codes.download_section.printed') | tojson | safe }},
+        "copyFailedError": {{ t('account-recovery-codes.error.copy_failed') | tojson | safe }}
+      },
+      "debug": {{ (app.env === 'development') | tojson }}
+    }
+    </script>
+    <script src="/js/account/recovery-codes.js"></script>
+{% endblock %}

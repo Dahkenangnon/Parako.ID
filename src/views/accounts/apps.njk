@@ -1,0 +1,121 @@
+{% extends "layouts/account-layout.njk" %}
+
+{% block account_content %}
+<div class="space-y-10">
+    <!-- Back to My Account Link -->
+    <a href="{{ routes.accountFull.dashboard }}" class="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+        </svg>
+        {{ t('common.back_to_my_account', 'Back to My Account') }}
+    </a>
+
+    <!-- Header Section -->
+    <div class="mb-8">
+        <div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-foreground mb-2 flex items-center">
+                        <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                        </svg>
+                        {{ t('account-apps.title') }}
+                    </h2>
+                    <p class="text-sm text-muted-foreground max-w-3xl">
+                        {{ t('account-apps.description') }}
+                    </p>
+                </div>
+                {% if connectedApps and connectedApps.length > 0 %}
+                <form method="post" action="{{ routes.accountFull.revoke_all_apps }}" class="inline">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring transition-colors confirm-action" data-confirm-title="Remove All Apps" data-confirm-message="{{ t('account-apps.confirm.remove_all') }}" data-confirm-variant="danger">
+                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                        {{ t('account-apps.remove_all_access') }}
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Connected Apps List -->
+    <div>
+        <div>
+            {% if connectedApps and connectedApps.length > 0 %}
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {% for app in connectedApps %}
+                    <div class="bg-muted/50 border border-border p-4">
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0 mr-4">
+                                <div class="bg-background h-12 w-12 flex items-center justify-center border border-border">
+                                    {% if app.logo %}
+                                    <img src="{{ app.logo }}" alt="{{ app.name }}" class="h-10 w-10 object-contain" />
+                                    {% else %}
+                                    <div class="bg-primary/10 h-10 w-10 flex items-center justify-center">
+                                        <span class="text-primary font-medium text-sm">{{ app.name | slice(0, 2) }}</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-start justify-between mb-3">
+                                    <div class="min-w-0 flex-1">
+                                        <h3 class="text-sm font-medium text-foreground truncate">{{ app.name }}</h3>
+                                        <p class="text-xs text-muted-foreground mt-0.5 truncate">{{ app.developer }}</p>
+                                    </div>
+                                    <form method="post" action="{{ routes.accountFull.revoke_app }}" class="inline">
+                                        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                        <input type="hidden" name="client_id" value="{{ app.id }}">
+                                        <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-xs font-medium text-destructive bg-background hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-ring transition-colors ml-2 confirm-action" data-confirm-title="Remove App Access" data-confirm-message="{{ t('account-apps.confirm.remove_single', { appName: app.name }) }}" data-confirm-variant="danger">
+                                            <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                            {{ t('account-apps.remove_access') }}
+                                        </button>
+                                    </form>
+                                </div>
+                                <div class="space-y-2 mb-3">
+                                    <div class="text-xs text-muted-foreground">
+                                        {{ t('account-apps.last_authorized', 'Last authorized') }}: {{ app.last_used }}
+                                    </div>
+                                    <div class="text-xs text-muted-foreground">
+                                        {{ t('account-apps.connected') }}: {{ app.approved_on }}
+                                    </div>
+                                </div>
+
+                                <!-- What this app can do -->
+                                <div>
+                                    <h4 class="text-xs font-medium text-foreground mb-2">{{ t('account-apps.what_app_can_do') }}</h4>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        {% for scope in app.scopes %}
+                                        <span class="inline-flex items-center px-2 py-0.5 border border-primary/30 text-xs font-medium bg-primary/10 text-primary">
+                                            {{ scope }}
+                                        </span>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="bg-muted/30 border border-border p-8 text-center">
+                    <svg class="h-16 w-16 text-muted-foreground mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    <h3 class="text-base font-medium text-foreground mb-2">{{ t('account-apps.empty_state.title') }}</h3>
+                    <p class="text-sm text-muted-foreground">{{ t('account-apps.empty_state.description') }}</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/account/apps.js"></script>
+{% endblock %}

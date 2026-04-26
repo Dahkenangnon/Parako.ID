@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="{{ locale or 'en' }}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no, url=no">
+  <title>{{ title }}</title>
+  <!-- Pre header text - visible in inbox previews -->
+  <span style="display: none !important; visibility: hidden; mso-hide: all; font-size: 1px; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden;">
+    {{ title }} - {{ content | striptags | truncate(100) }}
+  </span>
+  <!--[if mso]>
+  <noscript>
+    <xml>
+      <o:OfficeDocumentSettings>
+        <o:PixelsPerInch>96</o:PixelsPerInch>
+      </o:OfficeDocumentSettings>
+    </xml>
+  </noscript>
+  <![endif]-->
+  <style>
+    :root {
+      color-scheme: light dark;
+      supported-color-schemes: light dark;
+    }
+
+    /* Base styles */
+    html,
+    body {
+      margin: 0 auto !important;
+      padding: 0 !important;
+      height: 100% !important;
+      width: 100% !important;
+    }
+
+    * {
+      -ms-text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
+      box-sizing: border-box;
+    }
+
+    div[style*="margin: 16px 0"] {
+      margin: 0 !important;
+    }
+
+    /* Global styles */
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+      background-color: #f8fafc;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    table {
+      border-spacing: 0 !important;
+      border-collapse: collapse !important;
+      table-layout: fixed !important;
+      margin: 0 auto !important;
+    }
+
+    img {
+      -ms-interpolation-mode: bicubic;
+      max-width: 100%;
+      border: 0;
+      display: block;
+      height: auto;
+      line-height: 100%;
+      outline: none;
+      text-decoration: none;
+    }
+
+    .email-title {
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-size: 22px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: -0.025em;
+      margin-top: 0;
+      margin-bottom: 20px;
+      color: {{ brandColors.primary if brandColors else '#2563eb' }};
+      text-align: center;
+    }
+
+    .email-message {
+      margin-bottom: 32px;
+      color: #1e293b;
+      text-align: center;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .email-btn {
+      display: inline-block;
+      padding: 0 16px;
+      height: 36px;
+      line-height: 36px;
+      background-color: {{ brandColors.primary if brandColors else '#2563eb' }};
+      color: #ffffff !important;
+      text-decoration: none;
+      border-radius: 2px;
+      font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      mso-padding-alt: 0;
+      text-underline-color: {{ brandColors.primary if brandColors else '#2563eb' }};
+    }
+
+    /* Outlook fix for button padding */
+    .button-td {
+      display: block;
+      padding: 0 16px;
+      height: 36px;
+      line-height: 36px;
+    }
+
+    .email-btn-secondary {
+      background-color: transparent;
+      border: 1px solid {{ brandColors.primary if brandColors else '#2563eb' }};
+      color: {{ brandColors.primary if brandColors else '#2563eb' }} !important;
+      text-underline-color: {{ brandColors.primary if brandColors else '#2563eb' }};
+    }
+
+    .email-footer-link {
+      color: #64748b;
+      text-decoration: none;
+      font-size: 11px;
+    }
+
+    .email-footer-link:hover {
+      color: {{ brandColors.primary if brandColors else '#2563eb' }};
+    }
+
+    /* Responsive styles */
+    @media screen and (max-width: 520px) {
+      .email-outer-table {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .email-card {
+        padding: 20px 16px !important;
+      }
+
+      .email-title {
+        font-size: 18px !important;
+      }
+
+      .email-btn {
+        display: block !important;
+        width: 100% !important;
+        text-align: center !important;
+        margin: 10px 0 !important;
+      }
+    }
+
+    /* Dark mode styles */
+    @media (prefers-color-scheme: dark) {
+      body,
+      .email-bg {
+        background-color: #1a1b2e !important;
+        color: #e0e0e8 !important;
+      }
+
+      .email-card {
+        background-color: #222338 !important;
+        border-color: #3a3a50 !important;
+      }
+
+      .email-text,
+      .email-title,
+      h1, h2, h3, p, span {
+        color: #e0e0e8 !important;
+      }
+
+      .email-muted {
+        color: #9898a8 !important;
+      }
+
+      .email-primary {
+        color: #6b8aff !important;
+      }
+
+      .email-btn {
+        background-color: #6b8aff !important;
+        color: #ffffff !important;
+      }
+
+      .email-btn-secondary {
+        background-color: transparent !important;
+        border: 1px solid #6b8aff !important;
+        color: #6b8aff !important;
+      }
+
+      .email-separator {
+        background: linear-gradient(to right, transparent, rgba(107,138,255,0.3), transparent) !important;
+      }
+    }
+  </style>
+</head>
+<body class="email-bg">
+  <!--[if mso]>
+  <table role="presentation" width="100%">
+  <tr>
+  <td align="center">
+  <![endif]-->
+  <div style="background-color: #f8fafc; padding: 30px 15px;" class="email-bg">
+    <table align="center" role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 500px; margin: auto;" class="email-outer-table">
+      <tr>
+        <td>
+          <!-- Content card -->
+          <table cellpadding="0" cellspacing="0" role="presentation" style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td
+                class="email-card"
+                style="padding: 24px; border: 1px solid #e2e8f0; border-radius: 8px; vertical-align: top; background-color: #ffffff;"
+              >
+                <!-- Greeting -->
+                {% if username %}
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td style="text-align: center; margin-bottom: 16px; padding-bottom: 16px;">
+                      <p class="email-text" style="margin: 0; color: #1e293b; font-size: 16px;">{{ t('email.greeting.hello').replace('{{name}}', username) }}</p>
+                    </td>
+                  </tr>
+                </table>
+                {% endif %}
+
+                <!-- Title -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td>
+                      <h2 class="email-title email-primary" style="font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: -0.025em; margin-top: 0; margin-bottom: 20px; color: {{ brandColors.primary if brandColors else '#2563eb' }}; text-align: center;">{{ title }}</h2>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Content -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td class="email-message email-text" style="color: #1e293b; font-size: 15px; line-height: 1.6; text-align: center;">
+                      {{ content | safe }}
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Action buttons -->
+                {% if actions and actions.length > 0 %}
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td style="text-align: center; padding: 24px 0 8px;">
+                      {% for action in actions %}
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 auto; display: inline-block;">
+                          <tr>
+                            <td style="border-radius: 2px; overflow: hidden;">
+                              {% if loop.index == 1 %}
+                              <!--[if mso]>
+                              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ action.url }}" style="height:36px;v-text-anchor:middle;width:200px;" arcsize="2%" stroke="f" fillcolor="{{ brandColors.primary if brandColors else '#2563eb' }}">
+                                <w:anchorlock/>
+                                <center style="color:#ffffff;font-family:Consolas,monospace;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">{{ action.text }}</center>
+                              </v:roundrect>
+                              <![endif]-->
+                              <a href="{{ action.url }}" class="email-btn" style="mso-hide:all; background-color: {{ brandColors.primary if brandColors else '#2563eb' }}; color: #ffffff; text-decoration: none; padding: 0 16px; height: 36px; line-height: 36px; border-radius: 2px; font-weight: 600; display: inline-block; mso-padding-alt: 0; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
+                                <span style="mso-text-raise: 15pt;">{{ action.text }}</span>
+                              </a>
+                              {% else %}
+                              <!--[if mso]>
+                              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ action.url }}" style="height:36px;v-text-anchor:middle;width:200px;" arcsize="2%" stroke="t" strokecolor="{{ brandColors.primary if brandColors else '#2563eb' }}" fillcolor="white">
+                                <w:anchorlock/>
+                                <center style="color:{{ brandColors.primary if brandColors else '#2563eb' }};font-family:Consolas,monospace;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">{{ action.text }}</center>
+                              </v:roundrect>
+                              <![endif]-->
+                              <a href="{{ action.url }}" class="email-btn email-btn-secondary" style="mso-hide:all; background-color: transparent; border: 1px solid {{ brandColors.primary if brandColors else '#2563eb' }}; color: {{ brandColors.primary if brandColors else '#2563eb' }}; text-decoration: none; padding: 0 16px; height: 36px; line-height: 36px; border-radius: 2px; font-weight: 600; display: inline-block; mso-padding-alt: 0; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">
+                                <span style="mso-text-raise: 15pt;">{{ action.text }}</span>
+                              </a>
+                              {% endif %}
+                            </td>
+                          </tr>
+                        </table>
+                      {% endfor %}
+                    </td>
+                  </tr>
+                </table>
+                {% endif %}
+              </td>
+            </tr>
+          </table>
+
+          <!-- Gradient separator -->
+          <div
+            class="email-separator"
+            style="height: 1px; margin: 16px 12px 0; background: linear-gradient(to right, transparent, {{ brandColors.primary if brandColors else '#2563eb' }}4D, transparent);"
+          ></div>
+
+          <!-- Footer -->
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align: center; padding: 16px 0 8px;">
+            <tr>
+              <td style="text-align: center; padding: 16px 0 8px;">
+                <!-- Legal links -->
+                <p class="email-muted" style="font-size: 11px; color: #64748b; margin: 0 0 10px 0; font-family: ui-sans-serif, system-ui, sans-serif;">
+                  <a href="{{ privacyUrl }}" class="email-footer-link email-muted" style="color: #64748b; text-decoration: none; font-size: 11px;">{{ t('email.footer.privacy') }}</a>
+                  {% if termsUrl %}
+                  &nbsp;&middot;&nbsp;
+                  <a href="{{ termsUrl }}" class="email-footer-link email-muted" style="color: #64748b; text-decoration: none; font-size: 11px;">{{ t('email.footer.terms') }}</a>
+                  {% endif %}
+                </p>
+                <!-- Copyright -->
+                <p class="email-muted" style="font-size: 11px; color: #64748b; margin: 0 0 6px 0; font-family: ui-sans-serif, system-ui, sans-serif;">
+                  {{ t('email.footer.copyright').replace('{{year}}', currentYear).replace('{{appName}}', branding.companyName) }}
+                </p>
+                <!-- App description -->
+                <p class="email-muted" style="font-size: 10px; color: #94a3b8; margin: 0; font-family: ui-sans-serif, system-ui, sans-serif;">
+                  {{ appTitle }}{% if appDescription %} &middot; {{ appDescription }}{% endif %}
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+  <!--[if mso]>
+  </td>
+  </tr>
+  </table>
+  <![endif]-->
+</body>
+</html>

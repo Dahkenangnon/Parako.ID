@@ -1,0 +1,35 @@
+{# Admin Settings Tab Navigation #}
+{# Usage: {% include "partials/admin-settings-tabs.njk" with activePage="application" %} #}
+
+<div class="border-b border-border mb-6">
+    <nav class="flex space-x-6 overflow-x-auto -mb-px" aria-label="Settings navigation">
+        <a href="/admin/settings/application"
+           class="{% if activePage == 'application' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Application
+        </a>
+        <a href="/admin/settings/branding"
+           class="{% if activePage == 'branding' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Branding
+        </a>
+        <a href="/admin/settings/deployment"
+           class="{% if activePage == 'deployment' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Deployment
+        </a>
+        <a href="/admin/settings/security"
+           class="{% if activePage == 'security' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Security
+        </a>
+        <a href="/admin/settings/oidc"
+           class="{% if activePage == 'oidc' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            OIDC
+        </a>
+        <a href="/admin/settings/integrations"
+           class="{% if activePage == 'integrations' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Integrations
+        </a>
+        <a href="/admin/settings/features"
+           class="{% if activePage == 'features' %}border-primary text-primary{% else %}border-transparent text-muted-foreground hover:text-foreground hover:border-border{% endif %} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors">
+            Features
+        </a>
+    </nav>
+</div>

@@ -1,0 +1,12 @@
+{
+  "title": "비밀번호 재설정",
+  "description": "비밀번호 재설정 링크를 보내드립니다.",
+  "button": {
+    "send_reset_link": "링크 보내기",
+    "sending": "전송 중..."
+  },
+  "link": {
+    "need_more_help": "도움이 더 필요하신가요?",
+    "remember_password": "비밀번호가 기억나시나요?"
+  }
+}

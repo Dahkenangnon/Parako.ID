@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "Choose Verification Method",
+    "subtitle": "Select how you want to verify your identity",
+    "totp_title": "Authenticator App",
+    "totp_description": "Use a code from your authenticator app",
+    "email_title": "Email Verification",
+    "email_description": "Receive a code via email",
+    "webauthn_title": "Passkey",
+    "webauthn_description": "Use your security key or biometrics"
+  },
+  "mfa_no_fallback": {
+    "title": "Cannot Complete Login",
+    "description": "We cannot verify your identity with your current device.",
+    "explanation": "You have two-factor authentication enabled but no alternative verification method is available on this device. To access your account, you will need to go through the account recovery process.",
+    "recover_account": "Recover Account",
+    "cancel": "Cancel and Return to Login"
+  },
+  "account_recovery_page": {
+    "title": "Account Recovery"
+  },
+  "recovery_method_select": {
+    "title": "Choose Recovery Method"
+  },
+  "recovery_backup_codes": {
+    "title": "Recovery - Backup Codes"
+  },
+  "recovery_sms": {
+    "title": "SMS Recovery"
+  },
+  "recovery_verify_code": {
+    "title": "Recovery - Verify Code"
+  },
+  "recovery_secondary_email": {
+    "title": "Recovery - Secondary Email"
+  },
+  "recovery_security_questions": {
+    "title": "Security Questions"
+  },
+  "account_recovery": "Account recovery",
+  "enableMFA": "Enable Two-Factor Authentication",
+  "enablingMFA": "Enabling...",
+  "codeRequired": "Please enter the verification code",
+  "codeInvalid": "Please enter a valid 6-digit verification code",
+  "errorRecovery": "Session timed out. Please try again.",
+  "setup_mfa": {
+    "title": "Enable Two-Factor Authentication",
+    "description": "Scan the QR code with your authenticator app (e.g., Google Authenticator, Authy), then enter the code below to verify.",
+    "code_label": "Verification Code",
+    "submit_button": "Confirm & Enable"
+  },
+  "setup_mfa_email": {
+    "title": "Verify Your Email",
+    "description": "We sent a 6-digit code to",
+    "enter_code": "Enter it below to enable email-based 2FA.",
+    "code_expires": "Code expires in 10 minutes."
+  },
+  "recovery_codes": {
+    "title": "Two-Factor Authentication Enabled",
+    "subtitle": "Save your recovery codes in a secure location",
+    "and_others": "and {{count}} others",
+    "download": "Download",
+    "copy": "Copy",
+    "acknowledge": "I have saved my recovery codes in a secure location",
+    "continue": "Continue",
+    "file_title": "Recovery Codes",
+    "file_generated": "Generated on",
+    "file_important": "Keep these codes safe. Each code can only be used once.",
+    "file_total": "Total codes",
+    "downloaded": "Downloaded!",
+    "copied": "Copied!",
+    "copy_failed": "Failed to copy codes"
+  }
+}

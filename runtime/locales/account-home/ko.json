@@ -1,0 +1,6 @@
+{
+  "welcome_back": "다시 오신 것을 환영합니다, {{name}}",
+  "welcome_back_default": "다시 오신 것을 환영합니다, 사용자",
+  "subtitle": "계정을 관리하고 서비스에 액세스하세요",
+  "services_title": "서비스"
+}

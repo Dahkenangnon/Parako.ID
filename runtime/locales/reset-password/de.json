@@ -1,0 +1,14 @@
+{
+  "title": "Neues Passwort erstellen",
+  "placeholder": {
+    "new_password": "Neues Passwort eingeben",
+    "confirm_password": "Neues Passwort bestätigen"
+  },
+  "button": {
+    "reset_password": "Passwort zurücksetzen",
+    "resetting": "Passwort wird zurückgesetzt..."
+  },
+  "link": {
+    "remember_password": "Erinnern Sie sich an Ihr Passwort?"
+  }
+}

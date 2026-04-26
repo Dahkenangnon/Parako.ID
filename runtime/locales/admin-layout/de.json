@@ -1,0 +1,31 @@
+{
+  "sidebar": {
+    "toggle": "Seitenleiste umschalten",
+    "brand": "Admin",
+    "navigation": {
+      "dashboard": "Dashboard",
+      "users": "Benutzer",
+      "clients": "Clients",
+      "sessions": "Sitzungen",
+      "grants": "Autorisierungen",
+      "activities": "Aktivitäten",
+      "settings": "Einstellungen",
+      "data": "Daten"
+    },
+    "footer": {
+      "logout": "Abmelden",
+      "my_account": "Mein Konto"
+    }
+  },
+  "mobile": {
+    "close": "Schließen",
+    "menu": "Menü"
+  },
+  "theme_language": {
+    "theme": "Design",
+    "light": "Hell",
+    "dark": "Dunkel",
+    "language": "Sprache",
+    "settings": "Design- und Spracheinstellungen"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "title": "Aktive Sitzungen",
+  "description": "Dies sind die Geräte, auf denen Sie derzeit angemeldet sind. Überprüfen Sie diese Liste regelmäßig und melden Sie sich von Geräten ab, die Sie nicht erkennen oder nicht mehr verwenden.",
+  "sign_out_all": {
+    "button": "Von allen anderen Geräten abmelden",
+    "button_short": "Alle anderen abmelden",
+    "confirm": "Sind Sie sicher, dass Sie sich von allen anderen Geräten abmelden möchten? Dies meldet Sie sofort von allen anderen Geräten ab und kann verbundene Apps auf diesen Geräten trennen."
+  },
+  "table": {
+    "device_location": "Gerät & Standort",
+    "ip_address": "IP-Adresse",
+    "started": "Gestartet",
+    "last_active": "Zuletzt aktiv",
+    "status": "Status",
+    "action": "Aktion"
+  },
+  "status": {
+    "current": "Aktuell",
+    "active": "Aktiv",
+    "this_device": "Dieses Gerät"
+  },
+  "unknown": {
+    "device": "Unbekanntes Gerät",
+    "location": "Unbekannter Standort",
+    "general": "Unbekannt"
+  },
+  "action": {
+    "sign_out": "Abmelden",
+    "confirm_sign_out": "Sind Sie sicher, dass Sie sich von diesem Gerät abmelden möchten? Dies meldet Sie sofort ab und kann verbundene Apps trennen."
+  },
+  "empty_state": {
+    "title": "Keine anderen Geräte",
+    "description": "Sie sind auf keinen anderen Geräten angemeldet."
+  },
+  "mobile_labels": {
+    "device": "Gerät",
+    "location": "Standort",
+    "ip_address": "IP-Adresse",
+    "started": "Gestartet",
+    "last_active": "Zuletzt aktiv"
+  }
+}

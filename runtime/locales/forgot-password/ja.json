@@ -1,0 +1,12 @@
+{
+  "title": "パスワードをリセット",
+  "description": "パスワードリセット用のリンクをお送りします。",
+  "button": {
+    "send_reset_link": "リンクを送信",
+    "sending": "送信中..."
+  },
+  "link": {
+    "need_more_help": "もっと助けが必要ですか？",
+    "remember_password": "パスワードを覚えていますか？"
+  }
+}

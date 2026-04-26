@@ -1,0 +1,339 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground">Session Details</h1>
+                <p class="mt-2 text-xs sm:text-sm text-muted-foreground font-mono break-all">Session ID: {{ session.id }}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium {{ 'bg-primary/10 text-primary' if session.status == 'active' else 'bg-destructive/10 text-destructive' }}">
+                        <i data-lucide="{{ 'check-circle' if session.status == 'active' else 'x-circle' }}" class="h-3 w-3 mr-1"></i>
+                        {{ 'Active' if session.status == 'active' else 'Expired' }}
+                    </span>
+                    {% if session.sessionType == 'express' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                            <i data-lucide="log-in" class="h-3 w-3 mr-1"></i>
+                            Direct Login
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300">
+                            <i data-lucide="shield" class="h-3 w-3 mr-1"></i>
+                            OIDC
+                        </span>
+                    {% endif %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary">
+                        <i data-lucide="monitor" class="h-3 w-3 mr-1"></i>
+                        {{ session.sessionAge }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                {% if session.status == 'active' %}
+                <form method="post" action="/admin/sessions/{{ session.id }}/revoke" class="w-full sm:w-auto">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <input type="hidden" name="sessionType" value="{{ session.sessionType | default('oidc') }}">
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 w-full">
+                        <i data-lucide="power-off" class="h-4 w-4 mr-2"></i>
+                        Revoke Session
+                    </button>
+                </form>
+                {% endif %}
+                <a href="/admin/sessions" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Sessions
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Information -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- User Information -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="user" class="h-5 w-5 mr-2 text-primary"></i>
+                    User Information
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Username</label>
+                    <p class="text-foreground font-mono text-sm">{{ session.userInfo.username }}</p>
+                </div>
+
+                {% if session.userInfo.email and session.userInfo.email != 'Unknown' %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Email</label>
+                    <p class="text-foreground font-mono">{{ session.userInfo.email }}</p>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Full Name</label>
+                    <p class="text-foreground">{{ session.userInfo.full_name }}</p>
+                </div>
+
+                {% if session.userInfo.given_name or session.userInfo.family_name %}
+                <div class="grid grid-cols-2 gap-4">
+                    {% if session.userInfo.given_name %}
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground">First Name</label>
+                        <p class="text-foreground">{{ session.userInfo.given_name }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if session.userInfo.family_name %}
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground">Last Name</label>
+                        <p class="text-foreground">{{ session.userInfo.family_name }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Session Details -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="clock" class="h-5 w-5 mr-2 text-primary"></i>
+                    Session Details
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Session ID</label>
+                    <p class="text-foreground font-mono text-sm break-all">{{ session.id }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Session Type</label>
+                    {% if session.sessionType == 'express' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                            <i data-lucide="log-in" class="h-3 w-3 mr-1"></i>
+                            Direct Login (Express)
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300">
+                            <i data-lucide="shield" class="h-3 w-3 mr-1"></i>
+                            OIDC
+                        </span>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Status</label>
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium {{ 'bg-primary/10 text-primary' if session.status == 'active' else 'bg-destructive/10 text-destructive' }}">
+                        <i data-lucide="{{ 'check-circle' if session.status == 'active' else 'x-circle' }}" class="h-3 w-3 mr-1"></i>
+                        {{ 'Active' if session.status == 'active' else 'Expired' }}
+                    </span>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Login Time</label>
+                    <p class="text-foreground font-mono">{{ session.startTime }}</p>
+                    <p class="text-xs text-muted-foreground">{{ session.sessionAge }}</p>
+                </div>
+
+                {% if session.sessionType != 'express' and session.expiresIn != 'Unknown' %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Expires In</label>
+                    <p class="text-foreground">{{ session.expiresIn }}</p>
+                                         {% if session.expiresAt %}
+                     <p class="text-xs text-muted-foreground font-mono">{{ session.expiresAt | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                     {% endif %}
+                </div>
+                {% endif %}
+
+                {% if session.sessionType == 'express' %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Session Lifetime</label>
+                    <p class="text-foreground text-sm">Session-based (expires on browser close or idle timeout)</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Device and Network Information -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Device Information -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="smartphone" class="h-5 w-5 mr-2 text-primary"></i>
+                    Device Information
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Device</label>
+                    <p class="text-foreground">{{ session.device }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Location</label>
+                    <p class="text-foreground">{{ session.location }}</p>
+                </div>
+
+                {% if session.user_agent and session.user_agent != 'Unknown' %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">User Agent</label>
+                    <p class="text-foreground font-mono text-xs break-all">{{ session.user_agent }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Network Information -->
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="globe" class="h-5 w-5 mr-2 text-primary"></i>
+                    Network Information
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">IP Address</label>
+                    <p class="text-foreground font-mono text-sm">{{ session.ip }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Last Active</label>
+                    <p class="text-foreground font-mono">{{ session.lastActive }}</p>
+                </div>
+
+                {% if session.sessionType != 'express' %}
+                    {% if session.amr and session.amr.length > 0 %}
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground">Authentication Methods</label>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                            {% for method in session.amr %}
+                            <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-secondary/10 text-secondary">
+                                {{ method }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if session.acr %}
+                    <div>
+                        <label class="text-sm font-medium text-muted-foreground">Authentication Context</label>
+                        <p class="text-foreground font-mono text-sm">{{ session.acr }}</p>
+                    </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if session.sessionType != 'express' %}
+    <!-- Connected Applications -->
+    {% if session.clients and session.clients.length > 0 %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="monitor" class="h-5 w-5 mr-2 text-primary"></i>
+                Connected Applications ({{ session.clients.length }})
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for client in session.clients %}
+                <div class="p-4 bg-muted/50 border border-border">
+                    <div class="flex items-start space-x-3">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 bg-primary/10 flex items-center justify-center">
+                                <i data-lucide="monitor" class="h-5 w-5 text-primary"></i>
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-sm font-medium text-foreground truncate">{{ client.name }}</h3>
+                            <p class="text-xs text-muted-foreground">{{ client.developer }}</p>
+                            <p class="text-xs text-muted-foreground font-mono mt-1">{{ client.id }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Session Authorizations -->
+    {% if session.authorizations %}
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                Session Authorizations
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="space-y-4">
+                {% for clientId in session.authorizations %}
+                <div class="p-4 bg-muted/50 border border-border">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-medium text-foreground">{{ clientId }}</h3>
+                            {% if session.authorizations[clientId].sid %}
+                            <p class="text-xs text-muted-foreground font-mono">Session ID: {{ session.authorizations[clientId].sid }}</p>
+                            {% endif %}
+                            {% if session.authorizations[clientId].grantId %}
+                            <p class="text-xs text-muted-foreground font-mono">Grant ID: {{ session.authorizations[clientId].grantId }}</p>
+                            {% endif %}
+                        </div>
+                        <div class="text-right">
+                            {% if session.authorizations[clientId].persistsLogout %}
+                            <span class="inline-flex items-center px-2 py-1 text-xs font-medium bg-primary/10 text-primary">
+                                <i data-lucide="check" class="h-3 w-3 mr-1"></i>
+                                Persists Logout
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <!-- Timestamps -->
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="calendar" class="h-5 w-5 mr-2 text-primary"></i>
+                Timestamps
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <div>
+                     <label class="text-sm font-medium text-muted-foreground">Created At</label>
+                     <p class="text-foreground font-mono">{{ session.created_at | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                 </div>
+
+                 <div>
+                     <label class="text-sm font-medium text-muted-foreground">Updated At</label>
+                     <p class="text-foreground font-mono">{{ session.updated_at | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/sessions/index.js"></script>
+{% endblock %}

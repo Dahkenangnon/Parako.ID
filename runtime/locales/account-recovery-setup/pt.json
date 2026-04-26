@@ -1,0 +1,25 @@
+{
+  "title": "Autenticação de dois fatores ativada!",
+  "subtitle": "Agora vamos configurar opções de recuperação para que você possa sempre acessar sua conta, mesmo se perder o acesso ao seu {{method}}.",
+  "method_email": "e-mail",
+  "method_app": "aplicativo autenticador",
+  "setup_recovery": {
+    "title": "Configurar recuperação de conta",
+    "description": "Criaremos códigos de backup para sua conta e opcionalmente configuraremos um endereço de e-mail de backup."
+  },
+  "backup_codes": {
+    "title": "Códigos de backup (Obrigatório)",
+    "description": "Criaremos códigos de backup que você pode usar para acessar sua conta se perder o acesso ao seu {{method}}. Cada código só pode ser usado uma vez.",
+    "method_email_account": "conta de e-mail"
+  },
+  "backup_email": {
+    "label": "E-mail de backup (Opcional)",
+    "placeholder": "Digite o endereço de e-mail de backup (opcional)",
+    "help_text": "Se fornecido, você receberá um e-mail de verificação para confirmar este endereço de e-mail de backup."
+  },
+  "button": {
+    "submit": "Configurar opções de backup",
+    "skip": "Pular por enquanto",
+    "continue": "Continuar para Configurações"
+  }
+}

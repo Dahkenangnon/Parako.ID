@@ -1,0 +1,33 @@
+{
+  "title": "Crea tu cuenta",
+  "social_divider": "o",
+  "social_divider_dynamic": "o",
+  "tab": {
+    "email": "Correo electrónico",
+    "phone": "Teléfono"
+  },
+  "field": {
+    "full_name": "Nombre completo"
+  },
+  "placeholder": {
+    "email_prefilled": "Correo proporcionado - puedes cambiarlo si es necesario"
+  },
+  "password_strength": {
+    "missing_requirements": "Requisitos faltantes:"
+  },
+  "terms": {
+    "agreement_prefix": "Al crear una cuenta, aceptas los",
+    "and": "y la",
+    "company_suffix": "de"
+  },
+  "hint": {
+    "contact_required": "Se requiere al menos un método de contacto (correo electrónico o teléfono) para la recuperación de cuenta."
+  },
+  "label": {
+    "required": "Requerido",
+    "optional": "Opcional"
+  },
+  "social": {
+    "sign_up_with": "Registrarse con {{provider}}"
+  }
+}

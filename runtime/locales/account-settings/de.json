@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "Einstellungsnavigation",
+    "profile": "Profil",
+    "preferences": "Einstellungen",
+    "notifications": "Benachrichtigungen",
+    "security": "Sicherheit",
+    "recovery": "Wiederherstellung",
+    "social": "Soziale Konten"
+  },
+  "upload_widget": {
+    "title": "Profilbild wird hochgeladen...",
+    "description": "Bitte warten Sie, während wir Ihr Bild verarbeiten"
+  },
+  "profile": {
+    "title": "Profilinformationen",
+    "picture_label": "Profilbild",
+    "upload_description": "Laden Sie ein neues Profilbild hoch. Klicken Sie auf Ihr Foto oder die Schaltfläche zum Hochladen, um ein Bild auszuwählen.",
+    "upload_button": "Bild hochladen",
+    "remove_button": "Entfernen",
+    "first_name": "Vorname",
+    "last_name": "Nachname",
+    "save_button": "Änderungen speichern",
+    "remove_confirm": "Sind Sie sicher, dass Sie Ihr Profilbild entfernen möchten?",
+    "remove_error": "Fehler beim Entfernen des Avatars. Bitte versuchen Sie es erneut.",
+    "file_read_error": "Fehler beim Lesen der ausgewählten Datei. Bitte versuchen Sie es erneut."
+  },
+  "preferences": {
+    "title": "Einstellungen",
+    "language": {
+      "title": "Spracheinstellung",
+      "current": "Aktuell eingestellt auf:",
+      "none": "Keine Spracheinstellung festgelegt. Standardmäßig Englisch.",
+      "update_error": "Fehler beim Aktualisieren der Spracheinstellung. Bitte versuchen Sie es erneut."
+    },
+    "timezone": {
+      "title": "Zeitzone",
+      "current": "Aktuell eingestellt auf:",
+      "update_error": "Fehler beim Aktualisieren der Zeitzone. Bitte versuchen Sie es erneut."
+    }
+  },
+  "email_verification": {
+    "title": "E-Mail-Verifizierung",
+    "primary_email": "Primäre E-Mail-Adresse",
+    "verified": "Verifiziert",
+    "unverified": "Nicht verifiziert",
+    "verify_prompt": "Bitte verifizieren Sie Ihre E-Mail-Adresse, um alle Funktionen nutzen zu können",
+    "resend_button": "Verifizierungs-E-Mail erneut senden",
+    "verify_manually": "Manuell verifizieren"
+  },
+  "phone_verification": {
+    "title": "Telefon-Verifizierung",
+    "primary_phone": "Primäre Telefonnummer",
+    "verified": "Verifiziert",
+    "unverified": "Nicht verifiziert"
+  },
+  "add_email": {
+    "title": "E-Mail-Adresse hinzufügen",
+    "description": "Das Hinzufügen einer E-Mail-Adresse macht Ihr Konto wiederherstellbarer. Sie können sie für Passwort-Zurücksetzungen und Kontowiederherstellung verwenden.",
+    "button": "E-Mail hinzufügen"
+  },
+  "security": {
+    "title": "Sicherheit",
+    "mfa": {
+      "active_title": "Zwei-Faktor-Authentifizierung ist aktiv",
+      "active_description": "Ihr Konto ist mit 2FA geschützt",
+      "active_description_multi": "Sie haben {{count}} Verifizierungsmethode(n) aktiviert.",
+      "totp_title": "Authentifizierungs-App",
+      "email_title": "E-Mail-Verifizierung",
+      "webauthn_title": "Passkeys",
+      "passkeys_count": "Passkey(s) registriert",
+      "manage_passkeys": "Passkeys verwalten",
+      "using": "Verwendet: {{method}}",
+      "using_email": "Verwendet: E-Mail",
+      "using_app": "Verwendet: Authenticator-App",
+      "using_method": "Verwendet: {{method}}",
+      "inactive_title": "Zwei-Faktor-Authentifizierung ist nicht aktiviert",
+      "inactive_description": "Aktivieren Sie 2FA, um Ihrem Konto zusätzliche Sicherheit zu verleihen",
+      "title": "Zwei-Faktor-Authentifizierung",
+      "enabled_status": "Aktiviert",
+      "enabled_text": "Ihr Konto ist mit 2FA geschützt",
+      "disabled_status": "Nicht aktiviert",
+      "disabled_text": "Fügen Sie Ihrem Konto zusätzliche Sicherheit hinzu",
+      "disable_button": "2FA deaktivieren",
+      "enable_app_button": "Über App aktivieren",
+      "enable_email_button": "Über E-Mail aktivieren",
+      "already_enabled_message": "Die Zwei-Faktor-Authentifizierung ist bereits für Ihr Konto aktiviert.",
+      "method_already_enabled": "Diese MFA-Methode ist bereits aktiviert.",
+      "not_enabled_message": "Die Zwei-Faktor-Authentifizierung ist für Ihr Konto nicht aktiviert.",
+      "disable_confirm": "Sind Sie sicher, dass Sie die Zwei-Faktor-Authentifizierung deaktivieren möchten? Dadurch wird Ihr Konto weniger sicher.",
+      "enable_app_confirm": "Authenticator-App-2FA aktivieren?",
+      "enable_email_confirm": "E-Mail-basierte 2FA aktivieren?"
+    },
+    "password": {
+      "set_title": "Legen Sie Ihr Passwort fest",
+      "set_description": "Sie haben derzeit nur Social Login aktiviert. Legen Sie ein Passwort fest, um sicherzustellen, dass Sie immer auf Ihr Konto zugreifen können, auch wenn Sie die Verknüpfung Ihrer sozialen Konten aufheben.",
+      "current_label": "Aktuelles Passwort",
+      "new_label": "Neues Passwort",
+      "confirm_label": "Neues Passwort bestätigen",
+      "requirements_title": "Passwortanforderungen",
+      "min_length": "Mindestens {{count}} Zeichen lang",
+      "uppercase": "Mindestens ein Großbuchstabe",
+      "lowercase": "Mindestens ein Kleinbuchstabe",
+      "number": "Mindestens eine Zahl",
+      "symbol": "Mindestens ein Sonderzeichen",
+      "mismatch_error": "Passwörter stimmen nicht überein",
+      "mismatch": "Passwörter stimmen nicht überein",
+      "change_success": "Passwort erfolgreich geändert",
+      "change_button": "Passwort ändern"
+    }
+  },
+  "recovery": {
+    "title": "Kontowiederherstellung",
+    "active_title": "Kontowiederherstellung ist aktiv",
+    "active_description": "Sie haben Backup-Methoden eingerichtet, die Ihnen helfen, wieder auf Ihr Konto zuzugreifen",
+    "inactive_title": "Kontowiederherstellung ist nicht eingerichtet",
+    "inactive_description": "Richten Sie Backup-Methoden ein, die Ihnen helfen, wieder auf Ihr Konto zuzugreifen, wenn Sie Ihr Passwort oder Ihr 2FA-Gerät verlieren",
+    "dashboard": {
+      "backup_codes": "Backup-Codes",
+      "backup_email": "Backup-E-Mail",
+      "security_questions": "Sicherheitsfragen",
+      "codes_available": "Codes verfügbar",
+      "not_configured": "Nicht konfiguriert",
+      "configured": "Konfiguriert",
+      "verified": "Verifiziert",
+      "score_title": "Wiederherstellungsstatus",
+      "score_critical": "Keine Wiederherstellungsmethoden konfiguriert. Richten Sie mindestens eine Methode ein.",
+      "score_warning": "Nur eine Wiederherstellungsmethode konfiguriert. Fügen Sie weitere hinzu.",
+      "score_low_codes": "Backup-Codes fast aufgebraucht. Generieren Sie bald neue Codes.",
+      "score_good": "Ihre Kontowiederherstellungsoptionen sind gut konfiguriert.",
+      "methods_active": "Methoden aktiv"
+    },
+    "backup_codes": {
+      "title": "Backup-Codes",
+      "setup_status": "Eingerichtet",
+      "low_status": "Fast aufgebraucht",
+      "depleted_status": "Aufgebraucht",
+      "depleted_text": "Generieren Sie sofort neue Codes",
+      "remaining": "{{count}} Codes verbleibend",
+      "created_at": "Erstellt: {{date}}",
+      "not_setup_status": "Nicht eingerichtet",
+      "not_setup_text": "Erstellen Sie Einmalcodes, um wieder auf Ihr Konto zuzugreifen",
+      "codes_created_badge": "Codes erstellt",
+      "create_new_button": "Neue Codes erstellen",
+      "remove_button": "Codes entfernen",
+      "create_button": "Codes erstellen",
+      "confirm_new": "Sind Sie sicher, dass Sie neue Backup-Codes erstellen möchten? Dadurch werden alle aktuellen Codes unbrauchbar.",
+      "confirm_remove": "Sind Sie sicher, dass Sie Backup-Codes entfernen möchten?",
+      "view_once_tooltip": "Backup-Codes können aus Sicherheitsgründen nur einmal angezeigt werden"
+    },
+    "backup_email": {
+      "title": "Backup-E-Mail",
+      "verified_status": "Verifiziert",
+      "verified_text": "Kann verwendet werden, um wieder auf Ihr Konto zuzugreifen",
+      "pending_status": "Verifizierung ausstehend",
+      "pending_text": "Überprüfen Sie Ihre E-Mail auf den Verifizierungslink",
+      "not_setup_status": "Nicht eingerichtet",
+      "not_setup_text": "Fügen Sie eine Backup-E-Mail hinzu, um wieder auf Ihr Konto zuzugreifen",
+      "remove_button": "E-Mail entfernen",
+      "add_button": "E-Mail hinzufügen",
+      "placeholder": "Backup-E-Mail-Adresse eingeben",
+      "confirm_remove": "Sind Sie sicher, dass Sie die Backup-E-Mail entfernen möchten?",
+      "cancel_button": "Verifizierung abbrechen",
+      "cancel_confirm": "Sind Sie sicher, dass Sie die ausstehende E-Mail-Verifizierung abbrechen möchten?"
+    },
+    "security_questions": {
+      "title": "Sicherheitsfragen",
+      "setup_status": "Eingerichtet",
+      "setup_text": "{{count}} Fragen konfiguriert",
+      "not_setup_status": "Nicht eingerichtet",
+      "not_setup_text": "Fügen Sie Sicherheitsfragen hinzu, um Ihr Konto wiederherzustellen",
+      "setup_button": "Fragen einrichten",
+      "update_button": "Fragen aktualisieren",
+      "remove_button": "Fragen entfernen",
+      "confirm_remove": "Sind Sie sicher, dass Sie Ihre Sicherheitsfragen entfernen möchten?",
+      "last_used": "Zuletzt verwendet: {{date}}"
+    }
+  },
+  "social": {
+    "title": "Verbundene Konten",
+    "description": "Verbinden Sie Ihre sozialen Konten für eine schnelle und sichere Anmeldung. Sie können mehrere Konten verbinden und von hier aus verwalten.",
+    "connected": "Verbunden",
+    "not_connected": "Nicht verbunden",
+    "unlink_button": "Verknüpfung aufheben",
+    "set_password_first": "Zuerst Passwort festlegen",
+    "set_password_first_tooltip": "Sie müssen ein Passwort festlegen, bevor Sie Ihr einziges soziales Konto trennen können",
+    "connect_button": "Verbinden",
+    "no_accounts": "Keine sozialen Konten verfügbar",
+    "confirm_unlink": "Sind Sie sicher, dass Sie die Verknüpfung Ihres {{provider}}-Kontos aufheben möchten?"
+  },
+  "notifications": {
+    "title": "Benachrichtigungseinstellungen",
+    "preferred_channel": "Bevorzugte Benachrichtigungsmethode",
+    "preferred_channel_desc": "Wählen Sie, wie Sie Benachrichtigungen erhalten möchten",
+    "channel_email": "E-Mail",
+    "channel_sms": "SMS",
+    "channel_auto": "Automatisch",
+    "security_alerts": "Sicherheitswarnungen",
+    "security_alerts_desc": "Benachrichtigung bei verdächtigen Anmeldeversuchen und Sicherheitsereignissen",
+    "new_session_alerts": "Neue Sitzungswarnungen",
+    "new_session_alerts_desc": "Benachrichtigung, wenn sich ein neues Gerät bei Ihrem Konto anmeldet",
+    "marketing": "Produktaktualisierungen",
+    "marketing_desc": "Updates über neue Funktionen und Verbesserungen erhalten",
+    "save_button": "Einstellungen speichern"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "welcome_back": "Bon retour, {{name}}",
+  "welcome_back_default": "Bon retour, Utilisateur",
+  "subtitle": "Gérez votre compte et accédez à vos services",
+  "services_title": "Services"
+}

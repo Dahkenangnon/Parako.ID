@@ -1,0 +1,264 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- File Config Warning -->
+    {% if isUsingFileConfig %}
+    <div class="bg-warning/10 border border-warning/20 p-4">
+        <div class="flex items-start gap-3">
+            <i data-lucide="alert-triangle" class="h-5 w-5 text-warning mt-0.5"></i>
+            <div>
+                <h3 class="text-sm font-medium text-foreground mb-1">File Configuration Active</h3>
+                <p class="text-sm text-muted-foreground">
+                    Using parako.jsonc. Set <code class="bg-muted px-1 py-0.5 text-xs">USE_FILE_CONFIG=false</code> to use database config.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-foreground mb-1">Settings</h1>
+        <p class="text-sm text-muted-foreground">System configuration</p>
+    </div>
+
+    <!-- Status & Actions -->
+    <div class="bg-card border border-border p-6 space-y-4">
+        <!-- Status Info -->
+        <div class="flex flex-wrap gap-4 text-sm">
+            <div class="flex items-center gap-2">
+                <i data-lucide="database" class="h-4 w-4 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Source:</span>
+                <span class="font-medium text-foreground">
+                    {% if isUsingFileConfig %}File{% else %}Database{% endif %}
+                </span>
+            </div>
+            <div class="flex items-center gap-2">
+                <i data-lucide="git-branch" class="h-4 w-4 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Version:</span>
+                <span class="font-medium text-foreground">{{ currentVersion }}</span>
+            </div>
+            {% if versionHistory and versionHistory.length > 0 %}
+            {% set recentVersion = versionHistory[0] %}
+            <div class="flex items-center gap-2">
+                <i data-lucide="clock" class="h-4 w-4 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Updated:</span>
+                <span class="font-medium text-foreground">{{ recentVersion.created_at | date('MMM DD, YYYY', displayTimezone) }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-wrap gap-2 pt-2 border-t border-border">
+            <button type="button" onclick="checkHealth()" class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium">
+                <i data-lucide="activity" class="h-4 w-4 mr-2"></i>
+                Health Check
+            </button>
+            {% if versionHistory and (versionHistory | length) > 1 %}
+            <button type="button" onclick="toggleVersionHistory()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+                <i data-lucide="history" class="h-4 w-4 mr-2"></i>
+                <span id="historyToggleText">History</span>
+            </button>
+            {% endif %}
+            <button type="button" onclick="exportConfig()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+                <i data-lucide="download" class="h-4 w-4 mr-2"></i>
+                Export
+            </button>
+            <a href="/admin/settings/import" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+                <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
+                Import
+            </a>
+            <button type="button" onclick="reloadConfig()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+                <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                Reload
+            </button>
+        </div>
+    </div>
+
+    <!-- Health Check Results -->
+    <div id="healthCheckSection" class="bg-card border border-border" style="display: none;">
+        <div class="px-6 py-4 bg-muted/20 border-b border-border flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="activity" class="h-4 w-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Health Status</h3>
+                <span id="healthStatusBadge" class="inline-flex items-center px-2 py-1 text-xs font-medium bg-muted text-muted-foreground">
+                    <i data-lucide="loader" class="h-3 w-3 mr-1 animate-spin"></i>
+                    Checking...
+                </span>
+            </div>
+            <button type="button" onclick="hideHealthCheck()" class="p-1 text-muted-foreground hover:text-foreground">
+                <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+        </div>
+        <div id="healthCheckResults" class="p-6">
+            <div class="flex items-center justify-center py-8">
+                <i data-lucide="loader" class="h-8 w-8 text-muted-foreground animate-spin"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version History -->
+    {% if versionHistory and versionHistory.length > 0 %}
+    <div id="versionHistory" class="bg-card border border-border" style="display: none;">
+        <div class="px-6 py-4 bg-muted/20 border-b border-border flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i data-lucide="history" class="h-4 w-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">Version History</h3>
+            </div>
+            <button type="button" onclick="toggleVersionHistory()" class="p-1 text-muted-foreground hover:text-foreground">
+                <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+        </div>
+        <div class="divide-y divide-border">
+            {% for version in versionHistory %}
+            <div class="px-6 py-4 hover:bg-muted/10">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-sm font-semibold text-foreground">v{{ version.version }}</span>
+                            {% if version.is_active %}
+                            <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                Active
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-muted-foreground">
+                            {{ version.created_at | date('YYYY-MM-DD HH:mm:ss', displayTimezone) }}
+                            {% if version.metadata and version.metadata.updatedBy %}
+                            · {{ version.metadata.updatedBy }}
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                        {% if not version.is_active %}
+                        <button type="button" onclick="confirmRollback('{{ version._id }}', '{{ version.version }}')" class="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium">
+                            <i data-lucide="rotate-ccw" class="h-3 w-3 mr-1.5"></i>
+                            Rollback
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Settings Categories -->
+    <div class="space-y-6">
+
+        <!-- Identity & Branding -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-4">Identity & Branding</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/admin/settings/application" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="settings" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Application</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Name, description & settings</p>
+                </a>
+
+                <a href="/admin/settings/branding" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="palette" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Branding</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Logos, colors & themes</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- Infrastructure -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-4">Infrastructure</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/admin/settings/deployment" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="cloud" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Deployment</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Server & environment</p>
+                </a>
+
+            </div>
+        </div>
+
+        <!-- Security & Authentication -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-4">Security & Authentication</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/admin/settings/security" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="shield" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Security</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Policies & passwords</p>
+                </a>
+
+                <a href="/admin/settings/oidc" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="key" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">OIDC</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">OpenID Connect settings</p>
+                </a>
+            </div>
+        </div>
+
+        <!-- Integrations -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-4">Integrations</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/admin/settings/integrations" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="mail" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Email & SMTP</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Email service settings</p>
+                </a>
+
+            </div>
+        </div>
+
+        <!-- Features -->
+        <div>
+            <h2 class="text-lg font-semibold text-foreground mb-4">Features</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <a href="/admin/settings/features" class="bg-card border border-border p-5 hover:border-primary">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="p-2 bg-primary/10">
+                            <i data-lucide="toggle-left" class="h-4 w-4 text-primary"></i>
+                        </div>
+                        <h3 class="font-semibold text-foreground">Feature Flags</h3>
+                    </div>
+                    <p class="text-sm text-muted-foreground">Enable/disable features</p>
+                </a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings/overview.js"></script>
+{% endblock %}

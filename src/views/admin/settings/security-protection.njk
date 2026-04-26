@@ -1,0 +1,333 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        {% set activePage = "security" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure rate limiting, device matching, risk detection, and password breach detection</p>
+        </div>
+    </div>
+
+    {% include "partials/admin-security-subtabs.njk" %}
+
+    <form method="POST" action="/admin/settings/security/protection" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Rate Limiting -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                        Rate Limiting
+                    </h2>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="protection[rate_limiting][enabled]" value="">
+                            <input type="checkbox" id="protection.rate_limiting.enabled"
+                                   name="protection[rate_limiting][enabled]"
+                                   {% if config.protection and config.protection.rate_limiting and config.protection.rate_limiting.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="protection.rate_limiting.enabled" class="text-sm font-medium text-foreground">
+                                Enable Rate Limiting
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="protection.rate_limiting.requests_per_minute" class="block text-sm font-medium text-foreground mb-2">Requests per Minute</label>
+                                <input type="number" id="protection.rate_limiting.requests_per_minute"
+                                       name="protection[rate_limiting][requests_per_minute]"
+                                       value="{{ config.protection and config.protection.rate_limiting and config.protection.rate_limiting.requests_per_minute or '' }}"
+                                       min="1" max="1000"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label for="protection.rate_limiting.window_minutes" class="block text-sm font-medium text-foreground mb-2">Window (Minutes)</label>
+                                <input type="number" id="protection.rate_limiting.window_minutes"
+                                       name="protection[rate_limiting][window_minutes]"
+                                       value="{{ config.protection and config.protection.rate_limiting and config.protection.rate_limiting.window_minutes or '' }}"
+                                       min="1" max="60"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="protection.trusted_domains" class="block text-sm font-medium text-foreground mb-2">Trusted Domains</label>
+                            <textarea id="protection.trusted_domains"
+                                      name="protection[trusted_domains]" rows="3"
+                                      class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.protection and config.protection.trusted_domains and config.protection.trusted_domains | join('\n') or '' }}</textarea>
+                            <p class="mt-1 text-xs text-muted-foreground">One domain per line (e.g., example.com, *.example.com)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Matching & Risk Detection -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="fingerprint" class="h-5 w-5 mr-2 text-primary"></i>
+                        Device Matching & Risk Detection
+                    </h2>
+                    <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i data-lucide="info" class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                            <div class="text-sm text-blue-800 dark:text-blue-200">
+                                <p class="font-medium mb-1">Security Enhancement</p>
+                                <p>Configure device fingerprinting, trusted proxies, high-risk regions, and impossible travel detection settings.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Trusted Proxies -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Trusted Proxies</h3>
+                            <div class="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-amber-800 dark:text-amber-200">
+                                        <strong>Security Note:</strong> Only trust forwarded IP headers (X-Forwarded-For, X-Real-IP) from these configured proxy IP addresses. Leave empty to trust based on Express proxy setting.
+                                    </span>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="protection.trusted_proxies" class="block text-sm font-medium text-foreground mb-2">Trusted Proxy IPs/Ranges</label>
+                                <textarea id="protection.trusted_proxies"
+                                          name="protection[trusted_proxies]" rows="3"
+                                          placeholder="10.0.0.0/8&#10;192.168.1.1&#10;172.16.0.0/12"
+                                          class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.protection and config.protection.trusted_proxies and config.protection.trusted_proxies | join('\n') or '' }}</textarea>
+                                <p class="mt-1 text-xs text-muted-foreground">One IP or CIDR range per line (e.g., 10.0.0.0/8, 192.168.1.1)</p>
+                            </div>
+                        </div>
+
+                        <!-- High-Risk Countries -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">High-Risk Countries</h3>
+                            <div>
+                                <label for="protection.high_risk_countries" class="block text-sm font-medium text-foreground mb-2">Country Codes</label>
+                                <textarea id="protection.high_risk_countries"
+                                          name="protection[high_risk_countries]" rows="2"
+                                          placeholder="KP&#10;IR&#10;RU"
+                                          class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.protection and config.protection.high_risk_countries and config.protection.high_risk_countries | join('\n') or '' }}</textarea>
+                                <p class="mt-1 text-xs text-muted-foreground">ISO 3166-1 alpha-2 country codes (e.g., KP, IR). Logins from these regions may trigger additional verification.</p>
+                            </div>
+                        </div>
+
+                        <!-- Device Matching Config -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Device Matching Configuration</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="protection.device_matching.min_confidence_score" class="block text-sm font-medium text-foreground mb-2">Min Confidence Score</label>
+                                    <input type="number" id="protection.device_matching.min_confidence_score"
+                                           name="protection[device_matching][min_confidence_score]"
+                                           value="{{ config.protection and config.protection.device_matching and config.protection.device_matching.min_confidence_score or 70 }}"
+                                           min="0" max="100"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Device match score (0-100) below which triggers new device verification</p>
+                                </div>
+                                <div>
+                                    <label for="protection.device_matching.ip_similarity_threshold" class="block text-sm font-medium text-foreground mb-2">IP Similarity Threshold</label>
+                                    <input type="number" id="protection.device_matching.ip_similarity_threshold"
+                                           name="protection[device_matching][ip_similarity_threshold]"
+                                           value="{{ config.protection and config.protection.device_matching and config.protection.device_matching.ip_similarity_threshold or 0.8 }}"
+                                           min="0" max="1" step="0.1"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">IP address similarity threshold (0-1)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Impossible Travel Detection -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Impossible Travel Detection</h3>
+                            <div class="space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="protection[device_matching][enable_impossible_travel]" value="">
+                                    <input type="checkbox" id="protection.device_matching.enable_impossible_travel"
+                                           name="protection[device_matching][enable_impossible_travel]"
+                                           {% if not config.protection or not config.protection.device_matching or config.protection.device_matching.enable_impossible_travel != false %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="protection.device_matching.enable_impossible_travel" class="text-sm font-medium text-foreground">
+                                        Enable Impossible Travel Detection
+                                    </label>
+                                </div>
+                                <div>
+                                    <label for="protection.device_matching.impossible_travel_max_speed_kmh" class="block text-sm font-medium text-foreground mb-2">Max Travel Speed (km/h)</label>
+                                    <input type="number" id="protection.device_matching.impossible_travel_max_speed_kmh"
+                                           name="protection[device_matching][impossible_travel_max_speed_kmh]"
+                                           value="{{ config.protection and config.protection.device_matching and config.protection.device_matching.impossible_travel_max_speed_kmh or 900 }}"
+                                           min="1" max="2000"
+                                           class="w-full max-w-xs px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Maximum reasonable travel speed. Default: 900 km/h (aircraft speed). Logins requiring faster travel will be flagged.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Trusted Device Configuration -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Trusted Device Configuration</h3>
+                            <div>
+                                <label for="protection.device_matching.trust_duration_days" class="block text-sm font-medium text-foreground mb-2">Device Trust Duration (days)</label>
+                                <input type="number" id="protection.device_matching.trust_duration_days"
+                                       name="protection[device_matching][trust_duration_days]"
+                                       value="{{ config.protection and config.protection.device_matching and config.protection.device_matching.trust_duration_days or 30 }}"
+                                       min="1" max="365"
+                                       class="w-full max-w-xs px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <p class="mt-1 text-xs text-muted-foreground">Number of days a trusted device remains trusted before requiring re-verification. Default: 30 days.</p>
+                            </div>
+                        </div>
+
+                        <!-- Device Data Encryption -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Device Data Encryption</h3>
+                            <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="shield-check" class="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-blue-800 dark:text-blue-200">
+                                        <strong>Privacy Feature:</strong> When enabled, sensitive device data (fingerprint, visitor ID, geolocation) is encrypted at rest in activity logs using AES-256-GCM.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="protection[encrypt_device_data]" value="">
+                                <input type="checkbox" id="protection.encrypt_device_data"
+                                       name="protection[encrypt_device_data]"
+                                       {% if config.protection and config.protection.encrypt_device_data %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="protection.encrypt_device_data" class="text-sm font-medium text-foreground">
+                                    Encrypt Device Data at Rest
+                                </label>
+                            </div>
+                            <p class="mt-2 text-xs text-muted-foreground">Requires ENCRYPTION_KEY environment variable to be set.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Breach Detection -->
+                <div class="bg-card border border-border overflow-hidden">
+                    <div class="px-4 py-3 sm:px-6 border-b border-border flex items-center gap-2">
+                        <i data-lucide="shield-alert" class="h-5 w-5 text-destructive"></i>
+                        <h3 class="text-base font-semibold text-foreground">Password Breach Detection</h3>
+                    </div>
+                    <div class="px-4 py-4 sm:px-6 space-y-4">
+                        <div class="bg-info/10 border border-info/20 p-3 text-sm text-foreground">
+                            <p>Checks passwords against the <strong>Have I Been Pwned</strong> database using <strong>k-anonymity</strong> — only the first 5 characters of the SHA-1 hash are sent to the API. Your users' passwords never leave the server.</p>
+                        </div>
+
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[password_breach_detection][enabled]" value="">
+                            <input type="checkbox" id="authentication.password_breach_detection.enabled"
+                                   name="authentication[password_breach_detection][enabled]"
+                                   {% if config.authentication and config.authentication.password_breach_detection and config.authentication.password_breach_detection.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="authentication.password_breach_detection.enabled" class="text-sm font-medium text-foreground">
+                                Enable Password Breach Detection
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="authentication.password_breach_detection.api_timeout_ms" class="block text-sm font-medium text-foreground mb-1">
+                                    API Timeout (ms)
+                                </label>
+                                <input type="number" id="authentication.password_breach_detection.api_timeout_ms"
+                                       name="authentication[password_breach_detection][api_timeout_ms]"
+                                       value="{{ config.authentication.password_breach_detection.api_timeout_ms if config.authentication and config.authentication.password_breach_detection else 3000 }}"
+                                       min="500" max="30000"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground text-sm focus:ring-2 focus:ring-primary focus:border-primary">
+                                <p class="mt-1 text-xs text-muted-foreground">Timeout for HIBP API calls (500-30000ms)</p>
+                            </div>
+                            <div>
+                                <label for="authentication.password_breach_detection.min_breach_count" class="block text-sm font-medium text-foreground mb-1">
+                                    Minimum Breach Count
+                                </label>
+                                <input type="number" id="authentication.password_breach_detection.min_breach_count"
+                                       name="authentication[password_breach_detection][min_breach_count]"
+                                       value="{{ config.authentication.password_breach_detection.min_breach_count if config.authentication and config.authentication.password_breach_detection else 1 }}"
+                                       min="1"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground text-sm focus:ring-2 focus:ring-primary focus:border-primary">
+                                <p class="mt-1 text-xs text-muted-foreground">Password must appear in at least this many breaches to trigger action</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-2">Check Contexts</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[password_breach_detection][check_on_registration]" value="">
+                                    <input type="checkbox" id="authentication.password_breach_detection.check_on_registration"
+                                           name="authentication[password_breach_detection][check_on_registration]"
+                                           {% if config.authentication and config.authentication.password_breach_detection and config.authentication.password_breach_detection.check_on_registration %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.password_breach_detection.check_on_registration" class="text-sm text-foreground">
+                                        Registration (blocks)
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[password_breach_detection][check_on_login]" value="">
+                                    <input type="checkbox" id="authentication.password_breach_detection.check_on_login"
+                                           name="authentication[password_breach_detection][check_on_login]"
+                                           {% if config.authentication and config.authentication.password_breach_detection and config.authentication.password_breach_detection.check_on_login %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.password_breach_detection.check_on_login" class="text-sm text-foreground">
+                                        Login (async email alert)
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[password_breach_detection][check_on_password_reset]" value="">
+                                    <input type="checkbox" id="authentication.password_breach_detection.check_on_password_reset"
+                                           name="authentication[password_breach_detection][check_on_password_reset]"
+                                           {% if config.authentication and config.authentication.password_breach_detection and config.authentication.password_breach_detection.check_on_password_reset %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.password_breach_detection.check_on_password_reset" class="text-sm text-foreground">
+                                        Password Reset (blocks)
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[password_breach_detection][check_on_password_change]" value="">
+                                    <input type="checkbox" id="authentication.password_breach_detection.check_on_password_change"
+                                           name="authentication[password_breach_detection][check_on_password_change]"
+                                           {% if config.authentication and config.authentication.password_breach_detection and config.authentication.password_breach_detection.check_on_password_change %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.password_breach_detection.check_on_password_change" class="text-sm text-foreground">
+                                        Password Change (blocks)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                    <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                        Cancel
+                    </a>
+                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                        Reset Form
+                    </button>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                            Save Changes
+                        </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings.js"></script>
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/security.js"></script>
+{% endblock %}

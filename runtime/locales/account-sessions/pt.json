@@ -1,0 +1,42 @@
+{
+  "title": "Sessões ativas",
+  "description": "Estes são os dispositivos onde você está conectado atualmente. Verifique esta lista regularmente e saia de dispositivos que você não reconhece ou não usa mais.",
+  "sign_out_all": {
+    "button": "Sair de todos os outros dispositivos",
+    "button_short": "Sair de todos os outros",
+    "confirm": "Tem certeza de que deseja sair de todos os outros dispositivos? Isso desconectará você imediatamente de todos os outros dispositivos e poderá desconectar aplicativos conectados nesses dispositivos."
+  },
+  "table": {
+    "device_location": "Dispositivo e Localização",
+    "ip_address": "Endereço IP",
+    "started": "Iniciado",
+    "last_active": "Última atividade",
+    "status": "Status",
+    "action": "Ação"
+  },
+  "status": {
+    "current": "Atual",
+    "active": "Ativo",
+    "this_device": "Este dispositivo"
+  },
+  "unknown": {
+    "device": "Dispositivo desconhecido",
+    "location": "Localização desconhecida",
+    "general": "Desconhecido"
+  },
+  "action": {
+    "sign_out": "Sair",
+    "confirm_sign_out": "Tem certeza de que deseja sair deste dispositivo? Isso desconectará você imediatamente e poderá desconectar aplicativos conectados."
+  },
+  "empty_state": {
+    "title": "Nenhum outro dispositivo",
+    "description": "Você não está conectado em nenhum outro dispositivo."
+  },
+  "mobile_labels": {
+    "device": "Dispositivo",
+    "location": "Localização",
+    "ip_address": "Endereço IP",
+    "started": "Iniciado",
+    "last_active": "Última atividade"
+  }
+}

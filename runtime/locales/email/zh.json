@@ -1,0 +1,69 @@
+{
+  "subject": {
+    "welcome": "欢迎使用{{appName}}",
+    "email_verification": "验证您的电子邮件地址",
+    "password_reset": "重置您的密码",
+    "password_changed": "您的密码已更改",
+    "account_recovery": "恢复您的账户",
+    "security_alert": "您账户的安全警报",
+    "new_session": "您的{{appName}}账户有新登录",
+    "new_device_otp": "{{appName}} - 验证新设备"
+  },
+  "greeting": { "hello": "您好，{{name}}", "hello_user": "您好" },
+  "verification": {
+    "title": "验证您的电子邮件地址",
+    "body": "感谢您注册！请点击下面的按钮验证您的电子邮件地址。",
+    "button": "验证电子邮件",
+    "expires": "此链接将在{{hours}}小时后过期。",
+    "ignore": "如果您没有创建账户，可以安全地忽略此电子邮件。"
+  },
+  "password_reset": {
+    "title": "重置您的密码",
+    "body": "我们收到了重置您密码的请求。点击下面的按钮创建新密码。",
+    "button": "重置密码",
+    "expires": "此链接将在{{hours}}小时后过期。",
+    "ignore": "如果您没有请求重置密码，可以安全地忽略此电子邮件。"
+  },
+  "welcome": {
+    "title": "欢迎使用{{appName}}",
+    "body_intro": "感谢您加入{{appName}}！我们很高兴您成为我们社区的一员。",
+    "body_description": "{{appDescription}}",
+    "features_intro": "使用{{appName}}，您可以：",
+    "feature_1": "安全地管理您的数字身份",
+    "feature_2": "控制对您应用程序的访问",
+    "feature_3": "使用多因素身份验证保护您的账户",
+    "get_started": "从探索您的账户仪表板开始。",
+    "button": "管理您的账户"
+  },
+  "security_alert": {
+    "title": "安全警报 - {{alertType}}",
+    "body": "我们在您的{{appName}}账户中检测到安全事件。",
+    "alert_type_label": "警报类型：",
+    "details_label": "详细信息：",
+    "not_you": "如果不是您本人操作，请立即保护您的账户。",
+    "button": "保护账户"
+  },
+  "new_session": {
+    "title": "检测到新登录",
+    "body": "您的{{appName}}账户检测到一次新登录。",
+    "time_label": "时间：",
+    "ip_label": "IP地址：",
+    "device_label": "设备：",
+    "not_you": "如果不是您本人操作，请立即更改密码并检查账户安全。",
+    "button": "查看安全设置"
+  },
+  "new_device_otp": {
+    "title": "验证新设备",
+    "body": "我们检测到有人从新设备尝试登录您的{{appName}}账户。输入此代码以验证您的身份：",
+    "device_label": "设备：",
+    "ip_label": "IP地址：",
+    "expires": "此代码将在10分钟后过期。",
+    "not_you": "如果您没有尝试登录，请忽略此电子邮件并立即更改密码。"
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}。保留所有权利。",
+    "contact": "如有任何问题，请通过{{email}}联系我们",
+    "privacy": "隐私政策",
+    "terms": "服务条款"
+  }
+}

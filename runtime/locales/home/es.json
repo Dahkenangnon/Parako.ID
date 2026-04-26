@@ -1,0 +1,24 @@
+{
+  "title": "Inicia sesión para continuar",
+  "choose_method": "Elige un método para continuar",
+  "social_divider": "o",
+  "social_divider_dynamic": "o",
+  "tab": {
+    "email": "Correo electrónico",
+    "phone": "Teléfono"
+  },
+  "link": {
+    "reset_password": "Restablecer contraseña",
+    "recover_account": "Recuperar cuenta",
+    "create_account": "Crea una ahora",
+    "sign_up_prompt": "¿No tienes una cuenta?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Iniciar sesión con {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

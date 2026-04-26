@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="{{ locale or app.locales.default or 'en' }}" dir="{% if (locale or app.locales.default) == 'ar' %}rtl{% else %}ltr{% endif %}" class="h-full overflow-hidden" >
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- Dynamic Title -->
+    {% set pageTitle = title | default('') %}
+    {% set appTitle = app.title | default('') %}
+    {% set fullTitle = pageTitle and pageTitle | trim != '' 
+        and (pageTitle ~ ' | ' ~ appTitle) 
+        or appTitle %}
+    <title>{{ fullTitle }}</title>
+    
+    <!-- Meta Description -->
+    {% set metaDescription = description or app.description or '' %}
+    <meta name="description" content="{{ metaDescription }}">
+
+    <!-- Canonical URL -->
+    {% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}">
+    {% endif %}
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{{ branding.favicon }}">
+    <link rel="apple-touch-icon" href="{{ branding.favicon }}">
+    
+    <!-- Open Graph Meta Tags -->
+    {% set ogTitle = pageTitle and pageTitle | trim != '' 
+        and (pageTitle ~ ' | ' ~ app.title) 
+        or app.title %}
+    {% set ogDescription = metaDescription %}
+    {% set ogImage = branding.logo or '/images/logo-light.svg' %}
+    {% set ogUrl = canonical_url or app.url or '' %}
+    
+    <meta property="og:title" content="{{ ogTitle }}">
+    <meta property="og:description" content="{{ ogDescription }}">
+    <meta property="og:image" content="{{ ogImage }}">
+    <meta property="og:url" content="{{ ogUrl }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="{{ branding.companyName or '' }}">
+    <meta property="og:locale" content="{{ locale or app.locales.default or 'en' }}">
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ ogTitle }}">
+    <meta name="twitter:description" content="{{ ogDescription }}">
+    <meta name="twitter:image" content="{{ ogImage }}">
+    <meta name="twitter:site" content="@{{branding.companyName}}">
+    <meta name="twitter:creator" content="@{{branding.companyName}}">
+    
+    <!-- Additional Meta Tags -->
+    <meta name="author" content="{{ branding.companyName or '' }}">
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="{{ branding.colors and branding.colors.primary or '#2563eb' }}">
+    
+    <!-- Preconnect for Performance -->
+    <link rel="preconnect" href="https://unpkg.com">
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/theme.css">
+
+    <!-- Theme Color Overrides -->
+    {% if branding.colors %}
+    <style id="theme-color-overrides">
+      :root {
+        {% for key, value in branding.colors.light %}
+          {% if value %}--{{ key | kebabCase }}: {{ value }};{% endif %}
+        {% endfor %}
+      }
+      .dark {
+        {% for key, value in branding.colors.dark %}
+          {% if value %}--{{ key | kebabCase }}: {{ value }};{% endif %}
+        {% endfor %}
+      }
+    </style>
+    {% endif %}
+
+    <!-- Font Family Overrides -->
+    {% if branding.fonts %}
+    <style id="theme-font-overrides">
+      :root {
+        {% if branding.fonts.sans %}--font-sans: {{ branding.fonts.sans }};{% endif %}
+        {% if branding.fonts.heading %}--font-heading: {{ branding.fonts.heading }};{% endif %}
+        {% if branding.fonts.mono %}--font-mono: {{ branding.fonts.mono }};{% endif %}
+      }
+    </style>
+    {% endif %}
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Additional Head Content -->
+    {% block head %}{% endblock %}
+</head>
+
+    <body class="{{ htmlClass }} dark:text-foreground h-full flex flex-col overflow-hidden{% if userTheme == 'dark' %} dark{% endif %}" data-theme="{{ userTheme }}">
+        <main class="h-full flex flex-col overflow-hidden">
+            {% block content %}{% endblock %}
+        </main>
+        {% include "partials/flash.njk" %}
+
+        {% block scripts %}
+        <script src="/js/main.js"></script>
+        <script src="/js/flash.js"></script>
+        <script src="/js/user.js"></script>
+        
+        <!-- Global configuration for MainManager -->
+        <script id="___MAIN_STATE___" type="application/json">
+        {
+            "theme": {{ userTheme | tojson | safe }},
+            "csrfToken": {{ csrfToken | tojson | safe }},
+            "locale": {{ userLocale | tojson | safe }},
+            "availableLocales": {{ app.locales.available | tojson | safe }},
+            "routes": {
+                "updateTheme": {{ routes.authFull.update_theme | tojson | safe }},
+                "updateLocale": {{ routes.authFull.update_locale | tojson | safe }},
+                "updateTimezone": {{ routes.authFull.update_timezone | tojson | safe }}
+            }
+        }
+        </script>
+
+        <!-- Configuration for DeviceInfoCollector -->
+        <script id="___USER_DEVICE_INFO_STATE___" type="application/json">
+        {
+            "csrfToken": {{ csrfToken | tojson | safe }},
+            "fingerprintJSApiKey": {{ (app.fingerprintJS and app.fingerprintJS.apiKey) | tojson | safe }}
+        }
+        </script>
+        {% endblock %}
+    </body>
+</html>

@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "設定ナビゲーション",
+    "profile": "プロフィール",
+    "preferences": "環境設定",
+    "notifications": "通知",
+    "security": "セキュリティ",
+    "recovery": "リカバリー",
+    "social": "ソーシャルアカウント"
+  },
+  "upload_widget": {
+    "title": "プロフィール写真をアップロード中...",
+    "description": "画像を処理中です。しばらくお待ちください"
+  },
+  "profile": {
+    "title": "プロフィール情報",
+    "picture_label": "プロフィール写真",
+    "upload_description": "新しいプロフィール写真をアップロードしてください。写真またはアップロードボタンをクリックして画像を選択します。",
+    "upload_button": "画像をアップロード",
+    "remove_button": "削除",
+    "first_name": "名",
+    "last_name": "姓",
+    "save_button": "変更を保存",
+    "remove_confirm": "プロフィール写真を削除してもよろしいですか？",
+    "remove_error": "アバターの削除に失敗しました。もう一度お試しください。",
+    "file_read_error": "選択したファイルの読み取り中にエラーが発生しました。もう一度お試しください。"
+  },
+  "preferences": {
+    "title": "設定",
+    "language": {
+      "title": "言語設定",
+      "current": "現在設定されている言語：",
+      "none": "言語設定はありません。デフォルトは英語です。",
+      "update_error": "言語設定の更新に失敗しました。もう一度お試しください。"
+    },
+    "timezone": {
+      "title": "タイムゾーン",
+      "current": "現在設定されているタイムゾーン：",
+      "update_error": "タイムゾーンの更新に失敗しました。もう一度お試しください。"
+    }
+  },
+  "email_verification": {
+    "title": "メール確認",
+    "primary_email": "主要メールアドレス",
+    "verified": "確認済み",
+    "unverified": "未確認",
+    "verify_prompt": "すべての機能を使用するにはメールアドレスを確認してください",
+    "resend_button": "確認メールを再送信",
+    "verify_manually": "手動で確認"
+  },
+  "phone_verification": {
+    "title": "電話番号確認",
+    "primary_phone": "主要電話番号",
+    "verified": "確認済み",
+    "unverified": "未確認"
+  },
+  "add_email": {
+    "title": "メールアドレスを追加",
+    "description": "メールアドレスを追加すると、アカウントの回復が容易になります。パスワードのリセットやアカウントの回復に使用できます。",
+    "button": "メールを追加"
+  },
+  "security": {
+    "title": "セキュリティ",
+    "mfa": {
+      "active_title": "二要素認証が有効です",
+      "active_description": "アカウントは2FAで保護されています",
+      "active_description_multi": "{{count}}つの認証方法が有効です。",
+      "totp_title": "認証アプリ",
+      "email_title": "メール認証",
+      "webauthn_title": "パスキー",
+      "passkeys_count": "個のパスキーが登録済み",
+      "manage_passkeys": "パスキーを管理",
+      "using": "使用方法：{{method}}",
+      "using_email": "使用方法：メール",
+      "using_app": "使用方法：認証アプリ",
+      "using_method": "使用方法：{{method}}",
+      "inactive_title": "二要素認証は有効ではありません",
+      "inactive_description": "アカウントのセキュリティを強化するために2FAを有効にしてください",
+      "title": "二要素認証",
+      "enabled_status": "有効",
+      "enabled_text": "アカウントは2FAで保護されています",
+      "disabled_status": "無効",
+      "disabled_text": "アカウントのセキュリティを強化するために2FAを追加してください",
+      "disable_button": "2FAを無効にする",
+      "enable_app_button": "アプリで有効化",
+      "enable_email_button": "メールで有効化",
+      "already_enabled_message": "このアカウントでは既に二要素認証が有効です。",
+      "method_already_enabled": "このMFA方式は既に有効です。",
+      "not_enabled_message": "このアカウントでは二要素認証が有効ではありません。",
+      "disable_confirm": "二要素認証を無効にしてもよろしいですか？アカウントの安全性が低下します。",
+      "enable_app_confirm": "認証アプリの2FAを有効にしますか？",
+      "enable_email_confirm": "メールベースの2FAを有効にしますか？"
+    },
+    "password": {
+      "set_title": "パスワードを設定",
+      "set_description": "現在はソーシャルログインのみが有効です。ソーシャルアカウントを解除してもアカウントにアクセスできるように、パスワードを設定してください。",
+      "current_label": "現在のパスワード",
+      "new_label": "新しいパスワード",
+      "confirm_label": "新しいパスワードを確認",
+      "requirements_title": "パスワード要件",
+      "min_length": "少なくとも{{count}}文字",
+      "uppercase": "少なくとも1つの大文字",
+      "lowercase": "少なくとも1つの小文字",
+      "number": "少なくとも1つの数字",
+      "symbol": "少なくとも1つの特殊文字",
+      "mismatch_error": "パスワードが一致しません",
+      "mismatch": "パスワードが一致しません",
+      "change_success": "パスワードが正常に変更されました",
+      "change_button": "パスワードを変更"
+    }
+  },
+  "recovery": {
+    "title": "アカウント回復",
+    "active_title": "アカウント回復が有効です",
+    "active_description": "アカウントへのアクセスを回復するためのバックアップ方法を設定しています",
+    "inactive_title": "アカウント回復が設定されていません",
+    "inactive_description": "パスワードや2FAデバイスを失った場合に備え、バックアップ方法を設定してください",
+    "dashboard": {
+      "backup_codes": "バックアップコード",
+      "backup_email": "バックアップメール",
+      "security_questions": "セキュリティ質問",
+      "codes_available": "コード利用可能",
+      "not_configured": "未設定",
+      "configured": "設定済み",
+      "verified": "確認済み",
+      "score_title": "回復状態",
+      "score_critical": "回復方法が設定されていません。少なくとも1つの方法を設定してください。",
+      "score_warning": "回復方法が1つだけ設定されています。保護を強化するために追加してください。",
+      "score_low_codes": "バックアップコードが残りわずかです。新しいコードを生成してください。",
+      "score_good": "アカウント回復オプションは適切に設定されています。",
+      "methods_active": "メソッドがアクティブ"
+    },
+    "backup_codes": {
+      "title": "バックアップコード",
+      "setup_status": "設定済み",
+      "low_status": "残りわずか",
+      "depleted_status": "使い切りました",
+      "depleted_text": "今すぐ新しいコードを生成してください",
+      "remaining": "残り{{count}}コード",
+      "created_at": "作成日：{{date}}",
+      "not_setup_status": "未設定",
+      "not_setup_text": "アカウントにアクセスを回復するためのワンタイムコードを作成してください",
+      "codes_created_badge": "コード作成済み",
+      "create_new_button": "新しいコードを作成",
+      "remove_button": "コードを削除",
+      "create_button": "コードを作成",
+      "confirm_new": "新しいバックアップコードを作成してもよろしいですか？既存のコードは無効になります。",
+      "confirm_remove": "バックアップコードを削除してもよろしいですか？",
+      "view_once_tooltip": "セキュリティのため、バックアップコードは一度しか表示できません"
+    },
+    "backup_email": {
+      "title": "バックアップメール",
+      "verified_status": "確認済み",
+      "verified_text": "アカウントへのアクセス回復に使用できます",
+      "pending_status": "確認待ち",
+      "pending_text": "確認リンクを受け取くためにメールを確認してください",
+      "not_setup_status": "未設定",
+      "not_setup_text": "アカウントへのアクセス回復のためにバックアップメールを追加してください",
+      "remove_button": "メールを削除",
+      "add_button": "メールを追加",
+      "placeholder": "バックアップメールを入力",
+      "confirm_remove": "バックアップメールを削除してもよろしいですか？",
+      "cancel_button": "認証をキャンセル",
+      "cancel_confirm": "保留中のメール認証をキャンセルしてもよろしいですか？"
+    },
+    "security_questions": {
+      "title": "セキュリティ質問",
+      "setup_status": "設定済み",
+      "setup_text": "{{count}}個の質問が設定されています",
+      "not_setup_status": "未設定",
+      "not_setup_text": "アカウント回復のためにセキュリティ質問を追加してください",
+      "setup_button": "質問を設定",
+      "update_button": "質問を更新",
+      "remove_button": "質問を削除",
+      "confirm_remove": "セキュリティ質問を削除してもよろしいですか？",
+      "last_used": "最終使用日：{{date}}"
+    }
+  },
+  "social": {
+    "title": "接続されたアカウント",
+    "description": "素早く安全にログインするためにソーシャルアカウントを接続します。複数のアカウントを接続してここから管理できます。",
+    "connected": "接続済み",
+    "not_connected": "未接続",
+    "unlink_button": "解除",
+    "set_password_first": "まずパスワードを設定してください",
+    "set_password_first_tooltip": "唯一のソーシャルアカウントを解除する前に、パスワードを設定する必要があります",
+    "connect_button": "接続",
+    "no_accounts": "利用可能なソーシャルアカウントがありません",
+    "confirm_unlink": "{{provider}}アカウントの接続を解除してもよろしいですか？"
+  },
+  "notifications": {
+    "title": "通知設定",
+    "preferred_channel": "優先する通知方法",
+    "preferred_channel_desc": "通知の受信方法を選択してください",
+    "channel_email": "メール",
+    "channel_sms": "SMS",
+    "channel_auto": "自動",
+    "security_alerts": "セキュリティ警告",
+    "security_alerts_desc": "不審なログイン試行やセキュリティイベントの通知を受け取る",
+    "new_session_alerts": "新しいセッション警告",
+    "new_session_alerts_desc": "新しいデバイスがアカウントにログインした際に通知を受け取る",
+    "marketing": "製品アップデート",
+    "marketing_desc": "新機能や改善に関するアップデートを受け取る",
+    "save_button": "設定を保存"
+  }
+}

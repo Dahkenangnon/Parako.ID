@@ -1,0 +1,42 @@
+{
+  "title": "Sesiones activas",
+  "description": "Estos son los dispositivos en los que has iniciado sesión actualmente. Revisa esta lista regularmente y cierra sesión en los dispositivos que no reconozcas o que ya no uses.",
+  "sign_out_all": {
+    "button": "Cerrar sesión en todos los demás dispositivos",
+    "button_short": "Cerrar otras sesiones",
+    "confirm": "¿Estás seguro de que quieres cerrar sesión en todos los demás dispositivos? Esto cerrará inmediatamente tu sesión en todos los demás dispositivos y puede desconectar las aplicaciones conectadas en esos dispositivos."
+  },
+  "table": {
+    "device_location": "Dispositivo y ubicación",
+    "ip_address": "Dirección IP",
+    "started": "Iniciado",
+    "last_active": "Última actividad",
+    "status": "Estado",
+    "action": "Acción"
+  },
+  "status": {
+    "current": "Actual",
+    "active": "Activo",
+    "this_device": "Este dispositivo"
+  },
+  "unknown": {
+    "device": "Dispositivo desconocido",
+    "location": "Ubicación desconocida",
+    "general": "Desconocido"
+  },
+  "action": {
+    "sign_out": "Cerrar sesión",
+    "confirm_sign_out": "¿Estás seguro de que quieres cerrar sesión en este dispositivo? Esto cerrará inmediatamente tu sesión y puede desconectar las aplicaciones conectadas."
+  },
+  "empty_state": {
+    "title": "No hay otros dispositivos",
+    "description": "No has iniciado sesión en ningún otro dispositivo."
+  },
+  "mobile_labels": {
+    "device": "Dispositivo",
+    "location": "Ubicación",
+    "ip_address": "Dirección IP",
+    "started": "Iniciado",
+    "last_active": "Última actividad"
+  }
+}

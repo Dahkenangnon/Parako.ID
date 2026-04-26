@@ -1,0 +1,75 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+    {% if method == 'email' %}
+      <div class="flex justify-center mb-4">
+        <svg class="h-12 w-12 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+        </svg>
+      </div>
+      <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground text-center mb-4">{{ t('auth.setup_mfa_email.title', 'Verify Your Email') }}</h2>
+      <p class="text-sm text-gray-600 dark:text-muted-foreground text-center mb-2">{{ t('auth.setup_mfa_email.description', 'We sent a 6-digit code to') }} <strong>{{ maskedEmail }}</strong></p>
+      <p class="text-sm text-gray-600 dark:text-muted-foreground text-center mb-6">{{ t('auth.setup_mfa_email.enter_code', 'Enter it below to enable email-based 2FA.') }}</p>
+      <p class="text-xs text-gray-400 dark:text-muted-foreground text-center mb-4">{{ t('auth.setup_mfa_email.code_expires', 'Code expires in 10 minutes.') }}</p>
+    {% else %}
+      <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground text-center mb-4">{{ t('auth.setup_mfa.title', 'Enable Two-Factor Authentication') }}</h2>
+      <p class="text-sm text-gray-600 dark:text-muted-foreground text-center mb-6">{{ t('auth.setup_mfa.description', 'Scan the QR code with your authenticator app (e.g., Google Authenticator, Authy), then enter the code below to verify.') }}</p>
+
+      <div class="flex justify-center mb-6">
+        <img src="{{ qrDataUri }}" alt="QR Code" class="h-48 w-48" />
+      </div>
+    {% endif %}
+
+    <form action="{{ routes.accountFull.setup_mfa }}{% if method == 'email' %}?method=email{% endif %}" method="POST" class="space-y-4">
+      <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+      <label for="code" class="block text-sm font-medium text-gray-700 dark:text-muted-foreground mb-2">{{ t('auth.setup_mfa.code_label', 'Verification Code') }}</label>
+      <div class="flex justify-center">
+        <div class="flex space-x-2" id="otp-container">
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+          <input type="text" class="otp-input w-12 h-12 text-center text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code" required />
+        </div>
+      </div>
+      <!-- Hidden input to store the complete code -->
+      <input type="hidden" id="code" name="code" />
+
+      <button type="submit" class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">{{ t('auth.setup_mfa.submit_button', 'Confirm & Enable') }}</button>
+    </form>
+
+    <div class="text-center mt-4">
+      <a href="{{ cancelUrl or routes.accountFull.settings_security }}" class="text-sm text-gray-500 dark:text-muted-foreground hover:text-primary">Cancel</a>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/setup-mfa.js"></script>
+
+<!-- Complete configuration and translations for SetupMFAManager -->
+<script id="___SETUP_MFA_STATE___" type="application/json">
+{
+  "config": {
+    "codeLength": 6,
+    "autoFocus": true,
+    "enablePaste": true,
+    "enableBackspace": true,
+    "shakeAnimationDuration": 500,
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "enableMFA": {{ t('auth.enableMFA', 'Enable Two-Factor Authentication') | tojson | safe }},
+    "enablingMFA": {{ t('auth.enablingMFA', 'Enabling...') | tojson | safe }},
+    "codeRequired": {{ t('auth.codeRequired', 'Please enter the verification code') | tojson | safe }},
+    "codeInvalid": {{ t('auth.codeInvalid', 'Please enter a valid 6-digit verification code') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

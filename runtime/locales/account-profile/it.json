@@ -1,0 +1,43 @@
+{
+  "last_activity": "Ultima attività",
+  "security_account": {
+    "title": "Sicurezza e account",
+    "two_factor_auth": "Autenticazione a due fattori",
+    "enabled": "Attivato",
+    "not_enabled": "Non attivato",
+    "manage": "Gestisci",
+    "enable": "Attiva",
+    "active_sessions": "Sessioni attive",
+    "devices": "{{count}} dispositivi",
+    "view": "Visualizza",
+    "connected_apps": "App collegate",
+    "apps_count": "{{count}} app",
+    "language": "Lingua",
+    "language_default": "Inglese (predefinito)",
+    "change": "Cambia",
+    "not_available": "Non disponibile"
+  },
+  "quick_actions": {
+    "title": "Azioni rapide",
+    "edit_profile": {
+      "title": "Modifica profilo",
+      "description": "Aggiorna le tue informazioni personali"
+    },
+    "security_settings": {
+      "title": "Impostazioni di sicurezza",
+      "description": "Gestisci password e 2FA"
+    },
+    "view_sessions": {
+      "title": "Visualizza sessioni",
+      "description": "Gestisci dispositivi attivi"
+    },
+    "connected_applications": {
+      "title": "Applicazioni collegate",
+      "description": "Gestisci autorizzazioni app"
+    },
+    "sign_out": {
+      "title": "Disconnetti",
+      "description": "Esci dal tuo account"
+    }
+  }
+}

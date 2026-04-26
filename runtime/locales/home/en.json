@@ -1,0 +1,24 @@
+{
+  "title": "Sign in to continue",
+  "choose_method": "Choose a method to continue",
+  "social_divider": "or",
+  "social_divider_dynamic": "or",
+  "tab": {
+    "email": "Email",
+    "phone": "Phone"
+  },
+  "link": {
+    "reset_password": "Reset password",
+    "recover_account": "Recover account",
+    "create_account": "Create one now",
+    "sign_up_prompt": "Don't have an account?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Sign in with {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

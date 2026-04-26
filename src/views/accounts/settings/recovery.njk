@@ -1,0 +1,509 @@
+{% extends "layouts/account-layout.njk" %}
+{% block account_content %}
+    {% include "partials/account-settings-tabs.njk" %}
+
+    <div class="space-y-10">
+        <!-- Account Recovery Settings -->
+        <div>
+            <div>
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <svg class="h-5 w-5 text-muted-foreground mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824
+                                10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                    </svg>
+                    {{ t('account-settings.recovery.title') }}
+                </h2>
+                <!-- Recovery Status Dashboard -->
+                {% if recoveryConfig and recoveryConfig.enabled %}
+                {% set hasBackupCodes = pageUser.recovery and pageUser.recovery.backup_codes and pageUser.recovery.backup_codes.codes.length > 0 %}
+                {% set hasSecondaryEmail = pageUser.recovery and pageUser.recovery.secondary_email and pageUser.recovery.secondary_email.email and pageUser.recovery.secondary_email.verified %}
+                {% set hasSecurityQuestions = pageUser.recovery and pageUser.recovery.security_questions and pageUser.recovery.security_questions.questions.length > 0 %}
+                {% set backupCodesCount = pageUser.recovery.backup_codes.codes.length if hasBackupCodes else 0 %}
+                {% set recoveryMethodsCount = (1 if hasBackupCodes else 0) + (1 if hasSecondaryEmail else 0) + (1 if hasSecurityQuestions else 0) %}
+                {% set isBackupCodesLow = hasBackupCodes and backupCodesCount <= 3 %}
+                {% set availableMethodsCount = (1 if recoveryConfig.methods.backup_codes.enabled or hasBackupCodes else 0) + (1 if recoveryConfig.methods.secondary_email.enabled or hasSecondaryEmail else 0) + (1 if recoveryConfig.methods.security_questions.enabled or hasSecurityQuestions else 0) %}
+
+                <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {% if recoveryConfig.methods.backup_codes.enabled or hasBackupCodes %}
+                    <!-- Backup Codes Status -->
+                    <div class="p-4 border {{ 'border-destructive/30 bg-destructive/5' if not hasBackupCodes else ('border-warning/30 bg-warning/5' if isBackupCodesLow else 'border-primary/30 bg-primary/5') }}">
+                        <div class="flex items-center gap-3">
+                            <div class="h-10 w-10 {{ 'bg-destructive/20' if not hasBackupCodes else ('bg-warning/20' if isBackupCodesLow else 'bg-primary/20') }} rounded-full flex items-center justify-center">
+                                <svg class="h-5 w-5 {{ 'text-destructive' if not hasBackupCodes else ('text-warning' if isBackupCodesLow else 'text-primary') }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.dashboard.backup_codes') }}</p>
+                                {% if hasBackupCodes %}
+                                    <p class="text-xs {{ 'text-warning' if isBackupCodesLow else 'text-primary' }}">{{ backupCodesCount }} {{ t('account-settings.recovery.dashboard.codes_available') }}</p>
+                                {% else %}
+                                    <p class="text-xs text-destructive">{{ t('account-settings.recovery.dashboard.not_configured') }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if recoveryConfig.methods.secondary_email.enabled or hasSecondaryEmail %}
+                    <!-- Secondary Email Status -->
+                    <div class="p-4 border {{ 'border-destructive/30 bg-destructive/5' if not hasSecondaryEmail else 'border-primary/30 bg-primary/5' }}">
+                        <div class="flex items-center gap-3">
+                            <div class="h-10 w-10 {{ 'bg-destructive/20' if not hasSecondaryEmail else 'bg-primary/20' }} rounded-full flex items-center justify-center">
+                                <svg class="h-5 w-5 {{ 'text-destructive' if not hasSecondaryEmail else 'text-primary' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.dashboard.backup_email') }}</p>
+                                {% if hasSecondaryEmail %}
+                                    <p class="text-xs text-primary">{{ t('account-settings.recovery.dashboard.verified') }}</p>
+                                {% else %}
+                                    <p class="text-xs text-destructive">{{ t('account-settings.recovery.dashboard.not_configured') }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if recoveryConfig.methods.security_questions.enabled or hasSecurityQuestions %}
+                    <!-- Security Questions Status -->
+                    {% if recoveryConfig.methods.security_questions.enabled %}
+                    <a href="{{ routes.accountFull.security_questions_setup }}" class="block p-4 border {{ 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10' if not hasSecurityQuestions else 'border-primary/30 bg-primary/5 hover:bg-primary/10' }} transition-colors cursor-pointer">
+                    {% else %}
+                    <div class="block p-4 border {{ 'border-primary/30 bg-primary/5' if hasSecurityQuestions else 'border-destructive/30 bg-destructive/5' }}">
+                    {% endif %}
+                        <div class="flex items-center gap-3">
+                            <div class="h-10 w-10 {{ 'bg-destructive/20' if not hasSecurityQuestions else 'bg-primary/20' }} rounded-full flex items-center justify-center">
+                                <svg class="h-5 w-5 {{ 'text-destructive' if not hasSecurityQuestions else 'text-primary' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.dashboard.security_questions') }}</p>
+                                {% if hasSecurityQuestions %}
+                                    <p class="text-xs text-primary">{{ t('account-settings.recovery.dashboard.configured') }}</p>
+                                {% else %}
+                                    <p class="text-xs text-destructive">{{ t('account-settings.recovery.dashboard.not_configured') }}</p>
+                                {% endif %}
+                            </div>
+                            {% if recoveryConfig.methods.security_questions.enabled %}
+                            <svg class="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            </svg>
+                            {% endif %}
+                        </div>
+                    {% if recoveryConfig.methods.security_questions.enabled %}
+                    </a>
+                    {% else %}
+                    </div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                <!-- Overall Recovery Score -->
+                <div class="mb-6 p-4 {{ 'bg-destructive/10 border border-destructive/20' if recoveryMethodsCount == 0 else ('bg-warning/10 border border-warning/20' if recoveryMethodsCount == 1 or isBackupCodesLow else 'bg-primary/10 border border-primary/20') }}">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                {% if recoveryMethodsCount == 0 %}
+                                    <svg class="h-5 w-5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                    </svg>
+                                {% elif recoveryMethodsCount == 1 or isBackupCodesLow %}
+                                    <svg class="h-5 w-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                {% else %}
+                                    <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                {% endif %}
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-foreground">
+                                    {{ t('account-settings.recovery.dashboard.score_title') }}
+                                </p>
+                                <p class="text-sm text-muted-foreground">
+                                    {% if recoveryMethodsCount == 0 %}
+                                        {{ t('account-settings.recovery.dashboard.score_critical') }}
+                                    {% elif recoveryMethodsCount == 1 %}
+                                        {{ t('account-settings.recovery.dashboard.score_warning') }}
+                                    {% elif isBackupCodesLow %}
+                                        {{ t('account-settings.recovery.dashboard.score_low_codes') }}
+                                    {% else %}
+                                        {{ t('account-settings.recovery.dashboard.score_good') }}
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-2xl font-bold {{ 'text-destructive' if recoveryMethodsCount == 0 else ('text-warning' if recoveryMethodsCount == 1 or isBackupCodesLow else 'text-primary') }}">
+                                {{ recoveryMethodsCount }}/{{ availableMethodsCount }}
+                            </span>
+                            <p class="text-xs text-muted-foreground">{{ t('account-settings.recovery.dashboard.methods_active') }}</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Recovery Status Banner -->
+                {% if pageUser.recovery and pageUser.recovery.enabled %}
+                    <div class="mb-6 p-4 bg-primary/10 border border-primary/20">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-foreground">
+                                    {{ t('account-settings.recovery.active_title') }}
+                                </p>
+                                <p class="text-sm text-muted-foreground mt-1">
+                                    {{ t('account-settings.recovery.active_description') }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mb-6 p-4 bg-warning/10 border border-warning/20">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732
+                                            16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm font-medium text-foreground">
+                                    {{ t('account-settings.recovery.inactive_title') }}
+                                </p>
+                                <p class="text-sm text-muted-foreground mt-1">
+                                    {{ t('account-settings.recovery.inactive_description') }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+                <!-- Recovery Methods -->
+                <div
+                    class="space-y-6">
+                    {% if recoveryConfig.methods.backup_codes.enabled or hasBackupCodes %}
+                    <!-- Backup Codes -->
+                    <div class="bg-muted/50 p-6">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div class="flex items-start sm:items-center">
+                                <div class="flex-shrink-0">
+                                    <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                        <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0
+                                                    1121 9z"></path>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.backup_codes.title') }}</p>
+                                    <p class="text-sm text-muted-foreground mt-1">
+                                        {% if pageUser.recovery and pageUser.recovery.backup_codes and pageUser.recovery.backup_codes.codes.length > 0 %}
+                                            {% if pageUser.recovery.backup_codes.usedCodes %}
+                                                {% set usedCodesCount = pageUser.recovery.backup_codes.usedCodes.length %}
+                                            {% else %}
+                                                {% set usedCodesCount = 0 %}
+                                            {% endif %}
+                                            {% set remainingCodes = pageUser.recovery.backup_codes.codes.length - usedCodesCount %}
+                                            {% set createdDate = pageUser.recovery.backup_codes.generated_at | date('MMM DD, YYYY', displayTimezone) %}
+                                            {% if remainingCodes == 0 %}
+                                                <span class="text-destructive font-medium">{{ t('account-settings.recovery.backup_codes.depleted_status') }}</span>
+                                                - {{ t('account-settings.recovery.backup_codes.depleted_text') }}
+                                            {% elif remainingCodes <= 3 %}
+                                                <span class="text-warning font-medium">{{ t('account-settings.recovery.backup_codes.low_status') }}</span>
+                                                - {{ t('account-settings.recovery.backup_codes.remaining', {count: remainingCodes}) }}
+                                            {% else %}
+                                                <span class="text-primary font-medium">{{ t('account-settings.recovery.backup_codes.setup_status') }}</span>
+                                                - {{ t('account-settings.recovery.backup_codes.remaining', {count: remainingCodes}) }}
+                                            {% endif %}
+                                            <br>
+                                                <span class="text-xs text-muted-foreground">{{ t('account-settings.recovery.backup_codes.created_at', {date: createdDate}) }}</span>
+                                            {% else %}
+                                                <span class="text-warning font-medium">{{ t('account-settings.recovery.backup_codes.not_setup_status') }}</span>
+                                                - {{ t('account-settings.recovery.backup_codes.not_setup_text') }}
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    {% if pageUser.recovery and pageUser.recovery.backup_codes and pageUser.recovery.backup_codes.codes.length > 0 %}
+                                        <div class="inline-flex items-center justify-center px-4 py-2 border border-muted text-sm font-medium text-muted-foreground
+                                                                                                                                                                                                                                                                                                                                                                                bg-muted/50 cursor-not-allowed" title="{{ t('account-settings.recovery.backup_codes.view_once_tooltip') }}">
+                                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477
+                                                        0-8.268-2.943-9.542-7z"></path>
+                                            </svg>
+                                            {{ t('account-settings.recovery.backup_codes.codes_created_badge') }}
+                                        </div>
+                                        <form action="{{ routes.accountFull.regenerate_backup_codes }}" method="POST" class="inline">
+                                            <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                            <button
+                                                type="submit"
+                                                class="inline-flex items-center justify-center px-4 py-2 border border-border text-sm font-medium text-foreground
+                                                    bg-background hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring transition-colors confirm-action"
+                                                data-confirm-title="Generate New Backup Codes"
+                                                data-confirm-message-key="backupCodesConfirmNew"
+                                                data-confirm-variant="warning">
+                                                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                        stroke-width="2"
+                                                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                                </svg>
+                                                {{ t('account-settings.recovery.backup_codes.create_new_button') }}
+                                            </button>
+                                        </form>
+                                        <form action="{{ routes.accountFull.disable_recovery }}?method=backup_codes" method="POST" class="inline">
+                                            <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                            <button
+                                                type="submit"
+                                                class="inline-flex items-center justify-center px-4 py-2 border border-destructive/30 text-sm font-medium
+                                                    text-destructive bg-background hover:border-destructive focus:outline-none focus:ring-2 focus:ring-ring
+                                                    transition-colors confirm-action"
+                                                data-confirm-title="Remove Backup Codes"
+                                                data-confirm-message-key="backupCodesConfirmRemove"
+                                                data-confirm-variant="danger">
+                                                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                                {{ t('account-settings.recovery.backup_codes.remove_button') }}
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        {% if recoveryConfig.methods.backup_codes.enabled %}
+                                        <form action="{{ routes.accountFull.enable_recovery }}?method=backup_codes" method="POST" class="inline">
+                                            <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                            <button
+                                                type="submit"
+                                                class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium
+                                                    text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                                </svg>
+                                                {{ t('account-settings.recovery.backup_codes.create_button') }}
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if recoveryConfig.methods.secondary_email.enabled or hasSecondaryEmail %}
+                        <!-- Secondary Email -->
+                        <div class="bg-muted/50 p-6">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div class="flex items-start sm:items-center">
+                                    <div class="flex-shrink-0">
+                                        <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                            <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.backup_email.title') }}</p>
+                                        <p class="text-sm text-muted-foreground mt-1">
+                                            {% if pageUser.recovery and pageUser.recovery.secondary_email and pageUser.recovery.secondary_email.email and pageUser.recovery.secondary_email.verified %}
+                                                <span class="text-primary font-medium">{{ t('account-settings.recovery.backup_email.verified_status') }}</span>
+                                                - {{ pageUser.recovery.secondary_email.email | mask_email }}
+                                                <br>
+                                                    <span class="text-xs text-muted-foreground">{{ t('account-settings.recovery.backup_email.verified_text') }}</span>
+                                                {% elif pageUser.recovery and pageUser.recovery.secondary_email and pageUser.recovery.secondary_email.email and not pageUser.recovery.secondary_email.verified %}
+                                                    <span class="text-warning font-medium">{{ t('account-settings.recovery.backup_email.pending_status') }}</span>
+                                                    - {{ pageUser.recovery.secondary_email.email | mask_email }}
+                                                    <br>
+                                                        <span class="text-xs text-muted-foreground">{{ t('account-settings.recovery.backup_email.pending_text') }}</span>
+                                                    {% else %}
+                                                        <span class="text-warning font-medium">{{ t('account-settings.recovery.backup_email.not_setup_status') }}</span>
+                                                        - {{ t('account-settings.recovery.backup_email.not_setup_text') }}
+                                                    {% endif %}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-col sm:flex-row gap-2">
+                                            {% if pageUser.recovery and pageUser.recovery.secondary_email and pageUser.recovery.secondary_email.verified %}
+                                                <form action="{{ routes.accountFull.disable_recovery }}?method=secondary_email" method="POST" class="inline">
+                                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                                    <button
+                                                        type="submit"
+                                                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive/30 text-sm font-medium
+                                                            text-destructive bg-background hover:border-destructive focus:outline-none focus:ring-2 focus:ring-ring
+                                                            transition-colors confirm-action"
+                                                        data-confirm-title="Remove Backup Email"
+                                                        data-confirm-message-key="backupEmailConfirmRemove"
+                                                        data-confirm-variant="danger">
+                                                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                        </svg>
+                                                        {{ t('account-settings.recovery.backup_email.remove_button') }}
+                                                    </button>
+                                                </form>
+                                            {% elif pageUser.recovery and pageUser.recovery.secondary_email and pageUser.recovery.secondary_email.email and not pageUser.recovery.secondary_email.verified %}
+                                                <form action="{{ routes.accountFull.disable_recovery }}?method=secondary_email" method="POST" class="inline">
+                                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                                    <button
+                                                        type="submit"
+                                                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive/30 text-sm font-medium
+                                                            text-destructive bg-background hover:border-destructive focus:outline-none focus:ring-2 focus:ring-ring
+                                                            transition-colors confirm-action"
+                                                        data-confirm-title="Cancel Verification"
+                                                        data-confirm-message-key="backupEmailConfirmCancel"
+                                                        data-confirm-variant="warning">
+                                                        <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                        </svg>
+                                                        {{ t('account-settings.recovery.backup_email.cancel_button', 'Cancel Verification') }}
+                                                    </button>
+                                                </form>
+                                            {% else %}
+                                                {% if recoveryConfig.methods.secondary_email.enabled %}
+                                                <form action="{{ routes.accountFull.enable_recovery }}?method=secondary_email" method="POST" class="inline">
+                                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                                    <div class="flex flex-col sm:flex-row gap-2">
+                                                        <input type="email" name="email" placeholder="{{ t('account-settings.recovery.backup_email.placeholder') }}" class="px-3 py-2 border border-border text-sm text-foreground font-mono bg-background focus:ring-2 focus:ring-ring
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                focus:border-border focus:outline-none transition-colors" required/>
+                                                        <button
+                                                            type="submit"
+                                                            class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium
+                                                                text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                                            </svg>
+                                                            {{ t('account-settings.recovery.backup_email.add_button') }}
+                                                        </button>
+                                                    </div>
+                                                </form>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <!-- Security Questions -->
+                        {% if recoveryConfig.methods.security_questions.enabled or hasSecurityQuestions %}
+                        <div class="bg-muted/50 p-6">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div class="flex items-start sm:items-center">
+                                    <div class="flex-shrink-0">
+                                        <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                            <svg class="h-5 w-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                    d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4">
+                                        <p class="text-sm font-medium text-foreground">{{ t('account-settings.recovery.security_questions.title') }}</p>
+                                        <p class="text-sm text-muted-foreground mt-1">
+                                            {% if pageUser.recovery and pageUser.recovery.security_questions and pageUser.recovery.security_questions.questions and pageUser.recovery.security_questions.questions.length > 0 %}
+                                                <span class="text-primary font-medium">{{ t('account-settings.recovery.security_questions.setup_status') }}</span>
+                                                - {{ t('account-settings.recovery.security_questions.setup_text', {count: pageUser.recovery.security_questions.questions.length}) }}
+                                                {% if pageUser.recovery.security_questions.last_used_at %}
+                                                <br>
+                                                <span class="text-xs text-muted-foreground">{{ t('account-settings.recovery.security_questions.last_used', {date: pageUser.recovery.security_questions.last_used_at | date('MMM DD, YYYY', displayTimezone)}) }}</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="text-warning font-medium">{{ t('account-settings.recovery.security_questions.not_setup_status') }}</span>
+                                                - {{ t('account-settings.recovery.security_questions.not_setup_text') }}
+                                            {% endif %}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    {% if pageUser.recovery and pageUser.recovery.security_questions and pageUser.recovery.security_questions.questions and pageUser.recovery.security_questions.questions.length > 0 %}
+                                        {% if recoveryConfig.methods.security_questions.enabled %}
+                                        <a href="{{ routes.accountFull.security_questions_setup }}"
+                                            class="inline-flex items-center justify-center px-4 py-2 border border-border text-sm font-medium text-foreground
+                                                bg-background hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                            </svg>
+                                            {{ t('account-settings.recovery.security_questions.update_button') }}
+                                        </a>
+                                        {% endif %}
+                                        <form action="{{ routes.accountFull.disable_recovery }}?method=security_questions" method="POST" class="inline">
+                                            <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+                                            <button
+                                                type="submit"
+                                                class="inline-flex items-center justify-center px-4 py-2 border border-destructive/30 text-sm font-medium
+                                                    text-destructive bg-background hover:border-destructive focus:outline-none focus:ring-2 focus:ring-ring
+                                                    transition-colors confirm-action"
+                                                data-confirm-title="Remove Security Questions"
+                                                data-confirm-message-key="securityQuestionsConfirmRemove"
+                                                data-confirm-variant="danger">
+                                                <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                                {{ t('account-settings.recovery.security_questions.remove_button') }}
+                                            </button>
+                                        </form>
+                                    {% elif recoveryConfig.methods.security_questions.enabled %}
+                                        <a href="{{ routes.accountFull.security_questions_setup }}"
+                                            class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium
+                                                text-primary-foreground bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                                            <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                            </svg>
+                                            {{ t('account-settings.recovery.security_questions.setup_button') }}
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script id="___SETTINGS_STATE___" type="application/json">
+    {
+      "csrfToken": {{ csrfToken | tojson | safe }},
+      "translations": {
+        "backupCodesConfirmNew": {{ t('account-settings.recovery.backup_codes.confirm_new', 'This will invalidate your current backup codes and generate new ones. Are you sure?') | tojson | safe }},
+        "backupCodesConfirmRemove": {{ t('account-settings.recovery.backup_codes.confirm_remove', 'Are you sure you want to remove your backup codes? You will need to generate new ones to use this recovery method.') | tojson | safe }},
+        "backupEmailConfirmRemove": {{ t('account-settings.recovery.backup_email.confirm_remove', 'Are you sure you want to remove your backup email?') | tojson | safe }},
+        "backupEmailConfirmCancel": {{ t('account-settings.recovery.backup_email.cancel_confirm', 'Are you sure you want to cancel the pending email verification?') | tojson | safe }},
+        "securityQuestionsConfirmRemove": {{ t('account-settings.recovery.security_questions.confirm_remove', 'Are you sure you want to remove your security questions?') | tojson | safe }}
+      },
+      "debug": {{ (app.env === 'development') | tojson }}
+    }
+    </script>
+    <script src="/js/account/settings/confirm-handler.js"></script>
+    <script src="/js/account/settings/index.js"></script>
+{% endblock %}

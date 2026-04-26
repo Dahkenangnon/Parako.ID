@@ -1,0 +1,328 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        {% set activePage = "security" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure session management, security policies, timeouts, and device verification</p>
+        </div>
+    </div>
+
+    {% include "partials/admin-security-subtabs.njk" %}
+
+    <form method="POST" action="/admin/settings/security/sessions" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Session Management -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="users" class="h-5 w-5 mr-2 text-primary"></i>
+                        Session Management
+                    </h2>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[session_management][multiple_accounts][enabled]" value="">
+                            <input type="checkbox" id="authentication.session_management.multiple_accounts.enabled"
+                                   name="authentication[session_management][multiple_accounts][enabled]"
+                                   {% if config.authentication and config.authentication.session_management and config.authentication.session_management.multiple_accounts and config.authentication.session_management.multiple_accounts.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="authentication.session_management.multiple_accounts.enabled" class="text-sm font-medium text-foreground">
+                                Enable Multiple Accounts
+                            </label>
+                        </div>
+                        <p class="text-xs text-muted-foreground">Allow users to have multiple accounts and switch between them</p>
+                    </div>
+                </div>
+
+                <!-- Session Security -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="shield-check" class="h-5 w-5 mr-2 text-primary"></i>
+                        Session Security
+                    </h2>
+                    <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i data-lucide="info" class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                            <div class="text-sm text-blue-800 dark:text-blue-200">
+                                <p class="font-medium mb-1">Session Protection</p>
+                                <p>Configure session timeouts, binding, encryption, and concurrent session limits to enhance security.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <!-- Session Cookie -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Session Cookie</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="authentication.session.cookie_name" class="block text-sm font-medium text-foreground mb-2">Cookie Name</label>
+                                    <input type="text" id="authentication.session.cookie_name"
+                                           name="authentication[session][cookie_name]"
+                                           value="{{ config.authentication and config.authentication.session and config.authentication.session.cookie_name or 'application_session' }}"
+                                           pattern="[a-zA-Z0-9_-]+"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Custom name to obscure session cookie identity</p>
+                                </div>
+                                <div>
+                                    <label for="authentication.session.same_site" class="block text-sm font-medium text-foreground mb-2">SameSite Policy</label>
+                                    <select id="authentication.session.same_site"
+                                            name="authentication[session][same_site]"
+                                            class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <option value="strict" {% if config.authentication and config.authentication.session and config.authentication.session.same_site == 'strict' %}selected{% endif %}>Strict (Recommended)</option>
+                                        <option value="lax" {% if not config.authentication or not config.authentication.session or not config.authentication.session.same_site or config.authentication.session.same_site == 'lax' %}selected{% endif %}>Lax (Default)</option>
+                                        <option value="none" {% if config.authentication and config.authentication.session and config.authentication.session.same_site == 'none' %}selected{% endif %}>None (Requires HTTPS)</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-muted-foreground">CSRF protection level for session cookie</p>
+                                </div>
+                            </div>
+                            <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3 mt-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-blue-800 dark:text-blue-200">
+                                        <strong>Recommendation:</strong> Use "Strict" SameSite for maximum CSRF protection. "Lax" is acceptable for OIDC flows requiring cross-site redirects.
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Timeouts -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Session Timeouts</h3>
+                            <div class="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="clock" class="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-amber-800 dark:text-amber-200">
+                                        <strong>Security Note:</strong> Shorter session timeouts (4-8 hours) reduce the window for session hijacking. 24 hours is convenient but less secure for sensitive applications.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="authentication.session.idle_timeout_minutes" class="block text-sm font-medium text-foreground mb-2">Idle Timeout (Minutes)</label>
+                                    <input type="number" id="authentication.session.idle_timeout_minutes"
+                                           name="authentication[session][idle_timeout_minutes]"
+                                           value="{{ config.authentication and config.authentication.session and config.authentication.session.idle_timeout_minutes or 30 }}"
+                                           min="0" max="1440"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Session expires after inactivity (0 = disabled)</p>
+                                </div>
+                                <div>
+                                    <label for="authentication.session.absolute_timeout_hours" class="block text-sm font-medium text-foreground mb-2">Absolute Timeout (Hours)</label>
+                                    <input type="number" id="authentication.session.absolute_timeout_hours"
+                                           name="authentication[session][absolute_timeout_hours]"
+                                           value="{{ config.authentication and config.authentication.session and config.authentication.session.absolute_timeout_hours or 24 }}"
+                                           min="0" max="720"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Maximum session lifetime (0 = unlimited)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Limits -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Session Limits</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="authentication.session.max_concurrent_sessions" class="block text-sm font-medium text-foreground mb-2">Max Concurrent Sessions</label>
+                                    <input type="number" id="authentication.session.max_concurrent_sessions"
+                                           name="authentication[session][max_concurrent_sessions]"
+                                           value="{{ config.authentication and config.authentication.session and config.authentication.session.max_concurrent_sessions or 0 }}"
+                                           min="0" max="100"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Max active sessions per user (0 = unlimited)</p>
+                                </div>
+                                <div>
+                                    <label for="authentication.session.max_accounts_per_session" class="block text-sm font-medium text-foreground mb-2">Max Accounts per Session</label>
+                                    <input type="number" id="authentication.session.max_accounts_per_session"
+                                           name="authentication[session][max_accounts_per_session]"
+                                           value="{{ config.authentication and config.authentication.session and config.authentication.session.max_accounts_per_session or 5 }}"
+                                           min="1" max="20"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Max accounts in multi-account mode</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Binding -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Session Binding</h3>
+                            <div class="bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-800 p-3 mb-3">
+                                <div class="flex items-center">
+                                    <i data-lucide="alert-triangle" class="h-4 w-4 text-orange-600 dark:text-orange-400 mr-2"></i>
+                                    <span class="text-xs text-orange-800 dark:text-orange-200">
+                                        Enabling IP binding may cause issues for users with dynamic IPs or VPNs.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][bind_ip]" value="">
+                                    <input type="checkbox" id="authentication.session.bind_ip"
+                                           name="authentication[session][bind_ip]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.bind_ip %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.bind_ip" class="text-sm font-medium text-foreground">
+                                        Bind Session to IP Address
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][bind_user_agent]" value="">
+                                    <input type="checkbox" id="authentication.session.bind_user_agent"
+                                           name="authentication[session][bind_user_agent]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.bind_user_agent %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.bind_user_agent" class="text-sm font-medium text-foreground">
+                                        Bind Session to User Agent
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][bind_device]" value="">
+                                    <input type="checkbox" id="authentication.session.bind_device"
+                                           name="authentication[session][bind_device]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.bind_device %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.bind_device" class="text-sm font-medium text-foreground">
+                                        Bind Session to Device ID
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Session Options -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Session Options</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][encrypt_session_data]" value="">
+                                    <input type="checkbox" id="authentication.session.encrypt_session_data"
+                                           name="authentication[session][encrypt_session_data]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.encrypt_session_data %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.encrypt_session_data" class="text-sm font-medium text-foreground">
+                                        Encrypt Session Data at Rest
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][notify_new_session]" value="">
+                                    <input type="checkbox" id="authentication.session.notify_new_session"
+                                           name="authentication[session][notify_new_session]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.notify_new_session %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.notify_new_session" class="text-sm font-medium text-foreground">
+                                        Notify User on New Session
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][require_reauth_on_switch]" value="">
+                                    <input type="checkbox" id="authentication.session.require_reauth_on_switch"
+                                           name="authentication[session][require_reauth_on_switch]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.require_reauth_on_switch %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.require_reauth_on_switch" class="text-sm font-medium text-foreground">
+                                        Require Re-auth on Account Switch
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][store_metadata]" value="">
+                                    <input type="checkbox" id="authentication.session.store_metadata"
+                                           name="authentication[session][store_metadata]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.store_metadata %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.store_metadata" class="text-sm font-medium text-foreground">
+                                        Store Verbose Session Metadata
+                                    </label>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-muted-foreground">Session metadata includes creation source, browser details, and device info for debugging.</p>
+                        </div>
+
+                        <!-- Redis Configuration -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Redis Session Store</h3>
+                            <p class="text-xs text-muted-foreground">Redis key prefix is derived from <strong>Deployment &gt; Redis Prefix</strong> (currently: <code>{{ config.deployment and config.deployment.redis_prefix or 'parako' }}:session:</code>).</p>
+                        </div>
+
+                        <!-- New Device Verification -->
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">New Device Verification</h3>
+                            <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="shield-alert" class="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-blue-800 dark:text-blue-200">
+                                        <strong>Security Feature:</strong> When enabled, users logging in from unrecognized devices will be required to verify their identity via TOTP or email OTP.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[session][require_2fa_for_new_device]" value="">
+                                    <input type="checkbox" id="authentication.session.require_2fa_for_new_device"
+                                           name="authentication[session][require_2fa_for_new_device]"
+                                           {% if config.authentication and config.authentication.session and config.authentication.session.require_2fa_for_new_device %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.session.require_2fa_for_new_device" class="text-sm font-medium text-foreground">
+                                        Require 2FA for New Device Login
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label for="authentication.session.new_device_2fa_method" class="block text-sm font-medium text-foreground mb-2">Verification Method</label>
+                                        <select id="authentication.session.new_device_2fa_method"
+                                                name="authentication[session][new_device_2fa_method]"
+                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                            <option value="auto" {% if not config.authentication or not config.authentication.session or not config.authentication.session.new_device_2fa_method or config.authentication.session.new_device_2fa_method == 'auto' %}selected{% endif %}>Auto (TOTP if enabled, else Email)</option>
+                                            <option value="totp" {% if config.authentication and config.authentication.session and config.authentication.session.new_device_2fa_method == 'totp' %}selected{% endif %}>TOTP Only</option>
+                                            <option value="email" {% if config.authentication and config.authentication.session and config.authentication.session.new_device_2fa_method == 'email' %}selected{% endif %}>Email Only</option>
+                                        </select>
+                                        <p class="mt-1 text-xs text-muted-foreground">Method used to verify new device logins</p>
+                                    </div>
+                                    <div>
+                                        <label for="authentication.session.new_device_confidence_threshold" class="block text-sm font-medium text-foreground mb-2">Device Confidence Threshold</label>
+                                        <input type="number" id="authentication.session.new_device_confidence_threshold"
+                                               name="authentication[session][new_device_confidence_threshold]"
+                                               value="{{ config.authentication and config.authentication.session and config.authentication.session.new_device_confidence_threshold or 70 }}"
+                                               min="0" max="100"
+                                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p class="mt-1 text-xs text-muted-foreground">Device match score below this triggers verification (0-100)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                    <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                        Cancel
+                    </a>
+                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                        Reset Form
+                    </button>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                            Save Changes
+                        </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings.js"></script>
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/security.js"></script>
+{% endblock %}

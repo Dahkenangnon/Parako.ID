@@ -1,0 +1,140 @@
+{% extends "layouts/auth-layout.njk" %}
+{% block auth_content %}
+                <!-- Consent Form -->
+                <form
+                    id="consent-form"
+                    autocomplete="off"
+                    action="{{ oidc.path }}/interaction/{{ uid }}/confirm"
+                    method="post"
+                    class="space-y-4">
+                    <div class="flex justify-center mb-3">
+                        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto"/>
+                        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto"/>
+                    </div>
+
+                    <!-- Application Info -->
+                    <div class="flex items-center justify-center mb-4">
+                        <div class="bg-white dark:bg-card h-14 w-14 flex items-center justify-center border-2 border-gray-200 dark:border-border mr-3">
+                            {# Only allow HTTPS URLs for client logo to prevent javascript:/data: XSS attacks #}
+                            {% if client.logoUri and (client.logoUri.startsWith('https://') or client.logoUri.startsWith('http://')) %}
+                                <img src="{{ client.logoUri }}" alt="{{ client.clientName }}" class="h-10 w-10 object-cover" onerror="this.src='{{ branding.logo }}';"/>
+                            {% else %}
+                                <img src="{{ branding.logo }}" alt="{{ client.clientName }}" class="dark:hidden h-10 w-10 object-cover"/>
+                                <img src="{{ branding.logoDark }}" alt="{{ client.clientName }}" class="hidden dark:block h-10 w-10 object-cover"/>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col">
+                            <h3 class="auth-heading text-base font-semibold text-gray-900 dark:text-foreground">{{ client.clientName }}</h3>
+                            <p class="text-xs text-gray-500 dark:text-muted-foreground">wants to access your account</p>
+                        </div>
+                    </div>
+
+                    <!-- Active User Account Info -->
+                    {% if user %}
+                    <div class="bg-blue-50 dark:bg-card border-2 border-blue-200 dark:border-border p-3 mb-4">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 mr-3">
+                                {# Only allow HTTPS URLs for user picture to prevent XSS attacks #}
+                                {% if user.picture and (user.picture.startsWith('https://') or user.picture.startsWith('http://')) %}
+                                    <img src="{{ user.picture }}" alt="{{ user.displayName or user.username }}" class="h-10 w-10 object-cover border-2 border-blue-200 dark:border-border" />
+                                {% else %}
+                                    <div class="bg-primary dark:bg-primary h-10 w-10 flex items-center justify-center border-2 border-blue-200 dark:border-border">
+                                        <span class="text-white dark:text-white font-semibold text-sm">{{ user.initials or ((user.given_name or 'U') | slice(0, 1)) + ((user.family_name or 'S') | slice(0, 1)) }}</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center">
+                                    <p class="text-sm font-medium text-gray-900 dark:text-foreground truncate">
+                                        {{ user.displayName or user.full_name or (user.given_name + ' ' + user.family_name) or user.username }}
+                                    </p>
+                                    <span class="ml-2 px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-700">Active</span>
+                                </div>
+                                {% if user.email %}
+                                    <p class="text-xs text-gray-600 dark:text-muted-foreground truncate">{{ user.email }}</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="mt-2 pt-2 border-t border-blue-200 dark:border-border">
+                            <p class="text-xs text-blue-700 dark:text-blue-300">
+                                <svg class="inline w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                Granting access with this account
+                            </p>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="px-1 mb-4">
+                        <p class="text-sm text-gray-600 dark:text-muted-foreground text-center">
+                            This will allow
+                            <span class="font-medium">{{ client.clientName }}</span>
+                            to:
+                        </p>
+                    </div>
+
+                    <!-- Permissions List -->
+                    <div class="bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border p-4 mb-5">
+                        <ul class="space-y-3">
+                            {% for scope in scopes %}
+                                <li class="flex items-start">
+                                    <div class="flex-shrink-0 h-5 w-5 text-primary">
+                                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                    <span class="ml-3 text-sm text-gray-700 dark:text-foreground">{{ scope }}</span>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <!-- Important Note -->
+                    <div class="bg-yellow-50 dark:bg-card border-2 border-yellow-200 dark:border-yellow-700 p-3 mb-5">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <svg class="h-5 w-5 text-yellow-600 dark:text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77
+                                            1.333.192 3 1.732 3z"></path>
+                                </svg>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-xs text-yellow-700 dark:text-yellow-300">
+                                    Only grant access if you trust this application. You can revoke access at any time from your account settings.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hidden fields for CSRF protection -->
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
+
+                    <!-- Client Device Infos -->
+                    <div id="client-device-infos-container"></div>
+
+                    <!-- Action Buttons -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <a
+                            href="{{ oidc.path }}/interaction/{{ uid }}/abort"
+                            class="w-full h-10 flex items-center justify-center bg-white dark:bg-card border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-medium hover:bg-gray-50 dark:hover:bg-accent focus:outline-none">
+                            Cancel
+                        </a>
+                        <button
+                            autofocus
+                            id="consent-submit-btn"
+                            type="submit"
+                            class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                            Allow
+                        </button>
+                    </div>
+                </form>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% endblock %}

@@ -1,0 +1,311 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                View your identity provider information and customize token durations and public metadata.
+            </p>
+        </div>
+    </div>
+
+    <!-- Issuer Information (read-only) -->
+    <div class="bg-card border border-border p-6">
+        <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+            <i data-lucide="fingerprint" class="h-5 w-5 mr-2 text-primary"></i>
+            Issuer Information
+        </h2>
+        <div class="grid grid-cols-1 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Issuer URL</label>
+                {% set computedIssuer = issuer if issuer else (deploymentUrl + (oidcPath or '/oidc')) %}
+                <div class="px-3 py-2 bg-muted/50 border border-border text-foreground text-sm font-mono">
+                    {{ computedIssuer or 'Not configured' }}
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">The unique identifier for this OIDC provider instance.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">Discovery URL</label>
+                <div class="px-3 py-2 bg-muted/50 border border-border text-sm font-mono">
+                    {% if computedIssuer %}
+                    <a href="{{ computedIssuer }}/.well-known/openid-configuration"
+                       target="_blank" rel="noopener noreferrer"
+                       class="text-primary hover:text-primary/80 inline-flex items-center">
+                        {{ computedIssuer }}/.well-known/openid-configuration
+                        <i data-lucide="external-link" class="h-3 w-3 ml-1"></i>
+                    </a>
+                    {% else %}
+                    <span class="text-muted-foreground">Not available</span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">Standard OpenID Connect Discovery endpoint.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1">OIDC Path</label>
+                <div class="px-3 py-2 bg-muted/50 border border-border text-foreground text-sm font-mono">
+                    {{ oidcPath or '/oidc' }}
+                </div>
+                <p class="mt-1 text-xs text-muted-foreground">The base path for all OIDC endpoints.</p>
+            </div>
+        </div>
+    </div>
+
+    <form id="config-form" method="POST" action="/admin/configuration/{{ section }}" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        {% set discovery = config.discovery if config.discovery else {} %}
+        {% set pfDiscovery = platformDiscovery if platformDiscovery else {} %}
+
+        <!-- Discovery Document (editable) -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="file-text" class="h-5 w-5 mr-2 text-primary"></i>
+                Discovery Document
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                Customize fields included in the OpenID Connect Discovery response. Leave empty to omit from the document.
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="discovery_claims_locales" class="block text-sm font-medium text-foreground mb-2">Claims Locales Supported</label>
+                    <input type="text" id="discovery_claims_locales" name="discovery[claims_locales_supported]"
+                           value="{{ discovery.claims_locales_supported | displayList }}"
+                           placeholder="en, fr, de"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of supported claim locales (e.g., en, fr, de).
+                        {%- if pfDiscovery.claims_locales_supported %} System default: {{ pfDiscovery.claims_locales_supported | displayList }}{% endif %}</p>
+                </div>
+
+                <div>
+                    <label for="discovery_ui_locales" class="block text-sm font-medium text-foreground mb-2">UI Locales Supported</label>
+                    <input type="text" id="discovery_ui_locales" name="discovery[ui_locales_supported]"
+                           value="{{ discovery.ui_locales_supported | displayList }}"
+                           placeholder="en, fr, de"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of supported UI locales.
+                        {%- if pfDiscovery.ui_locales_supported %} System default: {{ pfDiscovery.ui_locales_supported | displayList }}{% endif %}</p>
+                </div>
+
+                <div>
+                    <label for="discovery_display_values" class="block text-sm font-medium text-foreground mb-2">Display Values Supported</label>
+                    <input type="text" id="discovery_display_values" name="discovery[display_values_supported]"
+                           value="{{ discovery.display_values_supported | displayList }}"
+                           placeholder="page, popup"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list (e.g., page, popup, touch, wap).
+                        {%- if pfDiscovery.display_values_supported %} System default: {{ pfDiscovery.display_values_supported | displayList }}{% endif %}</p>
+                </div>
+
+                <div>
+                    <label for="discovery_service_docs" class="block text-sm font-medium text-foreground mb-2">Service Documentation URI</label>
+                    <input type="url" id="discovery_service_docs" name="discovery[service_documentation]"
+                           value="{{ discovery.service_documentation or '' }}"
+                           placeholder="https://docs.example.com"
+                           pattern="https?://.*"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your service documentation. Must use HTTPS.
+                        {%- if pfDiscovery.service_documentation %} System default: {{ pfDiscovery.service_documentation }}{% endif %}</p>
+                </div>
+
+                <div>
+                    <label for="discovery_policy_uri" class="block text-sm font-medium text-foreground mb-2">OP Policy URI</label>
+                    <input type="url" id="discovery_policy_uri" name="discovery[op_policy_uri]"
+                           value="{{ discovery.op_policy_uri or '' }}"
+                           placeholder="https://example.com/privacy"
+                           pattern="https?://.*"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your privacy policy. Must use HTTPS.
+                        {%- if pfDiscovery.op_policy_uri %} System default: {{ pfDiscovery.op_policy_uri }}{% endif %}</p>
+                </div>
+
+                <div>
+                    <label for="discovery_tos_uri" class="block text-sm font-medium text-foreground mb-2">OP Terms of Service URI</label>
+                    <input type="url" id="discovery_tos_uri" name="discovery[op_tos_uri]"
+                           value="{{ discovery.op_tos_uri or '' }}"
+                           placeholder="https://example.com/terms"
+                           pattern="https?://.*"
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your terms of service. Must use HTTPS.
+                        {%- if pfDiscovery.op_tos_uri %} System default: {{ pfDiscovery.op_tos_uri }}{% endif %}</p>
+                </div>
+            </div>
+        </div>
+
+        {% set tokenTtl = config.token_ttl if config.token_ttl else {} %}
+        {% set pTtl = platformTokenTtl if platformTokenTtl else {} %}
+
+        <!-- Token Lifetimes -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="clock" class="h-5 w-5 mr-2 text-primary"></i>
+                Token Lifetimes
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                Customize token expiration times in seconds.
+                You can shorten these durations but not extend them beyond system limits. Leave empty to use system defaults.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="ttl_access_token" class="block text-sm font-medium text-foreground mb-2">Access Token</label>
+                    <input type="number" id="ttl_access_token" name="token_ttl[access_token]"
+                           value="{{ tokenTtl.access_token if tokenTtl.access_token != undefined else '' }}"
+                           placeholder="{{ pTtl.access_token or '3600' }}"
+                           min="1"{% if pTtl.access_token %} max="{{ pTtl.access_token }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.access_token %}System limit: {{ pTtl.access_token | duration }} ({{ pTtl.access_token }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_id_token" class="block text-sm font-medium text-foreground mb-2">ID Token</label>
+                    <input type="number" id="ttl_id_token" name="token_ttl[id_token]"
+                           value="{{ tokenTtl.id_token if tokenTtl.id_token != undefined else '' }}"
+                           placeholder="{{ pTtl.id_token or '3600' }}"
+                           min="1"{% if pTtl.id_token %} max="{{ pTtl.id_token }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.id_token %}System limit: {{ pTtl.id_token | duration }} ({{ pTtl.id_token }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_refresh_token" class="block text-sm font-medium text-foreground mb-2">Refresh Token</label>
+                    <input type="number" id="ttl_refresh_token" name="token_ttl[refresh_token]"
+                           value="{{ tokenTtl.refresh_token if tokenTtl.refresh_token != undefined else '' }}"
+                           placeholder="{{ pTtl.refresh_token or '86400' }}"
+                           min="1"{% if pTtl.refresh_token %} max="{{ pTtl.refresh_token }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.refresh_token %}System limit: {{ pTtl.refresh_token | duration }} ({{ pTtl.refresh_token }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_authorization_code" class="block text-sm font-medium text-foreground mb-2">Authorization Code</label>
+                    <input type="number" id="ttl_authorization_code" name="token_ttl[authorization_code]"
+                           value="{{ tokenTtl.authorization_code if tokenTtl.authorization_code != undefined else '' }}"
+                           placeholder="{{ pTtl.authorization_code or '600' }}"
+                           min="1"{% if pTtl.authorization_code %} max="{{ pTtl.authorization_code }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.authorization_code %}System limit: {{ pTtl.authorization_code | duration }} ({{ pTtl.authorization_code }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_client_credentials" class="block text-sm font-medium text-foreground mb-2">Client Credentials</label>
+                    <input type="number" id="ttl_client_credentials" name="token_ttl[client_credentials]"
+                           value="{{ tokenTtl.client_credentials if tokenTtl.client_credentials != undefined else '' }}"
+                           placeholder="{{ pTtl.client_credentials or '3600' }}"
+                           min="1"{% if pTtl.client_credentials %} max="{{ pTtl.client_credentials }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.client_credentials %}System limit: {{ pTtl.client_credentials | duration }} ({{ pTtl.client_credentials }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_device_code" class="block text-sm font-medium text-foreground mb-2">Device Code</label>
+                    <input type="number" id="ttl_device_code" name="token_ttl[device_code]"
+                           value="{{ tokenTtl.device_code if tokenTtl.device_code != undefined else '' }}"
+                           placeholder="{{ pTtl.device_code or '600' }}"
+                           min="1"{% if pTtl.device_code %} max="{{ pTtl.device_code }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.device_code %}System limit: {{ pTtl.device_code | duration }} ({{ pTtl.device_code }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_grant" class="block text-sm font-medium text-foreground mb-2">Grant</label>
+                    <input type="number" id="ttl_grant" name="token_ttl[grant]"
+                           value="{{ tokenTtl.grant if tokenTtl.grant != undefined else '' }}"
+                           placeholder="{{ pTtl.grant or '1209600' }}"
+                           min="1"{% if pTtl.grant %} max="{{ pTtl.grant }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.grant %}System limit: {{ pTtl.grant | duration }} ({{ pTtl.grant }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_interaction" class="block text-sm font-medium text-foreground mb-2">Interaction</label>
+                    <input type="number" id="ttl_interaction" name="token_ttl[interaction]"
+                           value="{{ tokenTtl.interaction if tokenTtl.interaction != undefined else '' }}"
+                           placeholder="{{ pTtl.interaction or '3600' }}"
+                           min="1"{% if pTtl.interaction %} max="{{ pTtl.interaction }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.interaction %}System limit: {{ pTtl.interaction | duration }} ({{ pTtl.interaction }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_session" class="block text-sm font-medium text-foreground mb-2">Session</label>
+                    <input type="number" id="ttl_session" name="token_ttl[session]"
+                           value="{{ tokenTtl.session if tokenTtl.session != undefined else '' }}"
+                           placeholder="{{ pTtl.session or '1209600' }}"
+                           min="1"{% if pTtl.session %} max="{{ pTtl.session }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.session %}System limit: {{ pTtl.session | duration }} ({{ pTtl.session }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+                <div>
+                    <label for="ttl_backchannel_auth" class="block text-sm font-medium text-foreground mb-2">Backchannel Auth</label>
+                    <input type="number" id="ttl_backchannel_auth" name="token_ttl[backchannel_auth]"
+                           value="{{ tokenTtl.backchannel_auth if tokenTtl.backchannel_auth != undefined else '' }}"
+                           placeholder="{{ pTtl.backchannel_auth or '600' }}"
+                           min="1"{% if pTtl.backchannel_auth %} max="{{ pTtl.backchannel_auth }}"{% endif %}
+                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent ttl-input">
+                    <p class="mt-1 text-xs text-muted-foreground">{% if pTtl.backchannel_auth %}System limit: {{ pTtl.backchannel_auth | duration }} ({{ pTtl.backchannel_auth }}s). Leave empty to use this default.{% else %}No system limit. Leave empty to use the default.{% endif %}</p>
+                </div>
+            </div>
+        </div>
+
+    </form>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border">
+        <div>
+            {% if hasOverride %}
+            <form method="POST" action="/admin/configuration/{{ section }}/reset"
+                  onsubmit="return confirm('Are you sure you want to reset OIDC configuration to defaults? This cannot be undone.')">
+                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Reset to Defaults
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="flex gap-3">
+            <a href="/admin/configuration"
+               class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back
+            </a>
+            <button type="submit" form="config-form"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/configuration/validation.js"></script>
+<script>
+(function () {
+    // Client-side validation for token TTL max enforcement
+    var ttlInputs = document.querySelectorAll('.ttl-input');
+    ttlInputs.forEach(function (input) {
+        input.addEventListener('change', function () {
+            var max = parseInt(this.getAttribute('max'), 10);
+            var val = parseInt(this.value, 10);
+            if (this.value !== '' && !isNaN(max)) {
+                if (isNaN(val) || val < 1) {
+                    this.setCustomValidity('Must be at least 1 second');
+                    this.reportValidity();
+                } else if (val > max) {
+                    this.setCustomValidity('Cannot exceed the system limit of ' + max + ' seconds');
+                    this.reportValidity();
+                } else {
+                    this.setCustomValidity('');
+                }
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

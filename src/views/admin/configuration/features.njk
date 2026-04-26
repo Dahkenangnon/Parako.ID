@@ -1,0 +1,327 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Choose which social login providers your users can sign in with and how accounts are linked.
+            </p>
+        </div>
+    </div>
+
+    <form id="config-form" method="POST" action="/admin/configuration/{{ section }}" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        {% set socialProviders = config.social_providers if config.social_providers else {} %}
+        {% set enabledProviders = socialProviders.enabled if socialProviders.enabled else [] %}
+        {% set availableProviders = [
+            {id: 'google',    label: 'Google',    icon: 'chrome',   consoleUrl: 'https://console.cloud.google.com/apis/credentials'},
+            {id: 'github',    label: 'GitHub',    icon: 'github',   consoleUrl: 'https://github.com/settings/developers'},
+            {id: 'microsoft', label: 'Microsoft', icon: 'monitor',  consoleUrl: 'https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps'},
+            {id: 'linkedin',  label: 'LinkedIn',  icon: 'linkedin', consoleUrl: 'https://www.linkedin.com/developers/apps'},
+            {id: 'facebook',  label: 'Facebook',  icon: 'facebook', consoleUrl: 'https://developers.facebook.com/apps'}
+        ] %}
+
+        {# Platform defaults for hint display #}
+        {% set pf = platformFeatures.social_providers if platformFeatures and platformFeatures.social_providers else {} %}
+        {% set pfBehavior = pf.behavior if pf.behavior else {} %}
+        {% set pfOptions = pfBehavior.options if pfBehavior.options else {} %}
+
+        <!-- Social Login Providers -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="users" class="h-5 w-5 mr-2 text-primary"></i>
+                Social Login Providers
+            </h2>
+            <p class="text-sm text-muted-foreground mb-4">
+                Select which providers your users can use to sign in. Unselected providers will not appear on the login page.
+            </p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for provider in availableProviders %}
+                <label class="flex items-center gap-3 p-4 border border-border hover:border-primary/50 cursor-pointer transition-colors">
+                    <input type="checkbox" name="social_providers[enabled][]"
+                           value="{{ provider.id }}"
+                           data-provider-toggle="{{ provider.id }}"
+                           {% if provider.id in enabledProviders %}checked{% endif %}
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    <i data-lucide="{{ provider.icon }}" class="h-5 w-5 text-muted-foreground"></i>
+                    <span class="text-sm font-medium text-foreground">{{ provider.label }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Behavior -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="settings" class="h-5 w-5 mr-2 text-primary"></i>
+                Login Behavior
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                Control what happens when users sign in with a social provider. Leave unchanged to use system defaults.
+            </p>
+            {% set behavior = socialProviders.behavior if socialProviders.behavior else {} %}
+            {% set behaviorOptions = behavior.options if behavior.options else {} %}
+            <div class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="behavior_existing" class="block text-sm font-medium text-foreground mb-2">When existing user has no linked account</label>
+                        <select id="behavior_existing" name="social_providers[behavior][existing_user_no_integration]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="auto_link" {% if behavior.existing_user_no_integration == 'auto_link' %}selected{% endif %}>Auto-link accounts</option>
+                            <option value="require_manual_link" {% if behavior.existing_user_no_integration != 'auto_link' %}selected{% endif %}>Require manual linking</option>
+                        </select>
+                        {% if pfBehavior.existing_user_no_integration %}
+                        <p class="mt-1 text-xs text-muted-foreground">System default: {{ 'Auto-link accounts' if pfBehavior.existing_user_no_integration == 'auto_link' else 'Require manual linking' }}</p>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <label for="behavior_no_user" class="block text-sm font-medium text-foreground mb-2">When no user account exists</label>
+                        <select id="behavior_no_user" name="social_providers[behavior][no_user_account]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="allow_registration" {% if behavior.no_user_account != 'require_existing_account' %}selected{% endif %}>Allow registration</option>
+                            <option value="require_existing_account" {% if behavior.no_user_account == 'require_existing_account' %}selected{% endif %}>Require existing account</option>
+                        </select>
+                        {% if pfBehavior.no_user_account %}
+                        <p class="mt-1 text-xs text-muted-foreground">System default: {{ 'Allow registration' if pfBehavior.no_user_account == 'allow_registration' else 'Require existing account' }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label for="behavior_missing_contact" class="block text-sm font-medium text-foreground mb-2">When provider doesn't share contact info</label>
+                        <select id="behavior_missing_contact" name="social_providers[behavior][missing_contact_info]"
+                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option value="redirect_to_form" {% if behavior.missing_contact_info != 'reject_login' %}selected{% endif %}>Ask user to fill in details</option>
+                            <option value="reject_login" {% if behavior.missing_contact_info == 'reject_login' %}selected{% endif %}>Block sign-in</option>
+                        </select>
+                        {% if pfBehavior.missing_contact_info %}
+                        <p class="mt-1 text-xs text-muted-foreground">System default: {{ 'Ask user to fill in details' if pfBehavior.missing_contact_info == 'redirect_to_form' else 'Block sign-in' }}</p>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center h-full pt-6">
+                        <input type="hidden" name="social_providers[behavior][require_password_on_registration]" value="">
+                        <input type="checkbox" id="behavior_require_password"
+                               name="social_providers[behavior][require_password_on_registration]"
+                               value="on"
+                               {% if behavior.require_password_on_registration %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="behavior_require_password" class="ml-2 text-sm font-medium text-foreground">
+                            Require password when registering via social login
+                        </label>
+                        {% if pfBehavior.require_password_on_registration is defined %}
+                        <span class="ml-2 text-xs text-muted-foreground">(default: {{ 'on' if pfBehavior.require_password_on_registration else 'off' }})</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Provider Options -->
+                <div class="border-t border-border pt-6">
+                    <h3 class="text-sm font-semibold text-foreground mb-4">Provider Options</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <div class="flex items-center">
+                                <input type="hidden" name="social_providers[behavior][options][allow_multiple_providers]" value="">
+                                <input type="checkbox" id="options_allow_multiple"
+                                       name="social_providers[behavior][options][allow_multiple_providers]"
+                                       value="on"
+                                       {% if behaviorOptions.allow_multiple_providers %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="options_allow_multiple" class="ml-2 text-sm font-medium text-foreground">
+                                    Allow linking multiple providers to one account
+                                </label>
+                                {% if pfOptions.allow_multiple_providers is defined %}
+                                <span class="ml-2 text-xs text-muted-foreground">(default: {{ 'on' if pfOptions.allow_multiple_providers else 'off' }})</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex items-center">
+                                <input type="hidden" name="social_providers[behavior][options][auto_verify_email]" value="">
+                                <input type="checkbox" id="options_auto_verify"
+                                       name="social_providers[behavior][options][auto_verify_email]"
+                                       value="on"
+                                       {% if behaviorOptions.auto_verify_email %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="options_auto_verify" class="ml-2 text-sm font-medium text-foreground">
+                                    Trust email from provider (skip verification)
+                                </label>
+                                {% if pfOptions.auto_verify_email is defined %}
+                                <span class="ml-2 text-xs text-muted-foreground">(default: {{ 'on' if pfOptions.auto_verify_email else 'off' }})</span>
+                                {% endif %}
+                            </div>
+                            <div class="flex items-center">
+                                <input type="hidden" name="social_providers[behavior][options][show_helpful_errors]" value="">
+                                <input type="checkbox" id="options_show_errors"
+                                       name="social_providers[behavior][options][show_helpful_errors]"
+                                       value="on"
+                                       {% if behaviorOptions.show_helpful_errors %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="options_show_errors" class="ml-2 text-sm font-medium text-foreground">
+                                    Show detailed error messages to users
+                                </label>
+                                {% if pfOptions.show_helpful_errors is defined %}
+                                <span class="ml-2 text-xs text-muted-foreground">(default: {{ 'on' if pfOptions.show_helpful_errors else 'off' }})</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            <label for="options_max_providers" class="block text-sm font-medium text-foreground mb-2">Max providers per user</label>
+                            <input type="number" id="options_max_providers"
+                                   name="social_providers[behavior][options][max_providers_per_user]"
+                                   value="{{ behaviorOptions.max_providers_per_user or '' }}"
+                                   min="1" max="10"
+                                   placeholder="{{ pfOptions.max_providers_per_user or '5' }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">
+                                Between 1 and 10.
+                                {% if pfOptions.max_providers_per_user %}
+                                System default: {{ pfOptions.max_providers_per_user }}.
+                                {% endif %}
+                                Leave empty to use system default.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Provider Credentials -->
+        <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                <i data-lucide="key" class="h-5 w-5 mr-2 text-primary"></i>
+                Provider Credentials
+            </h2>
+            <p class="text-sm text-muted-foreground mb-6">
+                Social login works out of the box with shared system credentials.
+                For your own branding on the consent screen, create an OAuth app with each provider and enter your credentials below.
+            </p>
+
+            {% for provider in availableProviders %}
+            {% set providerCreds = socialProviders[provider.id] if socialProviders[provider.id] else {} %}
+            <div id="creds-{{ provider.id }}"
+                 class="mb-6 last:mb-0 border border-border p-4{% if provider.id not in enabledProviders %} hidden{% endif %}">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-semibold text-foreground flex items-center">
+                        <i data-lucide="{{ provider.icon }}" class="h-4 w-4 mr-2 text-muted-foreground"></i>
+                        {{ provider.label }}
+                    </h3>
+                    <a href="{{ provider.consoleUrl }}" target="_blank" rel="noopener noreferrer"
+                       class="text-xs text-primary hover:underline flex items-center">
+                        Create {{ provider.label }} OAuth app
+                        <i data-lucide="external-link" class="h-3 w-3 ml-1"></i>
+                    </a>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="{{ provider.id }}_client_id" class="block text-sm font-medium text-foreground mb-2">Client ID</label>
+                        <input type="text" id="{{ provider.id }}_client_id"
+                               name="social_providers[{{ provider.id }}][client_id]"
+                               value="{{ providerCreds.client_id or '' }}"
+                               placeholder="Leave empty to use system default"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    </div>
+                    <div>
+                        <label for="{{ provider.id }}_client_secret" class="block text-sm font-medium text-foreground mb-2">Client Secret</label>
+                        <div class="relative">
+                            <input type="password" id="{{ provider.id }}_client_secret"
+                                   name="social_providers[{{ provider.id }}][client_secret]"
+                                   value="{{ '**masked**' if providerCreds.client_secret else '' }}"
+                                   data-field-path="features.social_providers.{{ provider.id }}.client_secret"
+                                   placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;"
+                                   class="w-full px-3 py-2 pr-20 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            {% if providerCreds.client_secret %}
+                            <button type="button"
+                                    onclick="revealTenantSecret('features.social_providers.{{ provider.id }}.client_secret', '{{ provider.id }}_client_secret')"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90">
+                                <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                Reveal
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+    </form>
+
+    <!-- Actions -->
+    <div class="flex flex-col sm:flex-row gap-3 justify-between pt-4 border-t border-border">
+        <div>
+            {% if hasOverride %}
+            <form method="POST" action="/admin/configuration/{{ section }}/reset"
+                  onsubmit="return confirm('Are you sure you want to reset Features configuration to defaults? This cannot be undone.')">
+                <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                <button type="submit"
+                        class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
+                    <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                    Reset to Defaults
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        <div class="flex gap-3">
+            <a href="/admin/configuration"
+               class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back
+            </a>
+            <button type="submit" form="config-form"
+                    class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/configuration/common.js"></script>
+<script>
+(function () {
+    'use strict';
+
+    // Toggle provider credential panels
+    var toggles = document.querySelectorAll('[data-provider-toggle]');
+    toggles.forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            var providerId = checkbox.getAttribute('data-provider-toggle');
+            var credsPanel = document.getElementById('creds-' + providerId);
+            if (credsPanel) {
+                if (checkbox.checked) {
+                    credsPanel.classList.remove('hidden');
+                } else {
+                    credsPanel.classList.add('hidden');
+                }
+            }
+        });
+    });
+
+    // Client-side validation for max providers per user
+    var maxInput = document.getElementById('options_max_providers');
+    if (maxInput) {
+        maxInput.addEventListener('change', function () {
+            var val = parseInt(this.value, 10);
+            if (this.value !== '' && (isNaN(val) || val < 1 || val > 10)) {
+                this.setCustomValidity('Must be between 1 and 10');
+                this.reportValidity();
+            } else {
+                this.setCustomValidity('');
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

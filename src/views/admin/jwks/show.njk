@@ -1,0 +1,174 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground">Key Details</h1>
+                <p class="mt-2 text-xs sm:text-sm text-muted-foreground font-mono break-all">{{ key.kid }}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    {% if key.status == 'active' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                            <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                            Active
+                        </span>
+                    {% elif key.status == 'expiring' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning-foreground dark:text-warning">
+                            <i data-lucide="clock" class="h-3 w-3 mr-1"></i>
+                            Expiring
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                            <i data-lucide="archive" class="h-3 w-3 mr-1"></i>
+                            Retired
+                        </span>
+                    {% endif %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-mono font-medium bg-muted text-foreground">
+                        {{ key.alg }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <a href="/admin/jwks" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Keys
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metadata -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="file-key" class="h-5 w-5 mr-2 text-primary"></i>
+                    Key Metadata
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Key ID (kid)</label>
+                    <div class="flex items-center gap-2 mt-1">
+                        <p class="text-foreground font-mono text-sm break-all">{{ key.kid }}</p>
+                        <button type="button"
+                            onclick="copyToClipboard('{{ key.kid }}', this)"
+                            class="text-muted-foreground hover:text-foreground flex-shrink-0"
+                            title="Copy Key ID">
+                            <i data-lucide="copy" class="h-3.5 w-3.5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Algorithm (alg)</label>
+                    <p class="text-foreground font-mono text-sm mt-1">{{ key.alg }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Key Type (kty)</label>
+                    <p class="text-foreground font-mono text-sm mt-1">{{ key.publicKey.kty or 'N/A' }}</p>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Usage (use)</label>
+                    <p class="text-foreground text-sm mt-1">{{ key.use }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-card border border-border">
+            <div class="px-6 py-4 border-b border-border">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="clock" class="h-5 w-5 mr-2 text-primary"></i>
+                    Lifecycle
+                </h2>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Status</label>
+                    <div class="mt-1">
+                        {% if key.status == 'active' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                Active
+                            </span>
+                        {% elif key.status == 'expiring' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning-foreground dark:text-warning">
+                                <i data-lucide="clock" class="h-3 w-3 mr-1"></i>
+                                Expiring
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                <i data-lucide="archive" class="h-3 w-3 mr-1"></i>
+                                Retired
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Created At</label>
+                    <p class="text-foreground font-mono text-sm mt-1">{{ key.createdAt | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                </div>
+
+                {% if key.rotatedAt %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Rotated At</label>
+                    <p class="text-foreground font-mono text-sm mt-1">{{ key.rotatedAt | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</p>
+                </div>
+                {% endif %}
+
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Tenant ID</label>
+                    <p class="text-foreground font-mono text-sm mt-1">{{ key.tenantId }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Public JWK -->
+    <div class="bg-card border border-border mb-8">
+        <div class="px-6 py-4 border-b border-border">
+            <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-foreground flex items-center">
+                    <i data-lucide="braces" class="h-5 w-5 mr-2 text-primary"></i>
+                    Public JWK
+                </h2>
+                <button type="button"
+                    id="copy-public-jwk"
+                    class="inline-flex items-center px-3 py-1.5 bg-secondary text-secondary-foreground text-sm font-medium
+                        hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
+                    title="Copy Public JWK">
+                    <i data-lucide="copy" class="h-4 w-4 mr-1.5"></i>
+                    Copy
+                </button>
+            </div>
+        </div>
+        <div class="p-6">
+            <pre id="public-jwk-json" class="bg-muted/50 border border-border p-4 text-sm font-mono text-foreground overflow-x-auto whitespace-pre">{{ publicJwk }}</pre>
+        </div>
+    </div>
+
+    <!-- Security Note -->
+    <div class="bg-secondary/10 border border-secondary/30 p-4 mb-8">
+        <div class="flex items-start gap-3">
+            <i data-lucide="shield" class="h-5 w-5 text-secondary-foreground flex-shrink-0 mt-0.5"></i>
+            <div>
+                <h3 class="text-sm font-medium text-foreground">Security Note</h3>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Only the public key is displayed here. Private key material is never exposed in the admin panel.
+                    The public key is safe to share and is available at the <code class="text-xs bg-muted px-1 py-0.5 font-mono">/.well-known/jwks.json</code> endpoint.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/jwks.js"></script>
+{% endblock %}

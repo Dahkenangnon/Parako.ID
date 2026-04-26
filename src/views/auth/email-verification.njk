@@ -1,0 +1,131 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                {% if status === 'pending' %}
+                    <!-- Pending Verification Status -->
+                    <div class="text-center mb-5">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-50 dark:bg-blue-900 border-2 border-blue-200 dark:border-blue-700 mb-4">
+                            <svg class="w-8 h-8 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                            </svg>
+                        </div>
+                        <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">Verify Your Email</h2>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-muted-foreground">
+                            We've sent a verification link to your email address. Please check your inbox and click the link to verify your email.
+                        </p>
+
+                        <!-- Email Info -->
+                        <div class="mt-4 p-3 bg-blue-50 dark:bg-blue-900 border-2 border-blue-200 dark:border-blue-700 text-left">
+                            <div class="flex items-start">
+                                <div class="flex-shrink-0 pt-0.5">
+                                    <svg class="h-5 w-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-blue-700 dark:text-blue-300">
+                                        If you don't see the email in your inbox, please check your spam folder or request a new verification email.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="space-y-3">
+                        <form action="{{routes.authFull.email_verification}}/resend" method="POST" class="w-full">
+                            <!-- CSRF Token -->
+                            <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                            <button type="submit" class="w-full h-10 bg-gray-100 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-medium hover:bg-gray-200 dark:hover:bg-accent flex items-center justify-center focus:outline-none">
+                                Resend Verification Email
+                            </button>
+                        </form>
+
+                        <a href="{{ routes.accountFull.dashboard }}" class="auth-btn block w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white flex items-center justify-center">
+                            Continue to Dashboard
+                        </a>
+                    </div>
+                {% else %}
+                    <!-- Request Verification Form -->
+                    <div class="text-center mb-5">
+                        <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-50 dark:bg-blue-900 border-2 border-blue-200 dark:border-blue-700 mb-4">
+                            <svg class="w-8 h-8 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">Verify Your Email</h2>
+                        <p class="mt-2 text-sm text-gray-600 dark:text-muted-foreground">
+                            Enter your email address below to request a verification link.
+                        </p>
+                    </div>
+
+
+
+                    <form action="{{ routes.authFull.email_verification }}/request" method="POST" class="space-y-4">
+                        <!-- CSRF Token -->
+                        <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                        <!-- Email Field -->
+                        <div class="space-y-2">
+                            <label for="email" class="block text-sm font-semibold text-gray-900 dark:text-foreground">Email address</label>
+                            <div class="relative">
+                                <input
+                                    type="email"
+                                    id="email"
+                                    name="email"
+                                    autocomplete="email"
+                                    class="w-full h-12 px-4 py-3 pl-11 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-2 focus:border-primary"
+                                    placeholder="you@example.com"
+                                    required
+                                />
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <svg class="h-5 w-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Submit Button -->
+                        <button type="submit" class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                            Send Verification Link
+                        </button>
+                    </form>
+                {% endif %}
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.login }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.navigation.back_to_login') }}</a>
+                    </p>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/email-verification.js"></script>
+
+<!-- Complete configuration and translations for EmailVerificationManager -->
+<script id="___EMAIL_VERIFICATION_STATE___" type="application/json">
+{
+  "config": {
+    "enableLoadingStates": true,
+    "errorRecoveryTimeout": 120000,
+    "debug": {{ (app.env === 'development') | tojson }},
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "resendVerificationEmail": {{ t('auth.resendVerificationEmail', 'Resend Verification Email') | tojson | safe }},
+    "sendVerificationLink": {{ t('auth.sendVerificationLink', 'Send Verification Link') | tojson | safe }},
+    "sending": {{ t('auth.sending', 'Sending...') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

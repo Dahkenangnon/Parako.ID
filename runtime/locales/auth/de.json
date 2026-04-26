@@ -1,0 +1,74 @@
+{
+  "mfa_select": {
+    "title": "Verifizierungsmethode wählen",
+    "subtitle": "Wählen Sie, wie Sie Ihre Identität bestätigen möchten",
+    "totp_title": "Authenticator-App",
+    "totp_description": "Verwenden Sie einen Code aus Ihrer Authenticator-App",
+    "email_title": "E-Mail-Verifizierung",
+    "email_description": "Erhalten Sie einen Code per E-Mail",
+    "webauthn_title": "Passkey",
+    "webauthn_description": "Verwenden Sie Ihren Sicherheitsschlüssel oder biometrische Daten"
+  },
+  "mfa_no_fallback": {
+    "title": "Anmeldung nicht möglich",
+    "description": "Wir können Ihre Identität mit Ihrem aktuellen Gerät nicht überprüfen.",
+    "explanation": "Sie haben die Zwei-Faktor-Authentifizierung aktiviert, aber auf diesem Gerät ist keine alternative Verifizierungsmethode verfügbar. Um auf Ihr Konto zuzugreifen, müssen Sie den Kontowiederherstellungsprozess durchführen.",
+    "recover_account": "Konto wiederherstellen",
+    "cancel": "Abbrechen und zur Anmeldung zurückkehren"
+  },
+  "account_recovery_page": {
+    "title": "Kontowiederherstellung"
+  },
+  "recovery_method_select": {
+    "title": "Wiederherstellungsmethode wählen"
+  },
+  "recovery_backup_codes": {
+    "title": "Wiederherstellung - Backup-Codes"
+  },
+  "recovery_sms": {
+    "title": "SMS-Wiederherstellung"
+  },
+  "recovery_verify_code": {
+    "title": "Wiederherstellung - Code bestätigen"
+  },
+  "recovery_secondary_email": {
+    "title": "Wiederherstellung - Sekundäre E-Mail"
+  },
+  "recovery_security_questions": {
+    "title": "Sicherheitsfragen"
+  },
+  "account_recovery": "Kontowiederherstellung",
+  "enableMFA": "Zwei-Faktor-Authentifizierung aktivieren",
+  "enablingMFA": "Aktivieren...",
+  "codeRequired": "Bitte geben Sie den Bestätigungscode ein",
+  "codeInvalid": "Bitte geben Sie einen gültigen 6-stelligen Bestätigungscode ein",
+  "errorRecovery": "Sitzung abgelaufen. Bitte versuchen Sie es erneut.",
+  "setup_mfa": {
+    "title": "Zwei-Faktor-Authentifizierung aktivieren",
+    "description": "Scannen Sie den QR-Code mit Ihrer Authenticator-App (z.B. Google Authenticator, Authy) und geben Sie dann den Code unten ein, um zu bestätigen.",
+    "code_label": "Bestätigungscode",
+    "submit_button": "Bestätigen und aktivieren"
+  },
+  "setup_mfa_email": {
+    "title": "E-Mail bestätigen",
+    "description": "Wir haben einen 6-stelligen Code gesendet an",
+    "enter_code": "Geben Sie ihn unten ein, um die E-Mail-basierte 2FA zu aktivieren.",
+    "code_expires": "Der Code läuft in 10 Minuten ab."
+  },
+  "recovery_codes": {
+    "title": "Zwei-Faktor-Authentifizierung aktiviert",
+    "subtitle": "Speichern Sie Ihre Wiederherstellungscodes an einem sicheren Ort",
+    "and_others": "und {{count}} weitere",
+    "download": "Herunterladen",
+    "copy": "Kopieren",
+    "acknowledge": "Ich habe meine Wiederherstellungscodes an einem sicheren Ort gespeichert",
+    "continue": "Weiter",
+    "file_title": "Wiederherstellungscodes",
+    "file_generated": "Erstellt am",
+    "file_important": "Bewahren Sie diese Codes sicher auf. Jeder Code kann nur einmal verwendet werden.",
+    "file_total": "Anzahl Codes",
+    "downloaded": "Heruntergeladen!",
+    "copied": "Kopiert!",
+    "copy_failed": "Codes konnten nicht kopiert werden"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "사이드바 전환",
+    "navigation": {
+      "home": "홈",
+      "my_profile": "내 프로필",
+      "apps": "앱",
+      "sessions": "세션",
+      "settings": "설정"
+    },
+    "admin_section": {
+      "title": "관리자",
+      "admin_panel": "관리자 패널"
+    },
+    "footer": {
+      "logout": "로그아웃",
+      "switch_account": "계정 전환",
+      "my_account": "내 계정"
+    },
+    "account_switcher": {
+      "add_account": "계정 추가",
+      "loading": "로딩 중...",
+      "failed_to_load": "로드 실패",
+      "retry": "다시 시도",
+      "no_other_accounts": "다른 계정 없음"
+    }
+  },
+  "mobile": {
+    "close": "닫기",
+    "menu": "메뉴"
+  },
+  "theme_language": {
+    "theme": "테마",
+    "light": "라이트",
+    "dark": "다크",
+    "language": "언어",
+    "settings": "테마 및 언어 설정"
+  }
+}

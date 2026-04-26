@@ -1,0 +1,72 @@
+{
+  "subject": {
+    "welcome": "Bienvenido a {{appName}}",
+    "email_verification": "Verifica tu dirección de correo electrónico",
+    "password_reset": "Restablece tu contraseña",
+    "password_changed": "Tu contraseña ha sido cambiada",
+    "account_recovery": "Recupera tu cuenta",
+    "security_alert": "Alerta de seguridad para tu cuenta",
+    "new_session": "Nuevo inicio de sesión en tu cuenta de {{appName}}",
+    "new_device_otp": "{{appName}} - Verificar nuevo dispositivo"
+  },
+  "greeting": {
+    "hello": "Hola {{name}}",
+    "hello_user": "Hola"
+  },
+  "verification": {
+    "title": "Verifica tu dirección de correo electrónico",
+    "body": "¡Gracias por registrarte! Por favor verifica tu dirección de correo electrónico haciendo clic en el botón a continuación.",
+    "button": "Verificar correo electrónico",
+    "expires": "Este enlace expirará en {{hours}} horas.",
+    "ignore": "Si no creaste una cuenta, puedes ignorar este correo electrónico de forma segura."
+  },
+  "password_reset": {
+    "title": "Restablece tu contraseña",
+    "body": "Recibimos una solicitud para restablecer tu contraseña. Haz clic en el botón a continuación para crear una nueva contraseña.",
+    "button": "Restablecer contraseña",
+    "expires": "Este enlace expirará en {{hours}} horas.",
+    "ignore": "Si no solicitaste un restablecimiento de contraseña, puedes ignorar este correo electrónico de forma segura."
+  },
+  "welcome": {
+    "title": "Bienvenido a {{appName}}",
+    "body_intro": "¡Gracias por unirte a {{appName}}! Estamos emocionados de tenerte como parte de nuestra comunidad.",
+    "body_description": "{{appDescription}}",
+    "features_intro": "Con {{appName}}, puedes:",
+    "feature_1": "Gestionar tu identidad digital de forma segura",
+    "feature_2": "Controlar el acceso a tus aplicaciones",
+    "feature_3": "Proteger tus cuentas con autenticación de múltiples factores",
+    "get_started": "Comienza explorando tu panel de control.",
+    "button": "Gestionar tu cuenta"
+  },
+  "security_alert": {
+    "title": "Alerta de seguridad - {{alertType}}",
+    "body": "Detectamos un evento de seguridad en tu cuenta de {{appName}}.",
+    "alert_type_label": "Tipo de alerta:",
+    "details_label": "Detalles:",
+    "not_you": "Si no fuiste tú, por favor asegura tu cuenta inmediatamente.",
+    "button": "Asegurar cuenta"
+  },
+  "new_session": {
+    "title": "Nuevo inicio de sesión detectado",
+    "body": "Se detectó un nuevo inicio de sesión en tu cuenta de {{appName}}.",
+    "time_label": "Hora:",
+    "ip_label": "Dirección IP:",
+    "device_label": "Dispositivo:",
+    "not_you": "Si no fuiste tú, cambia tu contraseña inmediatamente y revisa la seguridad de tu cuenta.",
+    "button": "Revisar configuración de seguridad"
+  },
+  "new_device_otp": {
+    "title": "Verificar nuevo dispositivo",
+    "body": "Detectamos un intento de inicio de sesión desde un nuevo dispositivo en tu cuenta de {{appName}}. Introduce este código para verificar tu identidad:",
+    "device_label": "Dispositivo:",
+    "ip_label": "Dirección IP:",
+    "expires": "Este código expira en 10 minutos.",
+    "not_you": "Si no intentaste iniciar sesión, ignora este correo y cambia tu contraseña inmediatamente."
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}. Todos los derechos reservados.",
+    "contact": "Si tienes alguna pregunta, por favor contáctanos en {{email}}",
+    "privacy": "Política de privacidad",
+    "terms": "Términos de servicio"
+  }
+}

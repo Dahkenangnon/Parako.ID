@@ -1,0 +1,932 @@
+{
+  // ============================================================================
+  // APPLICATION - Core Identity & Metadata
+  // Basic application information and localization
+  // ============================================================================
+  "application": {
+    "title": "Parako.ID",
+    "description": "Self-hosted identity server with SSO, MFA, passkeys, and OAuth2",
+    "locales": {
+      "default": "en",
+      "available": ["en", "fr", "es", "pt", "de", "it", "ru", "zh", "ja", "ko"],
+    },
+  },
+  // ============================================================================
+  // BRANDING - UI/UX Appearance & Theming
+  // Visual identity, themes, fonts, colors, and social sharing
+  // ============================================================================
+  "branding": {
+    "companyName": "Your Organization",
+    "logo": "/images/logo-light.svg",
+    "logoDark": "/images/logo-dark.svg", // Logo for dark mode
+    "logoIcon": "/images/logo-icon-light.svg", // Small icon variant (light)
+    "logoIconDark": "/images/logo-icon-dark.svg", // Small icon variant (dark)
+    "favicon": "/favicon.svg", // Browser tab icon
+    // Font families - defaults to system fonts, customizable via /admin/settings/branding
+    "fonts": {
+      "sans": "ui-sans-serif, system-ui, sans-serif", // Primary body font
+      "heading": "ui-sans-serif, system-ui, sans-serif", // Heading font
+      "mono": "ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Consolas, \"Liberation Mono\", monospace", // Monospace font
+    },
+    // Theme colors - customizable via /admin/settings/branding
+    "colors": {
+      "light": {
+        "background": "#eef0f5",
+        "foreground": "#2b2b2b",
+        "card": "#f3f4f8",
+        "cardForeground": "#2b2b2b",
+        "popover": "#f3f4f8",
+        "popoverForeground": "#2b2b2b",
+        "primary": "#2563eb",
+        "primaryForeground": "#fefeff",
+        "secondary": "#e2e4ea",
+        "secondaryForeground": "#2b2b2b",
+        "muted": "#e8e9ef",
+        "mutedForeground": "#5b5c62",
+        "accent": "#e0e3eb",
+        "accentForeground": "#2b2b2b",
+        "destructive": "#c53030",
+        "destructiveForeground": "#ffffff",
+        "success": "#16803c",
+        "successForeground": "#ffffff",
+        "warning": "#c49a1b",
+        "warningForeground": "#2b2b2b",
+        "info": "#2558d1",
+        "infoForeground": "#ffffff",
+        "border": "#d4d6de",
+        "input": "#e3e4e9",
+        "ring": "#2563eb",
+        "sidebar": "#e2e4ea",
+        "sidebarForeground": "#2b2b2b",
+        "sidebarPrimary": "#2563eb",
+        "sidebarPrimaryForeground": "#fefeff",
+        "sidebarAccent": "#d4d6de",
+        "sidebarAccentForeground": "#2b2b2b",
+        "sidebarBorder": "#d4d6de",
+        "sidebarRing": "#2563eb",
+      },
+      "dark": {
+        "background": "#252838",
+        "foreground": "#d8dae0",
+        "card": "#2f3240",
+        "cardForeground": "#d8dae0",
+        "popover": "#2f3240",
+        "popoverForeground": "#d8dae0",
+        "primary": "#6b8aff",
+        "primaryForeground": "#ffffff",
+        "secondary": "#3e4158",
+        "secondaryForeground": "#d8dae0",
+        "muted": "#2f3240",
+        "mutedForeground": "#8b8d96",
+        "accent": "#363950",
+        "accentForeground": "#b4b8ff",
+        "destructive": "#f87171",
+        "destructiveForeground": "#252838",
+        "success": "#4ade80",
+        "successForeground": "#252838",
+        "warning": "#facc15",
+        "warningForeground": "#252838",
+        "info": "#93b4ff",
+        "infoForeground": "#252838",
+        "border": "#3e4158",
+        "input": "#3e4158",
+        "ring": "#6b8aff",
+        "sidebar": "#2f3240",
+        "sidebarForeground": "#d8dae0",
+        "sidebarPrimary": "#6b8aff",
+        "sidebarPrimaryForeground": "#ffffff",
+        "sidebarAccent": "#363950",
+        "sidebarAccentForeground": "#b4b8ff",
+        "sidebarBorder": "#3e4158",
+        "sidebarRing": "#6b8aff",
+      },
+    },
+    "ui": {
+      "customization": {
+        "enabled": false, // Set to true to enable custom view overrides
+        "rootPath": "runtime/views", // Directory for custom view templates
+        "views": {
+          "auth": {
+            "login": "custom/auth/login.njk",
+            "register": "custom/auth/_register.njk",
+            "forgot_password": "custom/auth/forgot-password.njk",
+            "reset_password": "custom/auth/reset-password.njk",
+            "email_verification": "custom/auth/email-verification.njk",
+            "verify_email": "custom/auth/verify-email.njk",
+            "email_verification_success": "custom/auth/email-verification-success.njk",
+            "account_select": "custom/auth/account-select.njk",
+            "continue": "custom/auth/continue.njk",
+            "multi_factor": "custom/auth/multi-factor.njk",
+            "mfa_verify": "custom/auth/mfa-verify.njk",
+            "mfa_resend": "custom/auth/mfa-resend.njk",
+            "logout": "custom/auth/logout.njk",
+            "social_password_setup": "custom/auth/social-password-setup.njk",
+            "social_contact_info": "custom/auth/social-contact-info.njk",
+            "account_recovery": "custom/auth/account-recovery.njk",
+            "recovery_backup_codes": "custom/auth/recovery-backup-codes.njk",
+            "recovery_secondary_email": "custom/auth/recovery-secondary-email.njk",
+            "recovery_verify_code": "custom/auth/recovery-verify-code.njk",
+            "setup_mfa": "custom/auth/setup-mfa.njk",
+            "social_callback": "custom/auth/social-cb.njk",
+            "oidc": {
+              "consent": "custom/auth/oidc/consent.njk",
+              "device_flow_code_input": "custom/auth/oidc/_device-flow-code-input.njk",
+              "device_flow_confirm_code": "custom/auth/oidc/device-flow-confirm-code.njk",
+              "device_flow_success": "custom/auth/oidc/device-flow-success.njk",
+              "error": "custom/auth/oidc/error.njk",
+              "login": "custom/auth/oidc/login.njk",
+              "logout_success": "custom/auth/oidc/logout-success.njk",
+              "logout": "custom/auth/oidc/logout.njk",
+              "mfa": "custom/auth/oidc/mfa.njk",
+            },
+          },
+          "accounts": {
+            "my_account": "accounts/my-account.njk",
+            "settings": "accounts/settings.njk",
+            "apps": "accounts/apps.njk",
+            "sessions": "accounts/sessions.njk",
+            "recovery_codes": "accounts/recovery-codes.njk",
+            "recovery_setup": "accounts/recovery-setup.njk",
+          },
+          "errorpage": {
+            "unauthorized": "custom/error/401.njk",
+            "forbidden": "custom/error/403.njk",
+            "notfound": "custom/error/404.njk",
+            "server_error": "custom/error/500.njk",
+            "rate_limit": "custom/error/rate-limit-inline.html",
+          },
+          "email": {
+            "mail": "custom/email/mail.njk",
+          },
+          "home": {
+            "index": "custom/home/index.njk",
+          },
+        },
+      },
+    },
+  },
+  // ============================================================================
+  // DEPLOYMENT - Environment & Infrastructure
+  // Server settings, environment configuration, and routing
+  // ============================================================================
+  "deployment": {
+    "url": "http://localhost:9007", // Public URL of your application
+    "server": {
+      "allowed_origins": "*", // CORS allowed origins (use specific domains in production)
+      "proxy": false, // Set to true if behind reverse proxy (nginx, cloudflare, etc.)
+    },
+    "redis_prefix": "parako", // Base Redis key prefix (subsystems append :session:, :oidc:, :rl:, :pubsub:)
+    "cookies": {
+      "defaults": {
+        "maxAge": 31536000000, // 1 year in milliseconds
+        "httpOnly": true, // Prevent XSS attacks
+        "secure": false, // Set to true in production with HTTPS
+        "sameSite": "lax", // CSRF protection: strict, lax, none
+        "path": "/",
+      },
+      "types": {
+        "session": {
+          "name": "application_session", // Session cookie name
+          "maxAge": 86400000, // 24 hours
+          "httpOnly": true,
+          "secure": false,
+          "sameSite": "lax",
+        },
+        "locale": {
+          "name": "locale",
+          "maxAge": 31536000000, // 1 year
+          "httpOnly": true,
+          "secure": false,
+          "sameSite": "lax",
+        },
+        "theme": {
+          "name": "theme",
+          "maxAge": 31536000000, // 1 year
+          "httpOnly": true,
+          "secure": false,
+          "sameSite": "lax",
+        },
+      },
+    },
+    "routes": {
+      "auth": "/auth",
+      "accounts": "/accounts",
+      "api": "/api/v1",
+      "home": "/",
+      "auth_routes": {
+        "login": "/login",
+        "register": "/register",
+        "forgot_password": "/forgot-password",
+        "reset_password": "/reset-password",
+        "email_verification": "/email-verification",
+        "verify_email": "/verify-email",
+        "email_verification_success": "/email-verification-success",
+        "account_select": "/account-select",
+        "continue": "/continue",
+        "multi_factor": "/multi-factor",
+        "mfa_verify": "/mfa-verify",
+        "mfa_resend": "/mfa-resend",
+        "mfa_select": "/mfa-select", // MFA method selection
+        "mfa_webauthn": "/mfa-webauthn", // WebAuthn MFA verification
+        "logout": "/logout",
+        "social_password_setup": "/social-password-setup",
+        "social_contact_info": "/social-contact-info",
+        "account_recovery": "/account-recovery",
+        "recovery_method_select": "/recovery-method-select", // Recovery method selection
+        "recovery_backup_codes": "/recovery-backup-codes",
+        "recovery_secondary_email": "/recovery-secondary-email",
+        "recovery_security_questions": "/recovery-security-questions", // Security questions recovery
+        "recovery_sms": "/recovery-sms", // SMS recovery
+        "recovery_verify_code": "/recovery-verify-code",
+        "update_theme": "/update-theme",
+        "update_locale": "/update-locale",
+        "update_sidebar": "/update-sidebar", // Sidebar state toggle
+        "update_timezone": "/update-timezone", // Timezone preference
+      },
+      "account_routes": {
+        "dashboard": "/",
+        "my_account": "/my-account",
+        "settings": "/settings",
+        "apps": "/apps",
+        "sessions": "/sessions",
+        "update_profile": "/update-profile",
+        "change_password": "/change-password",
+        "remove_avatar": "/remove-avatar",
+        "enable_mfa": "/enable-mfa",
+        "disable_mfa": "/disable-mfa",
+        "setup_mfa": "/setup-mfa",
+        "setup_webauthn": "/setup-webauthn", // WebAuthn/passkey setup
+        "passkeys": "/passkeys", // Passkey management
+        "switch_account": "/switch-account",
+        "add_account": "/add-account",
+        "remove_account": "/remove-account",
+        "account_switcher_data": "/account-switcher-data",
+        "revoke_app": "/revoke-app",
+        "revoke_all_apps": "/revoke-all-apps",
+        "logout_session": "/logout-session",
+        "logout_all_other_sessions": "/logout-all-other-sessions",
+        "resend_email_verification": "/resend-email-verification",
+        "enable_recovery": "/enable-recovery",
+        "disable_recovery": "/disable-recovery",
+        "recovery_codes": "/recovery-codes",
+        "verify_recovery_email": "/verify-recovery-email",
+        "regenerate_backup_codes": "/regenerate-backup-codes",
+        "recovery_setup": "/recovery-setup",
+        "security_questions_setup": "/security-questions/setup", // Security questions management
+        "update_notification_preferences": "/update-notification-preferences", // Notification preferences
+      },
+      "api_routes": {
+        "base": "/",
+      },
+    },
+  },
+  // ============================================================================
+  // SECURITY - Security & Authentication
+  // All security-related configuration including secrets, auth, and logging
+  // ============================================================================
+  "security": {
+    "secrets": {
+      "jwt_secret": "${JWT_SECRET}", // Set in .env — generate with: openssl rand -hex 32
+      "jwt_expires_in": "1h", // JWT token expiration time
+      "cookie_secrets": [
+        // Array of secrets for cookie signing (set in .env, rotate regularly)
+        "${COOKIE_SECRET_1}",
+        "${COOKIE_SECRET_2}",
+      ],
+      "hmac_secret": "${HMAC_SECRET}", // Set in .env — used for cross-tenant OAuth state signing
+    },
+    "protection": {
+      "rate_limiting": {
+        "enabled": true, // Rate limiting enabled by default
+        "requests_per_minute": 100, // Max requests per minute per IP
+        "window_minutes": 15, // Time window for rate limiting
+      },
+      "trusted_domains": [], // Domains allowed for secure redirects
+      "trusted_proxies": [], // Trusted proxy IP addresses or CIDR ranges
+      "high_risk_countries": [], // ISO country codes considered high-risk (e.g. ["XX", "YY"])
+      "encrypt_device_data": false, // Encrypt stored device fingerprint data
+      "device_matching": {
+        "min_confidence_score": 70, // Minimum score (0-100) to consider a device trusted
+        "ip_similarity_threshold": 0.8, // IP similarity threshold for device matching (0.0-1.0)
+        "enable_impossible_travel": true, // Detect impossible travel (login from distant locations)
+        "impossible_travel_max_speed_kmh": 900, // Max travel speed before flagging (km/h)
+        "trust_duration_days": 30, // How long a device stays trusted
+      },
+    },
+    "key_store": {
+      "type": "database", // "database" (encrypted at rest) or "file" (runtime/jwks/jwks.json)
+      "rotation_interval_days": 90, // Days between automatic key rotations
+      "overlap_window_seconds": 7200, // Seconds to keep old keys valid after rotation
+      "algorithms": ["RS256", "ES256", "EdDSA"], // Key algorithms to generate
+      "promotion_delay_ms": 0, // 0 = immediate promotion (single-cluster), >0 = delayed two-phase (distributed)
+    },
+    "authentication": {
+      "multi_factor": {
+        "enabled": true, // Enable MFA for enhanced security
+        "totp": {
+          "enabled": true, // Time-based One-Time Password (Google Authenticator, etc.)
+          "issuer_name": "OIDC Provider", // Name shown in authenticator apps
+        },
+        "email": {
+          "enabled": true, // Email-based MFA (sends verification code)
+          "code_ttl_seconds": 600, // Email code expiration in seconds (10 minutes)
+        },
+        "sms": {
+          "enabled": false, // SMS-based MFA (requires SMS provider setup)
+        },
+        "webauthn": {
+          "enabled": false, // WebAuthn/FIDO2 (biometric, security keys)
+          "rp_name": "OIDC Provider", // Relying Party name
+          "rp_id": "localhost", // Relying Party ID (your domain)
+          "timeout": 60000, // WebAuthn ceremony timeout in milliseconds
+          "attestation": "none", // Attestation conveyance preference: none, indirect, direct, enterprise
+          "user_verification": "preferred", // User verification: required, preferred, discouraged
+          "resident_key": "preferred", // Resident key requirement: required, preferred, discouraged
+          "max_credentials_per_user": 10, // Maximum passkeys/security keys per user
+        },
+      },
+      "session_management": {
+        "multiple_accounts": {
+          "enabled": true, // Allow users to switch between multiple accounts
+        },
+      },
+      "session": {
+        "cookie_name": "application_session", // Session cookie name
+        "same_site": "lax", // SameSite cookie attribute: strict, lax, none
+        "bind_ip": false, // Bind session to IP address (prevents session hijacking)
+        "bind_user_agent": false, // Bind session to user agent
+        "bind_device": false, // Bind session to device fingerprint
+        "idle_timeout_minutes": 30, // Session idle timeout in minutes
+        "absolute_timeout_hours": 24, // Maximum session lifetime in hours
+        "max_concurrent_sessions": 0, // Max concurrent sessions per user (0 = unlimited)
+        "max_accounts_per_session": 5, // Max accounts in a multi-account session
+        "encrypt_session_data": false, // Encrypt session data at rest
+        "notify_new_session": false, // Send notification on new session creation
+        "require_reauth_on_switch": false, // Require re-authentication when switching accounts
+        "max_flash_messages_per_type": 10, // Max flash messages per type (error, success, etc.)
+        "max_flash_messages_total": 20, // Max total flash messages in session
+        "require_2fa_for_new_device": false, // Require 2FA when logging in from a new device
+        "new_device_2fa_method": "auto", // 2FA method for new devices: auto, email, sms, totp
+        "new_device_confidence_threshold": 70, // Device confidence threshold for 2FA requirement
+        "store_metadata": false, // Store additional metadata in session
+      },
+      "login": {
+        "login_methods": [
+          "email+password", // Login with email and password
+          "phone+password", // Login with phone number and password
+        ],
+        "password_policy": {
+          "min_length": 8, // Minimum password length
+          "require_uppercase": true, // Require uppercase letters
+          "require_lowercase": true, // Require lowercase letters
+          "require_numbers": true, // Require numbers
+          "require_symbols": false, // Require special characters
+          "max_age_days": 90, // Password expiration in days
+        },
+      },
+      "signup": {
+        "signup_methods": [
+          "email+password+full_name", // Registration with email, password, and full name
+          "phone_number+password+full_name", // Registration with phone, password, and full name
+        ],
+        "require_email_verification": false, // Require email verification on signup
+        "require_phone_verification": false, // Require phone verification on signup
+        "auto_approval": {
+          "enabled": true, // Auto-approve new users
+          "domains_whitelist": [], // Whitelist specific email domains for auto-approval
+        },
+        "contact_channels": {
+          "require_at_least_one": true, // Require at least one contact channel
+          "email": {
+            "enabled": true,
+            "required": false,
+          }, // Email contact channel
+          "phone": {
+            "enabled": true,
+            "required": false,
+          }, // Phone contact channel
+        },
+      },
+      "roles": {
+        "available": [
+          "user", // Regular user role
+          "admin", // Administrator role
+          "superadmin", // Super administrator role
+        ],
+        "default": "user", // Default role for new users
+      },
+      "custom_identifiers": {
+        "enabled": false, // Enable custom identifier fields
+        "fields": [
+          // Up to 3 custom identifier fields can be configured
+          // {
+          //   "slot": 1,
+          //   "key": "matricule",           // Internal key, used in OIDC claims
+          //   "name": "Matricule",          // Display name
+          //   "hint_for_user": "Enter your matricule number",
+          //   "validation_type": "regex",   // "none", "regex", or "charset_mask"
+          //   "pattern": "^[A-Z]{2}\\d{6}$",
+          //   "min_length": 3,
+          //   "max_length": 30,
+          //   "case_sensitive": false,
+          //   "required_for_registration": false,
+          //   "edit_policy": "set_once",    // "admin_only", "set_once", "editable", "full"
+          //   "usable_for_login": true
+          // }
+        ],
+      },
+      "recovery": {
+        "enabled": true, // Enable account recovery features
+        "backup_codes": {
+          "enabled": true, // Enable backup codes for account recovery
+          "count": 10, // Number of backup codes to generate
+          "expiry_days": 365, // Backup codes expiration in days
+        },
+        "secondary_email": {
+          "enabled": true, // Enable secondary email for account recovery
+        },
+        "sms": {
+          "enabled": false, // Enable SMS for account recovery (requires SMS provider)
+        },
+        "security_questions": {
+          "enabled": false, // Enable security questions for account recovery
+        },
+      },
+      "password_breach_detection": {
+        "enabled": true, // Check passwords against HIBP Pwned Passwords database
+        "api_timeout_ms": 3000, // Timeout for HIBP API calls in milliseconds
+        "check_on_registration": true, // Block registration with known-breached passwords
+        "check_on_login": true, // Async breach check after successful login (email alert only)
+        "check_on_password_reset": true, // Block password reset with breached passwords
+        "check_on_password_change": true, // Block password change to breached passwords
+        "min_breach_count": 1, // Minimum breach count to trigger action
+      },
+    },
+  },
+  // ============================================================================
+  // FEATURES - Feature Toggles & Capabilities
+  // Feature flags and external provider configurations
+  // ============================================================================
+  "features": {
+    "oidc": {
+      "dev_interactions": {
+        "enabled": false, // Enable development interaction UI (for testing)
+      },
+      "device_flow": {
+        "enabled": true, // Enable OAuth 2.0 Device Authorization Grant
+        "charset": "digits", // Device code character set: digits, base-20
+        "mask": "***-*-***", // Display mask for device codes
+      },
+      "client_credentials": {
+        "enabled": true, // Enable OAuth 2.0 Client Credentials Grant
+      },
+      "token_revocation": {
+        "enabled": true, // Enable token revocation endpoint
+      },
+      "token_introspection": {
+        "enabled": true, // Enable token introspection endpoint
+      },
+      "jwt_introspection": {
+        "enabled": false, // Enable JWT-based token introspection
+      },
+      "userinfo_endpoint": {
+        "enabled": true, // Enable OpenID Connect UserInfo endpoint
+      },
+      "resource_indicators": {
+        "enabled": true, // Enable OAuth 2.0 Resource Indicators
+      },
+      "rp_initiated_logout": {
+        "enabled": true, // Enable RP-initiated logout
+      },
+      "backchannel_logout": {
+        "enabled": true, // Enable OpenID Connect Back-Channel Logout
+      },
+      "dynamic_client_registration": {
+        "enabled": false, // Enable OpenID Connect Dynamic Client Registration (RFC 7591)
+        "require_initial_access_token": true, // Always true when DCR is enabled — no open registration
+        "issue_registration_access_token": true, // Issue Registration Access Token for client self-management
+      },
+      "client_registration_management": {
+        "enabled": false, // Enable client registration management (RFC 7592)
+        "rotate_registration_access_token": true, // Rotate Registration Access Tokens on use
+      },
+      "pkce": {
+        "enabled": true, // Enable PKCE (Proof Key for Code Exchange)
+        "required": true, // PKCE required by default (OAuth 2.1)
+      },
+      "extra_params": {
+        "enabled": true, // Allow extra parameters in authorization requests
+        "allowed_params": [
+          "utm_source", // UTM tracking parameters
+          "utm_medium",
+          "utm_campaign",
+          "utm_term",
+          "utm_content",
+          "tenant_id", // Multi-tenancy support
+          "app_id", // Application identifier
+          "continue", // Continue URL parameter
+        ],
+      },
+      "accept_query_param_access_tokens": true, // Accept access tokens in query parameters
+      "conform_id_token_claims": false, // Conform ID token claims to spec
+      "allow_omitting_single_registered_redirect_uri": true, // Allow omitting single redirect URI
+      "enable_http_post_methods": false, // Enable HTTP POST methods for token endpoint
+      "expires_with_session": true, // Tokens expire with session
+      "rotate_refresh_token": true, // Rotate refresh tokens on use
+      "client_based_cors": true, // Enable client-based CORS
+      "clock_tolerance": 15, // Clock tolerance in seconds for JWT validation
+      "acr_values": {
+        "supported": [
+          "urn:mfa:otp", // MFA with OTP/TOTP
+          "urn:mfa:webauthn", // MFA with WebAuthn/FIDO2
+        ],
+      },
+      "claims": {
+        "openid": [
+          "sub", // Subject identifier
+        ],
+        "profile": [
+          "name", // Full name
+          "family_name", // Last name
+          "given_name", // First name
+          "picture", // Profile picture URL
+          "locale", // User locale
+          "username", // Username
+        ],
+        "email": [
+          "email", // Email address
+          "email_verified", // Email verification status
+        ],
+        "phone": [
+          "phone_number", // Phone number
+          "phone_number_verified", // Phone verification status
+        ],
+        "address": [
+          "address", // Address information
+        ],
+      },
+      "scopes": [
+        "openid", // OpenID Connect scope
+        "profile", // Profile information
+        "email", // Email information
+        "phone", // Phone information
+        "address", // Address information
+        "offline_access", // Refresh token access
+      ],
+      "subject_types": [
+        "public", // Public subject identifier
+        "pairwise", // Pairwise subject identifier
+      ],
+      "allowOmittingSingleRegisteredRedirectUri": true, // Allow omitting single redirect URI
+      "encryption": {
+        "enabled": false,
+      },
+      "jwt_response_modes": {
+        "enabled": false,
+      },
+      "jwt_userinfo": {
+        "enabled": false,
+      },
+      "request_objects": {
+        "enabled": true,
+      },
+      "extra_client_metadata": {
+        "properties": [
+          "allowedResources",
+          "resourcesScopes",
+          "isInternalClient",
+        ],
+      },
+    },
+    "social_providers": {
+      "enabled": [], // Enable after configuring provider credentials
+      "available": [
+        "google", // Google
+        "github", // GitHub
+        "microsoft", // Microsoft / Azure AD
+        "linkedin", // LinkedIn
+        "facebook", // Facebook / Meta
+      ],
+      "behavior": {
+        "existing_user_no_integration": "require_manual_link", // How to handle existing users without social integration
+        "no_user_account": "allow_registration", // How to handle users without existing accounts
+        "missing_contact_info": "redirect_to_form", // How to handle missing contact information
+        "require_password_on_registration": false, // Require password when registering via social login
+        "options": {
+          "allow_multiple_providers": true, // Allow users to link multiple social providers
+          "auto_verify_email": true, // Auto-verify email from social providers
+          "show_helpful_errors": false, // Show helpful error messages (disable in production)
+          "max_providers_per_user": 5, // Maximum social providers per user
+        },
+      },
+      "google": {
+        "client_id": "${GOOGLE_CLIENT_ID:-your-google-client-id}", // Google OAuth 2.0 Client ID
+        "client_secret": "${GOOGLE_CLIENT_SECRET:-your-google-client-secret}", // Google OAuth 2.0 Client Secret
+        "discovery_url": "https://accounts.google.com/.well-known/openid-configuration", // Google OpenID Connect Discovery URL
+        "scopes": [
+          "openid", // OpenID Connect scope
+          "profile", // Profile information
+          "email", // Email address
+        ],
+      },
+      "github": {
+        "client_id": "${GITHUB_CLIENT_ID:-your-github-client-id}", // GitHub OAuth 2.0 Client ID
+        "client_secret": "${GITHUB_CLIENT_SECRET:-your-github-client-secret}", // GitHub OAuth 2.0 Client Secret
+        "authorization_endpoint": "https://github.com/login/oauth/authorize", // GitHub authorization endpoint
+        "token_endpoint": "https://github.com/login/oauth/access_token", // GitHub token endpoint
+        "userinfo_endpoint": "https://api.github.com/user", // GitHub user info endpoint
+        "scopes": [
+          "user:email", // GitHub user email scope
+        ],
+      },
+      "microsoft": {
+        "client_id": "${MICROSOFT_CLIENT_ID:-your-microsoft-client-id}", // Microsoft / Azure AD OAuth 2.0 Client ID
+        "client_secret": "${MICROSOFT_CLIENT_SECRET:-your-microsoft-client-secret}", // Microsoft / Azure AD OAuth 2.0 Client Secret
+        "discovery_url": "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration", // Microsoft OpenID Connect Discovery URL
+        "scopes": [
+          "openid", // OpenID Connect scope
+          "profile", // Profile information
+          "email", // Email address
+        ],
+      },
+      "linkedin": {
+        "client_id": "${LINKEDIN_CLIENT_ID:-your-linkedin-client-id}", // LinkedIn OAuth 2.0 Client ID
+        "client_secret": "${LINKEDIN_CLIENT_SECRET:-your-linkedin-client-secret}", // LinkedIn OAuth 2.0 Client Secret
+        "authorization_endpoint": "https://www.linkedin.com/oauth/v2/authorization", // LinkedIn authorization endpoint
+        "token_endpoint": "https://www.linkedin.com/oauth/v2/accessToken", // LinkedIn token endpoint
+        "userinfo_endpoint": "https://api.linkedin.com/v2/userinfo", // LinkedIn user info endpoint
+        "scopes": [
+          "openid", // OpenID Connect scope
+          "profile", // Profile information
+          "email", // Email address
+        ],
+      },
+      "facebook": {
+        "client_id": "${FACEBOOK_CLIENT_ID:-your-facebook-client-id}", // Facebook OAuth 2.0 Client ID
+        "client_secret": "${FACEBOOK_CLIENT_SECRET:-your-facebook-client-secret}", // Facebook OAuth 2.0 Client Secret
+        "authorization_endpoint": "https://www.facebook.com/v19.0/dialog/oauth", // Facebook authorization endpoint
+        "token_endpoint": "https://graph.facebook.com/v19.0/oauth/access_token", // Facebook token endpoint
+        "userinfo_endpoint": "https://graph.facebook.com/me", // Facebook user info endpoint
+        "scopes": [
+          "email", // Email address
+          "public_profile", // Public profile information
+        ],
+      },
+    },
+  },
+  // ============================================================================
+  // OIDC STORAGE — computed from bootstrap env vars (STORAGE_ADAPTER, REDIS_*, etc.)
+  // Not configurable via this file. See .env.example for details.
+  // ============================================================================
+  // ============================================================================
+  // OIDC - OIDC Protocol Configuration
+  // OpenID Connect specific settings, routes, and cryptographic configuration
+  // ============================================================================
+  "oidc": {
+    "issuer": "http://localhost:9007/oidc/v1", // OIDC issuer identifier
+    "path": "/oidc/v1", // OIDC base path
+    "routes": {
+      "authorization": "/authorize", // Authorization endpoint
+      "userinfo": "/userinfo", // UserInfo endpoint
+      "registration": "/register-rp", // Dynamic client registration endpoint
+      "backchannel_authentication": "/backchannel", // Back-channel authentication endpoint
+      "challenge": "/challenge", // Challenge endpoint
+      "code_verification": "/device", // Device code verification endpoint
+      "device_authorization": "/device/auth", // Device authorization endpoint
+      "end_session": "/session/end", // End session endpoint
+      "introspection": "/token/introspection", // Token introspection endpoint
+      "jwks": "/jwks", // JSON Web Key Set endpoint
+      "pushed_authorization_request": "/request", // Pushed authorization request endpoint
+      "revocation": "/token/revocation", // Token revocation endpoint
+      "token": "/token", // Token endpoint
+    },
+    "secrets": {
+      "pairwise_salt": "${PAIRWISE_SALT:-auto-generated-if-not-set}", // Salt for pairwise subject identifiers
+    },
+    "token_ttl": {
+      "access_token": 3600, // Access token TTL in seconds (1 hour)
+      "authorization_code": 600, // Authorization code TTL in seconds (10 minutes)
+      "backchannel_auth": 600, // Back-channel authentication TTL in seconds
+      "client_credentials": 3600, // Client credentials TTL in seconds (1 hour)
+      "device_code": 600, // Device code TTL in seconds (10 minutes)
+      "grant": 3600, // Grant TTL in seconds (1 hour)
+      "id_token": 3600, // ID token TTL in seconds (1 hour)
+      "interaction": 600, // Interaction TTL in seconds (10 minutes)
+      "refresh_token": 86400, // Refresh token TTL in seconds (24 hours)
+      "session": 86400, // Session TTL in seconds (24 hours)
+    },
+    "discovery": {
+      "claims_locales_supported": [
+        "en", // English
+        "fr", // French
+        "es", // Spanish
+        "pt", // Portuguese
+        "de", // German
+        "it", // Italian
+        "ru", // Russian
+        "zh", // Chinese
+        "ja", // Japanese
+        "ko", // Korean
+      ],
+      "display_values_supported": [
+        "en",
+        "fr",
+        "es",
+        "pt",
+        "de",
+        "it",
+        "ru",
+        "zh",
+        "ja",
+        "ko",
+      ],
+      "ui_locales_supported": [
+        "en",
+        "fr",
+        "es",
+        "pt",
+        "de",
+        "it",
+        "ru",
+        "zh",
+        "ja",
+        "ko",
+      ],
+      "op_policy_uri": "", // Privacy policy URL
+      "op_tos_uri": "", // Terms of service URL
+      "service_documentation": "", // Service documentation URL
+    },
+    "jwa": {
+      "attest_signing_alg_values": [
+        "ES256", // ECDSA using P-256 and SHA-256
+        "Ed25519", // EdDSA using Ed25519
+        "EdDSA", // EdDSA algorithm
+      ],
+      "authorization_encryption_alg_values": [
+        "A128KW",
+        "A256KW",
+        "ECDH-ES",
+        "RSA-OAEP",
+        "RSA-OAEP-256",
+        "dir",
+      ],
+      "authorization_encryption_enc_values": [
+        "A128CBC-HS256",
+        "A128GCM",
+        "A256CBC-HS512",
+        "A256GCM",
+      ],
+      "authorization_signing_alg_values": [
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+      "client_auth_signing_alg_values": [
+        "HS256",
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+      "dpop_signing_alg_values": ["ES256", "Ed25519", "EdDSA"],
+      "id_token_encryption_alg_values": [
+        "A128KW",
+        "A256KW",
+        "ECDH-ES",
+        "RSA-OAEP",
+        "RSA-OAEP-256",
+        "dir",
+      ],
+      "id_token_encryption_enc_values": [
+        "A128CBC-HS256",
+        "A128GCM",
+        "A256CBC-HS512",
+        "A256GCM",
+      ],
+      "id_token_signing_alg_values": [
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+      "introspection_encryption_alg_values": [
+        "A128KW",
+        "A256KW",
+        "ECDH-ES",
+        "RSA-OAEP",
+        "RSA-OAEP-256",
+        "dir",
+      ],
+      "introspection_encryption_enc_values": [
+        "A128CBC-HS256",
+        "A128GCM",
+        "A256CBC-HS512",
+        "A256GCM",
+      ],
+      "introspection_signing_alg_values": [
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+      "request_object_encryption_alg_values": [
+        "A128KW",
+        "A256KW",
+        "ECDH-ES",
+        "RSA-OAEP",
+        "RSA-OAEP-256",
+        "dir",
+      ],
+      "request_object_encryption_enc_values": [
+        "A128CBC-HS256",
+        "A128GCM",
+        "A256CBC-HS512",
+        "A256GCM",
+      ],
+      "request_object_signing_alg_values": [
+        "HS256",
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+      "userinfo_encryption_alg_values": [
+        "A128KW",
+        "A256KW",
+        "ECDH-ES",
+        "RSA-OAEP",
+        "RSA-OAEP-256",
+        "dir",
+      ],
+      "userinfo_encryption_enc_values": [
+        "A128CBC-HS256",
+        "A128GCM",
+        "A256CBC-HS512",
+        "A256GCM",
+      ],
+      "userinfo_signing_alg_values": [
+        "RS256",
+        "PS256",
+        "ES256",
+        "Ed25519",
+        "EdDSA",
+      ],
+    },
+  },
+  // ============================================================================
+  // INTEGRATIONS - External Services
+  // Configuration for external services and URLs
+  // ============================================================================
+  "integrations": {
+    "email": {
+      "smtp_host": "your-smtp-host", // SMTP server hostname
+      "smtp_port": 587, // SMTP server port (587 for TLS, 465 for SSL)
+      "smtp_username": "your-email@example.com", // SMTP username
+      "smtp_password": "${SMTP_PASSWORD:-}", // SMTP password (set in .env)
+      "from": "your-email@example.com", // From email address
+    },
+    "urls": {
+      "website": "http://localhost:9007", // Main website URL
+      "privacy_policy": "http://localhost:9007/privacy", // Privacy policy URL
+      "terms_of_service": "http://localhost:9007/terms", // Terms of service URL
+      "contact": "http://localhost:9007/contact", // Contact page URL
+    },
+    "ipinfo": {
+      "enabled": false, // Enable IP geolocation via ipinfo.io
+      "cache_ttl_hours": 24, // Cache TTL for IP lookups in hours
+    },
+    "ipqualityscore": {
+      "enabled": false, // Enable IP quality/fraud scoring
+      "fraud_score_threshold": 75, // Score threshold to flag as fraudulent (0-100)
+      "cache_ttl_hours": 6, // Cache TTL for fraud score lookups in hours
+    },
+    "fingerprintjs": {
+      "enabled": false, // Enable FingerprintJS device identification
+    },
+  },
+  // ============================================================================
+  // NOTIFICATIONS - Notification Channels & Preferences
+  // Configure how and when users receive notifications
+  // ============================================================================
+  "notifications": {
+    "channels": {
+      "email": {
+        "enabled": true,
+      }, // Email notifications
+      "sms": {
+        "enabled": false,
+      }, // SMS notifications (requires SMS provider)
+    },
+    "defaults": {
+      "security_alerts": true, // Send alerts for security events (password changes, new logins)
+      "new_session_alerts": true, // Send alerts when a new session is created
+      "allow_user_preferences": true, // Allow users to customize their notification preferences
+    },
+  },
+}

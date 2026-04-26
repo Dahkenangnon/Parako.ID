@@ -1,0 +1,24 @@
+{
+  "title": "계속하려면 로그인하세요",
+  "choose_method": "계속할 방법을 선택하세요",
+  "social_divider": "또는",
+  "social_divider_dynamic": "또는",
+  "tab": {
+    "email": "이메일",
+    "phone": "전화"
+  },
+  "link": {
+    "reset_password": "비밀번호 재설정",
+    "recover_account": "계정 복구",
+    "create_account": "지금 만들기",
+    "sign_up_prompt": "계정이 없으신가요?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "{{provider}}(으)로 로그인",
+    "microsoft": "Microsoft"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Réinitialiser votre mot de passe",
+  "description": "Nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+  "button": {
+    "send_reset_link": "Envoyer le lien",
+    "sending": "Envoi en cours..."
+  },
+  "link": {
+    "need_more_help": "Besoin d'aide ?",
+    "remember_password": "Vous vous souvenez de votre mot de passe ?"
+  }
+}

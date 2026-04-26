@@ -1,0 +1,779 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="mb-8">
+        {% set activePage = "security" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-xl sm:text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure login methods, password policy, registration, roles, and recovery</p>
+        </div>
+    </div>
+
+    {% include "partials/admin-security-subtabs.njk" %}
+
+    <form method="POST" action="/admin/settings/security" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="max-w-6xl mx-auto space-y-6">
+                <!-- Login Methods -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="log-in" class="h-5 w-5 mr-2 text-primary"></i>
+                        Login Methods
+                    </h2>
+                    <div class="space-y-4">
+                        <p class="text-sm text-muted-foreground">Select which authentication methods users can use to log in. Each method defines an identifier type and verification.</p>
+                        {% set login = config.authentication and config.authentication.login %}
+                        {% set loginMethods = login and login.login_methods or [] %}
+                        <div>
+                            <label class="block text-sm font-medium text-foreground mb-3">Available Login Methods</label>
+                            <div class="space-y-3">
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="login_method_email" name="authentication[login][login_methods][]" value="email"
+                                           {% if 'email' in loginMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="login_method_email" class="text-sm">
+                                        <span class="font-medium text-foreground">Email + Password</span>
+                                        <span class="text-muted-foreground"> — User enters email address and password</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="login_method_phone" name="authentication[login][login_methods][]" value="phone"
+                                           {% if 'phone' in loginMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="login_method_phone" class="text-sm">
+                                        <span class="font-medium text-foreground">Phone + Password</span>
+                                        <span class="text-muted-foreground"> — User enters phone number and password</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="login_method_custom_identifier" name="authentication[login][login_methods][]" value="custom_identifier"
+                                           {% if 'custom_identifier' in loginMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="login_method_custom_identifier" class="text-sm">
+                                        <span class="font-medium text-foreground">Custom Identifier + Password</span>
+                                        <span class="text-muted-foreground"> — User enters a custom field (e.g., employee ID) and password. Configure below.</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-muted-foreground">
+                                <i data-lucide="info" class="h-3 w-3 inline mr-1"></i>
+                                At least one login method must be enabled.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password Policy -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="lock" class="h-5 w-5 mr-2 text-primary"></i>
+                        Password Policy
+                    </h2>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="authentication.login.password_policy.min_length" class="block text-sm font-medium text-foreground mb-2">Minimum Length</label>
+                                <input type="number" id="authentication.login.password_policy.min_length"
+                                       name="authentication[login][password_policy][min_length]"
+                                       value="{{ config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.min_length or '' }}"
+                                       min="6" max="128"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label for="authentication.login.password_policy.max_age_days" class="block text-sm font-medium text-foreground mb-2">Max Age (Days)</label>
+                                <input type="number" id="authentication.login.password_policy.max_age_days"
+                                       name="authentication[login][password_policy][max_age_days]"
+                                       value="{{ config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.max_age_days or '' }}"
+                                       min="0" max="365"
+                                       class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <p class="mt-1 text-xs text-muted-foreground">0 = no expiration</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[login][password_policy][require_uppercase]" value="">
+                                <input type="checkbox" id="authentication.login.password_policy.require_uppercase"
+                                       name="authentication[login][password_policy][require_uppercase]"
+                                       {% if config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.require_uppercase %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="authentication.login.password_policy.require_uppercase" class="text-sm font-medium text-foreground">
+                                    Require Uppercase
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[login][password_policy][require_lowercase]" value="">
+                                <input type="checkbox" id="authentication.login.password_policy.require_lowercase"
+                                       name="authentication[login][password_policy][require_lowercase]"
+                                       {% if config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.require_lowercase %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="authentication.login.password_policy.require_lowercase" class="text-sm font-medium text-foreground">
+                                    Require Lowercase
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[login][password_policy][require_numbers]" value="">
+                                <input type="checkbox" id="authentication.login.password_policy.require_numbers"
+                                       name="authentication[login][password_policy][require_numbers]"
+                                       {% if config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.require_numbers %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="authentication.login.password_policy.require_numbers" class="text-sm font-medium text-foreground">
+                                    Require Numbers
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[login][password_policy][require_symbols]" value="">
+                                <input type="checkbox" id="authentication.login.password_policy.require_symbols"
+                                       name="authentication[login][password_policy][require_symbols]"
+                                       {% if config.authentication and config.authentication.login and config.authentication.login.password_policy and config.authentication.login.password_policy.require_symbols %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="authentication.login.password_policy.require_symbols" class="text-sm font-medium text-foreground">
+                                    Require Symbols
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Registration -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="user-plus" class="h-5 w-5 mr-2 text-primary"></i>
+                        User Registration
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <p class="text-sm text-muted-foreground mb-3">Select which authentication methods users can use to sign up. Each method defines an identifier type and verification.</p>
+                            {% set signup = config.authentication and config.authentication.signup %}
+                            {% set signupMethods = signup and signup.signup_methods or [] %}
+                            <label class="block text-sm font-medium text-foreground mb-3">Available Signup Methods</label>
+                            <div class="space-y-3">
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="signup_method_email" name="authentication[signup][signup_methods][]" value="email"
+                                           {% if 'email' in signupMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="signup_method_email" class="text-sm">
+                                        <span class="font-medium text-foreground">Email + Password</span>
+                                        <span class="text-muted-foreground"> — User enters email address and password</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="signup_method_phone" name="authentication[signup][signup_methods][]" value="phone"
+                                           {% if 'phone' in signupMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="signup_method_phone" class="text-sm">
+                                        <span class="font-medium text-foreground">Phone + Password</span>
+                                        <span class="text-muted-foreground"> — User enters phone number and password</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-start space-x-3 p-3 border border-border bg-muted/30">
+                                    <input type="checkbox" id="signup_method_custom_identifier" name="authentication[signup][signup_methods][]" value="custom_identifier"
+                                           {% if 'custom_identifier' in signupMethods %}checked{% endif %}
+                                           class="h-4 w-4 mt-0.5 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="signup_method_custom_identifier" class="text-sm">
+                                        <span class="font-medium text-foreground">Custom Identifier + Password</span>
+                                        <span class="text-muted-foreground"> — User enters a custom field (e.g., employee ID) and password. Configure below.</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-muted-foreground">
+                                <i data-lucide="info" class="h-3 w-3 inline mr-1"></i>
+                                At least one signup method must be enabled.
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[signup][require_email_verification]" value="">
+                                <input type="checkbox" id="authentication.signup.require_email_verification"
+                                       name="authentication[signup][require_email_verification]"
+                                       {% if config.authentication and config.authentication.signup and config.authentication.signup.require_email_verification %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="authentication.signup.require_email_verification" class="text-sm font-medium text-foreground">
+                                    Require Email Verification
+                                </label>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="hidden" name="authentication[signup][require_phone_verification]" value="">
+                                <input type="checkbox" id="authentication.signup.require_phone_verification"
+                                       name="authentication[signup][require_phone_verification]"
+                                       {% if config.authentication and config.authentication.signup and config.authentication.signup.require_phone_verification %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2 opacity-50 cursor-not-allowed"
+                                       disabled>
+                                <label for="authentication.signup.require_phone_verification" class="text-sm font-medium text-muted-foreground">
+                                    Require Phone Verification
+                                    <span class="ml-1 text-xs text-amber-600 dark:text-amber-400">(Not yet implemented)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Auto Approval</h3>
+                            <div class="bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="info" class="h-4 w-4 text-amber-600 dark:text-amber-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-amber-800 dark:text-amber-200">
+                                        Auto-approval currently signals matched domains via the redirect URL parameter and a flash message. It does not gate account access. To restrict unapproved users, implement a separate approval workflow in your consuming application.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[signup][auto_approval][enabled]" value="">
+                                    <input type="checkbox" id="authentication.signup.auto_approval.enabled"
+                                           name="authentication[signup][auto_approval][enabled]"
+                                           {% if config.authentication and config.authentication.signup and config.authentication.signup.auto_approval and config.authentication.signup.auto_approval.enabled %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.signup.auto_approval.enabled" class="text-sm font-medium text-foreground">
+                                        Enable Auto Approval
+                                    </label>
+                                </div>
+                                <div>
+                                    <label for="authentication.signup.auto_approval.domains_whitelist" class="block text-sm font-medium text-foreground mb-2">Whitelisted Domains</label>
+                                    <textarea id="authentication.signup.auto_approval.domains_whitelist"
+                                              name="authentication[signup][auto_approval][domains_whitelist]" rows="3"
+                                              class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.authentication and config.authentication.signup and config.authentication.signup.auto_approval and config.authentication.signup.auto_approval.domains_whitelist and config.authentication.signup.auto_approval.domains_whitelist | join('\n') or '' }}</textarea>
+                                    <p class="mt-1 text-xs text-muted-foreground">One domain per line (e.g., company.com, *.company.com)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-muted/30 p-4">
+                            <h3 class="text-base font-medium text-foreground mb-3">Contact Channels</h3>
+                            <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-3 mb-3">
+                                <div class="flex items-start">
+                                    <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                                    <span class="text-xs text-blue-800 dark:text-blue-200">
+                                        <strong>Account Recovery:</strong> Users must provide at least one contact channel (email or phone) to enable account recovery features like password reset.
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex items-center space-x-2">
+                                    <input type="hidden" name="authentication[signup][contact_channels][require_at_least_one]" value="">
+                                    <input type="checkbox" id="authentication.signup.contact_channels.require_at_least_one"
+                                           name="authentication[signup][contact_channels][require_at_least_one]"
+                                           {% if not config.authentication or not config.authentication.signup or not config.authentication.signup.contact_channels or config.authentication.signup.contact_channels.require_at_least_one != false %}checked{% endif %}
+                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                    <label for="authentication.signup.contact_channels.require_at_least_one" class="text-sm font-medium text-foreground">
+                                        Require at least one contact channel (email or phone)
+                                    </label>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                    <div class="bg-background p-3 border border-border">
+                                        <h4 class="text-sm font-medium text-foreground mb-2">Email</h4>
+                                        <div class="space-y-2">
+                                            <div class="flex items-center space-x-2">
+                                                <input type="hidden" name="authentication[signup][contact_channels][email][enabled]" value="">
+                                                <input type="checkbox" id="authentication.signup.contact_channels.email.enabled"
+                                                       name="authentication[signup][contact_channels][email][enabled]"
+                                                       {% if not config.authentication or not config.authentication.signup or not config.authentication.signup.contact_channels or not config.authentication.signup.contact_channels.email or config.authentication.signup.contact_channels.email.enabled != false %}checked{% endif %}
+                                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                                <label for="authentication.signup.contact_channels.email.enabled" class="text-sm text-foreground">
+                                                    Enable email field
+                                                </label>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="hidden" name="authentication[signup][contact_channels][email][required]" value="">
+                                                <input type="checkbox" id="authentication.signup.contact_channels.email.required"
+                                                       name="authentication[signup][contact_channels][email][required]"
+                                                       {% if config.authentication and config.authentication.signup and config.authentication.signup.contact_channels and config.authentication.signup.contact_channels.email and config.authentication.signup.contact_channels.email.required %}checked{% endif %}
+                                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                                <label for="authentication.signup.contact_channels.email.required" class="text-sm text-foreground">
+                                                    Make email required
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="bg-background p-3 border border-border">
+                                        <h4 class="text-sm font-medium text-foreground mb-2">Phone</h4>
+                                        <div class="space-y-2">
+                                            <div class="flex items-center space-x-2">
+                                                <input type="hidden" name="authentication[signup][contact_channels][phone][enabled]" value="">
+                                                <input type="checkbox" id="authentication.signup.contact_channels.phone.enabled"
+                                                       name="authentication[signup][contact_channels][phone][enabled]"
+                                                       {% if not config.authentication or not config.authentication.signup or not config.authentication.signup.contact_channels or not config.authentication.signup.contact_channels.phone or config.authentication.signup.contact_channels.phone.enabled != false %}checked{% endif %}
+                                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                                <label for="authentication.signup.contact_channels.phone.enabled" class="text-sm text-foreground">
+                                                    Enable phone field
+                                                </label>
+                                            </div>
+                                            <div class="flex items-center space-x-2">
+                                                <input type="hidden" name="authentication[signup][contact_channels][phone][required]" value="">
+                                                <input type="checkbox" id="authentication.signup.contact_channels.phone.required"
+                                                       name="authentication[signup][contact_channels][phone][required]"
+                                                       {% if config.authentication and config.authentication.signup and config.authentication.signup.contact_channels and config.authentication.signup.contact_channels.phone and config.authentication.signup.contact_channels.phone.required %}checked{% endif %}
+                                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                                <label for="authentication.signup.contact_channels.phone.required" class="text-sm text-foreground">
+                                                    Make phone required
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {% set contactChannels = config.authentication and config.authentication.signup and config.authentication.signup.contact_channels or {} %}
+                                <div class="flex items-center justify-between p-3 border border-border">
+                                    <div>
+                                        <label class="text-sm font-medium text-foreground">Full Name</label>
+                                        <p class="text-xs text-muted-foreground mt-0.5">Collect user's full name during registration.</p>
+                                    </div>
+                                    <div class="flex items-center gap-4">
+                                        <label class="flex items-center gap-1.5 text-xs">
+                                            <input type="hidden" name="authentication[signup][contact_channels][full_name][enabled]" value="">
+                                            <input type="checkbox" name="authentication[signup][contact_channels][full_name][enabled]"
+                                                   value="on" {% if contactChannels.full_name and contactChannels.full_name.enabled %}checked{% endif %}
+                                                   class="h-4 w-4 text-primary border-border">
+                                            Enabled
+                                        </label>
+                                        <label class="flex items-center gap-1.5 text-xs">
+                                            <input type="hidden" name="authentication[signup][contact_channels][full_name][required]" value="">
+                                            <input type="checkbox" name="authentication[signup][contact_channels][full_name][required]"
+                                                   value="on" {% if contactChannels.full_name and contactChannels.full_name.required %}checked{% endif %}
+                                                   class="h-4 w-4 text-primary border-border">
+                                            Required
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Roles -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                        User Roles
+                    </h2>
+
+                    <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i data-lucide="info" class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                            <div class="text-sm text-blue-800 dark:text-blue-200">
+                                <p class="font-medium mb-1">System-Required Roles</p>
+                                <p>The roles <strong>user</strong>, <strong>admin</strong>, and <strong>superadmin</strong> are required by the system and cannot be removed. You can add your own custom roles in addition to these core roles.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label for="authentication.roles.available" class="block text-sm font-medium text-foreground mb-2">Available Roles</label>
+                            <textarea id="authentication.roles.available"
+                                      name="authentication[roles][available]" rows="5"
+                                      class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">{{ config.authentication and config.authentication.roles and config.authentication.roles.available and config.authentication.roles.available | join('\n') or '' }}</textarea>
+                            <p class="mt-1 text-xs text-muted-foreground">One role per line. System will always include: user, admin, superadmin</p>
+                        </div>
+
+                        <div>
+                            <label for="authentication.roles.default" class="block text-sm font-medium text-foreground mb-2">Default Role</label>
+                            <input type="text" id="authentication.roles.default"
+                                   name="authentication[roles][default]"
+                                   value="{{ config.authentication and config.authentication.roles and config.authentication.roles.default or 'user' }}"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Role assigned to new users by default</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Username Field -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="id-card" class="h-5 w-5 mr-2 text-primary"></i>
+                        Custom Identifiers
+                    </h2>
+                    <div class="bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-4">
+                        <div class="flex items-start">
+                            <i data-lucide="info" class="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2 mt-0.5"></i>
+                            <div class="text-sm text-blue-800 dark:text-blue-200">
+                                <p class="font-medium mb-1">Custom Identifier Fields</p>
+                                <p>Configure up to 3 custom identifier fields (e.g., employee ID, student number, matricule) that users can use to login alongside email/phone. Each field can have its own validation, edit policy, and login behavior.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        {% set ciConfig = config.authentication.custom_identifiers if config.authentication and config.authentication.custom_identifiers else {} %}
+                        {% set ciFields = ciConfig.fields if ciConfig.fields else [] %}
+
+                        <!-- Enable Custom Identifiers -->
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[custom_identifiers][enabled]" value="">
+                            <input type="checkbox" id="authentication.custom_identifiers.enabled"
+                                   name="authentication[custom_identifiers][enabled]"
+                                   {% if ciConfig.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="authentication.custom_identifiers.enabled" class="text-sm font-medium text-foreground">
+                                Enable Custom Identifier Login
+                            </label>
+                        </div>
+                        <p class="text-xs text-muted-foreground -mt-2 ml-6">Allow users to login using custom identifier fields</p>
+                        <div class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-700 dark:text-blue-300 flex items-start gap-2">
+                            <i data-lucide="info" class="h-4 w-4 mt-0.5 shrink-0"></i>
+                            <span>Setting "Usable for Login" on a field below is not sufficient. You must also enable <strong>"Custom Identifier + Password"</strong> in the <strong>Login Methods</strong> section above for custom identifiers to appear on the login form.</span>
+                        </div>
+
+                        <!-- Custom Identifier Fields -->
+                        <div id="ci-fields-container" class="space-y-4">
+                            {% for field in ciFields %}
+                            <div class="ci-field-card border border-border p-4 bg-muted/20" data-ci-index="{{ loop.index0 }}">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-sm font-semibold text-foreground">Slot {{ field.slot or loop.index }} — {{ field.name or 'Unnamed' }}</h3>
+                                    <button type="button" class="ci-remove-btn text-destructive hover:text-destructive/80 text-xs" data-ci-index="{{ loop.index0 }}">
+                                        <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                    </button>
+                                </div>
+
+                                <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][slot]" value="{{ field.slot or loop.index }}">
+
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Key (internal)</label>
+                                        <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][key]"
+                                               value="{{ field.key or '' }}" placeholder="employee_id"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                                        <p class="mt-0.5 text-xs text-muted-foreground">Used in OIDC claims & API</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Display Name</label>
+                                        <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][name]"
+                                               value="{{ field.name or '' }}" placeholder="Employee ID"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Placeholder / Hint</label>
+                                        <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][hint_for_user]"
+                                               value="{{ field.hint_for_user or '' }}" placeholder="Enter your employee ID"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Validation Type</label>
+                                        <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][validation_type]"
+                                                class="ci-validation-type w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                            <option value="none" {% if not field.validation_type or field.validation_type == 'none' %}selected{% endif %}>None (length only)</option>
+                                            <option value="regex" {% if field.validation_type == 'regex' %}selected{% endif %}>Regex Pattern</option>
+                                            <option value="charset_mask" {% if field.validation_type == 'charset_mask' %}selected{% endif %}>Charset + Mask</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Regex Pattern</label>
+                                        <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][pattern]"
+                                               value="{{ field.pattern or '' }}" placeholder="^[A-Z]{2}\d{6}$"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Charset</label>
+                                        <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][charset]"
+                                                class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                            <option value="" {% if not field.charset %}selected{% endif %}>— Select —</option>
+                                            <option value="digits" {% if field.charset == 'digits' %}selected{% endif %}>Digits (0-9)</option>
+                                            <option value="alphanumeric" {% if field.charset == 'alphanumeric' %}selected{% endif %}>Alphanumeric</option>
+                                            <option value="uppercase_alphanumeric" {% if field.charset == 'uppercase_alphanumeric' %}selected{% endif %}>Uppercase Alphanumeric</option>
+                                            <option value="hex" {% if field.charset == 'hex' %}selected{% endif %}>Hex (0-9, A-F)</option>
+                                            <option value="base20" {% if field.charset == 'base20' %}selected{% endif %}>Base20</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Mask</label>
+                                        <input type="text" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][mask]"
+                                               value="{{ field.mask or '' }}" placeholder="***-*-***"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono">
+                                        <p class="mt-0.5 text-xs text-muted-foreground">* = charset char, others literal</p>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Min Length</label>
+                                        <input type="number" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][min_length]"
+                                               value="{{ field.min_length if field.min_length else '' }}" min="1" max="100"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Max Length</label>
+                                        <input type="number" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][max_length]"
+                                               value="{{ field.max_length if field.max_length else '' }}" min="1" max="100"
+                                               class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-foreground mb-1">Edit Policy</label>
+                                        <select name="authentication[custom_identifiers][fields][{{ loop.index0 }}][edit_policy]"
+                                                class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary">
+                                            <option value="set_once" {% if not field.edit_policy or field.edit_policy == 'set_once' %}selected{% endif %}>Set Once</option>
+                                            <option value="admin_only" {% if field.edit_policy == 'admin_only' %}selected{% endif %}>Admin Only</option>
+                                            <option value="editable" {% if field.edit_policy == 'editable' %}selected{% endif %}>Editable</option>
+                                            <option value="full" {% if field.edit_policy == 'full' %}selected{% endif %}>Full (edit + delete)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex flex-col justify-end gap-1.5 pt-1">
+                                        <label class="flex items-center space-x-2 text-xs">
+                                            <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][case_sensitive]" value="">
+                                            <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][case_sensitive]"
+                                                   {% if field.case_sensitive %}checked{% endif %}
+                                                   class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                            <span class="text-foreground">Case Sensitive</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 text-xs">
+                                            <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][required_for_registration]" value="">
+                                            <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][required_for_registration]"
+                                                   {% if field.required_for_registration %}checked{% endif %}
+                                                   class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                            <span class="text-foreground">Required for Registration</span>
+                                        </label>
+                                        <label class="flex items-center space-x-2 text-xs">
+                                            <input type="hidden" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][usable_for_login]" value="">
+                                            <input type="checkbox" name="authentication[custom_identifiers][fields][{{ loop.index0 }}][usable_for_login]"
+                                                   {% if field.usable_for_login %}checked{% endif %}
+                                                   class="h-3.5 w-3.5 text-primary border-border focus:ring-primary">
+                                            <span class="text-foreground">Usable for Login</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        {% if ciFields | length < 3 %}
+                        <button type="button" id="ci-add-field-btn" class="flex items-center gap-2 px-3 py-2 text-sm border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors">
+                            <i data-lucide="plus" class="h-4 w-4"></i>
+                            Add Custom Identifier ({{ ciFields | length }}/3)
+                        </button>
+                        {% endif %}
+
+                        <script>
+                        (function() {
+                            const container = document.getElementById('ci-fields-container');
+                            const addBtn = document.getElementById('ci-add-field-btn');
+
+                            function getFieldCount() {
+                                return container.querySelectorAll('.ci-field-card').length;
+                            }
+
+                            function getUsedSlots() {
+                                const slots = [];
+                                container.querySelectorAll('.ci-field-card input[name$="[slot]"]').forEach(function(input) {
+                                    slots.push(parseInt(input.value, 10));
+                                });
+                                return slots;
+                            }
+
+                            function getNextAvailableSlot() {
+                                const used = getUsedSlots();
+                                for (var s = 1; s <= 3; s++) {
+                                    if (used.indexOf(s) === -1) return s;
+                                }
+                                return null;
+                            }
+
+                            function reindexFields() {
+                                var cards = container.querySelectorAll('.ci-field-card');
+                                cards.forEach(function(card, idx) {
+                                    card.dataset.ciIndex = idx;
+                                    card.querySelectorAll('[name]').forEach(function(el) {
+                                        el.name = el.name.replace(/\[fields\]\[\d+\]/, '[fields][' + idx + ']');
+                                    });
+                                    var removeBtn = card.querySelector('.ci-remove-btn');
+                                    if (removeBtn) removeBtn.dataset.ciIndex = idx;
+                                });
+                            }
+
+                            function updateAddBtn() {
+                                var count = getFieldCount();
+                                if (addBtn) {
+                                    if (count >= 3) addBtn.style.display = 'none';
+                                    else {
+                                        addBtn.style.display = '';
+                                        addBtn.innerHTML = '<i data-lucide="plus" class="h-4 w-4"></i> Add Custom Identifier (' + count + '/3)';
+                                    }
+                                    if (window.lucide) window.lucide.createIcons();
+                                }
+                            }
+
+                            if (addBtn) {
+                                addBtn.addEventListener('click', function() {
+                                    var count = getFieldCount();
+                                    if (count >= 3) return;
+                                    var slot = getNextAvailableSlot();
+                                    if (!slot) return;
+                                    var idx = count;
+                                    var card = document.createElement('div');
+                                    card.className = 'ci-field-card border border-border p-4 bg-muted/20';
+                                    card.dataset.ciIndex = idx;
+                                    card.innerHTML = `
+                                        <div class="flex items-center justify-between mb-3">
+                                            <h3 class="text-sm font-semibold text-foreground">Slot ${slot} — New Field</h3>
+                                            <button type="button" class="ci-remove-btn text-destructive hover:text-destructive/80 text-xs" data-ci-index="${idx}">
+                                                <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                            </button>
+                                        </div>
+                                        <input type="hidden" name="authentication[custom_identifiers][fields][${idx}][slot]" value="${slot}">
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Key (internal)</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][key]" placeholder="employee_id" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"><p class="mt-0.5 text-xs text-muted-foreground">Used in OIDC claims & API</p></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Display Name</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][name]" placeholder="Employee ID" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Placeholder / Hint</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][hint_for_user]" placeholder="Enter your employee ID" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Validation Type</label><select name="authentication[custom_identifiers][fields][${idx}][validation_type]" class="ci-validation-type w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="none" selected>None (length only)</option><option value="regex">Regex Pattern</option><option value="charset_mask">Charset + Mask</option></select></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Regex Pattern</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][pattern]" placeholder="^[A-Z]{2}\\d{6}$" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Charset</label><select name="authentication[custom_identifiers][fields][${idx}][charset]" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="" selected>— Select —</option><option value="digits">Digits (0-9)</option><option value="alphanumeric">Alphanumeric</option><option value="uppercase_alphanumeric">Uppercase Alphanumeric</option><option value="hex">Hex (0-9, A-F)</option><option value="base20">Base20</option></select></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Mask</label><input type="text" name="authentication[custom_identifiers][fields][${idx}][mask]" placeholder="***-*-***" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent font-mono"><p class="mt-0.5 text-xs text-muted-foreground">* = charset char, others literal</p></div>
+                                        </div>
+                                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Min Length</label><input type="number" name="authentication[custom_identifiers][fields][${idx}][min_length]" min="1" max="100" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Max Length</label><input type="number" name="authentication[custom_identifiers][fields][${idx}][max_length]" min="1" max="100" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"></div>
+                                            <div><label class="block text-xs font-medium text-foreground mb-1">Edit Policy</label><select name="authentication[custom_identifiers][fields][${idx}][edit_policy]" class="w-full px-2 py-1.5 text-sm bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary"><option value="set_once" selected>Set Once</option><option value="admin_only">Admin Only</option><option value="editable">Editable</option><option value="full">Full (edit + delete)</option></select></div>
+                                            <div class="flex flex-col justify-end gap-1.5 pt-1">
+                                                <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][case_sensitive]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][case_sensitive]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Case Sensitive</span></label>
+                                                <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][required_for_registration]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][required_for_registration]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Required for Registration</span></label>
+                                                <label class="flex items-center space-x-2 text-xs"><input type="hidden" name="authentication[custom_identifiers][fields][${idx}][usable_for_login]" value=""><input type="checkbox" name="authentication[custom_identifiers][fields][${idx}][usable_for_login]" class="h-3.5 w-3.5 text-primary border-border focus:ring-primary"><span class="text-foreground">Usable for Login</span></label>
+                                            </div>
+                                        </div>
+                                    `;
+                                    container.appendChild(card);
+                                    updateAddBtn();
+                                    if (window.lucide) window.lucide.createIcons();
+                                });
+                            }
+
+                            container.addEventListener('click', function(e) {
+                                var btn = e.target.closest('.ci-remove-btn');
+                                if (btn) {
+                                    var card = btn.closest('.ci-field-card');
+                                    if (card) card.remove();
+                                    reindexFields();
+                                    updateAddBtn();
+                                }
+                            });
+                        })();
+                        </script>
+                    </div>
+                </div>
+
+                <!-- Account Recovery -->
+                <div class="bg-card border border-border p-6">
+                    <h2 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="key-round" class="h-5 w-5 mr-2 text-primary"></i>
+                        Account Recovery
+                    </h2>
+                    <div class="space-y-4">
+                        <div class="flex items-center space-x-2">
+                            <input type="hidden" name="authentication[recovery][enabled]" value="">
+                            <input type="checkbox" id="authentication.recovery.enabled"
+                                   name="authentication[recovery][enabled]"
+                                   {% if config.authentication and config.authentication.recovery and config.authentication.recovery.enabled %}checked{% endif %}
+                                   class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            <label for="authentication.recovery.enabled" class="text-sm font-medium text-foreground">
+                                Enable Account Recovery
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-muted/30 p-4">
+                                <h3 class="text-base font-medium text-foreground mb-3">Backup Codes</h3>
+                                <div class="space-y-4">
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[recovery][backup_codes][enabled]" value="">
+                                        <input type="checkbox" id="authentication.recovery.backup_codes.enabled"
+                                               name="authentication[recovery][backup_codes][enabled]"
+                                               {% if config.authentication and config.authentication.recovery and config.authentication.recovery.backup_codes and config.authentication.recovery.backup_codes.enabled %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="authentication.recovery.backup_codes.enabled" class="text-sm font-medium text-foreground">
+                                            Enable Backup Codes
+                                        </label>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label for="authentication.recovery.backup_codes.count" class="block text-sm font-medium text-foreground mb-2">Count</label>
+                                            <input type="number" id="authentication.recovery.backup_codes.count"
+                                                   name="authentication[recovery][backup_codes][count]"
+                                                   value="{{ config.authentication and config.authentication.recovery and config.authentication.recovery.backup_codes and config.authentication.recovery.backup_codes.count or '' }}"
+                                                   min="1" max="50"
+                                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        </div>
+                                        <div>
+                                            <label for="authentication.recovery.backup_codes.expiry_days" class="block text-sm font-medium text-foreground mb-2">Expiry (Days)</label>
+                                            <input type="number" id="authentication.recovery.backup_codes.expiry_days"
+                                                   name="authentication[recovery][backup_codes][expiry_days]"
+                                                   value="{{ config.authentication and config.authentication.recovery and config.authentication.recovery.backup_codes and config.authentication.recovery.backup_codes.expiry_days or '' }}"
+                                                   min="1" max="365"
+                                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-muted/30 p-4">
+                                <h3 class="text-base font-medium text-foreground mb-3">Recovery Methods</h3>
+                                <div class="space-y-4">
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[recovery][secondary_email][enabled]" value="">
+                                    <input type="checkbox" id="authentication.recovery.secondary_email.enabled"
+                                               name="authentication[recovery][secondary_email][enabled]"
+                                               {% if config.authentication and config.authentication.recovery and config.authentication.recovery.secondary_email and config.authentication.recovery.secondary_email.enabled %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="authentication.recovery.secondary_email.enabled" class="text-sm font-medium text-foreground">
+                                            Secondary Email
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[recovery][sms][enabled]" value="">
+                                    <input type="checkbox" id="authentication.recovery.sms.enabled"
+                                               name="authentication[recovery][sms][enabled]"
+                                               {% if config.authentication and config.authentication.recovery and config.authentication.recovery.sms and config.authentication.recovery.sms.enabled %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="authentication.recovery.sms.enabled" class="text-sm font-medium text-foreground">
+                                            SMS
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="hidden" name="authentication[recovery][security_questions][enabled]" value="">
+                                    <input type="checkbox" id="authentication.recovery.security_questions.enabled"
+                                               name="authentication[recovery][security_questions][enabled]"
+                                               {% if config.authentication and config.authentication.recovery and config.authentication.recovery.security_questions and config.authentication.recovery.security_questions.enabled %}checked{% endif %}
+                                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                        <label for="authentication.recovery.security_questions.enabled" class="text-sm font-medium text-foreground">
+                                            Security Questions
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                    <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                        Cancel
+                    </a>
+                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                        <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                        Reset Form
+                    </button>
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                            <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                            Save Changes
+                        </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings.js"></script>
+<script src="/js/admin/settings/common.js"></script>
+<script src="/js/admin/settings/security.js"></script>
+{% endblock %}

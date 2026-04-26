@@ -1,0 +1,17 @@
+{
+  "title": "已连接的应用",
+  "description": "这些是您已授权使用您账户的应用和网站。您可以移除任何不再使用或不信任的应用的访问权限。",
+  "remove_all_access": "移除所有访问权限",
+  "remove_access": "移除访问权限",
+  "last_used": "最后使用",
+  "connected": "已连接",
+  "what_app_can_do": "此应用可以执行的操作",
+  "empty_state": {
+    "title": "没有已连接的应用",
+    "description": "您还没有将任何应用或网站连接到您的账户。"
+  },
+  "confirm": {
+    "remove_all": "您确定要移除所有已连接应用的访问权限吗？此操作无法撤销。",
+    "remove_single": "您确定要移除\"{{appName}}\"的访问权限吗？此操作无法撤销。"
+  }
+}

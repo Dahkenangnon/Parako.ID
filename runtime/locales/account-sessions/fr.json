@@ -1,0 +1,42 @@
+{
+  "title": "Sessions actives",
+  "description": "Voici les appareils sur lesquels vous êtes actuellement connecté. Vérifiez régulièrement cette liste et déconnectez-vous des appareils que vous ne reconnaissez pas ou que vous n'utilisez plus.",
+  "sign_out_all": {
+    "button": "Se déconnecter de tous les autres appareils",
+    "button_short": "Déconnecter les autres",
+    "confirm": "Êtes-vous sûr de vouloir vous déconnecter de tous les autres appareils ? Cela vous déconnectera immédiatement de tous les autres appareils et pourrait déconnecter les applications connectées sur ces appareils."
+  },
+  "table": {
+    "device_location": "Appareil et emplacement",
+    "ip_address": "Adresse IP",
+    "started": "Début",
+    "last_active": "Dernière activité",
+    "status": "Statut",
+    "action": "Action"
+  },
+  "status": {
+    "current": "Actuel",
+    "active": "Actif",
+    "this_device": "Cet appareil"
+  },
+  "unknown": {
+    "device": "Appareil inconnu",
+    "location": "Emplacement inconnu",
+    "general": "Inconnu"
+  },
+  "action": {
+    "sign_out": "Se déconnecter",
+    "confirm_sign_out": "Êtes-vous sûr de vouloir vous déconnecter de cet appareil ? Cela vous déconnectera immédiatement et pourrait déconnecter les applications connectées."
+  },
+  "empty_state": {
+    "title": "Aucun autre appareil",
+    "description": "Vous n'êtes connecté sur aucun autre appareil."
+  },
+  "mobile_labels": {
+    "device": "Appareil",
+    "location": "Emplacement",
+    "ip_address": "Adresse IP",
+    "started": "Début",
+    "last_active": "Dernière activité"
+  }
+}

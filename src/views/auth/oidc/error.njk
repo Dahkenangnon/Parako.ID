@@ -1,0 +1,124 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-5">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Error Icon -->
+                <div class="flex justify-center mb-4">
+                    {% if errorType == 'access_denied' %}
+                    <div class="bg-red-50 dark:bg-red-900 p-3 border-2 border-red-200 dark:border-red-700">
+                        <svg class="h-12 w-12 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+                        </svg>
+                    </div>
+                    {% elif errorType == 'expired_session' %}
+                    <div class="bg-amber-50 dark:bg-amber-900 p-3 border-2 border-amber-200 dark:border-amber-700">
+                        <svg class="h-12 w-12 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    {% elif errorType == 'server_error' %}
+                    <div class="bg-red-50 dark:bg-red-900 p-3 border-2 border-red-200 dark:border-red-700">
+                        <svg class="h-12 w-12 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                    </div>
+                    {% elif errorType == 'invalid_request' %}
+                    <div class="bg-orange-50 dark:bg-orange-900 p-3 border-2 border-orange-200 dark:border-orange-700">
+                        <svg class="h-12 w-12 text-orange-500 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    {% else %}
+                    <div class="bg-blue-50 dark:bg-blue-900 p-3 border-2 border-blue-200 dark:border-blue-700">
+                        <svg class="h-12 w-12 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Error Title -->
+                <h2 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground text-center mb-2">
+                    {% if errorType == 'access_denied' %}
+                        Access Denied
+                    {% elif errorType == 'expired_session' %}
+                        Session Expired
+                    {% elif errorType == 'server_error' %}
+                        Server Error
+                    {% elif errorType == 'invalid_request' %}
+                        Invalid Request
+                    {% else %}
+                        An Unknown error occurred!
+                    {% endif %}
+                </h2>
+
+                <!-- Error Description -->
+                <div class="text-center mb-6">
+                    <p class="text-gray-600 dark:text-muted-foreground">
+                        {% if errorType == 'access_denied' %}
+                            You've denied access to your account for this application.
+                        {% elif errorType == 'expired_session' %}
+                            Your session has expired. Please sign in again to continue.
+                        {% elif errorType == 'server_error' %}
+                            We're experiencing technical difficulties. Please try again later.
+                        {% elif errorType == 'invalid_request' %}
+                            The authentication request was invalid or malformed.
+                        {% else %}
+                            {{ errorMessage or 'An error occurred during the authentication process.' }}
+                        {% endif %}
+                    </p>
+
+                    <!-- Error Details (display all available error information) -->
+                    {% if out and out | length > 0 %}
+                    <div class="mt-4 bg-red-50 dark:bg-card border-l-4 border-red-500 dark:border-red-400 p-4 text-left">
+                        <h3 class="text-sm font-medium text-red-800 dark:text-red-200 mb-2">Error Details:</h3>
+                        {% for key, value in out %}
+                            <div class="mb-1.5 last:mb-0">
+                                <span class="font-semibold text-red-900 dark:text-red-100 capitalize">{{ key }}</span>:
+                                <span class="text-red-700 dark:text-red-300 break-words">{{ value }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Additional Error Details (for backward compatibility) -->
+                    {% if errorDetails and (errorType == 'server_error' or errorType == 'invalid_request') %}
+                    <div class="mt-2 p-3 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border text-xs text-left text-gray-600 dark:text-muted-foreground font-mono overflow-x-auto">
+                        {{ errorDetails }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="space-y-3">
+                    <!-- Primary action button -->
+                    {% if errorType == 'access_denied' %}
+                    <a href="{{ returnUrl or '/' }}" class="auth-btn block w-full h-10 bg-primary text-white font-semibold border-2 border-transparent flex items-center justify-center focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Return to Application
+                    </a>
+                    {% elif errorType == 'expired_session' %}
+                    <a href="/auth/login" class="auth-btn block w-full h-10 bg-primary text-white font-semibold border-2 border-transparent flex items-center justify-center focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Sign In Again
+                    </a>
+                    {% else %}
+                    <a href="/auth/login" class="auth-btn block w-full h-10 bg-primary text-white font-semibold border-2 border-transparent flex items-center justify-center focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Go to Homepage
+                    </a>
+                    {% endif %}
+
+                    <!-- Secondary action -->
+                    {% if errorType != 'access_denied' %}
+                    <a href="{{ urls.contact }}" class="block w-full h-10 bg-white dark:bg-card border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-medium hover:bg-gray-50 dark:hover:bg-accent flex items-center justify-center focus:outline-none">
+                        Get Help
+                    </a>
+                    {% endif %}
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% endblock %}

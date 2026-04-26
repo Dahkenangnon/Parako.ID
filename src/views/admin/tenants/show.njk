@@ -1,0 +1,238 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <nav class="flex mb-4" aria-label="Breadcrumb">
+            <ol class="flex items-center space-x-2 text-sm">
+                <li>
+                    <a href="/admin" class="text-muted-foreground hover:text-foreground">Admin</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li>
+                    <a href="/admin/tenants" class="text-muted-foreground hover:text-foreground">Tenants</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li class="text-foreground font-medium">{{ tenant.display_name }}</li>
+            </ol>
+        </nav>
+    </div>
+
+    <!-- Tenant Banner -->
+    <div class="bg-card border border-border mb-6">
+        <div class="p-4 sm:p-6 lg:p-8 border-b-2 border-border">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+                <!-- Tenant Icon -->
+                <div class="h-20 w-20 sm:h-24 sm:w-24 bg-primary/10 flex items-center justify-center text-primary border-4 border-border flex-shrink-0">
+                    <i data-lucide="building-2" class="h-10 w-10"></i>
+                </div>
+
+                <!-- Tenant Info -->
+                <div class="flex-1 min-w-0 w-full">
+                    <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground mb-2">{{ tenant.display_name }}</h1>
+                    <p class="text-sm text-muted-foreground font-mono mb-3">{{ tenant.slug }}</p>
+
+                    <!-- Status & Domain -->
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        {% if tenant.status == 'active' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                Active
+                            </span>
+                        {% elif tenant.status == 'suspended' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning">
+                                <i data-lucide="pause-circle" class="h-3 w-3 mr-1"></i>
+                                Suspended
+                            </span>
+                        {% elif tenant.status == 'archived' %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary text-secondary-foreground">
+                                <i data-lucide="archive" class="h-3 w-3 mr-1"></i>
+                                Archived
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                {{ tenant.status }}
+                            </span>
+                        {% endif %}
+
+                        {% if tenant.domain %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                <i data-lucide="globe" class="h-3 w-3 mr-1"></i>
+                                {{ tenant.domain }}
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Quick Actions -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2">
+                        <a href="/admin/tenants/{{ tenant.slug }}/edit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                            <i data-lucide="edit" class="h-4 w-4 mr-2"></i>
+                            Edit
+                        </a>
+                        {% if tenant.slug != '_platforms' %}
+                            {% if tenant.status == 'active' %}
+                                <form method="POST" action="/admin/tenants/{{ tenant.slug }}/status" class="inline">
+                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                    <input type="hidden" name="status" value="suspended">
+                                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90 w-full">
+                                        <i data-lucide="pause-circle" class="h-4 w-4 mr-2"></i>
+                                        Suspend
+                                    </button>
+                                </form>
+                            {% elif tenant.status == 'suspended' %}
+                                <form method="POST" action="/admin/tenants/{{ tenant.slug }}/status" class="inline">
+                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                    <input type="hidden" name="status" value="active">
+                                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 w-full">
+                                        <i data-lucide="check-circle" class="h-4 w-4 mr-2"></i>
+                                        Activate
+                                    </button>
+                                </form>
+                                <form method="POST" action="/admin/tenants/{{ tenant.slug }}/status" class="inline">
+                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                    <input type="hidden" name="status" value="archived">
+                                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted w-full">
+                                        <i data-lucide="archive" class="h-4 w-4 mr-2"></i>
+                                        Archive
+                                    </button>
+                                </form>
+                            {% elif tenant.status == 'archived' %}
+                                <form method="POST" action="/admin/tenants/{{ tenant.slug }}/status" class="inline">
+                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                    <input type="hidden" name="status" value="active">
+                                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 w-full">
+                                        <i data-lucide="check-circle" class="h-4 w-4 mr-2"></i>
+                                        Activate
+                                    </button>
+                                </form>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Details -->
+    <div class="bg-card border border-border p-4 sm:p-6 lg:p-8 mb-6">
+        <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+            <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+            Tenant Details
+        </h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Slug</label>
+                <p class="text-sm text-foreground font-mono">{{ tenant.slug }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Display Name</label>
+                <p class="text-sm text-foreground">{{ tenant.display_name }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Domain</label>
+                <p class="text-sm text-foreground">{{ tenant.domain or '—' }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
+                <p class="text-sm text-foreground capitalize">{{ tenant.status }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Created</label>
+                <p class="text-sm text-foreground">
+                    {% if tenant.createdAt %}
+                        {{ tenant.createdAt | date('YYYY-MM-DD HH:mm') }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-muted-foreground mb-1">Last Updated</label>
+                <p class="text-sm text-foreground">
+                    {% if tenant.updatedAt %}
+                        {{ tenant.updatedAt | date('YYYY-MM-DD HH:mm') }}
+                    {% else %}
+                        —
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tenant Users -->
+    <div class="bg-card border border-border overflow-hidden">
+        <div class="p-4 sm:p-6 border-b border-border">
+            <h3 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="users" class="h-5 w-5 mr-2 text-primary"></i>
+                Tenant Users
+                <span class="ml-2 text-sm font-normal text-muted-foreground">({{ users.totalResults }})</span>
+            </h3>
+        </div>
+
+        {% if users.results and users.results.length > 0 %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-muted/50">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider hidden sm:table-cell">Email</th>
+                        <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-border">
+                    {% for user in users.results %}
+                    <tr class="hover:bg-muted/50 transition-colors">
+                        <td class="px-4 py-3 text-sm text-foreground">
+                            {{ user.given_name }} {{ user.family_name }}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-muted-foreground font-mono hidden sm:table-cell">
+                            {{ user.email or '—' }}
+                        </td>
+                        <td class="px-4 py-3">
+                            {% if user.account_enabled %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">Active</span>
+                            {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-destructive/10 text-destructive">Disabled</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if users.totalPages > 1 %}
+        <div class="px-4 py-3 border-t border-border flex items-center justify-between">
+            <p class="text-sm text-muted-foreground">
+                Page {{ users.page }} of {{ users.totalPages }}
+            </p>
+            <div class="flex gap-2">
+                {% if users.page > 1 %}
+                    <a href="/admin/tenants/{{ tenant.slug }}?page={{ users.page - 1 }}" class="inline-flex items-center px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted">
+                        Previous
+                    </a>
+                {% endif %}
+                {% if users.page < users.totalPages %}
+                    <a href="/admin/tenants/{{ tenant.slug }}?page={{ users.page + 1 }}" class="inline-flex items-center px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted">
+                        Next
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="p-8 text-center">
+            <div class="w-12 h-12 bg-muted mx-auto flex items-center justify-center mb-3">
+                <i data-lucide="users" class="h-6 w-6 text-muted-foreground"></i>
+            </div>
+            <p class="text-sm text-muted-foreground">No users found for this tenant</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

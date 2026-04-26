@@ -1,0 +1,104 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <div class="mb-6 flex justify-center">
+                    <h1 class="auth-heading text-center font-bold text-primary text-lg sm:text-xl md:text-2xl lg:text-3xl leading-tight break-words">
+                        <span class="block max-w-full" style="display: block; width: 100%;">
+                            <span class="block w-full" style="display: block; width: 100%; font-size: clamp(1rem, 2.5vw, 2rem);">
+                                Recovery - Backup Codes
+                            </span>
+                        </span>
+                    </h1>
+                </div>
+
+                <p class="text-center text-sm text-gray-600 dark:text-muted-foreground mb-2">
+                    Enter one of your backup codes to recover access to your account
+                </p>
+
+                <!-- Error Messages -->
+                {% if error %}
+                <div class="bg-red-50 dark:bg-red-900 border-2 border-red-200 dark:border-red-700 p-4 mb-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-800 dark:text-red-200">{{ error }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Backup Code Form -->
+                <form action="{{ routes.authFull.process_recovery_backup_codes }}" method="POST" class="space-y-4">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+
+                    <!-- Backup Code Input -->
+                    <div class="space-y-2">
+                        <label for="code" class="block text-sm font-semibold text-gray-900 dark:text-foreground">Backup Code</label>
+                        <div class="flex gap-1.5 sm:gap-2" id="backup-code-container">
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                            <input type="text" class="backup-input flex-1 min-w-0 h-11 sm:h-12 text-center text-lg sm:text-xl font-mono bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-900 dark:text-foreground focus:outline-none focus:border-primary" maxlength="1" pattern="[A-F0-9]" autocomplete="off" required />
+                        </div>
+                        <!-- Hidden input to store the complete code -->
+                        <input type="hidden" id="code" name="code" />
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" class="auth-btn w-full h-10 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white">
+                        Recover Account
+                    </button>
+                </form>
+
+                <!-- Bottom Links -->
+                <div class="mt-3 text-center">
+                    <p class="text-2xs text-gray-600 dark:text-muted-foreground">
+                        <a href="{{ routes.authFull.recovery_method_select }}" class="font-semibold text-primary hover:text-gray-900 dark:hover:text-foreground">{{ t('common.recovery.back_to_methods', 'Back to recovery options') }}</a>
+                    </p>
+                </div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/auth/recovery-backup-codes.js"></script>
+
+<!-- Complete configuration and translations for RecoveryBackupCodesManager -->
+<script id="___RECOVERY_BACKUP_CODES_STATE___" type="application/json">
+{
+  "config": {
+    "codeLength": 8,
+    "codeFormat": "XXXX-XXXX",
+    "autoFocus": true,
+    "enablePaste": true,
+    "enableBackspace": true,
+    "shakeAnimationDuration": 500,
+    "allowUppercase": true,
+    "debug": {{ (app.env === 'development') | tojson }},
+    "errorRecoveryTimeout": 120000,
+    "csrfToken": {{ csrfToken | tojson | safe }}
+  },
+  "translations": {
+    "recoverAccount": {{ t('auth.recoverAccount', 'Recover Account') | tojson | safe }},
+    "recoveringAccount": {{ t('auth.recoveringAccount', 'Recovering...') | tojson | safe }},
+    "codeRequired": {{ t('auth.codeRequired', 'Please enter your backup code') | tojson | safe }},
+    "codeInvalid": {{ t('auth.codeInvalid', 'Please enter a valid 8-character backup code') | tojson | safe }},
+    "errorRecovery": {{ t('auth.errorRecovery', 'Session timed out. Please try again.') | tojson | safe }}
+  }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "layouts/auth-layout.njk" %}
+{% block auth_content %}
+                <div class="flex justify-center mb-3">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                </div>
+
+                <!-- Warning Icon and Message -->
+                <div class="text-center mb-5">
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 mb-4">
+                        <svg class="h-6 w-6 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                    </div>
+                    <h1 class="auth-heading text-xl font-bold text-gray-900 dark:text-foreground">{{ t('auth.mfa_no_fallback.title', 'Cannot Complete Login') }}</h1>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mt-2">
+                        {{ t('auth.mfa_no_fallback.description', 'We cannot verify your identity with your current device.') }}
+                    </p>
+                </div>
+
+                <!-- Explanation -->
+                <div class="bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border p-4 mb-5">
+                    <p class="text-sm text-gray-700 dark:text-muted-foreground">
+                        {{ t('auth.mfa_no_fallback.explanation', 'You have two-factor authentication enabled but no alternative verification method is available on this device. To access your account, you will need to go through the account recovery process.') }}
+                    </p>
+                </div>
+
+                <!-- Actions -->
+                <div class="space-y-3">
+                    <a href="{{ routes.authFull.account_recovery }}" class="auth-btn w-full h-12 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:ring-2 focus:ring-ring flex items-center justify-center">
+                        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"></path>
+                        </svg>
+                        {{ t('auth.mfa_no_fallback.recover_account', 'Recover Account') }}
+                    </a>
+                    <a href="{{ routes.authFull.login }}" class="w-full h-12 border border-gray-300 dark:border-border text-gray-700 dark:text-foreground bg-white dark:bg-card hover:bg-gray-50 dark:hover:bg-muted font-semibold focus:outline-none focus:ring-2 focus:ring-ring flex items-center justify-center">
+                        {{ t('auth.mfa_no_fallback.cancel', 'Cancel and Return to Login') }}
+                    </a>
+                </div>
+{% endblock %}

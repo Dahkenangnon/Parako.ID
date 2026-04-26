@@ -1,0 +1,24 @@
+{
+  "title": "ログインして続行",
+  "choose_method": "続行する方法を選択",
+  "social_divider": "または",
+  "social_divider_dynamic": "または",
+  "tab": {
+    "email": "メール",
+    "phone": "電話"
+  },
+  "link": {
+    "reset_password": "パスワードをリセット",
+    "recover_account": "アカウントを回復",
+    "create_account": "今すぐ作成",
+    "sign_up_prompt": "アカウントをお持ちでないですか？"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "{{provider}} でサインイン",
+    "microsoft": "Microsoft"
+  }
+}

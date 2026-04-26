@@ -1,0 +1,33 @@
+{
+  "title": "アカウントを作成",
+  "social_divider": "または",
+  "social_divider_dynamic": "または",
+  "tab": {
+    "email": "メール",
+    "phone": "電話"
+  },
+  "field": {
+    "full_name": "氏名"
+  },
+  "placeholder": {
+    "email_prefilled": "メールが提供されています - 必要に応じて変更できます"
+  },
+  "password_strength": {
+    "missing_requirements": "不足している要件:"
+  },
+  "terms": {
+    "agreement_prefix": "アカウントを作成することにより、",
+    "and": "と",
+    "company_suffix": "の"
+  },
+  "hint": {
+    "contact_required": "アカウントの回復には、少なくとも1つの連絡方法（メールまたは電話）が必要です。"
+  },
+  "label": {
+    "required": "必須",
+    "optional": "任意"
+  },
+  "social": {
+    "sign_up_with": "{{provider}}で登録"
+  }
+}

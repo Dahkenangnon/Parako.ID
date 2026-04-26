@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 150" fill="none">
+  <!--
+    Parako.ID rect logo — light theme
+    Parako.ID X-cross + shield with checkmark + "Parako.ID" text
+    Color: #2656a8 (Parako.ID brand blue)
+  -->
+
+  <!-- Icon group: X-cross + shield + checkmark -->
+  <g transform="translate(15, 22) scale(0.7)">
+    <!-- X-cross strokes -->
+    <line x1="20" y1="20" x2="130" y2="130" stroke="#2656a8" stroke-width="18" stroke-linecap="round"/>
+    <line x1="130" y1="20" x2="20" y2="130" stroke="#2656a8" stroke-width="18" stroke-linecap="round"/>
+
+    <!-- Shield at center -->
+    <path d="M75 40 L110 55 L110 90 Q110 115 75 130 Q40 115 40 90 L40 55 Z" fill="#2656a8"/>
+    <!-- Shield inner -->
+    <path d="M75 48 L104 61 L104 88 Q104 109 75 122 Q46 109 46 88 L46 61 Z" fill="#fff"/>
+    <!-- Checkmark -->
+    <polyline points="58,82 70,96 92,68" fill="none" stroke="#2656a8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- "Parako.ID" text -->
+  <text x="170" y="85" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="52" fill="#2656a8" font-weight="400" dominant-baseline="central">Parako<tspan font-weight="800">.ID</tspan></text>
+</svg>

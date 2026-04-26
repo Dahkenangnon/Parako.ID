@@ -1,0 +1,44 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+                <div class="flex justify-center mb-2">
+                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-10 w-auto" />
+                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-10 w-auto" />
+                </div>
+
+                <!-- Error Icon -->
+                <div class="flex justify-center mb-3">
+                    <div class="bg-amber-50 dark:bg-amber-900 border-2 border-amber-200 dark:border-amber-700 p-3">
+                        <svg class="h-10 w-10 text-amber-500 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Error Content -->
+                <div class="text-center mb-4">
+                    <h1 class="auth-heading text-4xl font-bold text-gray-900 dark:text-foreground mb-1">403</h1>
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-foreground mb-2">{{ t('common.error_page.403.title') }}</h2>
+                    <p class="text-sm text-gray-600 dark:text-muted-foreground mb-3">{{ t('common.error_page.403.description') }}</p>
+
+                    {% if errorDetails %}
+                    <div class="mt-3 p-3 bg-amber-50 dark:bg-amber-900 border-2 border-amber-200 dark:border-amber-700 text-xs text-left text-gray-600 dark:text-muted-foreground font-mono overflow-x-auto max-h-24">
+                        {{ errorDetails }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="space-y-2">
+                    <a href="javascript:history.back()" class="auth-btn w-full h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white text-sm flex items-center justify-center">
+                        {{ t('common.button.go_back') }}
+                    </a>
+                    <a href="{{ urls.website or '/' }}" class="w-full h-9 bg-gray-100 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-semibold hover:bg-gray-200 dark:hover:bg-accent focus:outline-none text-sm flex items-center justify-center">
+                        {{ t('common.button.go_home') }}
+                    </a>
+                </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() %}
+{% endblock %}

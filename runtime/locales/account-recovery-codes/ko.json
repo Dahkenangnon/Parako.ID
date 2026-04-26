@@ -1,0 +1,28 @@
+{
+  "title": "계정 복구 코드 생성됨",
+  "subtitle": "이 코드를 안전한 장소에 저장하세요. 다른 로그인 방법에 액세스할 수 없는 경우 이 코드를 사용하여 계정에 다시 액세스할 수 있습니다.",
+  "security_notice": {
+    "title": "중요한 보안 알림",
+    "description": "복구 코드를 즉시 다운로드하세요. 각 코드는 한 번만 사용할 수 있으며 이 페이지를 떠난 후에는 다시 볼 수 없습니다."
+  },
+  "download_section": {
+    "title": "복구 코드 다운로드",
+    "description": "아래 버튼을 클릭하여 {{count}}개의 복구 코드가 포함된 텍스트 파일을 다운로드하세요.",
+    "download_button": "텍스트 파일로 다운로드",
+    "copy_button": "클립보드에 복사",
+    "print_button": "코드 인쇄",
+    "downloaded": "다운로드 완료!",
+    "copied": "복사 완료!",
+    "printed": "인쇄 완료!"
+  },
+  "back_to_settings": "설정으로 돌아가기",
+  "file_content": {
+    "title": "계정 복구 코드",
+    "generated": "생성됨",
+    "important": "중요: 이 코드를 안전한 장소에 보관하세요. 각 코드는 한 번만 사용할 수 있습니다.",
+    "total_codes": "총 코드 수"
+  },
+  "error": {
+    "copy_failed": "코드 복사에 실패했습니다. 다시 시도하세요."
+  }
+}

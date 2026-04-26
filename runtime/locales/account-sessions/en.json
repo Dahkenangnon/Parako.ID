@@ -1,0 +1,42 @@
+{
+  "title": "Active Sessions",
+  "description": "These are the devices where you're currently signed in. Check this list regularly and sign out from devices you don't recognize or no longer use.",
+  "sign_out_all": {
+    "button": "Sign Out All Other Devices",
+    "button_short": "Sign Out All Others",
+    "confirm": "Are you sure you want to sign out from all other devices? This will immediately sign you out from all other devices and may disconnect connected apps on those devices."
+  },
+  "table": {
+    "device_location": "Device & Location",
+    "ip_address": "IP Address",
+    "started": "Started",
+    "last_active": "Last Active",
+    "status": "Status",
+    "action": "Action"
+  },
+  "status": {
+    "current": "Current",
+    "active": "Active",
+    "this_device": "This device"
+  },
+  "unknown": {
+    "device": "Unknown Device",
+    "location": "Unknown Location",
+    "general": "Unknown"
+  },
+  "action": {
+    "sign_out": "Sign Out",
+    "confirm_sign_out": "Are you sure you want to sign out from this device? This will immediately sign you out and may disconnect connected apps."
+  },
+  "empty_state": {
+    "title": "No Other Devices",
+    "description": "You're not signed in on any other devices."
+  },
+  "mobile_labels": {
+    "device": "Device",
+    "location": "Location",
+    "ip_address": "IP Address",
+    "started": "Started",
+    "last_active": "Last Active"
+  }
+}

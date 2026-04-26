@@ -1,0 +1,58 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="mb-6">
+        {% include "partials/admin-configuration-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">Configuration</h1>
+            <p class="mt-2 text-sm text-muted-foreground">
+                Customize your organization's settings and branding.
+            </p>
+        </div>
+    </div>
+
+    <!-- Sections Grid -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for section in sections %}
+        <a href="/admin/configuration/{{ section.key }}"
+           class="block bg-card border border-border p-5 hover:border-primary/50 transition-colors">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-medium text-foreground">{{ section.label }}</h3>
+                {% if section.hasOverride %}
+                <span class="inline-flex items-center text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    Customized
+                </span>
+                {% else %}
+                <span class="inline-flex items-center text-xs text-muted-foreground">
+                    Default
+                </span>
+                {% endif %}
+            </div>
+            <p class="text-sm text-muted-foreground">
+                {% if section.key === 'application' %}
+                    Name, description, and language preferences
+                {% elif section.key === 'branding' %}
+                    Company name, logos, theme colors, and typography
+                {% elif section.key === 'security' %}
+                    Authentication policies, registration, and rate limiting
+                {% elif section.key === 'features' %}
+                    Social login providers and behavior settings
+                {% elif section.key === 'oidc' %}
+                    OpenID Connect identity and discovery configuration
+                {% elif section.key === 'integrations' %}
+                    Email delivery, URLs, and external service configuration
+                {% elif section.key === 'notifications' %}
+                    Notification channels, SMS configuration, and user preferences
+                {% endif %}
+            </p>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

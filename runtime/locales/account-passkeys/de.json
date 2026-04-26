@@ -1,0 +1,53 @@
+{
+  "title": "Passkeys",
+  "description": "Verwalten Sie Ihre Passkeys für sichere, passwortlose Authentifizierung. Passkeys nutzen Biometrie wie Touch ID oder Face ID oder Sicherheitsschlüssel wie YubiKey.",
+  "add_button": "Passkey hinzufügen",
+  "loading": "Passkeys werden geladen...",
+  "adding": "Wird hinzugefügt...",
+  "empty": {
+    "title": "Noch keine Passkeys",
+    "description": "Fügen Sie einen Passkey hinzu, um Touch ID, Face ID, Windows Hello oder einen Sicherheitsschlüssel für schnellere, sicherere Anmeldung zu verwenden."
+  },
+  "info": {
+    "title": "Über Passkeys",
+    "point1": "Passkeys sind sicherer als Passwörter und schützen vor Phishing",
+    "point2": "Sie funktionieren auf Geräten, die mit Ihrem iCloud-, Google- oder Microsoft-Konto synchronisiert sind",
+    "point3": "Sie können mehrere Passkeys für verschiedene Geräte haben"
+  },
+  "actions": {
+    "rename": "Umbenennen",
+    "delete": "Löschen"
+  },
+  "rename": {
+    "title": "Passkey umbenennen",
+    "label": "Passkey-Name",
+    "placeholder": "z.B. MacBook Touch ID",
+    "confirm": "Speichern",
+    "cancel": "Abbrechen"
+  },
+  "delete": {
+    "confirmTitle": "Passkey löschen",
+    "confirmMessage": "Möchten Sie diesen Passkey wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "success": {
+    "added": "Passkey erfolgreich hinzugefügt",
+    "renamed": "Passkey erfolgreich umbenannt",
+    "deleted": "Passkey erfolgreich gelöscht"
+  },
+  "error": {
+    "loading": "Passkeys konnten nicht geladen werden",
+    "adding": "Passkey konnte nicht hinzugefügt werden",
+    "renaming": "Passkey konnte nicht umbenannt werden",
+    "deleting": "Passkey konnte nicht gelöscht werden",
+    "notSupported": "Passkeys werden in Ihrem Browser nicht unterstützt"
+  },
+  "lastUsed": "Zuletzt verwendet",
+  "neverUsed": "Nie verwendet",
+  "createdOn": "Erstellt am",
+  "deviceType": {
+    "platform": "Plattform-Authentifikator",
+    "crossPlatform": "Sicherheitsschlüssel",
+    "singleDevice": "Einzelgerät",
+    "multiDevice": "Geräteübergreifend synchronisiert"
+  }
+}

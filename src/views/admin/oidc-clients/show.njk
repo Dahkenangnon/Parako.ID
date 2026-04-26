@@ -1,0 +1,437 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8" data-client-id="{{ client.client_id }}">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex-1 min-w-0">
+                <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground">{{ client.client_name or 'Unnamed Client' }}</h1>
+                <p class="mt-2 text-xs sm:text-sm text-muted-foreground font-mono break-all">{{ client.client_id }}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary-foreground">
+                        {% if client.preset == 'api_management' %}
+                            <i data-lucide="shield" class="h-3 w-3 mr-1"></i> Management API
+                        {% elif client.preset == 'm2m' %}
+                            <i data-lucide="cpu" class="h-3 w-3 mr-1"></i> M2M
+                        {% elif client.preset == 'spa' %}
+                            <i data-lucide="layout" class="h-3 w-3 mr-1"></i> SPA
+                        {% elif client.preset == 'device' %}
+                            <i data-lucide="tv" class="h-3 w-3 mr-1"></i> Device
+                        {% elif client.preset == 'native' %}
+                            <i data-lucide="smartphone" class="h-3 w-3 mr-1"></i> Native
+                        {% elif client.preset == 'web' %}
+                            <i data-lucide="globe" class="h-3 w-3 mr-1"></i> Web
+                        {% elif client.application_type == 'web' %}
+                            <i data-lucide="globe" class="h-3 w-3 mr-1"></i> Web
+                        {% elif client.application_type == 'native' %}
+                            <i data-lucide="smartphone" class="h-3 w-3 mr-1"></i> Native
+                        {% else %}
+                            <i data-lucide="server" class="h-3 w-3 mr-1"></i> {{ client.application_type | title }}
+                        {% endif %}
+                    </span>
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium {{ 'bg-primary/10 text-primary' if client.active else 'bg-destructive/10 text-destructive' }}">
+                        <i data-lucide="{{ 'check-circle' if client.active else 'x-circle' }}" class="h-3 w-3 mr-1"></i>
+                        {{ 'Active' if client.active else 'Inactive' }}
+                    </span>
+                    {% if client.isInternalClient %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary-foreground">
+                        <i data-lucide="shield" class="h-3 w-3 mr-1"></i> Internal
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <a href="/admin/oidc-clients/edit/{{ client.client_id }}" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                    <i data-lucide="edit" class="h-4 w-4 mr-2"></i>
+                    Edit Client
+                </a>
+                <a href="/admin/oidc-clients" class="inline-flex items-center justify-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                    Back to Clients
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 1: Credentials -->
+    <div class="bg-card border border-border mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="key" class="h-5 w-5 mr-2 text-primary"></i>
+                Credentials
+            </h2>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Client ID</label>
+                <div class="flex items-center gap-2 mt-1">
+                    <code class="text-sm text-foreground font-mono break-all flex-1 bg-muted/50 px-3 py-2">{{ client.client_id }}</code>
+                    <button onclick="copyToClipboard('{{ client.client_id }}', this)" class="text-muted-foreground hover:text-foreground shrink-0 p-2" title="Copy Client ID">
+                        <i data-lucide="copy" class="h-4 w-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            {% if hasSecret %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Client Secret</label>
+                <div class="flex items-center gap-2 mt-1">
+                    <div class="flex-1 bg-muted/50 px-3 py-2">
+                        <p id="client-secret" class="text-sm text-foreground font-mono break-all hidden"></p>
+                        <p id="client-secret-hidden" class="text-sm text-foreground font-mono">••••••••••••••••••••••••••••••••</p>
+                    </div>
+                    <button id="toggleSensitiveFields" class="text-muted-foreground hover:text-foreground shrink-0 p-2" title="Reveal secret">
+                        <i data-lucide="eye" class="h-4 w-4"></i>
+                        <span id="toggleText" class="sr-only">Show Sensitive Data</span>
+                    </button>
+                    <button id="copy-secret" class="text-muted-foreground hover:text-foreground shrink-0 p-2 hidden" title="Copy secret">
+                        <i data-lucide="copy" class="h-4 w-4"></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if client.token_endpoint_auth_method %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Authentication Method</label>
+                <p class="text-sm text-foreground mt-1">{{ client.token_endpoint_auth_method }}</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Section 2: OAuth/OIDC Configuration -->
+    <div class="bg-card border border-border mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="settings" class="h-5 w-5 mr-2 text-primary"></i>
+                OAuth / OIDC Configuration
+            </h2>
+        </div>
+        <div class="p-6 space-y-5">
+            {% if client.grant_types and client.grant_types.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Grant Types</label>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    {% for grantType in client.grant_types %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-secondary/10 text-secondary-foreground">
+                        {{ grantType | replace('urn:ietf:params:oauth:grant-type:', '') }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if client.response_types and client.response_types.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Response Types</label>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    {% for responseType in client.response_types %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                        {{ responseType }}
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if client.scope %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Scope</label>
+                <p class="text-sm text-foreground font-mono mt-1">{{ client.scope }}</p>
+            </div>
+            {% endif %}
+
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">PKCE Required</label>
+                <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium mt-1 {{ 'bg-primary/10 text-primary' if client.require_pkce else 'bg-muted text-muted-foreground' }}">
+                    <i data-lucide="{{ 'check' if client.require_pkce else 'x' }}" class="h-3 w-3 mr-1"></i>
+                    {{ 'Yes' if client.require_pkce else 'No' }}
+                </span>
+            </div>
+
+            {% if client.redirect_uris and client.redirect_uris.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Redirect URIs</label>
+                <ul class="space-y-1 mt-1">
+                    {% for uri in client.redirect_uris %}
+                    <li class="flex items-center gap-2">
+                        <code class="text-sm text-foreground font-mono break-all">{{ uri }}</code>
+                        <button onclick="copyToClipboard('{{ uri }}', this)" class="text-muted-foreground hover:text-foreground shrink-0" title="Copy URI">
+                            <i data-lucide="copy" class="h-3 w-3"></i>
+                        </button>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if client.post_logout_redirect_uris and client.post_logout_redirect_uris.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Post Logout Redirect URIs</label>
+                <ul class="space-y-1 mt-1">
+                    {% for uri in client.post_logout_redirect_uris %}
+                    <li class="text-sm text-foreground font-mono break-all">{{ uri }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Section 3: Resource Access (only shown for clients with resource indicators) -->
+    {% set hasResources = (client.allowedResources and client.allowedResources.length > 0) or client.resourcesScopes %}
+    {% if hasResources %}
+    <div class="bg-card border border-border mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                Resource Access
+            </h2>
+        </div>
+        <div class="p-6 space-y-5">
+            {% if client.allowedResources and client.allowedResources.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Allowed Resources</label>
+                <div class="space-y-1 mt-1">
+                    {% for resource in client.allowedResources %}
+                    <div class="flex items-center gap-2">
+                        <code class="text-sm text-foreground font-mono break-all bg-muted/50 px-3 py-1.5">{{ resource }}</code>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if client.resourcesScopes %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Resource Scopes</label>
+                <div class="flex flex-wrap gap-1.5 mt-1">
+                    {% for scopeValue in client.resourcesScopes.split(' ') %}
+                        {% if scopeValue %}
+                        {% set scopeInfo = null %}
+                        {% for def in scopeDefinitions %}
+                            {% if def.value == scopeValue %}
+                                {% set scopeInfo = def %}
+                            {% endif %}
+                        {% endfor %}
+                        <span class="inline-flex items-center px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary" title="{{ scopeInfo.description if scopeInfo else scopeValue }}">
+                            {{ scopeInfo.label if scopeInfo else scopeValue }}
+                        </span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% set hasAdvanced = client.id_token_signed_response_alg or client.subject_type or client.default_max_age or client.client_uri or client.logo_uri or client.policy_uri or client.tos_uri %}
+    {% if hasAdvanced %}
+    <div class="bg-card border border-border mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="sliders-horizontal" class="h-5 w-5 mr-2 text-primary"></i>
+                Advanced Settings
+            </h2>
+        </div>
+        <div class="p-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {% if client.id_token_signed_response_alg %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">ID Token Signing Algorithm</label>
+                    <p class="text-sm text-foreground mt-1">{{ client.id_token_signed_response_alg }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.subject_type %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Subject Type</label>
+                    <p class="text-sm text-foreground mt-1">{{ client.subject_type | title }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.default_max_age %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Default Max Age</label>
+                    <p class="text-sm text-foreground mt-1">{{ client.default_max_age }} seconds</p>
+                </div>
+                {% endif %}
+
+                {% if client.client_uri %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Client URI</label>
+                    <p class="text-sm text-foreground font-mono break-all mt-1">{{ client.client_uri }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.logo_uri %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Logo URI</label>
+                    <p class="text-sm text-foreground font-mono break-all mt-1">{{ client.logo_uri }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.policy_uri %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Policy URI</label>
+                    <p class="text-sm text-foreground font-mono break-all mt-1">{{ client.policy_uri }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.tos_uri %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Terms of Service URI</label>
+                    <p class="text-sm text-foreground font-mono break-all mt-1">{{ client.tos_uri }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Section 4: Metadata -->
+    {% set hasMetadata = client.description or (client.tags and client.tags.length > 0) or (client.contacts and client.contacts.length > 0) or client.created_at or client.updated_at %}
+    {% if hasMetadata %}
+    <div class="bg-card border border-border mb-6">
+        <div class="px-6 py-4 border-b border-border">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="file-text" class="h-5 w-5 mr-2 text-primary"></i>
+                Metadata
+            </h2>
+        </div>
+        <div class="p-6 space-y-4">
+            {% if client.description %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Description</label>
+                <p class="text-sm text-foreground mt-1">{{ client.description }}</p>
+            </div>
+            {% endif %}
+
+            {% if client.tags and client.tags.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Tags</label>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    {% for tag in client.tags %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if client.contacts and client.contacts.length > 0 %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Contacts</label>
+                <ul class="space-y-1 mt-1">
+                    {% for contact in client.contacts %}
+                    <li class="text-sm text-foreground">{{ contact }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% if client.created_at %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Created</label>
+                    <p class="text-sm text-foreground font-mono mt-1">{{ client.created_at | date('MMM DD, YYYY HH:mm', displayTimezone) }}</p>
+                </div>
+                {% endif %}
+
+                {% if client.updated_at %}
+                <div>
+                    <label class="text-sm font-medium text-muted-foreground">Last Updated</label>
+                    <p class="text-sm text-foreground font-mono mt-1">{{ client.updated_at | date('MMM DD, YYYY HH:mm', displayTimezone) }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Section 5: Danger Zone -->
+    <div class="bg-card border border-destructive/30 mb-6">
+        <div class="px-6 py-4 border-b border-destructive/30">
+            <h2 class="text-lg font-semibold text-foreground flex items-center">
+                <i data-lucide="alert-triangle" class="h-5 w-5 mr-2 text-destructive"></i>
+                Danger Zone
+            </h2>
+        </div>
+        <div class="p-6 space-y-4">
+            <!-- Regenerate Secret -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-border">
+                <div>
+                    <p class="text-sm font-medium text-foreground">Regenerate Client Secret</p>
+                    <p class="text-xs text-muted-foreground">This will invalidate the current secret. All applications using it must be updated.</p>
+                </div>
+                <form method="POST" action="/admin/oidc-clients/regenerate-secret/{{ client.client_id }}" class="inline" onsubmit="return confirmRegenerateSecret(event)">
+                    <input type="hidden" name="_method" value="POST">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90 focus:outline-none focus:ring-2 focus:ring-warning focus:ring-offset-2 whitespace-nowrap">
+                        <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
+                        Regenerate Secret
+                    </button>
+                </form>
+            </div>
+
+            <!-- Activate / Deactivate -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-border">
+                <div>
+                    {% if client.active %}
+                    <p class="text-sm font-medium text-foreground">Deactivate Client</p>
+                    <p class="text-xs text-muted-foreground">The client will no longer be able to authenticate until reactivated.</p>
+                    {% else %}
+                    <p class="text-sm font-medium text-foreground">Activate Client</p>
+                    <p class="text-xs text-muted-foreground">Re-enable this client for authentication.</p>
+                    {% endif %}
+                </div>
+                {% if client.active %}
+                <form method="POST" action="/admin/oidc-clients/deactivate/{{ client.client_id }}" class="inline" onsubmit="return confirmDeactivateClient(event)">
+                    <input type="hidden" name="_method" value="POST">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90 focus:outline-none focus:ring-2 focus:ring-warning focus:ring-offset-2 whitespace-nowrap">
+                        <i data-lucide="pause" class="h-4 w-4 mr-2"></i>
+                        Deactivate
+                    </button>
+                </form>
+                {% else %}
+                <form method="POST" action="/admin/oidc-clients/activate/{{ client.client_id }}" class="inline">
+                    <input type="hidden" name="_method" value="POST">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 whitespace-nowrap">
+                        <i data-lucide="play" class="h-4 w-4 mr-2"></i>
+                        Activate
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+
+            <!-- Delete -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <p class="text-sm font-medium text-foreground">Delete Client</p>
+                    <p class="text-xs text-muted-foreground">Permanently remove this client. This action cannot be undone.</p>
+                </div>
+                <form method="POST" action="/admin/oidc-clients/delete/{{ client.client_id }}" class="inline" onsubmit="return confirmDeleteClient(event)">
+                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                    <button type="submit" class="inline-flex items-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2 whitespace-nowrap">
+                        <i data-lucide="trash-2" class="h-4 w-4 mr-2"></i>
+                        Delete Client
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script id="___ADMIN_OIDC_CLIENTS_FORM_STATE___" type="application/json">
+{{ { "csrfToken": csrfToken } | dump | safe }}
+</script>
+<script src="/js/admin/oidc-clients.js"></script>
+<script src="/js/admin/oidc-clients/form.js"></script>
+{% endblock %}

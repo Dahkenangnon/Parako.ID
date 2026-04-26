@@ -1,0 +1,25 @@
+{
+  "title": "Zwei-Faktor-Authentifizierung aktiviert!",
+  "subtitle": "Lassen Sie uns nun Wiederherstellungsoptionen einrichten, damit Sie immer wieder auf Ihr Konto zugreifen können, auch wenn Sie den Zugriff auf Ihre {{method}} verlieren.",
+  "method_email": "E-Mail",
+  "method_app": "Authenticator-App",
+  "setup_recovery": {
+    "title": "Kontowiederherstellung einrichten",
+    "description": "Wir erstellen Backup-Codes für Ihr Konto und richten optional eine Backup-E-Mail-Adresse ein."
+  },
+  "backup_codes": {
+    "title": "Backup-Codes (Erforderlich)",
+    "description": "Wir erstellen Backup-Codes, mit denen Sie wieder auf Ihr Konto zugreifen können, wenn Sie den Zugriff auf Ihr {{method}} verlieren. Jeder Code kann nur einmal verwendet werden.",
+    "method_email_account": "E-Mail-Konto"
+  },
+  "backup_email": {
+    "label": "Backup-E-Mail (Optional)",
+    "placeholder": "Backup-E-Mail-Adresse eingeben (optional)",
+    "help_text": "Wenn angegeben, erhalten Sie eine Bestätigungs-E-Mail, um diese Backup-E-Mail-Adresse zu bestätigen."
+  },
+  "button": {
+    "submit": "Backup-Optionen einrichten",
+    "skip": "Vorerst überspringen",
+    "continue": "Weiter zu den Einstellungen"
+  }
+}

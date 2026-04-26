@@ -1,0 +1,446 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<!-- Hidden CSRF Token for JavaScript -->
+<input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <nav class="flex mb-4" aria-label="Breadcrumb">
+            <ol class="flex items-center space-x-2 text-sm">
+                <li>
+                    <a href="/admin" class="text-muted-foreground hover:text-foreground">Admin</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li>
+                    <a href="/admin/users" class="text-muted-foreground hover:text-foreground">Users</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li class="text-foreground font-medium">{{ user.given_name  }} {{ user.family_name }}   </li>
+            </ol>
+        </nav>
+
+    </div>
+
+    <!-- Profile Banner -->
+    <div class="bg-card border border-border mb-6">
+        <div class="p-4 sm:p-6 lg:p-8 border-b-2 border-border">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+                <!-- Avatar -->
+                {% if user.picture %}
+                    <img class="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-border flex-shrink-0" src="{{ user.picture }}" alt="{{ user.given_name }} {{ user.family_name }}">
+                {% else %}
+                    <div class="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xl sm:text-2xl font-bold border-4 border-border flex-shrink-0">
+                        {{ (user.given_name and user.given_name[0]) or 'U' }}{{ (user.family_name and user.family_name[0]) or '' }}
+                    </div>
+                {% endif %}
+
+                <!-- User Info -->
+                <div class="flex-1 min-w-0 w-full">
+                    <h1 class="text-xl sm:text-2xl font-normal tracking-tight text-foreground mb-2">{{ user.given_name }} {{ user.family_name }}</h1>
+                    <p class="text-sm text-muted-foreground font-mono mb-3 break-all">{% if user.email %}{{ user.email }}{% elif user.recovery and user.recovery.secondary_email and user.recovery.secondary_email.email %}{{ user.recovery.secondary_email.email }} <span class="text-xs">(recovery)</span>{% elif user.phone_number %}{{ user.phone_number }}{% endif %}</p>
+
+                    <!-- Status & Roles -->
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <!-- Status Badge -->
+                        {% if user.account_is_anonymized %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                <i data-lucide="user-x" class="h-3 w-3 mr-1"></i>
+                                Anonymized
+                            </span>
+                        {% elif user.account_enabled %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                Active
+                            </span>
+                        {% else %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-destructive/10 text-destructive">
+                                <i data-lucide="x-circle" class="h-3 w-3 mr-1"></i>
+                                Disabled
+                            </span>
+                        {% endif %}
+
+                        <!-- Roles -->
+                        {% for role in user.roles %}
+                            <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium
+                                {% if role == 'admin' or role == 'superadmin' %}
+                                    bg-destructive/10 text-destructive
+                                {% elif role == 'user' %}
+                                    bg-secondary/10 text-secondary
+                                {% else %}
+                                    bg-secondary/10 text-secondary
+                                {% endif %}">
+                                {{ role | title }}
+                            </span>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Quick Actions -->
+                    {% if not user.account_is_anonymized %}
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2">
+                        <a href="/admin/users/{{ user._id }}/edit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                            <i data-lucide="edit" class="h-4 w-4 mr-2"></i>
+                            Edit Profile
+                        </a>
+                        <a href="/admin/users/{{ user._id }}/activities" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted">
+                            <i data-lucide="activity" class="h-4 w-4 mr-2"></i>
+                            View Activities
+                        </a>
+                        {% if user.account_enabled %}
+                            <button onclick="toggleUserStatus('{{ user._id }}', 'disable')" class="inline-flex items-center justify-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90">
+                                <i data-lucide="user-minus" class="h-4 w-4 mr-2"></i>
+                                Disable
+                            </button>
+                        {% else %}
+                            <button onclick="toggleUserStatus('{{ user._id }}', 'enable')" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                                <i data-lucide="user-plus" class="h-4 w-4 mr-2"></i>
+                                Enable
+                            </button>
+                        {% endif %}
+                        <button onclick="anonymizeUser('{{ user._id }}', '{{ user.username }}')" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90">
+                            <i data-lucide="user-x" class="h-4 w-4 mr-2"></i>
+                            Anonymize
+                        </button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Profile Content -->
+    <div class="bg-card border border-border p-4 sm:p-6 lg:p-8">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+            <!-- Left Column -->
+            <div class="space-y-6">
+                <!-- Contact Information -->
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="mail" class="h-5 w-5 mr-2 text-primary"></i>
+                        Contact Information
+                    </h3>
+                    <div class="space-y-3">
+                        <!-- Primary Email -->
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Primary Email</label>
+                            <div class="flex items-center space-x-2">
+                                {% if user.email %}
+                                    <p class="text-sm text-foreground font-mono">{{ user.email }}</p>
+                                    {% if user.email_verified %}
+                                        <span class="inline-flex items-center text-xs text-primary">
+                                            <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                            Verified
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex items-center text-xs text-warning">
+                                            <i data-lucide="alert-circle" class="h-3 w-3 mr-1"></i>
+                                            Unverified
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <p class="text-sm text-muted-foreground">Not provided</p>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Recovery Email (if exists) -->
+                        {% if user.recovery and user.recovery.secondary_email and user.recovery.secondary_email.email %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Recovery Email</label>
+                            <div class="flex items-center space-x-2">
+                                <p class="text-sm text-foreground font-mono">{{ user.recovery.secondary_email.email }}</p>
+                                {% if user.recovery.secondary_email.verified %}
+                                    <span class="inline-flex items-center text-xs text-primary">
+                                        <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                        Verified
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center text-xs text-warning">
+                                        <i data-lucide="alert-circle" class="h-3 w-3 mr-1"></i>
+                                        Unverified
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <!-- Phone Number -->
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Phone Number</label>
+                            <div class="flex items-center space-x-2">
+                                {% if user.phone_number %}
+                                    <p class="text-sm text-foreground font-mono">{{ user.phone_number }}</p>
+                                    {% if user.phone_number_verified %}
+                                        <span class="inline-flex items-center text-xs text-primary">
+                                            <i data-lucide="check-circle" class="h-3 w-3 mr-1"></i>
+                                            Verified
+                                        </span>
+                                    {% else %}
+                                        <span class="inline-flex items-center text-xs text-warning">
+                                            <i data-lucide="alert-circle" class="h-3 w-3 mr-1"></i>
+                                            Unverified
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <p class="text-sm text-muted-foreground">Not provided</p>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        {% for ciField in customIdentifierFields %}
+                        {% if user['custom_identifier_' + ciField.slot] %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">{{ ciField.name }}</label>
+                            <p class="text-sm text-foreground">{{ user['custom_identifier_' + ciField.slot] }}</p>
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Personal Details -->
+                {% set hasPersonalInfo = user.middle_name or user.nickname or user.gender or user.birthdate %}
+                {% if hasPersonalInfo %}
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="user" class="h-5 w-5 mr-2 text-primary"></i>
+                        Personal Details
+                    </h3>
+                    <div class="space-y-3">
+                        {% if user.middle_name %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Middle Name</label>
+                            <p class="text-sm text-foreground">{{ user.middle_name }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.nickname %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Nickname</label>
+                            <p class="text-sm text-foreground">{{ user.nickname }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.gender %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Gender</label>
+                            <p class="text-sm text-foreground">
+                                {% if user.gender == 'M' %}
+                                    Male
+                                {% elif user.gender == 'F' %}
+                                    Female
+                                {% else %}
+                                    {{ user.gender }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.birthdate %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Birthdate</label>
+                            <p class="text-sm text-foreground">{{ user.birthdate }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Location Information -->
+                {% set hasLocationInfo = user.country or user.region or user.city or user.postal_code or user.street_address or user.locale or user.zoneinfo %}
+                {% if hasLocationInfo %}
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="map-pin" class="h-5 w-5 mr-2 text-primary"></i>
+                        Location
+                    </h3>
+                    <div class="space-y-3">
+                        {% if user.country %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Country</label>
+                            <p class="text-sm text-foreground">{{ user.country }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.region %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Region/State</label>
+                            <p class="text-sm text-foreground">{{ user.region }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.city %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">City</label>
+                            <p class="text-sm text-foreground">{{ user.city }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.postal_code %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Postal Code</label>
+                            <p class="text-sm text-foreground">{{ user.postal_code }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.street_address %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Street Address</label>
+                            <p class="text-sm text-foreground">{{ user.street_address }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.locale %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Locale</label>
+                            <p class="text-sm text-foreground">{{ user.locale }}</p>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.zoneinfo %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Timezone</label>
+                            <p class="text-sm text-foreground">{{ user.zoneinfo }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Right Column -->
+            <div class="space-y-6">
+                <!-- Security & Authentication -->
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="shield" class="h-5 w-5 mr-2 text-primary"></i>
+                        Security & Authentication
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Authentication Provider</label>
+                            <p class="text-sm text-foreground">{% if user.auth_provider %}{{ user.auth_provider }}{% else %}Local{% endif %}</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Password Last Updated</label>
+                            <p class="text-sm text-foreground">
+                                {% if user.password_updated_at %}
+                                    <time datetime="{{ user.password_updated_at }}">{{ user.password_updated_at | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</time>
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">MFA Status</label>
+                            <div class="flex items-center space-x-2">
+                                {% if user.mfa and user.mfa.enabled %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary">
+                                        <i data-lucide="shield-check" class="h-3 w-3 mr-1"></i>
+                                        Enabled ({{ user.mfa.method }})
+                                    </span>
+                                {% else %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 text-xs font-medium bg-warning/10 text-warning">
+                                        <i data-lucide="shield-off" class="h-3 w-3 mr-1"></i>
+                                        Disabled
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Force Password Reset</label>
+                            <p class="text-sm text-foreground">
+                                {% if user.password_force_reset %}
+                                    <span class="text-warning">Yes</span>
+                                {% else %}
+                                    <span class="text-primary">No</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Information -->
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="info" class="h-5 w-5 mr-2 text-primary"></i>
+                        Account Information
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">User ID / Username</label>
+                            <p class="text-sm text-foreground font-mono">{{ user._id }} / {{ user.username }}</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Created</label>
+                            <p class="text-sm text-foreground font-mono">
+                                <time datetime="{{ user.created_at }}">{{ user.created_at | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</time>
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Last Updated</label>
+                            <p class="text-sm text-foreground font-mono">
+                                <time datetime="{{ user.updated_at }}">{{ user.updated_at | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</time>
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Last Login</label>
+                            <p class="text-sm text-foreground font-mono">
+                                {% if user.last_login %}
+                                    <time datetime="{{ user.last_login }}">{{ user.last_login | date("MMM DD, YYYY HH:mm:ss", displayTimezone) }}</time>
+                                {% else %}
+                                    Never
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- External Links -->
+                {% set hasExternalLinks = user.profile or user.website %}
+                {% if hasExternalLinks %}
+                <div>
+                    <h3 class="text-lg font-semibold text-foreground mb-4 flex items-center">
+                        <i data-lucide="external-link" class="h-5 w-5 mr-2 text-primary"></i>
+                        External Links
+                    </h3>
+                    <div class="space-y-3">
+                        {% if user.profile %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Profile URL</label>
+                            <a href="{{ user.profile }}" target="_blank" class="text-sm text-primary hover:text-primary/80 break-all">
+                                {{ user.profile }}
+                            </a>
+                        </div>
+                        {% endif %}
+                        
+                        {% if user.website %}
+                        <div>
+                            <label class="block text-sm font-medium text-muted-foreground mb-1">Website</label>
+                            <a href="{{ user.website }}" target="_blank" class="text-sm text-primary hover:text-primary/80 break-all">
+                                {{ user.website }}
+                            </a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- Admin Users Management Script -->
+<script src="/js/admin/users.js"></script>
+{% endblock %}

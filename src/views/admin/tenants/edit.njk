@@ -1,0 +1,108 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block admin_content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <nav class="flex mb-4" aria-label="Breadcrumb">
+            <ol class="flex items-center space-x-2 text-sm">
+                <li>
+                    <a href="/admin" class="text-muted-foreground hover:text-foreground">Admin</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li>
+                    <a href="/admin/tenants" class="text-muted-foreground hover:text-foreground">Tenants</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li>
+                    <a href="/admin/tenants/{{ tenant.slug }}" class="text-muted-foreground hover:text-foreground">{{ tenant.display_name }}</a>
+                </li>
+                <li class="text-muted-foreground">/</li>
+                <li class="text-foreground font-medium">Edit</li>
+            </ol>
+        </nav>
+
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex-1">
+                <h1 class="text-xl sm:text-2xl font-bold text-foreground">Edit Tenant</h1>
+                <p class="mt-2 text-sm text-muted-foreground">Update tenant information for <span class="font-mono">{{ tenant.slug }}</span></p>
+            </div>
+            <a href="/admin/tenants/{{ tenant.slug }}" class="inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted w-full sm:w-auto justify-center">
+                <i data-lucide="arrow-left" class="h-4 w-4 mr-2"></i>
+                Back to Tenant
+            </a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="mb-6 bg-destructive/10 border border-destructive/30 p-4">
+        <div class="flex items-center gap-2">
+            <i data-lucide="alert-circle" class="h-5 w-5 text-destructive flex-shrink-0"></i>
+            <p class="text-sm text-destructive">{{ error }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Edit Form -->
+    <form method="POST" action="/admin/tenants/{{ tenant.slug }}/edit" class="space-y-6">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+
+        <div class="bg-card border border-border p-4 sm:p-6 lg:p-8">
+            <h3 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                <i data-lucide="building-2" class="h-5 w-5 mr-2 text-primary"></i>
+                Tenant Information
+            </h3>
+
+            <div class="space-y-6">
+                <!-- Slug (readonly) -->
+                <div>
+                    <label for="slug" class="block text-sm font-medium text-foreground mb-1">
+                        Slug
+                    </label>
+                    <input type="text" id="slug" name="slug"
+                        value="{{ tenant.slug }}"
+                        readonly disabled
+                        class="w-full px-3 py-2 border border-input bg-muted text-muted-foreground text-sm font-mono cursor-not-allowed">
+                    <p class="mt-1 text-xs text-muted-foreground">Slug cannot be changed after creation.</p>
+                </div>
+
+                <!-- Display Name -->
+                <div>
+                    <label for="display_name" class="block text-sm font-medium text-foreground mb-1">
+                        Display Name <span class="text-destructive">*</span>
+                    </label>
+                    <input type="text" id="display_name" name="display_name"
+                        value="{{ tenant.display_name }}"
+                        required
+                        placeholder="My Tenant"
+                        class="w-full px-3 py-2 border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <p class="mt-1 text-xs text-muted-foreground">Human-readable name displayed in the UI.</p>
+                </div>
+
+                <!-- Domain -->
+                <div>
+                    <label for="domain" class="block text-sm font-medium text-foreground mb-1">
+                        Domain
+                    </label>
+                    <input type="text" id="domain" name="domain"
+                        value="{{ tenant.domain or '' }}"
+                        placeholder="tenant.example.com"
+                        class="w-full px-3 py-2 border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                    <p class="mt-1 text-xs text-muted-foreground">Optional custom domain for this tenant.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex flex-col sm:flex-row gap-3 justify-end">
+            <a href="/admin/tenants/{{ tenant.slug }}" class="inline-flex items-center justify-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
+                Cancel
+            </a>
+            <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                Save Changes
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

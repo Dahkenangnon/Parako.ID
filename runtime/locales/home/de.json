@@ -1,0 +1,24 @@
+{
+  "title": "Melden Sie sich an, um fortzufahren",
+  "choose_method": "Wählen Sie eine Methode zum Fortfahren",
+  "social_divider": "oder",
+  "social_divider_dynamic": "oder",
+  "tab": {
+    "email": "E-Mail",
+    "phone": "Telefon"
+  },
+  "link": {
+    "reset_password": "Passwort zurücksetzen",
+    "recover_account": "Konto wiederherstellen",
+    "create_account": "Erstellen Sie jetzt eins",
+    "sign_up_prompt": "Sie haben noch kein Konto?"
+  },
+  "social": {
+    "google": "Google",
+    "github": "GitHub",
+    "facebook": "Facebook",
+    "linkedin": "LinkedIn",
+    "sign_in_with": "Anmelden mit {{provider}}",
+    "microsoft": "Microsoft"
+  }
+}

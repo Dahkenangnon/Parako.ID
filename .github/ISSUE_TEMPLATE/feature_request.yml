@@ -1,0 +1,119 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ['enhancement', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature.
+
+        Please provide enough context so maintainers can evaluate scope, security impact, and implementation feasibility.
+        If this is a security vulnerability, please use the security policy instead of opening a public issue.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this feature solve? Is it related to a frustration?
+      placeholder: I'm always frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-area
+    attributes:
+      label: Feature Area
+      multiple: true
+      options:
+        - OIDC Core
+        - Authentication UX
+        - MFA (TOTP)
+        - Passkeys / WebAuthn
+        - Social Login / Federation
+        - Multi-tenancy
+        - Admin Panel
+        - API / Integrations
+        - CLI / Management Scripts
+        - Observability / Logging
+        - Performance
+        - Security
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: breaking-change
+    attributes:
+      label: Would this be a breaking change?
+      options:
+        - 'No'
+        - 'Yes'
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: security-impact
+    attributes:
+      label: Security Impact
+      description: Does this proposal affect authentication, authorization, sessions, or sensitive data?
+      options:
+        - None
+        - Low
+        - Medium
+        - High
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User Impact
+      description: Who benefits from this feature and how?
+      placeholder: |
+        - Target users:
+        - Current pain:
+        - Expected outcome:
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Define what must be true for this request to be considered complete.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: Implementation Notes (Optional)
+      description: Technical notes, affected modules, or migration concerns.
+      placeholder: |
+        - Related modules/services:
+        - Migration required? (yes/no)
+        - Backward compatibility notes:
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or features you've considered.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, mockups, or references.

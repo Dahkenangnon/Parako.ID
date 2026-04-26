@@ -1,0 +1,6 @@
+{
+  "welcome_back": "おかえりなさい、{{name}}",
+  "welcome_back_default": "おかえりなさい、ユーザー",
+  "subtitle": "アカウントを管理してサービスにアクセス",
+  "services_title": "サービス"
+}

@@ -1,0 +1,53 @@
+{
+  "title": "Passkeys",
+  "description": "Gerencie suas passkeys para autenticação segura sem senha. Passkeys usam biometria como Touch ID ou Face ID, ou chaves de segurança como YubiKey.",
+  "add_button": "Adicionar Passkey",
+  "loading": "Carregando passkeys...",
+  "adding": "Adicionando...",
+  "empty": {
+    "title": "Nenhuma Passkey Ainda",
+    "description": "Adicione uma passkey para usar Touch ID, Face ID, Windows Hello ou uma chave de segurança para login mais rápido e seguro."
+  },
+  "info": {
+    "title": "Sobre Passkeys",
+    "point1": "Passkeys são mais seguras que senhas e protegem contra phishing",
+    "point2": "Funcionam em dispositivos sincronizados com sua conta iCloud, Google ou Microsoft",
+    "point3": "Você pode ter várias passkeys para diferentes dispositivos"
+  },
+  "actions": {
+    "rename": "Renomear",
+    "delete": "Excluir"
+  },
+  "rename": {
+    "title": "Renomear Passkey",
+    "label": "Nome da Passkey",
+    "placeholder": "ex., MacBook Touch ID",
+    "confirm": "Salvar",
+    "cancel": "Cancelar"
+  },
+  "delete": {
+    "confirmTitle": "Excluir Passkey",
+    "confirmMessage": "Tem certeza de que deseja excluir esta passkey? Esta ação não pode ser desfeita."
+  },
+  "success": {
+    "added": "Passkey adicionada com sucesso",
+    "renamed": "Passkey renomeada com sucesso",
+    "deleted": "Passkey excluída com sucesso"
+  },
+  "error": {
+    "loading": "Falha ao carregar passkeys",
+    "adding": "Falha ao adicionar passkey",
+    "renaming": "Falha ao renomear passkey",
+    "deleting": "Falha ao excluir passkey",
+    "notSupported": "Passkeys não são suportadas no seu navegador"
+  },
+  "lastUsed": "Último uso",
+  "neverUsed": "Nunca usada",
+  "createdOn": "Criada em",
+  "deviceType": {
+    "platform": "Autenticador de plataforma",
+    "crossPlatform": "Chave de segurança",
+    "singleDevice": "Dispositivo único",
+    "multiDevice": "Sincronizada entre dispositivos"
+  }
+}

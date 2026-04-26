@@ -1,0 +1,72 @@
+{
+  "subject": {
+    "welcome": "Bem-vindo ao {{appName}}",
+    "email_verification": "Verifique seu endereço de e-mail",
+    "password_reset": "Redefina sua senha",
+    "password_changed": "Sua senha foi alterada",
+    "account_recovery": "Recupere sua conta",
+    "security_alert": "Alerta de segurança para sua conta",
+    "new_session": "Novo login na sua conta {{appName}}",
+    "new_device_otp": "{{appName}} - Verificar novo dispositivo"
+  },
+  "greeting": {
+    "hello": "Olá {{name}}",
+    "hello_user": "Olá"
+  },
+  "verification": {
+    "title": "Verifique seu endereço de e-mail",
+    "body": "Obrigado por se cadastrar! Por favor, verifique seu endereço de e-mail clicando no botão abaixo.",
+    "button": "Verificar e-mail",
+    "expires": "Este link expirará em {{hours}} horas.",
+    "ignore": "Se você não criou uma conta, pode ignorar este e-mail com segurança."
+  },
+  "password_reset": {
+    "title": "Redefina sua senha",
+    "body": "Recebemos uma solicitação para redefinir sua senha. Clique no botão abaixo para criar uma nova senha.",
+    "button": "Redefinir senha",
+    "expires": "Este link expirará em {{hours}} horas.",
+    "ignore": "Se você não solicitou uma redefinição de senha, pode ignorar este e-mail com segurança."
+  },
+  "welcome": {
+    "title": "Bem-vindo ao {{appName}}",
+    "body_intro": "Obrigado por se juntar ao {{appName}}! Estamos animados em tê-lo como parte da nossa comunidade.",
+    "body_description": "{{appDescription}}",
+    "features_intro": "Com {{appName}}, você pode:",
+    "feature_1": "Gerenciar sua identidade digital com segurança",
+    "feature_2": "Controlar o acesso aos seus aplicativos",
+    "feature_3": "Proteger suas contas com autenticação de múltiplos fatores",
+    "get_started": "Comece explorando seu painel de controle.",
+    "button": "Gerenciar sua conta"
+  },
+  "security_alert": {
+    "title": "Alerta de segurança - {{alertType}}",
+    "body": "Detectamos um evento de segurança em sua conta {{appName}}.",
+    "alert_type_label": "Tipo de alerta:",
+    "details_label": "Detalhes:",
+    "not_you": "Se não foi você, proteja sua conta imediatamente.",
+    "button": "Proteger conta"
+  },
+  "new_session": {
+    "title": "Novo login detectado",
+    "body": "Um novo login na sua conta {{appName}} foi detectado.",
+    "time_label": "Horário:",
+    "ip_label": "Endereço IP:",
+    "device_label": "Dispositivo:",
+    "not_you": "Se não foi você, altere sua senha imediatamente e revise a segurança da sua conta.",
+    "button": "Revisar configurações de segurança"
+  },
+  "new_device_otp": {
+    "title": "Verificar novo dispositivo",
+    "body": "Detectamos uma tentativa de login de um novo dispositivo na sua conta {{appName}}. Insira este código para verificar sua identidade:",
+    "device_label": "Dispositivo:",
+    "ip_label": "Endereço IP:",
+    "expires": "Este código expira em 10 minutos.",
+    "not_you": "Se você não tentou fazer login, ignore este e-mail e altere sua senha imediatamente."
+  },
+  "footer": {
+    "copyright": "© {{year}} {{appName}}. Todos os direitos reservados.",
+    "contact": "Se você tiver alguma dúvida, entre em contato conosco em {{email}}",
+    "privacy": "Política de Privacidade",
+    "terms": "Termos de Serviço"
+  }
+}

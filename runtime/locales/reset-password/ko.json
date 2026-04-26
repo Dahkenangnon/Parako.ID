@@ -1,0 +1,14 @@
+{
+  "title": "새 비밀번호 만들기",
+  "placeholder": {
+    "new_password": "새 비밀번호 입력",
+    "confirm_password": "새 비밀번호 확인"
+  },
+  "button": {
+    "reset_password": "비밀번호 재설정",
+    "resetting": "비밀번호 재설정 중..."
+  },
+  "link": {
+    "remember_password": "비밀번호가 기억나시나요?"
+  }
+}

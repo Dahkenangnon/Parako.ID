@@ -1,0 +1,42 @@
+{
+  "title": "Sicherheitsfragen",
+  "description": "Richten Sie Sicherheitsfragen ein, um Ihr Konto wiederherzustellen",
+  "setup": {
+    "title": "Sicherheitsfragen einrichten",
+    "select_question": "Frage auswählen...",
+    "select_questions": "Wählen Sie {{count}} Fragen aus und geben Sie Ihre Antworten ein",
+    "answer_placeholder": "Ihre Antwort",
+    "save": "Sicherheitsfragen speichern",
+    "instruction": "Wählen Sie Fragen mit Antworten, die nur Sie kennen. Antworten sind nicht case-sensitiv."
+  },
+  "recovery": {
+    "title": "Sicherheitsfragen beantworten",
+    "description": "Beantworten Sie Ihre Sicherheitsfragen, um Ihr Konto wiederherzustellen",
+    "submit": "Antworten überprüfen",
+    "attempts_remaining": "{{count}} Versuche verbleibend"
+  },
+  "questions": {
+    "q1": "Wie hieß Ihr erstes Haustier?",
+    "q2": "In welcher Stadt wurden Sie geboren?",
+    "q3": "Was war Ihr Spitzname als Kind?",
+    "q4": "Wie heißt Ihr bester Kindheitsfreund?",
+    "q5": "Welche Marke war Ihr erstes Auto?",
+    "q6": "Wie hieß Ihre Grundschule?",
+    "q7": "Wie lautet der Mädchenname Ihrer Mutter?",
+    "q8": "In welcher Straße sind Sie aufgewachsen?",
+    "q9": "Was war Ihr Lieblingsessen als Kind?",
+    "q10": "Welches war das erste Konzert, das Sie besucht haben?"
+  },
+  "validation": {
+    "answer_too_short": "Die Antwort muss mindestens 3 Zeichen lang sein",
+    "answer_too_generic": "Bitte geben Sie eine spezifischere Antwort",
+    "all_answers_required": "Bitte beantworten Sie alle Fragen",
+    "incorrect_answers": "Eine oder mehrere Antworten sind falsch",
+    "select_different_questions": "Bitte wählen Sie verschiedene Fragen"
+  },
+  "status": {
+    "configured": "Sicherheitsfragen konfiguriert",
+    "not_configured": "Sicherheitsfragen nicht eingerichtet",
+    "update": "Sicherheitsfragen aktualisieren"
+  }
+}

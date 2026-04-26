@@ -1,0 +1,39 @@
+{
+  "sidebar": {
+    "toggle": "Basculer la barre latérale",
+    "navigation": {
+      "home": "Accueil",
+      "my_profile": "Mon profil",
+      "apps": "Applications",
+      "sessions": "Sessions",
+      "settings": "Paramètres"
+    },
+    "admin_section": {
+      "title": "Admin",
+      "admin_panel": "Panneau d'administration"
+    },
+    "footer": {
+      "logout": "Déconnexion",
+      "switch_account": "Changer de compte",
+      "my_account": "Mon compte"
+    },
+    "account_switcher": {
+      "add_account": "Ajouter un compte",
+      "loading": "Chargement...",
+      "failed_to_load": "Échec du chargement",
+      "retry": "Réessayer",
+      "no_other_accounts": "Aucun autre compte"
+    }
+  },
+  "mobile": {
+    "close": "Fermer",
+    "menu": "Menu"
+  },
+  "theme_language": {
+    "theme": "Thème",
+    "light": "Clair",
+    "dark": "Sombre",
+    "language": "Langue",
+    "settings": "Paramètres de thème et de langue"
+  }
+}

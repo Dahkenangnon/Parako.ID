@@ -1,0 +1,111 @@
+{% if flash %}
+{# Toast Container - Top Right Stack for success/info/warning #}
+{% if flash.success.length or flash.info.length or flash.warning.length %}
+<div class="toast-container fixed top-4 right-4 z-50 flex flex-col gap-3 max-w-sm w-full pointer-events-none"
+     aria-live="polite"
+     aria-atomic="true"
+     role="status">
+
+  {# Success Toasts #}
+  {% for message in flash.success %}
+  <div class="toast pointer-events-auto bg-white/95 dark:bg-gray-900/95 border border-primary/20 dark:border-primary/30 border-l-4 border-l-primary text-sm rounded-lg shadow-xl backdrop-blur-sm"
+       data-toast-type="success"
+       data-dismissible="{{ message.dismissible !== false }}"
+       data-timeout="{{ message.timeout | default(5000) }}"
+       role="alert">
+    <div class="flex items-center gap-3 p-4">
+      <svg class="w-5 h-5 text-primary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+      </svg>
+      <div class="flex-1 text-foreground">
+        {% if message.title %}<span class="font-semibold">{{ message.title }}:</span> {% endif %}
+        <span>{{ message.message }}</span>
+      </div>
+      {% if message.dismissible !== false %}
+      <button type="button" class="toast-dismiss text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 p-1.5 rounded-full transition-colors duration-200" aria-label="Dismiss notification">
+        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      {% endif %}
+    </div>
+    {% if message.dismissible !== false %}
+    <div class="toast-progress h-0.5 bg-primary/20 rounded-b-lg overflow-hidden">
+      <div class="toast-progress-bar h-full bg-primary" style="animation-duration: {{ message.timeout | default(5000) }}ms"></div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {# Info Toasts #}
+  {% for message in flash.info %}
+  <div class="toast pointer-events-auto bg-white/95 dark:bg-gray-900/95 border border-secondary/20 dark:border-secondary/30 border-l-4 border-l-secondary text-sm rounded-lg shadow-xl backdrop-blur-sm"
+       data-toast-type="info"
+       data-dismissible="{{ message.dismissible !== false }}"
+       data-timeout="{{ message.timeout | default(6000) }}"
+       role="alert">
+    <div class="flex items-center gap-3 p-4">
+      <svg class="w-5 h-5 text-secondary flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9a1 1 0 00-1-1z" clip-rule="evenodd" />
+      </svg>
+      <div class="flex-1 text-foreground">
+        {% if message.title %}<span class="font-semibold">{{ message.title }}:</span> {% endif %}
+        <span>{{ message.message }}</span>
+      </div>
+      {% if message.dismissible !== false %}
+      <button type="button" class="toast-dismiss text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-opacity-50 p-1.5 rounded-full transition-colors duration-200" aria-label="Dismiss notification">
+        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      {% endif %}
+    </div>
+    {% if message.dismissible !== false %}
+    <div class="toast-progress h-0.5 bg-secondary/20 rounded-b-lg overflow-hidden">
+      <div class="toast-progress-bar h-full bg-secondary" style="animation-duration: {{ message.timeout | default(6000) }}ms"></div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {# Warning Toasts #}
+  {% for message in flash.warning %}
+  <div class="toast pointer-events-auto bg-white/95 dark:bg-gray-900/95 border border-warning/20 dark:border-warning/30 border-l-4 border-l-warning text-sm rounded-lg shadow-xl backdrop-blur-sm"
+       data-toast-type="warning"
+       data-dismissible="{{ message.dismissible !== false }}"
+       data-timeout="{{ message.timeout | default(7000) }}"
+       role="alert">
+    <div class="flex items-center gap-3 p-4">
+      <svg class="w-5 h-5 text-warning flex-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+      </svg>
+      <div class="flex-1 text-foreground">
+        {% if message.title %}<span class="font-semibold">{{ message.title }}:</span> {% endif %}
+        <span>{{ message.message }}</span>
+      </div>
+      {% if message.dismissible !== false %}
+      <button type="button" class="toast-dismiss text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-warning focus:ring-opacity-50 p-1.5 rounded-full transition-colors duration-200" aria-label="Dismiss notification">
+        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+      {% endif %}
+    </div>
+    {% if message.dismissible !== false %}
+    <div class="toast-progress h-0.5 bg-warning/20 rounded-b-lg overflow-hidden">
+      <div class="toast-progress-bar h-full bg-warning" style="animation-duration: {{ message.timeout | default(7000) }}ms"></div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+</div>
+{% endif %}
+
+{# Error Messages - Passed to JS for modal display #}
+{% if flash.error.length %}
+<script id="__FLASH_ERRORS__" type="application/json">
+{{ flash.error | dump | safe }}
+</script>
+{% endif %}
+{% endif %}

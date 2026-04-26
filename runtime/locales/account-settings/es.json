@@ -1,0 +1,206 @@
+{
+  "tabs": {
+    "aria_label": "Navegación de configuración",
+    "profile": "Perfil",
+    "preferences": "Preferencias",
+    "notifications": "Notificaciones",
+    "security": "Seguridad",
+    "recovery": "Recuperación",
+    "social": "Cuentas sociales"
+  },
+  "upload_widget": {
+    "title": "Subiendo foto de perfil...",
+    "description": "Por favor espera mientras procesamos tu imagen"
+  },
+  "profile": {
+    "title": "Información del perfil",
+    "picture_label": "Foto de perfil",
+    "upload_description": "Sube una nueva foto de perfil. Haz clic en tu foto o en el botón de subir para elegir una imagen.",
+    "upload_button": "Subir imagen",
+    "remove_button": "Eliminar",
+    "first_name": "Nombre",
+    "last_name": "Apellido",
+    "save_button": "Guardar cambios",
+    "remove_confirm": "¿Estás seguro de que quieres eliminar tu foto de perfil?",
+    "remove_error": "Error al eliminar el avatar. Por favor, inténtalo de nuevo.",
+    "file_read_error": "Error al leer el archivo seleccionado. Por favor, inténtalo de nuevo."
+  },
+  "preferences": {
+    "title": "Preferencias",
+    "language": {
+      "title": "Preferencia de idioma",
+      "current": "Actualmente configurado en:",
+      "none": "No se ha establecido preferencia de idioma. Por defecto es inglés.",
+      "update_error": "Error al actualizar la preferencia de idioma. Por favor, inténtalo de nuevo."
+    },
+    "timezone": {
+      "title": "Zona horaria",
+      "current": "Actualmente configurado en:",
+      "update_error": "Error al actualizar la zona horaria. Por favor, inténtalo de nuevo."
+    }
+  },
+  "email_verification": {
+    "title": "Verificación de correo electrónico",
+    "primary_email": "Dirección de correo electrónico principal",
+    "verified": "Verificado",
+    "unverified": "No verificado",
+    "verify_prompt": "Por favor verifica tu dirección de correo electrónico para usar todas las funciones",
+    "resend_button": "Reenviar correo de verificación",
+    "verify_manually": "Verificar manualmente"
+  },
+  "phone_verification": {
+    "title": "Verificación de teléfono",
+    "primary_phone": "Número de teléfono principal",
+    "verified": "Verificado",
+    "unverified": "No verificado"
+  },
+  "add_email": {
+    "title": "Agregar una dirección de correo electrónico",
+    "description": "Agregar una dirección de correo electrónico hace tu cuenta más recuperable. Puedes usarla para restablecer contraseñas y recuperar tu cuenta.",
+    "button": "Agregar correo"
+  },
+  "security": {
+    "title": "Seguridad",
+    "mfa": {
+      "active_title": "La autenticación de dos factores está activa",
+      "active_description": "Tu cuenta está protegida con 2FA",
+      "active_description_multi": "Tienes {{count}} método(s) de verificación habilitado(s).",
+      "totp_title": "Aplicación de autenticación",
+      "email_title": "Verificación por correo",
+      "webauthn_title": "Passkeys",
+      "passkeys_count": "passkey(s) registrado(s)",
+      "manage_passkeys": "Administrar Passkeys",
+      "using": "Usando: {{method}}",
+      "using_email": "Usando: Correo electrónico",
+      "using_app": "Usando: Aplicación de autenticación",
+      "using_method": "Usando: {{method}}",
+      "inactive_title": "La autenticación de dos factores no está habilitada",
+      "inactive_description": "Habilita 2FA para agregar seguridad adicional a tu cuenta",
+      "title": "Autenticación de dos factores",
+      "enabled_status": "Habilitado",
+      "enabled_text": "Tu cuenta está protegida con 2FA",
+      "disabled_status": "No habilitado",
+      "disabled_text": "Agrega seguridad adicional a tu cuenta",
+      "disable_button": "Deshabilitar 2FA",
+      "enable_app_button": "Habilitar vía App",
+      "enable_email_button": "Habilitar vía Email",
+      "already_enabled_message": "La autenticación de dos factores ya está habilitada para tu cuenta.",
+      "method_already_enabled": "Este método MFA ya está habilitado.",
+      "not_enabled_message": "La autenticación de dos factores no está habilitada para tu cuenta.",
+      "disable_confirm": "¿Estás seguro de que quieres deshabilitar la autenticación de dos factores? Esto hará tu cuenta menos segura.",
+      "enable_app_confirm": "¿Activar 2FA por aplicación?",
+      "enable_email_confirm": "¿Activar 2FA por correo electrónico?"
+    },
+    "password": {
+      "set_title": "Establece tu contraseña",
+      "set_description": "Actualmente solo tienes habilitado el inicio de sesión social. Establece una contraseña para asegurarte de que siempre puedas acceder a tu cuenta, incluso si desvinculas tus cuentas sociales.",
+      "current_label": "Contraseña actual",
+      "new_label": "Nueva contraseña",
+      "confirm_label": "Confirmar nueva contraseña",
+      "requirements_title": "Requisitos de la contraseña",
+      "min_length": "Al menos {{count}} caracteres",
+      "uppercase": "Al menos una letra mayúscula",
+      "lowercase": "Al menos una letra minúscula",
+      "number": "Al menos un número",
+      "symbol": "Al menos un carácter especial",
+      "mismatch_error": "Las contraseñas no coinciden",
+      "mismatch": "Las contraseñas no coinciden",
+      "change_success": "Contraseña cambiada con éxito",
+      "change_button": "Cambiar contraseña"
+    }
+  },
+  "recovery": {
+    "title": "Recuperación de cuenta",
+    "active_title": "La recuperación de cuenta está activa",
+    "active_description": "Tienes métodos de respaldo configurados para ayudarte a recuperar el acceso a tu cuenta",
+    "inactive_title": "La recuperación de cuenta no está configurada",
+    "inactive_description": "Configura métodos de respaldo para ayudarte a recuperar el acceso a tu cuenta si pierdes tu contraseña o dispositivo 2FA",
+    "dashboard": {
+      "backup_codes": "Códigos de respaldo",
+      "backup_email": "Correo de respaldo",
+      "security_questions": "Preguntas de seguridad",
+      "codes_available": "códigos disponibles",
+      "not_configured": "No configurado",
+      "configured": "Configurado",
+      "verified": "Verificado",
+      "score_title": "Estado de recuperación",
+      "score_critical": "No hay métodos de recuperación configurados. Configura al menos uno.",
+      "score_warning": "Solo un método de recuperación configurado. Añade más para mayor protección.",
+      "score_low_codes": "Códigos de respaldo casi agotados. Genera nuevos códigos pronto.",
+      "score_good": "Tus opciones de recuperación están bien configuradas.",
+      "methods_active": "métodos activos"
+    },
+    "backup_codes": {
+      "title": "Códigos de respaldo",
+      "setup_status": "Configurado",
+      "low_status": "Quedan pocos",
+      "depleted_status": "Agotados",
+      "depleted_text": "Genera nuevos códigos inmediatamente",
+      "remaining": "{{count}} códigos restantes",
+      "created_at": "Creado: {{date}}",
+      "not_setup_status": "No configurado",
+      "not_setup_text": "Crea códigos de un solo uso para recuperar el acceso a tu cuenta",
+      "codes_created_badge": "Códigos creados",
+      "create_new_button": "Crear nuevos códigos",
+      "remove_button": "Eliminar códigos",
+      "create_button": "Crear códigos",
+      "confirm_new": "¿Estás seguro de que quieres crear nuevos códigos de respaldo? Esto hará que todos los códigos actuales sean inutilizables.",
+      "confirm_remove": "¿Estás seguro de que quieres eliminar los códigos de respaldo?",
+      "view_once_tooltip": "Los códigos de respaldo solo se pueden ver una vez por seguridad"
+    },
+    "backup_email": {
+      "title": "Correo de respaldo",
+      "verified_status": "Verificado",
+      "verified_text": "Se puede usar para recuperar el acceso a tu cuenta",
+      "pending_status": "Verificación pendiente",
+      "pending_text": "Revisa tu correo para el enlace de verificación",
+      "not_setup_status": "No configurado",
+      "not_setup_text": "Agrega un correo de respaldo para recuperar el acceso a tu cuenta",
+      "remove_button": "Eliminar correo",
+      "add_button": "Agregar correo",
+      "placeholder": "Ingresa dirección de correo de respaldo",
+      "confirm_remove": "¿Estás seguro de que quieres eliminar el correo de respaldo?",
+      "cancel_button": "Cancelar verificación",
+      "cancel_confirm": "¿Estás seguro de que quieres cancelar la verificación de correo pendiente?"
+    },
+    "security_questions": {
+      "title": "Preguntas de seguridad",
+      "setup_status": "Configurado",
+      "setup_text": "{{count}} preguntas configuradas",
+      "not_setup_status": "No configurado",
+      "not_setup_text": "Agrega preguntas de seguridad para recuperar tu cuenta",
+      "setup_button": "Configurar preguntas",
+      "update_button": "Actualizar preguntas",
+      "remove_button": "Eliminar preguntas",
+      "confirm_remove": "¿Estás seguro de que quieres eliminar tus preguntas de seguridad?",
+      "last_used": "Último uso: {{date}}"
+    }
+  },
+  "social": {
+    "title": "Cuentas conectadas",
+    "description": "Conecta tus cuentas sociales para un inicio de sesión rápido y seguro. Puedes conectar varias cuentas y administrarlas desde aquí.",
+    "connected": "Conectado",
+    "not_connected": "No conectado",
+    "unlink_button": "Desvincular",
+    "set_password_first": "Establecer contraseña primero",
+    "set_password_first_tooltip": "Debes establecer una contraseña antes de desconectar tu única cuenta social",
+    "connect_button": "Conectar",
+    "no_accounts": "No hay cuentas sociales disponibles",
+    "confirm_unlink": "¿Estás seguro de que quieres desvincular tu cuenta de {{provider}}?"
+  },
+  "notifications": {
+    "title": "Preferencias de notificación",
+    "preferred_channel": "Método de notificación preferido",
+    "preferred_channel_desc": "Elige cómo quieres recibir las notificaciones",
+    "channel_email": "Correo electrónico",
+    "channel_sms": "SMS",
+    "channel_auto": "Automático",
+    "security_alerts": "Alertas de seguridad",
+    "security_alerts_desc": "Recibe notificaciones sobre intentos de inicio de sesión sospechosos y eventos de seguridad",
+    "new_session_alerts": "Alertas de nueva sesión",
+    "new_session_alerts_desc": "Recibe notificaciones cuando un nuevo dispositivo inicia sesión en tu cuenta",
+    "marketing": "Actualizaciones del producto",
+    "marketing_desc": "Recibe actualizaciones sobre nuevas funciones y mejoras",
+    "save_button": "Guardar preferencias"
+  }
+}

@@ -1,0 +1,544 @@
+{% extends "layouts/admin-layout.njk" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block admin_content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-8">
+        {% set activePage = "integrations" %}
+        {% include "partials/admin-settings-tabs.njk" %}
+
+        <div>
+            <h1 class="text-2xl font-bold text-foreground">{{ title }}</h1>
+            <p class="mt-2 text-sm text-muted-foreground">Configure email settings, URLs, and external integrations</p>
+        </div>
+    </div>
+
+    <form method="POST" action="/admin/settings/integrations" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+        <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+        
+        <div class="max-w-6xl mx-auto space-y-6">
+            <!-- Email Configuration -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="mail" class="h-5 w-5 mr-2 text-primary"></i>
+                    Email Configuration
+                </h2>
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-6">
+                    <div class="flex items-start">
+                        <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0"></i>
+                        <div class="text-sm text-blue-800 dark:text-blue-200">
+                            <p class="font-medium mb-1">System Email Settings</p>
+                            <p>Email settings are used for sending notifications, password resets, and other system emails. Test your configuration before saving.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.email.smtp_host" class="block text-sm font-medium text-foreground mb-2">SMTP Host</label>
+                            <input type="text" id="integrations.email.smtp_host" name="integrations[email][smtp_host]" 
+                                   value="{{ config.email and config.email.smtp_host or '' }}" required
+                                   placeholder="smtp.gmail.com"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">SMTP server hostname (e.g., smtp.gmail.com)</p>
+                        </div>
+                        <div>
+                            <label for="integrations.email.smtp_port" class="block text-sm font-medium text-foreground mb-2">SMTP Port</label>
+                            <input type="number" id="integrations.email.smtp_port" name="integrations[email][smtp_port]" 
+                                   value="{{ config.email and config.email.smtp_port or '' }}" required min="1" max="65535"
+                                   placeholder="587"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">SMTP server port (usually 587 for TLS, 465 for SSL)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.email.smtp_username" class="block text-sm font-medium text-foreground mb-2">SMTP Username</label>
+                            <input type="text" id="integrations.email.smtp_username" name="integrations[email][smtp_username]" 
+                                   value="{{ config.email and config.email.smtp_username or '' }}" required
+                                   placeholder="your-email@example.com"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">SMTP authentication username</p>
+                        </div>
+                        <div>
+                            <label for="integrations.email.smtp_password" class="block text-sm font-medium text-foreground mb-2">SMTP Password</label>
+                            <div class="relative">
+                                <input type="text" id="integrations.email.smtp_password"
+                                       name="integrations[email][smtp_password]"
+                                       value="{{ config.email and config.email.smtp_password or '' }}"
+                                       readonly
+                                       data-field-path="integrations.email.smtp_password"
+                                       class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button type="button" onclick="revealSecret('integrations.email.smtp_password', 'integrations.email.smtp_password')"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                    Reveal
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-orange-600 dark:text-orange-400">
+                                <i data-lucide="alert-triangle" class="h-3 w-3 inline mr-1"></i>
+                                Click "Reveal" to view or modify. Action will be audited.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="integrations.email.from" class="block text-sm font-medium text-foreground mb-2">From Email Address</label>
+                        <input type="email" id="integrations.email.from" name="integrations[email][from]" 
+                               value="{{ config.email and config.email.from or '' }}" required
+                               placeholder="noreply@yourdomain.com"
+                               class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                        <p class="mt-1 text-xs text-muted-foreground">Email address that will appear as the sender</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test Email Section -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="send" class="h-5 w-5 mr-2 text-primary"></i>
+                    Test Email Configuration
+                </h2>
+                <div class="space-y-4">
+                    <div class="max-w-md">
+                        <label for="test-email" class="block text-sm font-medium text-foreground mb-2">Test Email Address</label>
+                        <div class="flex space-x-2">
+                            <input type="email" id="test-email" placeholder="test@example.com"
+                                   class="flex-1 px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <button type="button" onclick="testEmail(event)"
+                                    class="inline-flex items-center px-4 py-2 border border-blue-600 text-blue-600 text-sm font-medium hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2">
+                                <i data-lucide="send" class="h-4 w-4 mr-2"></i>
+                                Send Test
+                            </button>
+                        </div>
+                        <p class="mt-1 text-xs text-muted-foreground">Test your email configuration by sending a test email</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- URL Configuration -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="link" class="h-5 w-5 mr-2 text-primary"></i>
+                    URL Configuration
+                </h2>
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.urls.website" class="block text-sm font-medium text-foreground mb-2">Website URL</label>
+                            <input type="url" id="integrations.urls.website" name="integrations[urls][website]" 
+                                   value="{{ config.urls and config.urls.website or '' }}" 
+                                   placeholder="https://yourdomain.com"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Main website URL</p>
+                        </div>
+                        <div>
+                            <label for="integrations.urls.contact" class="block text-sm font-medium text-foreground mb-2">Contact URL</label>
+                            <input type="url" id="integrations.urls.contact" name="integrations[urls][contact]" 
+                                   value="{{ config.urls and config.urls.contact or '' }}" 
+                                   placeholder="https://yourdomain.com/contact"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Contact page URL</p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.urls.privacy_policy" class="block text-sm font-medium text-foreground mb-2">Privacy Policy URL</label>
+                            <input type="url" id="integrations.urls.privacy_policy" name="integrations[urls][privacy_policy]" 
+                                   value="{{ config.urls and config.urls.privacy_policy or '' }}" 
+                                   placeholder="https://yourdomain.com/privacy"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Privacy policy page URL</p>
+                        </div>
+                        <div>
+                            <label for="integrations.urls.terms_of_service" class="block text-sm font-medium text-foreground mb-2">Terms of Service URL</label>
+                            <input type="url" id="integrations.urls.terms_of_service" name="integrations[urls][terms_of_service]" 
+                                   value="{{ config.urls and config.urls.terms_of_service or '' }}" 
+                                   placeholder="https://yourdomain.com/terms"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Terms of service page URL</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IP Geolocation Service (ipinfo.io) -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="globe" class="h-5 w-5 mr-2 text-primary"></i>
+                    IP Geolocation Service
+                </h2>
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-6">
+                    <div class="flex items-start">
+                        <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0"></i>
+                        <div class="text-sm text-blue-800 dark:text-blue-200">
+                            <p class="font-medium mb-1">ipinfo.io Integration</p>
+                            <p>Used for impossible travel detection and geolocation enrichment. Get a free API token at <a href="https://ipinfo.io" target="_blank" class="underline">ipinfo.io</a> (50,000 requests/month free).</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="integrations.ipinfo.enabled"
+                               name="integrations[ipinfo][enabled]"
+                               {% if config.ipinfo and config.ipinfo.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="integrations.ipinfo.enabled" class="text-sm font-medium text-foreground">
+                            Enable IP Geolocation Service
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.ipinfo.api_token" class="block text-sm font-medium text-foreground mb-2">API Token</label>
+                            <div class="relative">
+                                <input type="text" id="integrations.ipinfo.api_token"
+                                       name="integrations[ipinfo][api_token]"
+                                       value="{{ config.ipinfo and config.ipinfo.api_token or '' }}"
+                                       readonly
+                                       data-field-path="integrations.ipinfo.api_token"
+                                       placeholder="Your ipinfo.io API token"
+                                       class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button type="button" onclick="revealSecret('integrations.ipinfo.api_token', 'integrations.ipinfo.api_token')"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                    Reveal
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-muted-foreground">Optional for basic tier (limited requests)</p>
+                        </div>
+                        <div>
+                            <label for="integrations.ipinfo.cache_ttl_hours" class="block text-sm font-medium text-foreground mb-2">Cache TTL (Hours)</label>
+                            <input type="number" id="integrations.ipinfo.cache_ttl_hours"
+                                   name="integrations[ipinfo][cache_ttl_hours]"
+                                   value="{{ config.ipinfo and config.ipinfo.cache_ttl_hours or 24 }}"
+                                   min="1" max="168"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">How long to cache geolocation results (1-168 hours)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IP Reputation Service (IPQualityScore) -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="shield-alert" class="h-5 w-5 mr-2 text-primary"></i>
+                    IP Reputation Service
+                </h2>
+                <div class="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-4 mb-6">
+                    <div class="flex items-start">
+                        <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 mr-2 flex-shrink-0"></i>
+                        <div class="text-sm text-amber-800 dark:text-amber-200">
+                            <p class="font-medium mb-1">IPQualityScore Integration</p>
+                            <p>Used for VPN/proxy/Tor detection and fraud scoring. Get an API key at <a href="https://www.ipqualityscore.com" target="_blank" class="underline">ipqualityscore.com</a>.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="integrations.ipqualityscore.enabled"
+                               name="integrations[ipqualityscore][enabled]"
+                               {% if config.ipqualityscore and config.ipqualityscore.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="integrations.ipqualityscore.enabled" class="text-sm font-medium text-foreground">
+                            Enable IP Reputation Service
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.ipqualityscore.api_key" class="block text-sm font-medium text-foreground mb-2">API Key</label>
+                            <div class="relative">
+                                <input type="text" id="integrations.ipqualityscore.api_key"
+                                       name="integrations[ipqualityscore][api_key]"
+                                       value="{{ config.ipqualityscore and config.ipqualityscore.api_key or '' }}"
+                                       readonly
+                                       data-field-path="integrations.ipqualityscore.api_key"
+                                       placeholder="Your IPQualityScore API key"
+                                       class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button type="button" onclick="revealSecret('integrations.ipqualityscore.api_key', 'integrations.ipqualityscore.api_key')"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                    Reveal
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-muted-foreground">Required for IP reputation checking</p>
+                        </div>
+                        <div>
+                            <label for="integrations.ipqualityscore.fraud_score_threshold" class="block text-sm font-medium text-foreground mb-2">Fraud Score Threshold</label>
+                            <input type="number" id="integrations.ipqualityscore.fraud_score_threshold"
+                                   name="integrations[ipqualityscore][fraud_score_threshold]"
+                                   value="{{ config.ipqualityscore and config.ipqualityscore.fraud_score_threshold or 75 }}"
+                                   min="0" max="100"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Block IPs with fraud score above this (0-100)</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.ipqualityscore.cache_ttl_hours" class="block text-sm font-medium text-foreground mb-2">Cache TTL (Hours)</label>
+                            <input type="number" id="integrations.ipqualityscore.cache_ttl_hours"
+                                   name="integrations[ipqualityscore][cache_ttl_hours]"
+                                   value="{{ config.ipqualityscore and config.ipqualityscore.cache_ttl_hours or 6 }}"
+                                   min="1" max="72"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">How long to cache reputation results (1-72 hours)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notification Channels Configuration -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="bell" class="h-5 w-5 mr-2 text-primary"></i>
+                    Notification Channels
+                </h2>
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-6">
+                    <div class="flex items-start">
+                        <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0"></i>
+                        <div class="text-sm text-blue-800 dark:text-blue-200">
+                            <p class="font-medium mb-1">Notification Settings</p>
+                            <p>Configure how notifications are sent to users. Email is enabled by default. SMS requires additional configuration.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <!-- Email Channel -->
+                    <div class="p-4 border border-border bg-muted/30">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                    <i data-lucide="mail" class="h-5 w-5 text-primary"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-foreground">Email Notifications</p>
+                                    <p class="text-xs text-muted-foreground">Send notifications via email</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" id="notifications.channels.email.enabled"
+                                       name="notifications[channels][email][enabled]"
+                                       {% if not config.notifications or config.notifications.channels.email.enabled %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="notifications.channels.email.enabled" class="text-sm font-medium text-foreground">
+                                    Enabled
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SMS Channel -->
+                    <div class="p-4 border border-border bg-muted/30">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center space-x-3">
+                                <div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                                    <i data-lucide="smartphone" class="h-5 w-5 text-primary"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-foreground">SMS Notifications</p>
+                                    <p class="text-xs text-muted-foreground">Send notifications via SMS (requires provider setup)</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <input type="checkbox" id="notifications.channels.sms.enabled"
+                                       name="notifications[channels][sms][enabled]"
+                                       {% if config.notifications and config.notifications.channels.sms.enabled %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                                <label for="notifications.channels.sms.enabled" class="text-sm font-medium text-foreground">
+                                    Enabled
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="sms-config" class="space-y-4 mt-4 pt-4 border-t border-border">
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <label for="notifications.channels.sms.provider" class="block text-sm font-medium text-foreground mb-2">SMS Provider</label>
+                                    <select id="notifications.channels.sms.provider"
+                                            name="notifications[channels][sms][provider]"
+                                            class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <option value="">Select provider...</option>
+                                        <option value="twilio" {% if config.notifications and config.notifications.channels.sms.provider == 'twilio' %}selected{% endif %}>Twilio</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="notifications.channels.sms.api_key" class="block text-sm font-medium text-foreground mb-2">API Key</label>
+                                    <div class="relative">
+                                        <input type="text" id="notifications.channels.sms.api_key"
+                                               name="notifications[channels][sms][api_key]"
+                                               value="{{ config.notifications and config.notifications.channels.sms.api_key or '' }}"
+                                               readonly
+                                               data-field-path="notifications.channels.sms.api_key"
+                                               placeholder="SMS provider API key"
+                                               class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <button type="button" onclick="revealSecret('notifications.channels.sms.api_key', 'notifications.channels.sms.api_key')"
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                            <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                            Reveal
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="notifications.channels.sms.api_secret" class="block text-sm font-medium text-foreground mb-2">API Secret</label>
+                                    <div class="relative">
+                                        <input type="text" id="notifications.channels.sms.api_secret"
+                                               name="notifications[channels][sms][api_secret]"
+                                               value="{{ config.notifications and config.notifications.channels.sms.api_secret or '' }}"
+                                               readonly
+                                               data-field-path="notifications.channels.sms.api_secret"
+                                               placeholder="SMS provider API secret"
+                                               class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <button type="button" onclick="revealSecret('notifications.channels.sms.api_secret', 'notifications.channels.sms.api_secret')"
+                                                class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                            <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                            Reveal
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="notifications.channels.sms.from_number" class="block text-sm font-medium text-foreground mb-2">From Number / Sender ID</label>
+                                    <input type="text" id="notifications.channels.sms.from_number"
+                                           name="notifications[channels][sms][from_number]"
+                                           value="{{ config.notifications and config.notifications.channels.sms.from_number or '' }}"
+                                           placeholder="+14155552671"
+                                           class="w-full px-3 py-2 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="text-xs text-muted-foreground mt-1">The phone number that SMS messages will be sent from. Use your purchased Twilio phone number.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Default Notification Settings -->
+                    <div class="p-4 border border-border bg-muted/30">
+                        <h3 class="text-sm font-semibold text-foreground mb-4">Default Notification Settings for New Users</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">Security Alerts</p>
+                                    <p class="text-xs text-muted-foreground">Suspicious login attempts, password changes</p>
+                                </div>
+                                <input type="checkbox" id="notifications.defaults.security_alerts"
+                                       name="notifications[defaults][security_alerts]"
+                                       {% if not config.notifications or config.notifications.defaults.security_alerts %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">New Session Alerts</p>
+                                    <p class="text-xs text-muted-foreground">Notify when a new device signs in</p>
+                                </div>
+                                <input type="checkbox" id="notifications.defaults.new_session_alerts"
+                                       name="notifications[defaults][new_session_alerts]"
+                                       {% if not config.notifications or config.notifications.defaults.new_session_alerts %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-foreground">Allow User Preferences</p>
+                                    <p class="text-xs text-muted-foreground">Let users customize their notification settings</p>
+                                </div>
+                                <input type="checkbox" id="notifications.defaults.allow_user_preferences"
+                                       name="notifications[defaults][allow_user_preferences]"
+                                       {% if not config.notifications or config.notifications.defaults.allow_user_preferences %}checked{% endif %}
+                                       class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FingerprintJS Pro Configuration -->
+            <div class="bg-card border border-border p-6">
+                <h2 class="text-lg font-semibold text-foreground mb-6 flex items-center">
+                    <i data-lucide="fingerprint" class="h-5 w-5 mr-2 text-primary"></i>
+                    FingerprintJS Pro (Optional)
+                </h2>
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-4 mb-6">
+                    <div class="flex items-start">
+                        <i data-lucide="info" class="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 mr-2 flex-shrink-0"></i>
+                        <div class="text-sm text-blue-800 dark:text-blue-200">
+                            <p class="font-medium mb-1">Enhanced Device Fingerprinting</p>
+                            <p>FingerprintJS Pro provides enhanced device identification accuracy. The open-source version is used by default. Get a Pro API key at <a href="https://fingerprint.com" target="_blank" class="underline">fingerprint.com</a>.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <div class="flex items-center space-x-2">
+                        <input type="checkbox" id="integrations.fingerprintjs.enabled"
+                               name="integrations[fingerprintjs][enabled]"
+                               {% if config.fingerprintjs and config.fingerprintjs.enabled %}checked{% endif %}
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        <label for="integrations.fingerprintjs.enabled" class="text-sm font-medium text-foreground">
+                            Enable FingerprintJS Pro (requires API key)
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <label for="integrations.fingerprintjs.api_key" class="block text-sm font-medium text-foreground mb-2">API Key</label>
+                            <div class="relative">
+                                <input type="text" id="integrations.fingerprintjs.api_key"
+                                       name="integrations[fingerprintjs][api_key]"
+                                       value="{{ config.fingerprintjs and config.fingerprintjs.api_key or '' }}"
+                                       readonly
+                                       data-field-path="integrations.fingerprintjs.api_key"
+                                       placeholder="Your FingerprintJS Pro API key"
+                                       class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button type="button" onclick="revealSecret('integrations.fingerprintjs.api_key', 'integrations.fingerprintjs.api_key')"
+                                        class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+                                    <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
+                                    Reveal
+                                </button>
+                            </div>
+                            <p class="mt-1 text-xs text-muted-foreground">Required for Pro features (leave empty for open-source version)</p>
+                        </div>
+                        <div>
+                            <label for="integrations.fingerprintjs.endpoint" class="block text-sm font-medium text-foreground mb-2">Custom Endpoint (Optional)</label>
+                            <input type="url" id="integrations.fingerprintjs.endpoint"
+                                   name="integrations[fingerprintjs][endpoint]"
+                                   value="{{ config.fingerprintjs and config.fingerprintjs.endpoint or '' }}"
+                                   placeholder="https://fpjs.io (default)"
+                                   class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <p class="mt-1 text-xs text-muted-foreground">Custom endpoint for enterprise deployments (optional)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="flex flex-col sm:flex-row gap-3 justify-end pt-6 border-t border-border">
+                <a href="/admin/settings" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="x" class="h-4 w-4 mr-2"></i>
+                    Cancel
+                </a>
+                <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
+                    Reset Form
+                </button>
+                <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
+                    <i data-lucide="save" class="h-4 w-4 mr-2"></i>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="/js/admin/settings.js"></script>
+<script src="/js/admin/settings/integrations.js"></script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{
+  "title": "계정 만들기",
+  "social_divider": "또는",
+  "social_divider_dynamic": "또는",
+  "tab": {
+    "email": "이메일",
+    "phone": "전화"
+  },
+  "field": {
+    "full_name": "전체 이름"
+  },
+  "placeholder": {
+    "email_prefilled": "이메일이 제공되었습니다 - 필요시 변경할 수 있습니다"
+  },
+  "password_strength": {
+    "missing_requirements": "누락된 요구사항:"
+  },
+  "terms": {
+    "agreement_prefix": "계정을 만들면",
+    "and": "및",
+    "company_suffix": "의"
+  },
+  "hint": {
+    "contact_required": "계정 복구를 위해 최소 하나의 연락 방법(이메일 또는 전화)이 필요합니다."
+  },
+  "label": {
+    "required": "필수",
+    "optional": "선택"
+  },
+  "social": {
+    "sign_up_with": "{{provider}}로 가입"
+  }
+}
