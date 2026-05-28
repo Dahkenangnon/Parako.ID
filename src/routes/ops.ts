@@ -51,7 +51,7 @@ export function opsRoutes(
           state
         );
 
-        if (result.success) {
+        if (result.success === true) {
           res.redirect(result.redirectUrl);
         } else {
           res.status(400).json({ error: result.error });

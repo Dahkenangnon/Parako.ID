@@ -100,7 +100,7 @@ export class OpsSocialCallbackService {
 
     const stateResult = verifyHmacState(state, hmacSecret);
 
-    if (!stateResult.valid) {
+    if (stateResult.valid === false) {
       this.logger.warn('ops_social_callback_invalid_state', {
         provider,
         error: stateResult.error,

@@ -80,7 +80,7 @@ async function bootstrap(): Promise<void> {
   // BullMQ requires Redis. If Redis is not available, the worker cannot
   // function — exit early with a clear message instead of crashing later.
   const redisCheck = await checkRedisAvailability(bootstrapConfig.redis);
-  if (!redisCheck.available) {
+  if (redisCheck.available === false) {
     logger.error(
       `Worker cannot start: ${redisCheck.reason}. ` +
         'Background jobs require Redis. Set REDIS_HOST in .env or disable the worker process.',

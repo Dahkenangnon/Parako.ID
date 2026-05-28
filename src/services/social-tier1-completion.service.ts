@@ -74,7 +74,7 @@ export class SocialTier1CompletionService implements ISocialTier1CompletionServi
     }
     const refResult = await consumeSocialRef(this.redis, ref);
 
-    if (!refResult.success) {
+    if (refResult.success === false) {
       this.logger.warn('tier1_completion_ref_failed', {
         provider,
         error: refResult.error,
