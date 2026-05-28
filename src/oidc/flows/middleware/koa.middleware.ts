@@ -322,16 +322,17 @@ export class KoaMiddleware implements IKoaMiddleware {
         authentication: {
           loginMethods: {
             email:
-              config.security.authentication.login.login_methods.some(cred =>
-                cred.includes('email')
+              config.security.authentication.login.login_methods.some(
+                (cred: string) => cred.includes('email')
               ) || false,
             phone:
               config.security.authentication.login.login_methods.some(
-                cred => cred.includes('phone') || cred.includes('phone_number')
+                (cred: string) =>
+                  cred.includes('phone') || cred.includes('phone_number')
               ) || false,
             customIdentifier:
-              config.security.authentication.login.login_methods.some(cred =>
-                cred.includes('custom_identifier')
+              config.security.authentication.login.login_methods.some(
+                (cred: string) => cred.includes('custom_identifier')
               ) || false,
             bothEnabled:
               config.security.authentication.login.login_methods.length > 1 ||

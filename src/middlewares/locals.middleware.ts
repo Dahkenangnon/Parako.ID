@@ -107,15 +107,16 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       res.locals.authentication = {
         loginMethods: {
           email:
-            authConfig.login.login_methods.some(cred =>
+            authConfig.login.login_methods.some((cred: string) =>
               cred.includes('email')
             ) || false,
           phone:
             authConfig.login.login_methods.some(
-              cred => cred.includes('phone') || cred.includes('phone_number')
+              (cred: string) =>
+                cred.includes('phone') || cred.includes('phone_number')
             ) || false,
           customIdentifier:
-            authConfig.login.login_methods.some(cred =>
+            authConfig.login.login_methods.some((cred: string) =>
               cred.includes('custom_identifier')
             ) || false,
           bothEnabled: authConfig.login.login_methods.length > 1 || false,

@@ -474,7 +474,7 @@ export class UIMiddleware implements IUIMiddleware {
       ko: { flag: '🇰🇷', label: '한국어' },
     };
 
-    return availableLocales.map(code => ({
+    return availableLocales.map((code: string) => ({
       code,
       ...(localeMap[code] || { flag: '🌐', label: code.toUpperCase() }),
     }));
