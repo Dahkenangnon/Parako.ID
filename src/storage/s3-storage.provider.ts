@@ -32,13 +32,18 @@ export class S3StorageProvider implements IStorageProvider {
     const s3Config = config.integrations.file_storage.s3;
 
     this.bucket = s3Config.bucket;
+    // The @aws-sdk/client-s3 S3ClientConfigType is generated from @smithy/core
+    // with broken type definitions in the installed SDK version (smithy submodules
+    // export members that don't exist). skipLibCheck masks the library errors,
+    // but the constructor signature still surfaces an incompatible shape.
+    // Cast via unknown — the runtime shape is correct.
     this.client = new S3Client({
       region: s3Config.region,
       credentials: {
         accessKeyId: s3Config.access_key_id,
         secretAccessKey: s3Config.secret_access_key,
       },
-    });
+    } as unknown as ConstructorParameters<typeof S3Client>[0]);
   }
 
   async store(buffer: Buffer, key: string, mimeType: string): Promise<string> {

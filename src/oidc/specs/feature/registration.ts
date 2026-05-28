@@ -45,7 +45,7 @@ export default function Registration(configManager: IConfigManager) {
           );
         }
 
-        const iat = ctx.oidc.entities?.InitialAccessToken as
+        const iat = ctx.oidc.entities?.InitialAccessToken as unknown as
           | (Record<string, unknown> & {
               policies_metadata?: {
                 max_usage_count?: number;

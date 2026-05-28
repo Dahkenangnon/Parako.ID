@@ -246,7 +246,7 @@ export abstract class BaseService<
       });
     }
 
-    return serializeDocument(result) as T | null;
+    return serializeDocument(result) as unknown as T | null;
   }
 
   public async deleteMany(

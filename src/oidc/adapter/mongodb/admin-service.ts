@@ -485,7 +485,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async findGrantById(id: string): Promise<OIDCDocument | null> {
     try {
       const result = await this.coll().findOne({ _id: id } as any);
-      return result as OIDCDocument | null;
+      return result as unknown as OIDCDocument | null;
     } catch (error) {
       this.logger.error(error as Error, {
         context: `Error finding grant by ID ${id}`,

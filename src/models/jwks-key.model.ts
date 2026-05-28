@@ -50,6 +50,9 @@ export const createJwksKeyModel = (): JwksKeyModel => {
   // Avoid OverwriteModelError in tests / hot-reload
   return (
     (mongoose.models.JwksKey as JwksKeyModel) ||
-    mongoose.model<IJwksKey>('JwksKey', jwksKeySchema)
+    (mongoose.model<IJwksKey>(
+      'JwksKey',
+      jwksKeySchema
+    ) as unknown as JwksKeyModel)
   );
 };
