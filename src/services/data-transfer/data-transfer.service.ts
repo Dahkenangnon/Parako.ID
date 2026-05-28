@@ -103,7 +103,7 @@ export class DataTransferService implements IDataTransferService {
           const result = col.validator.safeParse(value);
           if (!result.success) {
             fieldErrors[col.field] = result.error.issues
-              .map(issue => issue.message)
+              .map((issue: { message: string }) => issue.message)
               .join(', ');
           }
         }
