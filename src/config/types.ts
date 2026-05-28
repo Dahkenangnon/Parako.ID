@@ -107,7 +107,13 @@ export interface ConfigMetadata {
  * The bootstrap config takes precedence for overlapping fields to ensure
  * that critical infrastructure settings cannot be overridden by database config
  */
-export interface RuntimeConfig extends PersistedConfig {
+// NOTE: Declared as a type intersection rather than `interface ... extends PersistedConfig`
+// because PersistedConfig is a zod-inferred type alias (z.infer<typeof AppConfigSchema>).
+// TypeScript's interface inheritance from a complex type alias with overridden indexed
+// keys (e.g. `deployment: PersistedConfig['deployment'] & { ... }`) silently drops the
+// rest of the parent's keys — `keyof` of the resulting interface only sees the
+// explicitly-listed overrides. Using a type intersection preserves the full key set.
+export type RuntimeConfig = PersistedConfig & {
   /**
    * Deployment configuration with bootstrap fields merged in
    */
@@ -130,7 +136,7 @@ export interface RuntimeConfig extends PersistedConfig {
    * This is not persisted but added when config is loaded into memory
    */
   _metadata: ConfigMetadata;
-}
+};
 
 /**
  * Partial runtime config for updates
