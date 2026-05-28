@@ -1,6 +1,6 @@
 import { type ISettings } from '../../models/settings.model.js';
 import { type IBaseService } from './base-service.interface.js';
-import { type ZodSafeParseResult } from 'zod';
+import { z } from 'zod';
 import type {
   ConfigDiff,
   ConfigImpact,
@@ -85,7 +85,7 @@ export interface ISettingsService extends IBaseService<ISettings> {
    * Validate an arbitrary value against the application configuration schema.
    * Returns a Zod parse result (does not throw on validation failure).
    */
-  validateConfiguration(config: unknown): ZodSafeParseResult<any>;
+  validateConfiguration(config: unknown): z.ZodSafeParseResult<any>;
 
   /**
    * Return a summary of configuration storage statistics.

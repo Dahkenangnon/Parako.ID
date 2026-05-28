@@ -2,7 +2,7 @@ import { injectable, inject } from 'inversify';
 import { type ISettings } from '../models/settings/types.js';
 import { AppConfigSchema } from '../config/schemas/schema.js';
 import { DEFAULT_FULL_CONFIG } from '../config/constants.js';
-import { type ZodSafeParseResult } from 'zod';
+import { z } from 'zod';
 import type { ISettingsService } from '../di/interfaces/settings-service.interface.js';
 import { TYPES } from '../di/types.js';
 import { ensureEncrypted, ensureDecrypted } from '../utils/encryption.js';
@@ -538,7 +538,7 @@ export class SettingsService implements ISettingsService {
     }
   }
 
-  public validateConfiguration(config: unknown): ZodSafeParseResult<any> {
+  public validateConfiguration(config: unknown): z.ZodSafeParseResult<any> {
     return AppConfigSchema.safeParse(config);
   }
 
