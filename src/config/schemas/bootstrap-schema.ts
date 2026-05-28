@@ -79,7 +79,6 @@ export const BootstrapConfigSchema = z
         },
       }),
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   .superRefine((val: any, ctx: z.core.$RefinementCtx) => {
     if (val.storage.adapter === 'mongodb' && !val.storage.mongodb?.uri) {
       ctx.addIssue({

@@ -2074,7 +2074,6 @@ export const AppConfigSchema = z.object({
                   .default('set_once'),
                 usable_for_login: z.boolean().default(true),
               })
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               .transform((field: any) => {
                 // Auto-correct inconsistent field configurations:
                 // If validation_type requires dependencies that are missing,
@@ -2103,10 +2102,8 @@ export const AppConfigSchema = z.object({
           )
           .max(3)
           .superRefine(
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (fields: Array<any>, ctx: z.core.$RefinementCtx) => {
               // Unique slot validation
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const slots = fields.map((f: any) => f.slot);
               if (new Set(slots).size !== slots.length) {
                 ctx.addIssue({
@@ -2115,7 +2112,6 @@ export const AppConfigSchema = z.object({
                 });
               }
               // Unique key validation
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               const keys = fields.map((f: any) => f.key);
               if (new Set(keys).size !== keys.length) {
                 ctx.addIssue({
@@ -2306,7 +2302,6 @@ export const AppConfigSchema = z.object({
             .default(true),
           issue_registration_access_token: z.boolean().default(true),
         })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .transform((val: any) => {
           // When DCR is enabled, force IAT requirement — no open registration
           if (val.enabled && val.require_initial_access_token === false) {
