@@ -190,7 +190,10 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
-          .map(err => `${err.path.join('.')}: ${err.message}`)
+          .map(
+            (err: z.core.$ZodIssue) =>
+              `${err.path.join('.')}: ${err.message}`
+          )
           .join('\n');
         throw new Error(
           `Bootstrap configuration validation failed:\n${errorMessages}`

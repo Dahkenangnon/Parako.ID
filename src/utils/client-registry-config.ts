@@ -258,7 +258,10 @@ export default class ClientRegistryManager implements IClientRegistryManager {
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
-          .map(err => `${err.path.join('.')}: ${err.message}`)
+          .map(
+            (err: z.core.$ZodIssue) =>
+              `${err.path.join('.')}: ${err.message}`
+          )
           .join('\n');
         throw new Error(
           `Client configuration validation failed:\n${errorMessages}`
@@ -315,7 +318,10 @@ export default class ClientRegistryManager implements IClientRegistryManager {
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
-          .map(err => `${err.path.join('.')}: ${err.message}`)
+          .map(
+            (err: z.core.$ZodIssue) =>
+              `${err.path.join('.')}: ${err.message}`
+          )
           .join('\n');
         throw new Error(
           `Client configuration validation failed:\n${errorMessages}`
@@ -359,7 +365,10 @@ ${jsonContent}`;
     } catch (error) {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
-          .map(err => `${err.path.join('.')}: ${err.message}`)
+          .map(
+            (err: z.core.$ZodIssue) =>
+              `${err.path.join('.')}: ${err.message}`
+          )
           .join('\n');
         throw new Error(
           `Client configuration validation failed:\n${errorMessages}`
@@ -387,7 +396,11 @@ ${jsonContent}`;
    */
   findClientById(clientId: string): OidcClient | null {
     const config = this.loadConfig();
-    return config.clients.find(client => client.client_id === clientId) || null;
+    return (
+      config.clients.find(
+        (client: OidcClient) => client.client_id === clientId
+      ) || null
+    );
   }
 
   /**
@@ -398,7 +411,9 @@ ${jsonContent}`;
    */
   findClientsByType(appType: OidcClient['application_type']): OidcClient[] {
     const config = this.loadConfig();
-    return config.clients.filter(client => client.application_type === appType);
+    return config.clients.filter(
+      (client: OidcClient) => client.application_type === appType
+    );
   }
 
   /**
@@ -408,7 +423,7 @@ ${jsonContent}`;
    */
   findActiveClients(): OidcClient[] {
     const config = this.loadConfig();
-    return config.clients.filter(client => client.active);
+    return config.clients.filter((client: OidcClient) => client.active);
   }
 
   /**
@@ -455,7 +470,7 @@ ${jsonContent}`;
     const config = this.loadConfig();
 
     const clientIndex = config.clients.findIndex(
-      client => client.client_id === clientId
+      (client: OidcClient) => client.client_id === clientId
     );
     if (clientIndex === -1) {
       throw new Error(`Client with ID '${clientId}' not found`);
@@ -491,7 +506,7 @@ ${jsonContent}`;
     const config = this.loadConfig();
 
     const clientIndex = config.clients.findIndex(
-      client => client.client_id === clientId
+      (client: OidcClient) => client.client_id === clientId
     );
     if (clientIndex === -1) {
       return false;
