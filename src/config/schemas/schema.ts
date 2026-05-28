@@ -7,7 +7,7 @@ import { isRegexSafe } from '../../utils/custom-identifier-validation.js';
  */
 const coerceBooleanSchema = z
   .union([z.boolean(), z.string(), z.undefined(), z.null()])
-  .transform(val => {
+  .transform((val: boolean | string | null | undefined) => {
     if (typeof val === 'boolean') return val;
     if (val === undefined || val === null) return false;
     const strVal = String(val).toLowerCase();
@@ -100,7 +100,7 @@ export const AppConfigSchema = z.object({
       .string()
       .min(1, 'Logo path cannot be empty')
       .default('/images/logo-light.svg')
-      .refine(val => {
+      .refine((val: string) => {
         if (val.startsWith('/')) {
           return true;
         }
@@ -119,7 +119,7 @@ export const AppConfigSchema = z.object({
     logoDark: z
       .string()
       .min(1, 'Dark logo path cannot be empty')
-      .refine(val => {
+      .refine((val: string) => {
         if (val.startsWith('/')) return true;
         try {
           new URL(val);
@@ -138,7 +138,7 @@ export const AppConfigSchema = z.object({
     logoIcon: z
       .string()
       .min(1, 'Icon logo path cannot be empty')
-      .refine(val => {
+      .refine((val: string) => {
         if (val.startsWith('/')) return true;
         try {
           new URL(val);
@@ -157,7 +157,7 @@ export const AppConfigSchema = z.object({
     logoIconDark: z
       .string()
       .min(1, 'Dark icon logo path cannot be empty')
-      .refine(val => {
+      .refine((val: string) => {
         if (val.startsWith('/')) return true;
         try {
           new URL(val);
@@ -176,7 +176,7 @@ export const AppConfigSchema = z.object({
     favicon: z
       .string()
       .min(1, 'Favicon path cannot be empty')
-      .refine(val => {
+      .refine((val: string) => {
         if (val.startsWith('/')) return true;
         try {
           new URL(val);
@@ -2026,12 +2026,14 @@ export const AppConfigSchema = z.object({
           .array(z.string())
           .min(1, 'At least one role must be available')
           .default(['user', 'admin', 'superadmin'])
-          .transform(arr => arr.map(role => role.trim())),
+          .transform((arr: string[]) =>
+            arr.map((role: string) => role.trim())
+          ),
         default: z
           .string()
           .min(1, 'Default role cannot be empty')
           .default('user')
-          .transform(str => str.trim()),
+          .transform((str: string) => str.trim()),
       }),
 
       /**
@@ -2072,7 +2074,8 @@ export const AppConfigSchema = z.object({
                   .default('set_once'),
                 usable_for_login: z.boolean().default(true),
               })
-              .transform(field => {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .transform((field: any) => {
                 // Auto-correct inconsistent field configurations:
                 // If validation_type requires dependencies that are missing,
                 // fall back to 'none' to prevent runtime validation errors.
@@ -2099,24 +2102,29 @@ export const AppConfigSchema = z.object({
               })
           )
           .max(3)
-          .superRefine((fields, ctx) => {
-            // Unique slot validation
-            const slots = fields.map(f => f.slot);
-            if (new Set(slots).size !== slots.length) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'Each field must use a unique slot number',
-              });
+          .superRefine(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (fields: Array<any>, ctx: z.core.$RefinementCtx) => {
+              // Unique slot validation
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const slots = fields.map((f: any) => f.slot);
+              if (new Set(slots).size !== slots.length) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: 'Each field must use a unique slot number',
+                });
+              }
+              // Unique key validation
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const keys = fields.map((f: any) => f.key);
+              if (new Set(keys).size !== keys.length) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  message: 'Each field must have a unique key',
+                });
+              }
             }
-            // Unique key validation
-            const keys = fields.map(f => f.key);
-            if (new Set(keys).size !== keys.length) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: 'Each field must have a unique key',
-              });
-            }
-          })
+          )
           .default([]),
       }),
 
@@ -2298,7 +2306,8 @@ export const AppConfigSchema = z.object({
             .default(true),
           issue_registration_access_token: z.boolean().default(true),
         })
-        .transform(val => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .transform((val: any) => {
           // When DCR is enabled, force IAT requirement — no open registration
           if (val.enabled && val.require_initial_access_token === false) {
             val.require_initial_access_token = true;
@@ -3202,7 +3211,7 @@ export const AppConfigSchema = z.object({
       from: z
         .string()
         .min(1, 'Email from field cannot be empty')
-        .refine(val => {
+        .refine((val: string) => {
           const simpleEmailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
           const rfc5322Regex = /^.+\s*<[^\s@]+@[^\s@]+\.[^\s@]+>$/;
           return simpleEmailRegex.test(val) || rfc5322Regex.test(val);
