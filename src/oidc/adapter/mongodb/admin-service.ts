@@ -138,10 +138,14 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     skip: number = 0,
     limit: number = 20
   ): Promise<any[]> {
+    const safeSortBy =
+      typeof sortBy === 'string' && /^[A-Za-z_][\w.]*$/.test(sortBy)
+        ? sortBy
+        : 'createdAt';
     try {
       return (await this.coll()
         .find(filters)
-        .sort({ [sortBy]: sortOrder as 1 | -1 })
+        .sort({ [safeSortBy]: sortOrder as 1 | -1 })
         .skip(skip)
         .limit(limit)
         .toArray()) as any[];
@@ -473,10 +477,14 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     skip: number = 0,
     limit: number = 20
   ): Promise<OIDCDocument[]> {
+    const safeSortBy =
+      typeof sortBy === 'string' && /^[A-Za-z_][\w.]*$/.test(sortBy)
+        ? sortBy
+        : 'createdAt';
     try {
       return (await this.coll()
         .find(filters)
-        .sort({ [sortBy]: sortOrder as 1 | -1 })
+        .sort({ [safeSortBy]: sortOrder as 1 | -1 })
         .skip(skip)
         .limit(limit)
         .toArray()) as unknown as OIDCDocument[];
