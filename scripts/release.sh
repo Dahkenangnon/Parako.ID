@@ -152,7 +152,7 @@ validate_environment() {
     log_step "Environment Validation"
     
     # Check required tools
-    local required_tools=("node" "yarn" "tar" "zip")
+    local required_tools=("node" "pnpm" "tar" "zip")
     for tool in "${required_tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             log_error "$tool is required but not installed"
@@ -168,11 +168,11 @@ validate_environment() {
         exit 1
     fi
 
-    # Check Yarn version
-    local yarn_version=$(yarn --version)
-    local yarn_major=$(echo "$yarn_version" | cut -d. -f1)
-    if [[ $yarn_major -lt 1 ]]; then
-        log_error "Yarn version $yarn_version detected. Minimum required version is 1.22.x"
+    # Check pnpm version (project requires pnpm 11+)
+    local pnpm_version=$(pnpm --version)
+    local pnpm_major=$(echo "$pnpm_version" | cut -d. -f1)
+    if [[ $pnpm_major -lt 11 ]]; then
+        log_error "pnpm version $pnpm_version detected. Minimum required version is 11.x"
         exit 1
     fi
 
@@ -195,7 +195,7 @@ validate_environment() {
 
     # Display environment info
     log_info "Node.js version: $(node --version)"
-    log_info "Yarn version: $(yarn --version)"
+    log_info "pnpm version: $(pnpm --version)"
     log_info "OS: $(uname -s)"
     log_info "Architecture: $(uname -m)"
     log_info "Working directory: $(pwd)"
@@ -210,7 +210,7 @@ validate_environment() {
 validate_project_structure() {
     log_step "Project Structure Validation"
     
-    local required_files=("package.json" "yarn.lock" "tsconfig.json" "scripts/build.js")
+    local required_files=("package.json" "pnpm-lock.yaml" "pnpm-workspace.yaml" "tsconfig.json" "scripts/build.js")
     for file in "${required_files[@]}"; do
         if [[ ! -f "$PROJECT_ROOT/$file" ]]; then
             log_error "Required file missing: $file"
@@ -218,13 +218,6 @@ validate_project_structure() {
         fi
         log_success "Found: $file"
     done
-
-    # Verify yarn.lock exists and is valid
-    if [[ ! -f "$PROJECT_ROOT/yarn.lock" ]]; then
-        log_error "yarn.lock file not found"
-        exit 1
-    fi
-    log_success "yarn.lock file verified"
     
     # Note: TypeScript version will be checked after dependencies are installed
 }
@@ -249,14 +242,15 @@ install_dependencies() {
     log_step "Installing Dependencies"
     
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "Would run: yarn install --frozen-lockfile --no-audit --no-fund --network-timeout 300000"
+        log_info "Would run: pnpm install --frozen-lockfile"
         return
     fi
 
     cd "$PROJECT_ROOT"
-    
-    # Install dependencies with error handling
-    yarn install --frozen-lockfile --no-audit --no-fund --network-timeout 300000
+
+    # Install dependencies with error handling. pnpm 11 enables --frozen-lockfile
+    # automatically in CI but the explicit flag documents intent.
+    pnpm install --frozen-lockfile
     
     log_success "Dependencies installed successfully"
 }
@@ -266,32 +260,33 @@ build_project() {
     
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "Would run build commands:"
-        log_info "  - yarn build (includes all build steps from package.json)"
+        log_info "  - pnpm run build (includes all build steps from package.json)"
         return
     fi
 
     cd "$PROJECT_ROOT"
-    
+
     # Set production environment
     export NODE_ENV=production
     export CI=true
-    
-    # Verify required build tools are available by checking versions
-    # This will work with yarn regardless of whether packages are in dependencies or devDependencies
+
+    # Verify required build tools are available by checking versions.
+    # pnpm exec runs the locally-installed binary whether it lives in
+    # dependencies or devDependencies.
     log_info "Verifying build tools..."
-    
+
     # Check TypeScript (in devDependencies)
-    yarn tsc --version || { log_error "TypeScript not found"; exit 1; }
-    log_info "TypeScript version: $(yarn tsc --version)"
+    pnpm exec tsc --version || { log_error "TypeScript not found"; exit 1; }
+    log_info "TypeScript version: $(pnpm exec tsc --version)"
 
     # Check TailwindCSS (in devDependencies)
-    yarn tailwindcss --version || { log_error "TailwindCSS not found"; exit 1; }
-    log_info "TailwindCSS version: $(yarn tailwindcss --version)"
-    
-    # Build with error handling and validation using package.json build script
-    # Note: This includes lint:check and test:run which require dev dependencies
+    pnpm exec tailwindcss --version || { log_error "TailwindCSS not found"; exit 1; }
+    log_info "TailwindCSS version: $(pnpm exec tailwindcss --version)"
+
+    # Build with error handling and validation using package.json build script.
+    # Note: This includes lint:check and test:run which require dev dependencies.
     log_info "Running complete build process..."
-    yarn build || { log_error "Build process failed"; exit 1; }
+    pnpm run build || { log_error "Build process failed"; exit 1; }
     
     log_success "Build completed successfully"
 }
@@ -370,7 +365,8 @@ create_production_package() {
     
     # Copy essential files
     cp package.json "$release_dir/"
-    cp yarn.lock "$release_dir/" || { log_error "Failed to copy yarn.lock"; exit 1; }
+    cp pnpm-lock.yaml "$release_dir/" || { log_error "Failed to copy pnpm-lock.yaml"; exit 1; }
+    cp pnpm-workspace.yaml "$release_dir/" || { log_error "Failed to copy pnpm-workspace.yaml"; exit 1; }
     cp ecosystem.config.cjs "$release_dir/"
     cp README.md "$release_dir/"
     cp THIRD_PARTY_LICENSES.txt "$release_dir/" 2>/dev/null || log_warning "THIRD_PARTY_LICENSES.txt not found"
@@ -451,25 +447,27 @@ install_production_dependencies() {
     cd "$PROJECT_ROOT/parako-id-release"
     
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "Would run: yarn install --production --frozen-lockfile --no-audit --no-fund --silent --network-timeout 300000"
+        log_info "Would run: pnpm install --prod --frozen-lockfile --silent"
         return
     fi
 
-    # Install production dependencies
-    yarn install --production --frozen-lockfile --no-audit --no-fund --silent --network-timeout 300000 || { 
-        log_error "Production dependencies installation failed"; 
-        exit 1; 
+    # Install production dependencies. pnpm uses --prod (not --production)
+    # and prunes devDependencies in the same step.
+    pnpm install --prod --frozen-lockfile --silent || {
+        log_error "Production dependencies installation failed";
+        exit 1;
     }
-    
+
     # Verify production dependencies
-    if [[ ! -d "node_modules" ]] || [[ ! -f "yarn.lock" ]]; then
+    if [[ ! -d "node_modules" ]] || [[ ! -f "pnpm-lock.yaml" ]]; then
         log_error "Production dependencies validation failed"
         exit 1
     fi
     log_success "Production dependencies installed successfully"
-    
-    # Generate third-party licenses
-    yarn disclaimer || log_warning "Could not generate third-party licenses"
+
+    # Generate third-party licenses summary (best-effort; not release-blocking).
+    pnpm licenses list --prod > THIRD_PARTY_LICENSES.txt 2>/dev/null \
+        || log_warning "Could not generate third-party licenses summary"
     
     cd "$PROJECT_ROOT"
 }
@@ -516,14 +514,14 @@ validate_production_package() {
     fi
 
     # Final validation
-    if [[ ! -d "parako-id-release/dist/src" ]] || [[ ! -d "parako-id-release/dist/scripts" ]] || [[ ! -d "parako-id-release/dist/src/views" ]] || [[ ! -d "parako-id-release/node_modules" ]] || [[ ! -f "parako-id-release/yarn.lock" ]] || [[ ! -d "parako-id-release/runtime/locales" ]]; then
+    if [[ ! -d "parako-id-release/dist/src" ]] || [[ ! -d "parako-id-release/dist/scripts" ]] || [[ ! -d "parako-id-release/dist/src/views" ]] || [[ ! -d "parako-id-release/node_modules" ]] || [[ ! -f "parako-id-release/pnpm-lock.yaml" ]] || [[ ! -d "parako-id-release/runtime/locales" ]]; then
         log_error "Production package validation failed"
         log_error "Missing:"
         [[ ! -d "parako-id-release/dist/src" ]] && log_error "  - dist/src directory"
         [[ ! -d "parako-id-release/dist/scripts" ]] && log_error "  - dist/scripts directory"
         [[ ! -d "parako-id-release/dist/src/views" ]] && log_error "  - dist/src/views directory"
         [[ ! -d "parako-id-release/node_modules" ]] && log_error "  - node_modules directory"
-        [[ ! -f "parako-id-release/yarn.lock" ]] && log_error "  - yarn.lock file"
+        [[ ! -f "parako-id-release/pnpm-lock.yaml" ]] && log_error "  - pnpm-lock.yaml file"
         [[ ! -d "parako-id-release/runtime/locales" ]] && log_error "  - runtime/locales directory"
         exit 1
     fi
