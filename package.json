@@ -1,6 +1,6 @@
 {
   "name": "parako.id",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 — zero per-user fees",
   "author": {
     "name": "Justin Dah-kenangnon",
