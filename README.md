@@ -1,59 +1,76 @@
+<!-- omit in toc -->
+
 > [!WARNING]
 > **Early access — actively developed.** APIs and configuration format may change before v1.0.
 
 <div align="center">
 
-<img src="./public/images/logo-light.svg" alt="Parako.ID" width="280" />
+<img src="./public/images/logo-light.svg" alt="Parako.ID" width="240" />
 
 # Parako.ID
 
-**Own your identity layer. No vendor. No per-seat bill. No limits.**
+**Own your auth. Pay nothing per user. Run anywhere.**
 
-A production-grade identity provider you deploy once and forget about — SSO, MFA, passkeys, and OAuth2 out of the box, at any scale.
+A production-grade OIDC/OAuth2 identity provider you deploy on your own infrastructure — SSO, MFA, passkeys, federation, and a clean admin panel — with no per-seat fees, no vendor lock-in, no telemetry.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D24-brightgreen.svg)](https://nodejs.org)
+[![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-orange.svg)](https://pnpm.io)
 [![Releases](https://img.shields.io/github/v/release/Dahkenangnon/Parako.ID?include_prereleases)](https://github.com/Dahkenangnon/Parako.ID/releases)
 
-[Website](https://parako.id) · [Docs](https://docs.parako.id) · [Changelog](https://github.com/Dahkenangnon/Parako.ID/releases)
+[Website](https://parako.id) · [Documentation](https://docs.parako.id) · [Changelog](https://github.com/Dahkenangnon/Parako.ID/releases)
 
 </div>
 
 ---
 
-Most auth services charge per user, own your data, and disappear when funding dries up. Parako.ID flips that: deploy it on your own infrastructure in minutes, keep every byte of your user data, and never pay a per-seat fee. Built on the [OpenID Certified™ node-oidc-provider](https://github.com/panva/node-oidc-provider) library, it speaks the full OAuth2/OIDC spec from day one. Near-term, it will support [OpenID Federation 1.0](https://openid.net/specs/openid-federation-1_0.html) — letting your identity service join a trust chain and participate in federated trust ecosystems for a more robust and verifiable infrastructure.
+## The problem
+
+Managed identity vendors charge per monthly active user. As you grow, your auth bill grows with you — often becoming a top-three cost line. Your users' email addresses, password hashes, and session histories sit on someone else's infrastructure under their privacy policy, not yours. When a vendor raises prices, deprecates an API, or shuts down a region, you migrate on their schedule, not yours.
+
+## The solution
+
+Parako.ID runs on a single VPS — or scales out across many — and gives you the same OIDC/OAuth2 surface area as the managed services, with you holding every byte of user data and every line of configuration. Built on the [OpenID Certified™ `node-oidc-provider`](https://github.com/panva/node-oidc-provider) library, it speaks the full spec from day one and integrates with anything that talks OAuth2.
 
 > Parako.ID uses the certified library but has not itself undergone OpenID Foundation certification.
 
-## Features
+## Why Parako.ID
 
-- **SSO & OAuth2/OIDC** — full spec compliance, dynamic client registration
-- **MFA** — TOTP, email codes, WebAuthn/passkeys
-- **Social login** — GitHub, Google, Facebook, LinkedIn, Microsoft
-- **Multi-tenancy** — tenant isolation with shared or separate databases
-- **Multi-account sessions** — switch between identities seamlessly
-- **Admin panel** — manage users, clients, and settings from the browser
-- **CLI tools** — `pnpm client add`, `pnpm client list`, `pnpm keys generate`
-- **Systemd support** — `pnpm systemd install` as a PM2 alternative
+- **Zero per-user cost.** Flat infrastructure bill; same price for 100 or 100,000 users.
+- **Data sovereignty.** User records live in your database. No third party reads them.
+- **Standards-first.** Full OAuth 2.0, OIDC, RFC 8628 device flow, RFC 9449 DPoP.
+- **Multi-tenancy built in.** Isolate brands, configs, and OIDC instances per tenant.
+- **Africa-friendly footprint.** Runs on 1 GB RAM, SQLite default, low-bandwidth admin UI.
+- **Federation ready.** [OpenID Federation 1.0](https://openid.net/specs/openid-federation-1_0.html) on the roadmap via [oidfed](https://github.com/Dahkenangnon/oidfed).
 
 ## Install
+
+One-liner (recommended):
 
 ```bash
 curl -sSL https://get.parako.id | sh
 ```
 
-Or manually:
+Manual tarball:
 
 ```bash
 wget https://github.com/Dahkenangnon/Parako.ID/releases/latest/download/parako-id-v*.tar.gz
 tar -xzf parako-id-v*.tar.gz && cd parako-id-release
-cp .env.example .env   # edit with your settings
+cp .env.example .env   # edit DB, Redis, and admin credentials
 pnpm start
 ```
 
-**Requirements:** Node.js ≥ 24, pnpm ≥ 11
+**Requirements:** Node.js ≥ 24, pnpm ≥ 11. SQLite is the zero-setup default; MongoDB or PostgreSQL recommended for production along with Redis.
 
-## Development
+## Usage
+
+After install, visit `http://localhost:9007/auth/register` to create the first user, then `/admin` to register OIDC clients and manage settings. Integrate any OAuth2/OIDC client through the discovery endpoint:
+
+```
+http://<your-host>/.well-known/openid-configuration
+```
+
+For local development:
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git && cd Parako.ID
@@ -61,59 +78,29 @@ pnpm install && cp .env.example .env
 pnpm db:push && pnpm keys generate && pnpm dev
 ```
 
-Visit `http://localhost:9007/auth/register` to create your first account.
-
-## Production
-
-SQLite works for small deployments. For production, use MongoDB or PostgreSQL with Redis:
-
-```bash
-# .env
-DATABASE_URI=mongodb://localhost:27017/parako-id
-REDIS_HOST=localhost
-REDIS_PORT=6379
-```
-
-Deploy with systemd (`pnpm systemd install`) or PM2 (`pm2 start ecosystem.config.cjs`).
-
-## Updating
-
-For one-liner installs, upgrade in place — backup, swap, migrate, health-check, and automatic rollback on failure are all handled:
-
-```bash
-curl -sSL https://get.parako.id | bash -s -- --update
-```
-
-Pin a specific version: `--update --version 0.1.1`
-
-For source installs:
-
-```bash
-git pull
-pnpm install
-pnpm db:migrate:deploy   # PostgreSQL only
-pnpm build
-pnpm restart
-```
-
 ## Documentation
 
-Full documentation is at [docs.parako.id](https://docs.parako.id), covering configuration, multi-tenancy, social login, CLI tools, and deployment.
+| Section                                               | What it covers                                        |
+| ----------------------------------------------------- | ----------------------------------------------------- |
+| [Quickstart](https://docs.parako.id/quickstart)       | Install, first-user, first-client in under 10 minutes |
+| [Configuration](https://docs.parako.id/configuration) | Env vars, schema, hierarchy, secret rotation          |
+| [Multi-tenancy](https://docs.parako.id/multi-tenancy) | Per-tenant isolation, branding, OIDC instances        |
+| [Social login](https://docs.parako.id/social-login)   | Google, GitHub, Microsoft, LinkedIn, Facebook         |
+| [Deployment](https://docs.parako.id/deployment)       | systemd, PM2, reverse proxy, TLS, hardening           |
+| [CLI tools](https://docs.parako.id/cli-tools)         | `pnpm client`, `pnpm keys`, `pnpm systemd`            |
+| [Management API](https://docs.parako.id/api/overview) | Programmatic admin via 30 scoped permissions          |
 
----
+## Roadmap
 
-> [!NOTE]
-> **Coming soon — OpenID Federation 1.0 support.**
-> We are actively building [oidfed](https://github.com/Dahkenangnon/oidfed) — the complete OpenID Federation 1.0 implementation for JavaScript, runtime-agnostic, spec-compliant, and built on Web API standards. Federation support is planned for integration into Parako.ID in a future release.
-> Follow the project at [oidfed.com](https://oidfed.com) and star the [repo](https://github.com/Dahkenangnon/oidfed) to stay updated.
+> **OpenID Federation 1.0** support is planned. We are building [oidfed](https://github.com/Dahkenangnon/oidfed) — a runtime-agnostic, spec-compliant implementation for JavaScript — and Parako.ID will integrate it in a future release. Follow at [oidfed.com](https://oidfed.com) and star the [repo](https://github.com/Dahkenangnon/oidfed) to track progress.
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup instructions and contribution guidelines.
+Pull requests welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, commit conventions, and the review process.
 
 ## Security
 
-Report vulnerabilities privately to [dah.kenangnon@gmail.com](mailto:dah.kenangnon@gmail.com). See [SECURITY.md](./SECURITY.md) for our disclosure policy.
+Report vulnerabilities privately to <dah.kenangnon@gmail.com>. Public disclosure policy in [SECURITY.md](./SECURITY.md).
 
 ## License
 
