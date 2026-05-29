@@ -196,6 +196,10 @@ const paginate = (
 
       return result;
     } catch (error) {
+      // console.error here (not the structured logger): mongoose schema
+      // plugins are functions invoked by the ORM, not DI-managed classes,
+      // so there is no injected logger in scope. The error is re-thrown
+      // immediately so the caller surfaces it through its own logger.
       console.error('Pagination error:', error);
       throw error;
     }

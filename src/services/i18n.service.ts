@@ -6,6 +6,7 @@ import { TYPES } from '../di/types.js';
 import type { II18nService } from '../di/interfaces/i18n-service.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
+import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { Request, Response, NextFunction } from 'express';
 
 /**
@@ -20,12 +21,13 @@ export class I18nService implements II18nService {
   constructor(
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager,
     @inject(TYPES.FileSystemUtils)
-    private readonly fileSystemUtils: IFileSystemUtils
+    private readonly fileSystemUtils: IFileSystemUtils,
+    @inject(TYPES.Logger) private readonly logger: ILogger
   ) {
     this.configure();
 
     this.configManager.subscribe('I18nService', updatedConfig => {
-      console.info(
+      this.logger.info(
         '[I18nService] Configuration updated, reconfiguring i18n with new locale settings'
       );
       this.reconfigure(updatedConfig);
@@ -67,12 +69,14 @@ export class I18nService implements II18nService {
         },
       });
 
-      console.info('[I18nService] i18n reconfigured successfully', {
+      this.logger.info('[I18nService] i18n reconfigured successfully', {
         availableLocales: updatedConfig.application.locales.available,
         defaultLocale: updatedConfig.application.locales.default,
       });
     } catch (error) {
-      console.error('[I18nService] Failed to reconfigure i18n:', error);
+      this.logger.error(error as Error, {
+        context: '[I18nService] Failed to reconfigure i18n',
+      });
     }
   }
 
@@ -105,12 +109,16 @@ export class I18nService implements II18nService {
             const translations = JSON.parse(content);
             mergedTranslations[namespace] = translations;
           } catch (error) {
-            console.error(`Error loading locale file ${localeFile}:`, error);
+            this.logger.error(error as Error, {
+              context: `Error loading locale file ${localeFile}`,
+            });
           }
         }
       }
     } catch (error) {
-      console.error(`Error loading namespaced locales for ${locale}:`, error);
+      this.logger.error(error as Error, {
+        context: `Error loading namespaced locales for ${locale}`,
+      });
     }
 
     return mergedTranslations;
@@ -143,7 +151,9 @@ export class I18nService implements II18nService {
         );
       }
     } catch (error) {
-      console.error('Error writing merged locale files:', error);
+      this.logger.error(error as Error, {
+        context: 'Error writing merged locale files',
+      });
     }
 
     return mergedPath;

@@ -308,6 +308,9 @@ export class AppLogger implements ILogger {
       await this.flush();
       this.destination?.end?.();
     } catch (error) {
+      // console.error here (not the structured logger): this IS the
+      // logger, and it is shutting down. Falling back to stderr is the
+      // only way to surface a failure during teardown.
       console.error('Logger shutdown error:', error);
     }
   }

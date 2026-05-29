@@ -157,12 +157,15 @@ export default function DeviceFlow(
         method,
       };
     } catch (error) {
+      // console.error here (not the structured logger): this is a
+      // node-oidc-provider extension point that does not receive an
+      // injected logger, so we surface the cheerio failure via stderr
+      // before falling back to the regex parser below.
       console.error(
         'Error parsing form with cheerio, falling back to regex:',
         error
       );
 
-      // Fallback to regex implementation if cheerio fails
       return extractFormElementsRegex(form);
     }
   }

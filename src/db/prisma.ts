@@ -52,6 +52,10 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
         try {
           await promise;
         } catch (err: unknown) {
+          // console.error here (not the structured logger): this runs at
+          // module load before the DI container has bound the logger, so
+          // PRAGMA failures fall back to stderr so they still surface in
+          // PM2/systemd journals.
           console.error(
             `[SQLite] Failed to set PRAGMA ${label}: ${err instanceof Error ? err.message : String(err)}`
           );
