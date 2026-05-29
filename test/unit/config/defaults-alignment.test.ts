@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AppConfigSchema } from '../../../src/config/schemas/schema.js';
-import { DEFAULT_FULL_CONFIG } from '../../../src/config/constants.js';
+import { getDefaultFullConfig } from '../../../src/config/constants.js';
 import { mergeConfig } from '../../../src/utils/config-merge.js';
+
+const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 describe('DEFAULT_FULL_CONFIG alignment', () => {
   it('passes full Zod validation', () => {

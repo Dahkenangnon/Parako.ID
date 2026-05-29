@@ -10,7 +10,9 @@ import { join, resolve } from 'path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import { PrismaSettingsRepository } from '../../../../src/db/repositories/prisma/settings.repository.js';
-import { DEFAULT_FULL_CONFIG } from '../../../../src/config/constants.js';
+import { getDefaultFullConfig } from '../../../../src/config/constants.js';
+
+const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 // ─── Test DB Setup ───────────────────────────────────────────────────────────
 

@@ -3,7 +3,9 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createSettingsModel } from '../../../../src/models/settings.model.js';
 import { MongooseSettingsRepository } from '../../../../src/db/repositories/mongoose/settings.repository.js';
-import { DEFAULT_FULL_CONFIG } from '../../../../src/config/constants.js';
+import { getDefaultFullConfig } from '../../../../src/config/constants.js';
+
+const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseSettingsRepository;

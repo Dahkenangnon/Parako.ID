@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { AppConfigSchema } from '../../../src/config/schemas/schema.js';
-import { DEFAULT_FULL_CONFIG } from '../../../src/config/constants.js';
+import { getDefaultFullConfig } from '../../../src/config/constants.js';
+
+const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 /**
  * Tests for security settings enforcement fixes.

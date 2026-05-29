@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { AppConfigSchema } from '../../../src/config/schemas/schema.js';
-import {
-  DEFAULT_FULL_CONFIG,
-  getDefaultFullConfig,
-} from '../../../src/config/constants.js';
+import { getDefaultFullConfig } from '../../../src/config/constants.js';
+
+const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 describe('security.key_store schema', () => {
   it('should have key_store in security section with defaults', () => {
