@@ -56,7 +56,17 @@ export class AdminUsersController implements IAdminUsersController {
       const search = ((req.query.search as string) || '').trim();
       const role = ((req.query.role as string) || '').trim();
       const status = ((req.query.status as string) || '').trim();
-      const sortBy = (req.query.sortBy as string) || 'created_at';
+      const ALLOWED_SORT_FIELDS = new Set([
+        'created_at',
+        'updated_at',
+        'username',
+        'email',
+        'last_login_at',
+      ]);
+      const rawSortBy = (req.query.sortBy as string) || 'created_at';
+      const sortBy = ALLOWED_SORT_FIELDS.has(rawSortBy)
+        ? rawSortBy
+        : 'created_at';
       const sortOrder = (req.query.sortOrder as string) || 'desc';
 
       const filter: any = {};

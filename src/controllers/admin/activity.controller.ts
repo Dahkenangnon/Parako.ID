@@ -37,7 +37,16 @@ export class AdminActivitiesController implements IAdminActivitiesController {
       const username = ((req.query.username as string) || '').trim();
       const dateFrom = ((req.query.dateFrom as string) || '').trim();
       const dateTo = ((req.query.dateTo as string) || '').trim();
-      const sortBy = (req.query.sortBy as string) || 'timestamp';
+      const ALLOWED_SORT_FIELDS = new Set([
+        'timestamp',
+        'username',
+        'type',
+        'status',
+      ]);
+      const rawSortBy = (req.query.sortBy as string) || 'timestamp';
+      const sortBy = ALLOWED_SORT_FIELDS.has(rawSortBy)
+        ? rawSortBy
+        : 'timestamp';
       const sortOrder = (req.query.sortOrder as string) || 'desc';
 
       const filter: any = {};
