@@ -129,11 +129,13 @@ export function mergeConfig<T = any>(
 
   const result: any = { ...existing };
 
-  // Block prototype-polluting keys when `updates` originated from untrusted JSON.
-  const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
   for (const key of Object.keys(updates) as (keyof typeof updates)[]) {
-    if (FORBIDDEN_KEYS.has(key as string)) {
+    // Block prototype-polluting keys explicitly when `updates` is untrusted JSON.
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
+    // Refuse keys inherited from Object.prototype so chained lookups stay safe.
+    if (Object.prototype.hasOwnProperty.call(Object.prototype, key)) {
       continue;
     }
 

@@ -4628,12 +4628,29 @@ export class AuthController implements IAuthController {
         );
       }
 
+      // Strict allowlist so the computed key cannot fall outside SocialProvider.
+      const KNOWN_SOCIAL_PROVIDERS = [
+        'google',
+        'github',
+        'facebook',
+        'linkedin',
+        'twitter',
+        'microsoft',
+        'apple',
+      ] as const;
+      if (!KNOWN_SOCIAL_PROVIDERS.includes(provider as never)) {
+        this.logger.warn(`Rejected unknown social provider: ${provider}`);
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
+        );
+      }
+      const safeProvider = provider as (typeof KNOWN_SOCIAL_PROVIDERS)[number];
       this.sessionManager.set(req, 'socialRegister', {
         ...(this.sessionManager.get<SocialRegisterData>(
           req,
           'socialRegister'
         ) || ({} as SocialRegisterData)),
-        [provider]: {
+        [safeProvider]: {
           intent: 'register',
           timestamp: Date.now(),
         },

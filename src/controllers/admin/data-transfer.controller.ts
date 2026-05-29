@@ -539,6 +539,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
 
   private getEntityConfigSafe(entityId: string) {
     if (
+      typeof entityId !== 'string' ||
       !Object.prototype.hasOwnProperty.call(entityConfigFactories, entityId)
     ) {
       return null;

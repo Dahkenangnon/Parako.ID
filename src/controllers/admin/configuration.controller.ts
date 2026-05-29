@@ -285,6 +285,14 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         sectionData = { ...existingSection, ...sectionData };
       }
 
+      // Re-assert the allowlist for static analysers that cannot trace the
+      // earlier CONFIGURABLE_SECTIONS check through the function body.
+      if (
+        !Object.prototype.hasOwnProperty.call(CONFIGURABLE_SECTIONS, section)
+      ) {
+        this.sessionManager.flash(req).error('Invalid configuration section');
+        return res.redirect('/admin/configuration');
+      }
       const overrides = { [section]: sectionData };
 
       const platformConfig =

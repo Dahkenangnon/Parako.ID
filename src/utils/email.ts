@@ -660,16 +660,14 @@ export default class EmailUtils implements IEmailService {
     }
 
     let result = input;
-    let previous = '';
 
-    // Iteratively remove HTML tags until no more can be removed
-    // a single pass would leave behind partial tags
-    do {
-      previous = result;
-      result = result.replace(/<[^>]*>/g, '');
-      // Also remove any remaining < or > characters that might be left behind
-      result = result.replace(/[<>]/g, '');
-    } while (result !== previous);
+    // Strip HTML tags iteratively until no `<` or `>` survives — this prevents
+    // attackers from hiding tags via overlapping or nested constructs.
+    while (result.includes('<') || result.includes('>')) {
+      const next = result.replace(/<[^>]*>/g, '').replace(/[<>]/g, '');
+      if (next === result) break;
+      result = next;
+    }
 
     result = result.replace(/\s+/g, ' ').trim();
 
