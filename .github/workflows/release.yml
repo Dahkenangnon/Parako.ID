@@ -29,45 +29,50 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 11.4.0
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '24'
-          cache: 'yarn'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Print versions
         run: |
           git --version
           node --version
-          yarn --version
-          yarn commitlint --version
-          yarn eslint --version
+          pnpm --version
+          pnpm exec commitlint --version
+          pnpm exec eslint --version
 
       - name: Run ESLint
-        run: yarn lint:check
+        run: pnpm run lint:check
 
       - name: Run Prettier check
-        run: yarn format:check
+        run: pnpm run format:check
 
       - name: Run typecheck
-        run: yarn typecheck
+        run: pnpm run typecheck
 
       - name: Run tests with coverage
-        run: yarn test:coverage
+        run: pnpm run test:coverage
 
       - name: Build
-        run: yarn build
+        run: pnpm run build
 
       - name: Validate current commit with commitlint
         if: github.event_name == 'push'
-        run: yarn commitlint --last --verbose
+        run: pnpm exec commitlint --last --verbose
 
       - name: Validate PR commits with commitlint
         if: github.event_name == 'pull_request'
-        run: yarn commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+        run: pnpm exec commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
   # Release Process (only on push to main branches)
   release:
@@ -89,16 +94,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 11.4.0
+
       - name: Setup Node.js
         uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '24'
-          cache: 'yarn'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Run semantic-release
-        run: yarn semantic-release
+        run: pnpm exec semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30,6 +30,11 @@ jobs:
             git fetch origin dev
             git checkout dev
             git reset --hard origin/dev
-            yarn install --frozen-lockfile
-            yarn build
+            # Ensure pnpm 11.4.0 is active on the staging host. Corepack ships
+            # with modern Node and reads the packageManager field from
+            # package.json to pick the exact version.
+            corepack enable
+            corepack prepare pnpm@11.4.0 --activate
+            pnpm install --frozen-lockfile
+            pnpm run build
             pm2 startOrRestart ecosystem.config.cjs --env production
