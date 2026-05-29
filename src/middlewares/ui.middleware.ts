@@ -635,7 +635,17 @@ export class UIMiddleware implements IUIMiddleware {
     try {
       if (req.t && typeof req.t === 'function') {
         res.locals.t = req.t.bind(req);
-        res.locals.tn = req.tn ? req.tn.bind(req) : null;
+        // `tn` is added by the i18n module; cast inline so CI typecheck doesn't
+        // depend on whether the express-serve-static-core augmentation is hoisted.
+        const reqWithTn = req as Request & {
+          tn?: (
+            singular: string,
+            plural: string,
+            count: number,
+            ...replace: unknown[]
+          ) => string;
+        };
+        res.locals.tn = reqWithTn.tn ? reqWithTn.tn.bind(reqWithTn) : null;
       } else {
         // Fallback if i18n is not initialized
         res.locals.t = (key: string) => key;
