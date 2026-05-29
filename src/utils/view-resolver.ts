@@ -385,16 +385,8 @@ export class ViewResolver implements IViewResolver {
    * Check if a view file is valid (exists, readable, and not empty)
    */
   private isValidViewFile(filePath: string): boolean {
+    // Single fs read avoids TOCTOU between existsSync/statSync/readFileSync.
     try {
-      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        return false;
-      }
-
-      const stats = fs.statSync(filePath);
-      if (stats.size === 0) {
-        return false;
-      }
-
       const content = fs.readFileSync(filePath, 'utf8');
       return content.trim().length > 0;
     } catch {

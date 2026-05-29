@@ -154,24 +154,16 @@ export default class EmailUtils implements IEmailService {
    * Check if a template file exists and is valid
    */
   private isValidTemplateFile(filePath: string): boolean {
+    // Single fs read avoids TOCTOU between existsSync/statSync/readFileSync.
     try {
-      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        return false;
-      }
-
-      const stats = fs.statSync(filePath);
-      if (stats.size === 0) {
-        return false;
-      }
-
       const content = fs.readFileSync(filePath, 'utf8');
-      if (!content.trim()) {
+      return content.trim().length > 0;
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'ENOENT' || err.code === 'EISDIR') {
         return false;
       }
-
-      return true;
-    } catch (error) {
-      this.logger.error((error as Error).message, {
+      this.logger.error(err.message, {
         context: 'failed_to_check_if_template_file_exists',
         filePath,
       });
