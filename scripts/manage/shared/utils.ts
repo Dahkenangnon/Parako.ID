@@ -876,7 +876,7 @@ export function showSubcommandHelp(moduleInfo: {
 
   console.log(
     chalk.dim('💡 For detailed help: ') +
-      chalk.cyan(`yarn parako ${moduleInfo.name.toLowerCase()} --help`)
+      chalk.cyan(`pnpm ${moduleInfo.name.toLowerCase()} --help`)
   );
   console.log('');
 }

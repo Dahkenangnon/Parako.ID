@@ -29,57 +29,57 @@ program.on('--help', () => {
     version: getPackageInfo().version,
     quickStart: [
       {
-        command: 'yarn parako client add',
+        command: 'pnpm client add',
         description: 'Create your first OIDC client',
         time: '1-2 min',
       },
       {
-        command: 'yarn parako client list',
+        command: 'pnpm client list',
         description: 'View all registered clients',
         time: '< 1 min',
       },
       {
-        command: 'yarn parako client show',
+        command: 'pnpm client show',
         description: 'Show client details (interactive)',
         time: '< 1 min',
       },
     ],
     examples: [
       {
-        command: 'yarn parako client add',
+        command: 'pnpm client add',
         description: 'Add a new client interactively',
       },
-      { command: 'yarn parako client list', description: 'List all clients' },
+      { command: 'pnpm client list', description: 'List all clients' },
       {
-        command: 'yarn parako client show',
+        command: 'pnpm client show',
         description: 'Show client details (interactive)',
       },
       {
-        command: 'yarn parako client show <ID>',
+        command: 'pnpm client show <ID>',
         description: 'Show specific client by ID',
       },
       {
-        command: 'yarn parako client update',
+        command: 'pnpm client update',
         description: 'Update client settings',
       },
       {
-        command: 'yarn parako client remove',
+        command: 'pnpm client remove',
         description: 'Remove a client (interactive)',
       },
       {
-        command: 'yarn parako client remove <ID>',
+        command: 'pnpm client remove <ID>',
         description: 'Remove specific client by ID',
       },
       {
-        command: 'yarn parako client export',
+        command: 'pnpm client export',
         description: 'Export clients to JSON',
       },
       {
-        command: 'yarn parako client import',
+        command: 'pnpm client import',
         description: 'Import clients from JSON',
       },
       {
-        command: 'yarn parako client init',
+        command: 'pnpm client init',
         description: 'Initialize client registry',
       },
     ],

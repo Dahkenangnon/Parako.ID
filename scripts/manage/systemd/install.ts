@@ -147,11 +147,11 @@ export async function installServices(
   console.log(`  sudo systemctl enable --now ${workerServiceName}`);
   console.log('');
   log.info('To check status:');
-  console.log(`  yarn systemd status`);
+  console.log(`  pnpm systemd status`);
   console.log('');
   log.info('To restart:');
-  console.log(`  sudo yarn systemd restart`);
+  console.log(`  sudo pnpm systemd restart`);
   console.log('');
   log.info('To view logs:');
-  console.log(`  yarn systemd logs`);
+  console.log(`  pnpm systemd logs`);
 }

@@ -23,7 +23,7 @@ export async function listClients(): Promise<void> {
         chalk.dim('👻 No OIDC Clients Found'),
         '',
         chalk.dim('Get started by adding your first client:'),
-        chalk.cyan('yarn parako client add'),
+        chalk.cyan('pnpm client add'),
         '',
       ];
       console.log(createBox(emptyContent, 50));

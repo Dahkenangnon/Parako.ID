@@ -19,58 +19,58 @@ const HELP_PROFILE = {
   version: getPackageInfo().version,
   quickStart: [
     {
-      command: 'yarn systemd generate',
+      command: 'pnpm systemd generate',
       description: 'Preview unit files (stdout)',
       time: '< 1 min',
     },
     {
-      command: 'sudo yarn systemd install',
+      command: 'sudo pnpm systemd install',
       description: 'Install systemd services',
       time: '< 1 min',
     },
     {
-      command: 'yarn systemd status',
+      command: 'pnpm systemd status',
       description: 'Check service status',
       time: '< 1 min',
     },
     {
-      command: 'yarn systemd logs',
+      command: 'pnpm systemd logs',
       description: 'Follow journalctl for both services',
       time: 'live',
     },
   ],
   examples: [
     {
-      command: 'yarn systemd generate -o /tmp/parako-units',
+      command: 'pnpm systemd generate -o /tmp/parako-units',
       description: 'Write unit files to a directory instead of stdout',
     },
     {
       command:
-        'yarn systemd generate --user parako --dir /opt/parako --env-file /opt/parako/.env --node-path /usr/bin/node --memory-app 2G --memory-worker 512M',
+        'pnpm systemd generate --user parako --dir /opt/parako --env-file /opt/parako/.env --node-path /usr/bin/node --memory-app 2G --memory-worker 512M',
       description: 'Non-interactive generation with custom memory caps',
     },
     {
-      command: 'sudo yarn systemd install',
+      command: 'sudo pnpm systemd install',
       description: 'Interactive install to /etc/systemd/system/',
     },
     {
-      command: 'sudo yarn systemd install --force',
+      command: 'sudo pnpm systemd install --force',
       description: 'Overwrite existing unit files when content differs',
     },
     {
-      command: 'sudo yarn systemd restart',
+      command: 'sudo pnpm systemd restart',
       description: 'Restart both main and worker services',
     },
     {
-      command: 'yarn systemd logs --since "1 hour ago"',
+      command: 'pnpm systemd logs --since "1 hour ago"',
       description: 'Tail logs from the last hour for both services',
     },
     {
-      command: 'yarn systemd logs --worker',
+      command: 'pnpm systemd logs --worker',
       description: 'Tail only the worker service',
     },
     {
-      command: 'sudo yarn systemd uninstall',
+      command: 'sudo pnpm systemd uninstall',
       description: 'Stop, disable, and remove services',
     },
   ],
@@ -95,7 +95,7 @@ const HELP_PROFILE = {
       icon: '📋',
       title: 'Journal Integration',
       description:
-        'Logs via journalctl with SyslogIdentifier tagging; tail via `yarn systemd logs`',
+        'Logs via journalctl with SyslogIdentifier tagging; tail via `pnpm systemd logs`',
     },
     {
       icon: '🛡️',
@@ -113,7 +113,7 @@ const HELP_PROFILE = {
     'Use "generate" first to preview unit files before installing',
     'Add `-o <dir>` to `generate` to write files directly instead of piping stdout',
     'The worker service is bound to the main app — stopping the app stops the worker',
-    `View logs with: yarn systemd logs (or journalctl -u ${SERVICE_NAME} -f)`,
+    `View logs with: pnpm systemd logs (or journalctl -u ${SERVICE_NAME} -f)`,
     'Customize resource limits with --memory-app / --memory-worker (defaults: 1G / 300M)',
     'For SQLite deployments, the app runs as a single process (no cluster mode)',
   ],
@@ -190,7 +190,7 @@ export function setupCommands(program: Command): void {
 
       log.success('Unit files generated successfully');
       log.info(
-        'To install, run: sudo yarn systemd install (with the same flags)'
+        'To install, run: sudo pnpm systemd install (with the same flags)'
       );
     });
 
