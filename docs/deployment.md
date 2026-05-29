@@ -116,7 +116,7 @@ Customize PM2 behavior via environment variables:
 | `PORT`                  | `9007`      | Server port                            |
 | `PM2_INSTANCES`         | `max`       | Number of instances (`max` = all CPUs) |
 | `PM2_MAX_MEMORY`        | `1G`        | Max memory before restart (app)        |
-| `PM2_WORKER_MAX_MEMORY` | `300M`      | Max memory before restart (worker)     |
+| `PM2_WORKER_MAX_MEMORY` | `512M`      | Max memory before restart (worker)     |
 | `PM2_UID`               | —           | Run as specific user (optional)        |
 | `PM2_GID`               | —           | Run as specific group (optional)       |
 
@@ -193,7 +193,7 @@ sudo pnpm systemd install \
   --memory-worker 512M
 ```
 
-Defaults are `1G` for the main app and `300M` for the worker.
+Defaults are `1G` for the main app and `512M` for the worker.
 
 ### Safe Re-installs
 
