@@ -166,14 +166,6 @@ export interface IMfaUtils {
   getPreferredMethod(user: IUser): MfaMethod | null;
 
   /**
-   * Get user's MFA method
-   * @param user - User object to check
-   * @returns MFA method or null
-   * @deprecated Use getPreferredMethod or getEnabledMethods instead
-   */
-  getUserMfaMethod(user: IUser): MfaMethod | null;
-
-  /**
    * Get user's TOTP secret (multi-method schema)
    * @param user - User object to check
    * @returns TOTP secret or undefined

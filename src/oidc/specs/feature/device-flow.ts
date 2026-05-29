@@ -168,8 +168,12 @@ export default function DeviceFlow(
   }
 
   /**
-   * @deprecated Use extractFormElements() instead. This regex-based implementation is kept as fallback.
-   * Extract form elements from OIDC provider form string using regex (fallback method)
+   * Extract form elements from the OIDC provider's form HTML using regexes.
+   *
+   * Intentionally retained as the cheerio fallback path — see the catch
+   * block above. Cheerio is the primary parser, but if it ever throws on
+   * malformed HTML we fall through to this regex implementation so the
+   * device flow keeps working instead of surfacing a 500.
    */
   function extractFormElementsRegex(form: string): {
     formId: string;

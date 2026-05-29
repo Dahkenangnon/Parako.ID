@@ -11,7 +11,7 @@ import type { II18nService } from '../di/interfaces/i18n-service.interface.js';
 import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import { TYPES } from '../di/types.js';
 import { resolveBrandingUrl } from '../utils/views.js';
-import { DEFAULT_FULL_CONFIG } from '../config/constants.js';
+import { getDefaultFullConfig } from '../config/constants.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -459,7 +459,7 @@ export class UIMiddleware implements IUIMiddleware {
     const config = this.configManager.getConfig();
     const availableLocales = Array.isArray(config.application.locales.available)
       ? config.application.locales.available
-      : DEFAULT_FULL_CONFIG.application.locales.available;
+      : getDefaultFullConfig().application.locales.available;
 
     const localeMap: Record<string, { flag: string; label: string }> = {
       en: { flag: '🇺🇸', label: 'English' },

@@ -68,14 +68,6 @@ export interface IConfigFileReader {
   isFileReadable(filePath: string): boolean;
 
   /**
-   * Check if a JSONC file exists and is readable
-   * @param filePath - Path to check
-   * @returns True if file exists and is readable
-   * @deprecated Use isFileReadable instead
-   */
-  isJsoncFileReadable(filePath: string): boolean;
-
-  /**
    * Read the main application configuration file (auto-detects format)
    * Searches for: parako.yaml, parako.yml, parako.jsonc, parako.json
    * @returns Parsed configuration object

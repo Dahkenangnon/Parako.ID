@@ -4,7 +4,7 @@ import type { AppConfig } from '../schemas/schema.js';
 import { AppConfigSchema } from '../schemas/schema.js';
 import { AbstractConfigProvider } from './abstract.js';
 import { TYPES } from '../../di/types.js';
-import { DEFAULT_FULL_CONFIG } from '../constants.js';
+import { getDefaultFullConfig } from '../constants.js';
 import { mergeConfig } from '../../utils/config-merge.js';
 import {
   validateEnvVars,
@@ -49,7 +49,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
 
       const rawConfig = this.configFileReader.readAppConfig<any>();
 
-      const mergedConfig = mergeConfig(DEFAULT_FULL_CONFIG, rawConfig);
+      const mergedConfig = mergeConfig(getDefaultFullConfig(), rawConfig);
 
       const config = AppConfigSchema.parse(mergedConfig);
 

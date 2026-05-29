@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { type AppConfig, AppConfigSchema } from '../schemas/schema.js';
 import { AbstractConfigProvider } from './abstract.js';
 import { SettingsService } from '../../services/settings.service.js';
-import { DEFAULT_FULL_CONFIG } from '../constants.js';
+import { getDefaultFullConfig } from '../constants.js';
 import { TYPES } from '../../di/types.js';
 import {
   validateNonBootstrapConfig,
@@ -324,7 +324,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
       );
 
       // Use the default full configuration from constants
-      const defaultConfig = AppConfigSchema.parse(DEFAULT_FULL_CONFIG);
+      const defaultConfig = AppConfigSchema.parse(getDefaultFullConfig());
 
       await this.settingsService.saveMainConfigurationWithTransaction(
         defaultConfig

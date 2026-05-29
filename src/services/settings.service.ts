@@ -1,7 +1,7 @@
 import { injectable, inject } from 'inversify';
 import { type ISettings } from '../models/settings/types.js';
 import { AppConfigSchema } from '../config/schemas/schema.js';
-import { DEFAULT_FULL_CONFIG } from '../config/constants.js';
+import { getDefaultFullConfig } from '../config/constants.js';
 import { z } from 'zod';
 import type { ISettingsService } from '../di/interfaces/settings-service.interface.js';
 import { TYPES } from '../di/types.js';
@@ -624,7 +624,7 @@ export class SettingsService implements ISettingsService {
         'No main configuration found, flushing initial default configuration...'
       );
 
-      const validatedConfig = AppConfigSchema.parse(DEFAULT_FULL_CONFIG);
+      const validatedConfig = AppConfigSchema.parse(getDefaultFullConfig());
 
       const savedConfig = await this.saveMainConfiguration(
         validatedConfig,

@@ -12,7 +12,7 @@ import type { ITenantSettingsOverrideService } from '../di/interfaces/tenant-set
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { TYPES } from '../di/types.js';
 import { applyComputedDefaults } from './computed-fields.js';
-import { DEFAULT_FULL_CONFIG } from './constants.js';
+import { getDefaultFullConfig } from './constants.js';
 import { mergeConfig } from '../utils/config-merge.js';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
@@ -207,12 +207,12 @@ export class ConfigManager implements IConfigManager {
   ): RuntimeConfig {
     // When running with bootstrap-only (no database/file), the persisted
     // config is just the bootstrap object and lacks application, branding,
-    // security, etc.  Use DEFAULT_FULL_CONFIG as a base so every section
-    // has sensible defaults before computed fields run.
+    // security, etc. Layer the cached default-full-config under it so every
+    // section has sensible values before computed fields run.
     const base: AppConfig =
       configProvider === 'bootstrap'
         ? mergeConfig(
-            DEFAULT_FULL_CONFIG,
+            getDefaultFullConfig(),
             persistedConfig as unknown as Partial<AppConfig>
           )
         : (persistedConfig as AppConfig);

@@ -443,14 +443,6 @@ export class MfaUtils implements IMfaUtils {
   }
 
   /**
-   * Get user's MFA method (legacy support - returns preferred or first enabled)
-   * @deprecated Use getPreferredMethod or getEnabledMethods instead
-   */
-  getUserMfaMethod(user: IUser): MfaMethod | null {
-    return this.getPreferredMethod(user);
-  }
-
-  /**
    * Get user's TOTP secret (multi-method schema)
    */
   getUserTotpSecret(user: IUser): string | undefined {

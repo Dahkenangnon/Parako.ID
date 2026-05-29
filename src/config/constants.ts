@@ -40,21 +40,6 @@ export function getDefaultFullConfig(): AppConfig {
   }
   return _cachedDefaultConfig;
 }
-/** @deprecated Use getDefaultFullConfig() — kept so existing references keep working */
-export const DEFAULT_FULL_CONFIG: AppConfig = new Proxy({} as AppConfig, {
-  get(_, prop, receiver) {
-    return Reflect.get(getDefaultFullConfig(), prop, receiver);
-  },
-  ownKeys() {
-    return Reflect.ownKeys(getDefaultFullConfig());
-  },
-  getOwnPropertyDescriptor(_, prop) {
-    return Object.getOwnPropertyDescriptor(getDefaultFullConfig(), prop);
-  },
-  has(_, prop) {
-    return prop in getDefaultFullConfig();
-  },
-});
 
 function _buildDefaultFullConfig(): AppConfig {
   return {

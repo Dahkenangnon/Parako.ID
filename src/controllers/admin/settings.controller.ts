@@ -11,7 +11,7 @@ import type { IActivityService } from '../../di/interfaces/activity-service.inte
 import type { ISettingsService } from '../../di/interfaces/settings-service.interface.js';
 import type { IUploadMiddleware } from '../../di/interfaces/upload-middleware.interface.js';
 import { TYPES } from '../../di/types.js';
-import { DEFAULT_FULL_CONFIG } from '../../config/constants.js';
+import { getDefaultFullConfig } from '../../config/constants.js';
 import { mergeConfig } from '../../utils/config-merge.js';
 import {
   convertBrandingFormData,
@@ -472,7 +472,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
-      const defaultColors = DEFAULT_FULL_CONFIG.branding.colors;
+      const defaultColors = getDefaultFullConfig().branding.colors;
 
       await this.configManager.update({
         branding: {
@@ -547,7 +547,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
-      const defaultFonts = DEFAULT_FULL_CONFIG.branding.fonts;
+      const defaultFonts = getDefaultFullConfig().branding.fonts;
 
       await this.configManager.update({
         branding: {
