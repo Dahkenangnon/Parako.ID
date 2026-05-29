@@ -1,1 +1,2 @@
-pnpm run test:run
+pnpm run typecheck
+pnpm run lint:check
