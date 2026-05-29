@@ -60,7 +60,7 @@ function stripClientSecret(client: any): any {
 
   const plain = { ...client };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips client_secret before returning the client to the caller.
   const { client_secret: _secret, ...rest } = plain;
   return rest;
 }

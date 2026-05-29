@@ -2493,7 +2493,7 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       const rollbackReason = `Rollback to version ${targetVersion.version} (from ${currentVersion})`;
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips Mongoose metadata fields before rollback save.
       const { _id, created_at, updated_at, __v, ...configData } =
         targetVersion as any;
 
@@ -2748,7 +2748,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
       const { _export_metadata, ...configData } = parsedConfig;
 
       const currentConfig = this.configManager.getPlatformConfig();
@@ -2821,7 +2821,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
       const { _export_metadata, ...configData } = parsedConfig;
 
       const userData = this.sessionManager.getActiveUser(req);

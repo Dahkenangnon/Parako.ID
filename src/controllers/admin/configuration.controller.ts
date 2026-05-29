@@ -231,8 +231,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     }
 
     try {
-      // Strip CSRF token -- remaining fields are the section data
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the CSRF token; rawSectionData carries the actual config fields.
       const { _csrf, ...rawSectionData } = req.body;
 
       // and merge with existing overrides to preserve logo fields not in form

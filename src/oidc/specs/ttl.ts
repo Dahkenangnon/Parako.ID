@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* eslint-disable @typescript-eslint/ban-ts-comment -- this file uses // @ts-expect-error to bridge oidc-provider's loosely-typed TTL function signatures with our typed config. */
 import type {
   AccessToken,
   BackchannelAuthenticationRequest,

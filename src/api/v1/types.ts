@@ -71,7 +71,7 @@ export interface ProblemDetail {
 }
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- Express's own type declarations live inside `namespace Express`; module augmentation must use the same shape.
   namespace Express {
     interface Request {
       apiAuth?: ApiAuth;

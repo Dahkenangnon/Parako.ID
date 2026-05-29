@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars -- this file augments mongoose's Model with all 7 generic parameters so our typed plugins merge correctly; the unused-on-paper type params are required by the upstream signature. */
 import type {
   PaginateOptions,
   PaginateResult,

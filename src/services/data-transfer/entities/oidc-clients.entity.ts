@@ -147,8 +147,7 @@ export function createOidcClientEntityConfig(
         row: Record<string, unknown>,
         _ctx: ImportContext
       ): Promise<Record<string, unknown>> {
-        // Strip any client_id/client_secret from import — always generate new
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips any incoming client_id/client_secret so the importer always mints fresh credentials.
         const { client_id: _id, client_secret: _secret, ...rest } = row;
         return applyClientDefaults(
           rest as unknown as Partial<OidcClientData>

@@ -14,7 +14,7 @@ export interface IJwksKey {
   rotated_at?: Date;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- TypedModel requires a methods type parameter; this model has no instance methods, so the slot is intentionally empty.
 export interface IJwksKeyMethods {}
 
 export type JwksKeyModel = TypedModel<IJwksKey, IJwksKeyMethods>;
