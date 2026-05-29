@@ -529,7 +529,10 @@ export class ActivityService implements IActivityService {
         _tenant_id: currentTenantId,
       };
 
-      // Legacy username field
+      // `username` is the older flat DTO shape: callers used to pass
+      // the username string directly. The newer shape passes a user
+      // object and we derive the username from it. Both paths populate
+      // the same field on the persisted activity for query simplicity.
       if (username) {
         dto.username = username;
       } else if (

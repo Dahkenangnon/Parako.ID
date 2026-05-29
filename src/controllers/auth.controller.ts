@@ -208,10 +208,12 @@ export class AuthController implements IAuthController {
         this.config().security.authentication.login.login_methods;
 
       if (email) {
-        // Legacy: explicit email field
+        // Older login forms POST `email` directly instead of using the
+        // unified `login` field below. Kept for backwards compatibility
+        // with embedded login UIs that haven't migrated yet.
         user = await this.authService.loginWithEmail(email, password);
       } else if (phone) {
-        // Legacy: explicit phone field
+        // Same as above for `phone` — explicit phone-number forms.
         user = await this.authService.loginWithPhoneNumber(phone, password);
       } else if (login) {
         // Unified login field - auto-detect or use explicit login_method

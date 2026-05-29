@@ -220,7 +220,10 @@ export class Account implements IAccount {
           break;
         }
         case 'mfa_phone_number':
-          // Legacy field - no longer used in multi-method MFA schema
+          // The claim is kept on the OIDC schema so existing client
+          // integrations that ask for it don't error out, but the
+          // underlying field is gone from the multi-method MFA model.
+          // oidc-provider drops undefined values from the response.
           result[claim] = undefined;
           break;
         case 'recovery_enabled':

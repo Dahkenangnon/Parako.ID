@@ -267,14 +267,6 @@ function addCustomFilters(env: nunjucks.Environment): void {
     }
   );
 
-  // Legacy moment-based relative time (for backward compatibility)
-  env.addFilter('momentRelativeTime', function (date: any) {
-    if (!date) return '';
-    const d = new Date(date);
-    if (isNaN(d.getTime())) return date;
-    return getShortRelativeTime(d);
-  });
-
   env.addFilter('time', function (date: any) {
     if (!date) return '';
     const d = new Date(date);
@@ -649,9 +641,13 @@ export function resolveBrandingUrl(
     return urlOrKey;
   }
 
-  // Legacy /uploads/ paths and new storage keys get resolved
+  // Anything else is either an old absolute `/uploads/...` path written
+  // before the storage-provider abstraction, or a new storage key (the
+  // provider-agnostic identifier). Both are resolved through the same
+  // injected getFileUrl helper, which returns a string for local storage
+  // and a Promise for S3-style providers — Nunjucks filters are sync,
+  // so we fall through to the raw key when the resolver is async.
   const resolved = getFileUrl(urlOrKey);
-  // For local provider this is synchronous; for S3 it returns a Promise.
   return typeof resolved === 'string' ? resolved : urlOrKey;
 }
 
