@@ -38,6 +38,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   // ─── Session ───────────────────────────────────────────────────────────
 
   async findByAccountId(accountId: string): Promise<any[]> {
+    if (typeof accountId !== 'string') {
+      throw new TypeError('accountId must be a string');
+    }
     try {
       const now = Math.floor(Date.now() / 1000);
       const sessions = await this.coll()
@@ -57,6 +60,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   }
 
   async revokeSession(sessionId: string): Promise<boolean> {
+    if (typeof sessionId !== 'string') {
+      throw new TypeError('sessionId must be a string');
+    }
     try {
       const result = await this.coll().deleteOne({
         'payload.jti': sessionId,
@@ -550,6 +556,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async deleteGrantsByAccountId(
     accountId: string
   ): Promise<{ deletedCount: number }> {
+    if (typeof accountId !== 'string') {
+      throw new TypeError('accountId must be a string');
+    }
     try {
       const result = await this.coll().deleteMany({
         'payload.accountId': accountId,
@@ -574,6 +583,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async deleteByAccountId(
     accountId: string
   ): Promise<{ deletedCount: number }> {
+    if (typeof accountId !== 'string') {
+      throw new TypeError('accountId must be a string');
+    }
     try {
       const filter =
         this.name === 'Interaction'
