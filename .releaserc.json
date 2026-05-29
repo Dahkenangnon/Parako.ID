@@ -4,7 +4,7 @@
     [
       "@semantic-release/commit-analyzer",
       {
-        "preset": "angular",
+        "preset": "conventionalcommits",
         "releaseRules": [
           { "type": "feat", "release": "minor" },
           { "type": "fix", "release": "patch" },
@@ -15,7 +15,34 @@
         ]
       }
     ],
-    "@semantic-release/release-notes-generator",
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat", "section": "Features" },
+            { "type": "fix", "section": "Fixes" },
+            { "type": "perf", "section": "Performance" },
+            { "type": "refactor", "section": "Refactor" },
+            { "type": "revert", "section": "Reverts" },
+            { "type": "docs", "section": "Documentation" },
+            { "type": "build", "section": "Build System" },
+            { "type": "ci", "section": "CI", "hidden": true },
+            { "type": "chore", "section": "Maintenance", "hidden": true },
+            { "type": "style", "section": "Style", "hidden": true },
+            { "type": "test", "section": "Tests", "hidden": true }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# Changelog\n\nAll notable changes to this project are documented in this file. The format is based on Conventional Commits, with sections derived from commit types (`feat` → Features, `fix` → Fixes, `refactor` → Refactor, `docs` → Documentation, etc.). Maintenance-only commits (`chore`, `ci`, `style`, `test`) are intentionally hidden from public release notes."
+      }
+    ],
     [
       "@semantic-release/exec",
       {
@@ -26,7 +53,7 @@
     [
       "@semantic-release/git",
       {
-        "assets": ["package.json"],
+        "assets": ["package.json", "CHANGELOG.md"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
     ],
