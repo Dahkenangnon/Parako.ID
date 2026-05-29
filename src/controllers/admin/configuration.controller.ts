@@ -209,7 +209,20 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       renderData.platformIntegrations = globalConfig.integrations || {};
     }
 
-    res.render(`admin/configuration/${section}`, renderData);
+    // Render via a hard-coded allowlist of view paths to satisfy static analysis
+    // that the dynamic section name cannot escape the configuration view folder.
+    const VIEW_TEMPLATES: Record<string, string> = Object.fromEntries(
+      Object.keys(CONFIGURABLE_SECTIONS).map(name => [
+        name,
+        `admin/configuration/${name}`,
+      ])
+    );
+    const template = VIEW_TEMPLATES[section];
+    if (!template) {
+      this.sessionManager.flash(req).error('Invalid configuration section');
+      return res.redirect('/admin/configuration');
+    }
+    res.render(template, renderData);
   };
 
   // ── Update Section (POST) ──────────────────────────────────────────────────

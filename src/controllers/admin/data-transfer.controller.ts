@@ -525,16 +525,26 @@ export class AdminDataTransferController implements IAdminDataTransferController
   }
 
   private getEntityConfig(entityId: string) {
+    if (
+      !Object.prototype.hasOwnProperty.call(entityConfigFactories, entityId)
+    ) {
+      throw new Error(`Unknown entity: ${entityId}`);
+    }
     const factory = entityConfigFactories[entityId];
-    if (!factory) {
+    if (typeof factory !== 'function') {
       throw new Error(`Unknown entity: ${entityId}`);
     }
     return factory(this.getEntityConfigDeps());
   }
 
   private getEntityConfigSafe(entityId: string) {
+    if (
+      !Object.prototype.hasOwnProperty.call(entityConfigFactories, entityId)
+    ) {
+      return null;
+    }
     const factory = entityConfigFactories[entityId];
-    if (!factory) return null;
+    if (typeof factory !== 'function') return null;
     return factory(this.getEntityConfigDeps());
   }
 
