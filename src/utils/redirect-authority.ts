@@ -219,7 +219,10 @@ export default class RedirectAuthority implements IRedirectAuthority {
                 const parsedUri = new URL(uri);
                 const hostname = parsedUri.hostname.toLowerCase();
                 domains.add(hostname);
-              } catch {}
+              } catch {
+                // best-effort: skip non-URL redirect_uri entries (e.g.
+                // native scheme handlers) when collecting authority hosts.
+              }
             }
           }
         } catch (error) {

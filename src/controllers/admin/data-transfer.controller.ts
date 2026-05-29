@@ -318,7 +318,10 @@ export class AdminDataTransferController implements IAdminDataTransferController
       try {
         await queueEvents.close();
         await queue.close();
-      } catch {}
+      } catch {
+        // best-effort: the SSE client already disconnected — closing
+        // already-closed queue handles can throw but is harmless here.
+      }
       res.end();
     };
 

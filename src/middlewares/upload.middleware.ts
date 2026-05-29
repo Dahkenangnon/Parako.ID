@@ -241,7 +241,10 @@ export class UploadMiddleware implements IUploadMiddleware {
 
     try {
       await fs.promises.unlink(file.path);
-    } catch {}
+    } catch {
+      // best-effort: tempfile may already have been removed by Multer
+      // or by an earlier handler; storage already succeeded above.
+    }
 
     this.logger.debug('File stored via provider', {
       key,

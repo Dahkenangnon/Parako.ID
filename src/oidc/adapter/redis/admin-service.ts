@@ -1260,7 +1260,10 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
               } as OidcClientData)
             );
           }
-        } catch {}
+        } catch {
+          // best-effort: skip clients whose Redis payload fails to parse
+          // — corrupt rows must not block the listing.
+        }
       }
 
       return filterClients(clients, filters);

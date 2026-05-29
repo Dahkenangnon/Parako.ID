@@ -1311,7 +1311,9 @@ export class SessionManager implements ISessionManager {
             authTime: data.authTime ? new Date(data.authTime).getTime() : 0,
           });
         }
-      } catch {}
+      } catch {
+        // best-effort: skip session rows with unparsable JSON payload.
+      }
     }
 
     this.logger.debug('Found Express sessions for user (excluding current)', {
@@ -1443,7 +1445,9 @@ export class SessionManager implements ISessionManager {
             if (data.accountId === userId) {
               sidsToDelete.push(row.sid);
             }
-          } catch {}
+          } catch {
+            // best-effort: skip session rows with unparsable JSON payload.
+          }
         }
 
         if (sidsToDelete.length === 0) {
@@ -1563,7 +1567,9 @@ export class SessionManager implements ISessionManager {
             if (data.accountId === accountId && data.isAuthenticated === true) {
               results.push({ _id: row.sid, session: data });
             }
-          } catch {}
+          } catch {
+            // best-effort: skip session rows with unparsable JSON payload.
+          }
         }
         results.sort((a, b) => {
           const aTime = a.session.authTime
@@ -1751,7 +1757,9 @@ export class SessionManager implements ISessionManager {
 
               const sid = key.replace(this.sessionPrefix, '');
               results.push({ _id: sid, session: data });
-            } catch {}
+            } catch {
+              // best-effort: skip Redis keys with malformed session payloads.
+            }
           }
         } while (cursor !== '0');
 
@@ -1788,7 +1796,9 @@ export class SessionManager implements ISessionManager {
             )
               continue;
             results.push({ _id: row.sid, session: data });
-          } catch {}
+          } catch {
+            // best-effort: skip rows that fail JSON.parse or property lookup.
+          }
         }
 
         results.sort((a, b) => {
@@ -1864,7 +1874,9 @@ export class SessionManager implements ISessionManager {
             try {
               const data = JSON.parse(raw);
               if (data.isAuthenticated === true) count++;
-            } catch {}
+            } catch {
+              // best-effort: corrupt JSON contributes 0 to the count.
+            }
           }
         } while (cursor !== '0');
 
@@ -1883,7 +1895,9 @@ export class SessionManager implements ISessionManager {
           try {
             const data = JSON.parse(row.data);
             if (data.isAuthenticated === true) count++;
-          } catch {}
+          } catch {
+            // best-effort: corrupt JSON contributes 0 to the count.
+          }
         }
 
         return count;

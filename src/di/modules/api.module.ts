@@ -69,13 +69,19 @@ export const apiModule: ContainerModule = new ContainerModule(
           tenantSettingsOverrideService = context.get(
             TYPES.TenantSettingsOverrideService
           );
-        } catch {}
+        } catch {
+          // best-effort: the tenant-override service is optional and
+          // not bound in single-tenant deployments — leave undefined.
+        }
 
         // Redis pub/sub may not be bound
         let redisPubSub: any;
         try {
           redisPubSub = context.get(TYPES.RedisPubSubService);
-        } catch {}
+        } catch {
+          // best-effort: Redis pub/sub is optional and absent when
+          // Redis isn't configured — leave undefined.
+        }
 
         // ProviderService for registration token management
         let providerService: IProviderService | undefined;
