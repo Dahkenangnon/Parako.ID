@@ -17,3 +17,43 @@ allowBuilds:
   msgpackr-extract: true # Native msgpack codec for prisma-studio caching
 minimumReleaseAgeExclude:
   - oidc-provider@9.8.4
+
+# Transitive vulnerability remediation — every entry maps a vulnerable package
+# to its patched floor. Each constraint reflects a published GHSA advisory
+# (see CHANGELOG.md for the corresponding GHSA IDs and CVE numbers).
+overrides:
+  vite: '>=7.1.11'
+  tmp: '>=0.2.4'
+  glob@10: '>=10.5.0 <11'
+  glob@11: '>=11.1.0 <12'
+  lodash: '>=4.17.23'
+  lodash-es: '>=4.17.23'
+  js-yaml: '>=4.1.1'
+  handlebars: '>=4.7.9'
+  minimatch@3: '>=3.1.3 <4'
+  minimatch@9: '>=9.0.7'
+  picomatch@2: '>=2.3.2 <3'
+  picomatch@4: '>=4.0.4'
+  flatted: '>=3.4.2'
+  file-type: '>=21.3.1'
+  brace-expansion@1: '>=1.1.13 <2'
+  brace-expansion@2: '>=2.0.2 <3'
+  brace-expansion@4: '>=5.0.6'
+  brace-expansion@5: '>=5.0.6'
+  rollup: '>=4.59.0'
+  postcss: '>=8.5.10'
+  ajv@6: '>=6.14.0 <7'
+  ajv@8: '>=8.18.0'
+  axios: '>=1.16.0'
+  fast-uri: '>=3.1.2'
+  fast-xml-builder: '>=1.1.7'
+  fast-xml-parser: '>=5.5.6'
+  '@hono/node-server': '>=1.19.13'
+  follow-redirects: '>=1.15.12'
+  ip-address: '>=10.1.1'
+  nodemailer: '>=8.0.4'
+  path-to-regexp: '>=8.4.0'
+  qs: '>=6.15.2'
+  undici: '>=7.24.0'
+  uuid: '>=11.1.1'
+  yaml: '>=2.8.3'
