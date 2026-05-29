@@ -13,6 +13,10 @@
 import type { Request, Response, NextFunction } from 'express';
 
 import {
+  TenantStatusValues,
+  type TenantStatus,
+} from '../../../types/tenant.js';
+import {
   tenantNotFound,
   conflict,
   sectionNotAllowed,
@@ -28,7 +32,7 @@ import {
 /** Service and logger dependencies required by {@link TenantsController}. */
 export interface TenantsControllerDeps {
   platformAdminService: {
-    listTenants(filter?: { status?: string }): Promise<any[]>;
+    listTenants(filter?: { status?: TenantStatus }): Promise<any[]>;
     createTenant(data: {
       slug: string;
       display_name: string;
@@ -73,9 +77,12 @@ export class TenantsController {
         req.query as Record<string, unknown>
       );
 
-      const filter: { status?: string } = {};
-      if (typeof req.query.status === 'string' && req.query.status.length > 0) {
-        filter.status = req.query.status;
+      const filter: { status?: TenantStatus } = {};
+      if (
+        typeof req.query.status === 'string' &&
+        (TenantStatusValues as string[]).includes(req.query.status)
+      ) {
+        filter.status = req.query.status as TenantStatus;
       }
 
       const tenants = await this.platformAdminService.listTenants(

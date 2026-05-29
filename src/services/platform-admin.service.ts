@@ -40,7 +40,7 @@ const RESERVED_SLUGS = new Set([
 ]);
 
 export interface IPlatformAdminService {
-  listTenants(filter?: { status?: string }): Promise<ITenant[]>;
+  listTenants(filter?: { status?: TenantStatus }): Promise<ITenant[]>;
   createTenant(data: {
     slug: string;
     display_name: string;
@@ -77,7 +77,7 @@ export class PlatformAdminService implements IPlatformAdminService {
     private readonly activityService: IActivityService
   ) {}
 
-  async listTenants(filter?: { status?: string }): Promise<ITenant[]> {
+  async listTenants(filter?: { status?: TenantStatus }): Promise<ITenant[]> {
     return this.tenantRepo.findAll(filter);
   }
 

@@ -40,7 +40,12 @@ export class PlatformAdminController {
     res: Response
   ): Promise<void> => {
     try {
-      const status = req.query.status as string | undefined;
+      const rawStatus = req.query.status;
+      const status: TenantStatus | undefined =
+        typeof rawStatus === 'string' &&
+        (TenantStatusValues as string[]).includes(rawStatus)
+          ? (rawStatus as TenantStatus)
+          : undefined;
       const filter = status ? { status } : undefined;
       const tenants = await this.platformService.listTenants(filter);
 

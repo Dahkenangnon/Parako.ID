@@ -1,5 +1,5 @@
 import { injectable } from 'inversify';
-import type { ITenant } from '../../../types/tenant.js';
+import type { ITenant, TenantStatus } from '../../../types/tenant.js';
 import type { TenantModel } from '../../../models/tenant.model.js';
 import type {
   ITenantRepository,
@@ -26,8 +26,10 @@ export class MongooseTenantRepository implements ITenantRepository {
     return serializeDocument(doc) as ITenant | null;
   }
 
-  async findAll(filter?: { status?: string }): Promise<ITenant[]> {
-    const query = filter?.status ? { status: filter.status } : {};
+  async findAll(filter?: { status?: TenantStatus }): Promise<ITenant[]> {
+    const query: { status?: TenantStatus } = filter?.status
+      ? { status: filter.status }
+      : {};
     const docs = await this.tenantModel.find(query).lean().exec();
     return serializeDocuments(docs) as ITenant[];
   }
