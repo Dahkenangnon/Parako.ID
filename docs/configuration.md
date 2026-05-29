@@ -25,7 +25,7 @@ Configuration is assembled from three sources, merged in priority order:
 │     Derived values (OIDC issuer,    │     Always recomputed on load
 │     MFA settings, integration URLs) │
 ├─────────────────────────────────────┤
-│  4. DEFAULT_FULL_CONFIG             │  ← Fallback defaults
+│  4. getDefaultFullConfig()          │  ← Fallback defaults
 │     Lowest priority                 │     For any unset fields
 └─────────────────────────────────────┘
 ```
@@ -36,7 +36,7 @@ Configuration is assembled from three sources, merged in priority order:
 | 2           | File (`parako.yaml` or `parako.jsonc`) | Development only — when `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` |
 | 3           | Database (`settings` table/collection) | Production — stored and managed via admin panel                                         |
 | 4           | Computed fields                        | Always — auto-generated secrets and derived values                                      |
-| 5 (lowest)  | `DEFAULT_FULL_CONFIG`                  | Always — fallback for any missing fields                                                |
+| 5 (lowest)  | `getDefaultFullConfig()`               | Always — fallback for any missing fields                                                |
 
 Bootstrap fields always win for infrastructure settings. File config is a development convenience — in production, the database is the single source of truth.
 
@@ -173,7 +173,7 @@ cp parako.sample.jsonc parako.jsonc
 
 ### Partial Overrides
 
-You only need to provide the keys you want to override. Missing keys fall back to `DEFAULT_FULL_CONFIG` defaults. For example, to only customize branding:
+You only need to provide the keys you want to override. Missing keys fall back to the defaults returned by `getDefaultFullConfig()`. For example, to only customize branding:
 
 ```yaml
 branding:
@@ -221,7 +221,7 @@ In production, configuration is stored in the database `settings` table (or coll
 
 ### Initial Flush
 
-On first startup, if no configuration exists in the database, `DEFAULT_FULL_CONFIG` is automatically flushed to the database. This ensures the database always has a complete configuration document.
+On first startup, if no configuration exists in the database, the result of `getDefaultFullConfig()` is automatically flushed to the database. This ensures the database always has a complete configuration document.
 
 ### Managing Configuration
 
@@ -377,7 +377,7 @@ These secrets are generated once if their value is `null` or `undefined`, then p
 | `security.secrets.hmac_secret`    | 128 hex chars (64 bytes)   | HMAC signing key           |
 | `oidc.secrets.pairwise_salt`      | 64 hex chars (32 bytes)    | OIDC pairwise subject salt |
 
-> **Production:** If any of these secrets are missing at startup, `resolveSecret()` in `DEFAULT_FULL_CONFIG` throws a fatal error. Auto-generation only works in development.
+> **Production:** If any of these secrets are missing at startup, `resolveSecret()` invoked by `getDefaultFullConfig()` throws a fatal error. Auto-generation only works in development.
 
 ### Derived Fields
 
@@ -417,7 +417,7 @@ For WebAuthn `rp_id`, custom domain tenants use the custom domain as the relying
 1. .env (bootstrap)           ← highest priority
 2. Database or file config
 3. Computed defaults
-4. DEFAULT_FULL_CONFIG         ← lowest priority
+4. getDefaultFullConfig()      ← lowest priority
 ```
 
 ### Multi-Tenant Mode
@@ -427,7 +427,7 @@ For WebAuthn `rp_id`, custom domain tenants use the custom domain as the relying
 2. Per-tenant overrides (tenant_settings_override collection)
 3. Platform config (global from database)
 4. Computed defaults (tenant-aware)
-5. DEFAULT_FULL_CONFIG                        ← lowest priority
+5. getDefaultFullConfig()                     ← lowest priority
 ```
 
 ### How `getConfig()` Works
@@ -443,24 +443,26 @@ Tenant configs are loaded on demand via `ensureTenantConfig()` and cached in mem
 
 ## Bootstrap-Only Fields
 
-These 12 fields can **only** be set via `.env`. They are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
+These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts`). They can **only** be set via `.env`, are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
 
 | #   | Field Path                                                 | Set By                                            |
 | --- | ---------------------------------------------------------- | ------------------------------------------------- |
 | 1   | `deployment.environment`                                   | `DEPLOYMENT_ENVIRONMENT`                          |
-| 2   | `deployment.url`                                           | `DEPLOYMENT_URL`                                  |
-| 3   | `deployment.server.port`                                   | `DEPLOYMENT_SERVER_PORT`                          |
-| 4   | `storage.adapter`                                          | `STORAGE_ADAPTER`                                 |
-| 5   | `storage.mongodb.uri`                                      | `STORAGE_MONGODB_URI`                             |
-| 6   | `storage.sqlite.path`                                      | `STORAGE_SQLITE_PATH`                             |
-| 7   | `storage.postgresql.url`                                   | `STORAGE_POSTGRESQL_URL`                          |
-| 8   | `features.multi_tenancy.extraction_priority`               | `MULTI_TENANCY_EXTRACTION_PRIORITY`               |
-| 9   | `features.multi_tenancy.tenant_header`                     | `MULTI_TENANCY_TENANT_HEADER`                     |
-| 10  | `features.multi_tenancy.provider_pool.max_size`            | `MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE`            |
-| 11  | `features.multi_tenancy.provider_pool.idle_ttl_ms`         | `MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS`         |
-| 12  | `features.multi_tenancy.provider_pool.cleanup_interval_ms` | `MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS` |
+| 2   | `deployment.server.port`                                   | `DEPLOYMENT_SERVER_PORT`                          |
+| 3   | `storage.adapter`                                          | `STORAGE_ADAPTER`                                 |
+| 4   | `storage.mongodb.uri`                                      | `STORAGE_MONGODB_URI`                             |
+| 5   | `storage.sqlite.path`                                      | `STORAGE_SQLITE_PATH`                             |
+| 6   | `storage.postgresql.url`                                   | `STORAGE_POSTGRESQL_URL`                          |
+| 7   | `features.multi_tenancy.extraction_priority`               | `MULTI_TENANCY_EXTRACTION_PRIORITY`               |
+| 8   | `features.multi_tenancy.tenant_header`                     | `MULTI_TENANCY_TENANT_HEADER`                     |
+| 9   | `features.multi_tenancy.provider_pool.max_size`            | `MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE`            |
+| 10  | `features.multi_tenancy.provider_pool.idle_ttl_ms`         | `MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS`         |
+| 11  | `features.multi_tenancy.provider_pool.cleanup_interval_ms` | `MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS` |
 
-> **Note:** `features.multi_tenancy.enabled` is not in this list, but is effectively bootstrap-only — `createRuntimeConfig()` always overrides it from `bootstrapConfig.multiTenancy.enabled` regardless of the database value.
+> **Notes:**
+>
+> - `deployment.url` (`DEPLOYMENT_URL`) is intentionally **not** bootstrap-only. If unset in `.env`, it falls back to the persisted `deployment.url` from the database or file config (default `http://localhost:9007`) — see the Core Settings table for the full precedence rules.
+> - `features.multi_tenancy.enabled` is not in `BOOTSTRAP_ONLY_FIELDS` either, but is effectively bootstrap-only at runtime — `createRuntimeConfig()` always overrides it from `bootstrapConfig.multiTenancy.enabled` regardless of the database value.
 
 ---
 
