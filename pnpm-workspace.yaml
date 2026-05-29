@@ -1,0 +1,17 @@
+# pnpm 11 defaults strictDepBuilds=true and refuses to run install scripts for
+# any package that isn't explicitly allow-listed below. Each entry has been
+# reviewed: these are the native-binding deps the project relies on at runtime,
+# during tests, or during local dev — and their install scripts are required
+# for them to function. See https://pnpm.io/settings#allowbuilds for the schema.
+allowBuilds:
+  better-sqlite3: true # SQLite native bindings — used by data/parako.db
+  argon2: true # Argon2 password hashing native bindings
+  esbuild: true # Post-install fetches platform-specific binary
+  mongodb-memory-server: true # Test infra; fetches mongod binary at install
+  prisma: true # Generates Prisma client during postinstall
+  '@prisma/client': true # Generates platform-specific query engine
+  husky: true # Installs git hooks via the prepare script
+  '@parcel/watcher': true # Native file-watcher used by dev-mode rebuilds
+  '@prisma/engines': true # Downloads platform-specific Prisma engines
+  '@swc/core': true # Native SWC bindings for fast TS transpile
+  msgpackr-extract: true # Native msgpack codec for prisma-studio caching

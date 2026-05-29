@@ -191,8 +191,7 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
           .map(
-            (err: z.core.$ZodIssue) =>
-              `${err.path.join('.')}: ${err.message}`
+            (err: z.core.$ZodIssue) => `${err.path.join('.')}: ${err.message}`
           )
           .join('\n');
         throw new Error(

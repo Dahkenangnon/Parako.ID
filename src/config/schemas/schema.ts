@@ -2026,9 +2026,7 @@ export const AppConfigSchema = z.object({
           .array(z.string())
           .min(1, 'At least one role must be available')
           .default(['user', 'admin', 'superadmin'])
-          .transform((arr: string[]) =>
-            arr.map((role: string) => role.trim())
-          ),
+          .transform((arr: string[]) => arr.map((role: string) => role.trim())),
         default: z
           .string()
           .min(1, 'Default role cannot be empty')
@@ -2101,26 +2099,24 @@ export const AppConfigSchema = z.object({
               })
           )
           .max(3)
-          .superRefine(
-            (fields: Array<any>, ctx: z.core.$RefinementCtx) => {
-              // Unique slot validation
-              const slots = fields.map((f: any) => f.slot);
-              if (new Set(slots).size !== slots.length) {
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  message: 'Each field must use a unique slot number',
-                });
-              }
-              // Unique key validation
-              const keys = fields.map((f: any) => f.key);
-              if (new Set(keys).size !== keys.length) {
-                ctx.addIssue({
-                  code: z.ZodIssueCode.custom,
-                  message: 'Each field must have a unique key',
-                });
-              }
+          .superRefine((fields: Array<any>, ctx: z.core.$RefinementCtx) => {
+            // Unique slot validation
+            const slots = fields.map((f: any) => f.slot);
+            if (new Set(slots).size !== slots.length) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Each field must use a unique slot number',
+              });
             }
-          )
+            // Unique key validation
+            const keys = fields.map((f: any) => f.key);
+            if (new Set(keys).size !== keys.length) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Each field must have a unique key',
+              });
+            }
+          })
           .default([]),
       }),
 

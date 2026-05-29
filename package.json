@@ -40,9 +40,10 @@
   },
   "type": "module",
   "main": "dist/src/index.js",
+  "packageManager": "pnpm@11.4.0",
   "engines": {
     "node": ">=24.0.0",
-    "yarn": ">=1.22.22"
+    "pnpm": ">=11"
   },
   "scripts": {
     "build": "cross-env NODE_ENV=production node scripts/build.js",

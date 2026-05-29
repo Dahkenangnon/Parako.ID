@@ -47,9 +47,6 @@ export const createTenantModel = (): TenantModel => {
   // Avoid OverwriteModelError in tests / hot-reload
   return (
     (mongoose.models.Tenant as TenantModel) ||
-    (mongoose.model<ITenant>(
-      'Tenant',
-      tenantSchema
-    ) as unknown as TenantModel)
+    (mongoose.model<ITenant>('Tenant', tenantSchema) as unknown as TenantModel)
   );
 };

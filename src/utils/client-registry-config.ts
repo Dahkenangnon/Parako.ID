@@ -259,8 +259,7 @@ export default class ClientRegistryManager implements IClientRegistryManager {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
           .map(
-            (err: z.core.$ZodIssue) =>
-              `${err.path.join('.')}: ${err.message}`
+            (err: z.core.$ZodIssue) => `${err.path.join('.')}: ${err.message}`
           )
           .join('\n');
         throw new Error(
@@ -319,8 +318,7 @@ export default class ClientRegistryManager implements IClientRegistryManager {
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
           .map(
-            (err: z.core.$ZodIssue) =>
-              `${err.path.join('.')}: ${err.message}`
+            (err: z.core.$ZodIssue) => `${err.path.join('.')}: ${err.message}`
           )
           .join('\n');
         throw new Error(
@@ -366,8 +364,7 @@ ${jsonContent}`;
       if (error instanceof z.ZodError) {
         const errorMessages = error.issues
           .map(
-            (err: z.core.$ZodIssue) =>
-              `${err.path.join('.')}: ${err.message}`
+            (err: z.core.$ZodIssue) => `${err.path.join('.')}: ${err.message}`
           )
           .join('\n');
         throw new Error(

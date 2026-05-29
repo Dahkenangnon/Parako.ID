@@ -1,4 +1,3 @@
-
 > [!WARNING]
 > **Accès anticipé — en développement actif.** Les API et la configuration peuvent évoluer avant la v1.0.
 

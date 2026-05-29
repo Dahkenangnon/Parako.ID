@@ -23,20 +23,11 @@
     "noImplicitReturns": false,
     "preserveConstEnums": true,
     "isolatedModules": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "strictPropertyInitialization": false
   },
-  "include": [
-    "src/**/*",
-    "test/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "node_modules/@types/minimatch"
-  ]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist", "node_modules/@types/minimatch"]
 }
