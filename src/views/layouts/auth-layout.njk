@@ -23,7 +23,7 @@
             <select
                 id="locale-switcher"
                 class="text-[10px] bg-transparent border-none text-muted-foreground cursor-pointer focus:outline-none"
-                onchange="if(this.value) window.location.href='?locale='+this.value"
+                onchange="if(this.value) window.location.assign('?locale=' + encodeURIComponent(this.value))"
             >
                 {% for loc in availableLocales %}
                 <option value="{{ loc }}" {% if loc == userLocale %}selected{% endif %}>{{ loc | upper }}</option>

@@ -416,17 +416,11 @@
       if (this.statusEl) {
         this.statusEl.className =
           'mb-4 p-3 border-2 border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200';
-        this.statusEl.innerHTML = `
-          <div class="flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-            </svg>
-            <div>
-              <p class="font-medium">${this.translations.successTitle}</p>
-              <p class="text-sm">${message}</p>
-            </div>
-          </div>
-        `;
+        this.renderStatus(
+          this.translations.successTitle,
+          message,
+          'M5 13l4 4L19 7'
+        );
         this.statusEl.classList.remove('hidden');
       }
     }
@@ -438,19 +432,54 @@
       if (this.statusEl) {
         this.statusEl.className =
           'mb-4 p-3 border-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200';
-        this.statusEl.innerHTML = `
-          <div class="flex items-center">
-            <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-            <div>
-              <p class="font-medium">${this.translations.errorTitle}</p>
-              <p class="text-sm">${message}</p>
-            </div>
-          </div>
-        `;
+        this.renderStatus(
+          this.translations.errorTitle,
+          message,
+          'M6 18L18 6M6 6l12 12'
+        );
         this.statusEl.classList.remove('hidden');
       }
+    }
+
+    /**
+     * Build the status banner as DOM nodes so user-provided text is set via
+     * textContent (XSS-safe). Icon and title are constants from translations.
+     */
+    private renderStatus(
+      title: string,
+      message: string,
+      iconPath: string
+    ): void {
+      if (!this.statusEl) return;
+      while (this.statusEl.firstChild) {
+        this.statusEl.removeChild(this.statusEl.firstChild);
+      }
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-center';
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('class', 'h-5 w-5 mr-2');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('stroke-linejoin', 'round');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('d', iconPath);
+      svg.appendChild(path);
+      const inner = document.createElement('div');
+      const titleEl = document.createElement('p');
+      titleEl.className = 'font-medium';
+      titleEl.textContent = title;
+      const msgEl = document.createElement('p');
+      msgEl.className = 'text-sm';
+      msgEl.textContent = message;
+      inner.appendChild(titleEl);
+      inner.appendChild(msgEl);
+      wrapper.appendChild(svg);
+      wrapper.appendChild(inner);
+      this.statusEl.appendChild(wrapper);
     }
 
     /**
