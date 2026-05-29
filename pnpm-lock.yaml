@@ -40,6 +40,8 @@ overrides:
   undici: '>=7.24.0'
   uuid: '>=11.1.1'
   yaml: '>=2.8.3'
+  yauzl: '>=3.2.1'
+  '@messageformat/runtime': '>=3.0.2'
 
 importers:
 
@@ -1191,8 +1193,8 @@ packages:
   '@messageformat/parser@5.1.1':
     resolution: {integrity: sha512-3p0YRGCcTUCYvBKLIxtDDyrJ0YijGIwrTRu1DT8gIviIDZru8H23+FkY6MJBzM1n9n20CiM4VeDYuBsrrwnLjg==}
 
-  '@messageformat/runtime@3.0.1':
-    resolution: {integrity: sha512-6RU5ol2lDtO8bD9Yxe6CZkl0DArdv0qkuoZC+ZwowU+cdRlVE1157wjCmlA5Rsf1Xc/brACnsZa5PZpEDfTFFg==}
+  '@messageformat/runtime@3.0.2':
+    resolution: {integrity: sha512-dkIPDCjXcfhSHgNE1/qV6TeczQZR59Yx0xXeafVKgK3QVWoxc38ljwpksUpnzCGvN151KUbCJTDZVmahtf1YZw==}
 
   '@mongodb-js/saslprep@1.4.6':
     resolution: {integrity: sha512-y+x3H1xBZd38n10NZF/rEBlvDOOMQ6LKUTHqr8R9VkJ+mmQOYtJFxIlkkK8fZrtOiL6VixbOBWMbZGBdal3Z1g==}
@@ -6527,8 +6529,8 @@ packages:
     resolution: {integrity: sha512-7dSzzRQ++CKnNI/krKnYRV7JKKPUXMEh61soaHKg9mrWEhzFWhFnxPxGl+69cD1Ou63C13NUPCnmIcrvqCuM6w==}
     engines: {node: '>=12'}
 
-  yauzl@3.2.0:
-    resolution: {integrity: sha512-Ow9nuGZE+qp1u4JIPvg+uCiUr7xGQWdff7JQSk5VGYTAZMDe2q8lxJ10ygv10qmSj031Ty/6FNJpLO4o1Sgc+w==}
+  yauzl@3.3.1:
+    resolution: {integrity: sha512-RNPCUkiE/ZgO4w8i9U5yDQVHaFDdnzaFANElRvpJteCspvmv2VqrRb9lvS6odVD+jqI/zDsxAHJVsafpcheVQQ==}
     engines: {node: '>=12'}
 
   yocto-queue@0.1.0:
@@ -8166,7 +8168,7 @@ snapshots:
       '@messageformat/date-skeleton': 1.1.0
       '@messageformat/number-skeleton': 1.2.0
       '@messageformat/parser': 5.1.1
-      '@messageformat/runtime': 3.0.1
+      '@messageformat/runtime': 3.0.2
       make-plural: 7.5.0
       safe-identifier: 0.4.2
 
@@ -8178,7 +8180,7 @@ snapshots:
     dependencies:
       moo: 0.5.2
 
-  '@messageformat/runtime@3.0.1':
+  '@messageformat/runtime@3.0.2':
     dependencies:
       make-plural: 7.5.0
 
@@ -9867,7 +9869,7 @@ snapshots:
     dependencies:
       file-type: 22.0.1
       get-stream: 6.0.1
-      yauzl: 3.2.0
+      yauzl: 3.3.1
     transitivePeerDependencies:
       - supports-color
 
@@ -12156,7 +12158,7 @@ snapshots:
       semver: 7.7.4
       tar-stream: 3.1.7
       tslib: 2.8.1
-      yauzl: 3.2.0
+      yauzl: 3.3.1
     transitivePeerDependencies:
       - '@aws-sdk/credential-providers'
       - '@mongodb-js/zstd'
@@ -13801,7 +13803,7 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
-  yauzl@3.2.0:
+  yauzl@3.3.1:
     dependencies:
       buffer-crc32: 0.2.13
       pend: 1.2.0
