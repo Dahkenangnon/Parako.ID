@@ -40,6 +40,11 @@ export function validateSignature(
   signature: string,
   secret: string
 ): boolean {
+  // Reject parameter tampering — Express returns string[] for duplicate query keys.
+  if (typeof signature !== 'string' || typeof relativePath !== 'string') {
+    return false;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   if (now > expires) {
     return false;

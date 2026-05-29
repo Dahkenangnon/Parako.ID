@@ -3573,7 +3573,18 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const method = req.query.method as string;
+      const validMethods: RecoveryMethod[] = [
+        'backup_codes',
+        'secondary_email',
+        'sms',
+        'security_questions',
+      ];
+      const rawMethod = req.query.method;
+      const method: RecoveryMethod | undefined =
+        typeof rawMethod === 'string' &&
+        (validMethods as string[]).includes(rawMethod)
+          ? (rawMethod as RecoveryMethod)
+          : undefined;
       if (!method) {
         this.sessionManager.flash(req).error('Recovery method not specified');
         return res.redirect(
