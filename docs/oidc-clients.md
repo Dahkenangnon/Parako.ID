@@ -27,7 +27,7 @@ Each preset sets the `application_type`, `grant_types`, `response_types`, `token
 The fastest way to register a client is the interactive CLI:
 
 ```bash
-yarn client add
+pnpm client add
 ```
 
 The wizard prompts for:
@@ -42,8 +42,8 @@ On success, it outputs the `client_id` and `client_secret`. Store the secret imm
 ### CLI Commands
 
 ```bash
-yarn client list   # List all registered clients
-yarn client add    # Add a new client (interactive)
+pnpm client list   # List all registered clients
+pnpm client add    # Add a new client (interactive)
 ```
 
 The CLI is intentionally minimal. For inspecting, updating, removing, importing, or exporting clients, use the admin panel at `/admin` or the [Management API](api/endpoints.md). For a programmatic starting point, copy [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json) (at the repo root) to `parako-rp.jsonc` and edit it directly.

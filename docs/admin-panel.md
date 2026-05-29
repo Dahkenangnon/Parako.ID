@@ -105,7 +105,7 @@ Manage the JSON Web Key Sets used for signing OIDC tokens.
 - **Rotate keys** — Generate new keys and retire old ones after the overlap window
 - **Retire expired keys** — Remove keys that have passed their rotation overlap period
 
-Key generation and JWKS backup/download are available via the CLI (`yarn keys generate`).
+Key generation and JWKS backup/download are available via the CLI (`pnpm keys generate`).
 
 ## Data Transfer
 

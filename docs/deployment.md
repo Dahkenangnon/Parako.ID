@@ -14,7 +14,7 @@ Before deploying to production, verify these items:
 - [ ] `DEPLOYMENT_URL` set to your public HTTPS URL
 - [ ] Database configured and accessible (MongoDB or PostgreSQL for production)
 - [ ] Redis configured (if using Redis for OIDC storage or sessions)
-- [ ] JWKS keys generated (`yarn keys generate`)
+- [ ] JWKS keys generated (`pnpm keys generate`)
 - [ ] SMTP configured for email delivery
 - [ ] Cookie `secure` set to `true` (requires HTTPS)
 - [ ] `USE_FILE_CONFIG=false` (use database config in production)
@@ -63,8 +63,8 @@ STORAGE_POSTGRESQL_URL=postgresql://parako:your_password@localhost:5432/parako
 Run migrations:
 
 ```bash
-yarn db:generate:pg
-yarn db:migrate:deploy
+pnpm db:generate:pg
+pnpm db:migrate:deploy
 ```
 
 ### Redis
@@ -95,10 +95,10 @@ PM2 is the default process manager. Parako.ID includes a pre-configured `ecosyst
 
 ```bash
 # Build for production
-yarn build
+pnpm build
 
 # Start with PM2
-yarn start
+pnpm start
 ```
 
 This starts two processes:
@@ -125,8 +125,8 @@ Customize PM2 behavior via environment variables:
 ### PM2 Commands
 
 ```bash
-yarn start                           # Start all processes
-yarn restart                         # Restart all processes
+pnpm start                           # Start all processes
+pnpm restart                         # Restart all processes
 pm2 stop ecosystem.config.cjs       # Stop all processes
 pm2 logs                             # View all logs
 pm2 logs parako-id                   # Application logs only
@@ -151,10 +151,10 @@ Use systemd as an alternative to PM2 for tighter OS integration.
 
 ```bash
 # Preview generated unit files
-yarn systemd generate
+pnpm systemd generate
 
 # Install (requires sudo)
-sudo yarn systemd install
+sudo pnpm systemd install
 
 # Start services
 sudo systemctl start parako-id
@@ -167,20 +167,20 @@ sudo systemctl enable parako-id
 
 ```bash
 # Status
-yarn systemd status
+pnpm systemd status
 
 # Logs (tail both services live; Ctrl-C to stop)
-yarn systemd logs
+pnpm systemd logs
 
 # Worker only / time-windowed
-yarn systemd logs --worker
-yarn systemd logs --since "1 hour ago"
+pnpm systemd logs --worker
+pnpm systemd logs --since "1 hour ago"
 
 # Restart both services (main + worker)
-sudo yarn systemd restart
+sudo pnpm systemd restart
 
 # Uninstall
-sudo yarn systemd uninstall
+sudo pnpm systemd uninstall
 ```
 
 ### Customizing Resource Limits
@@ -188,7 +188,7 @@ sudo yarn systemd uninstall
 Override the default memory caps when generating or installing:
 
 ```bash
-sudo yarn systemd install \
+sudo pnpm systemd install \
   --memory-app 2G \
   --memory-worker 512M
 ```
@@ -197,7 +197,7 @@ Defaults are `1G` for the main app and `300M` for the worker.
 
 ### Safe Re-installs
 
-`yarn systemd install` validates that the service user, working directory, and environment file are present before writing unit files. If existing unit files differ from what would be written, it shows a diff and refuses to overwrite — pass `--force` to apply. Identical content is a safe no-op (no `daemon-reload`).
+`pnpm systemd install` validates that the service user, working directory, and environment file are present before writing unit files. If existing unit files differ from what would be written, it shows a diff and refuses to overwrite — pass `--force` to apply. Identical content is a safe no-op (no `daemon-reload`).
 
 ### Security Hardening
 
@@ -417,7 +417,7 @@ On first startup with multi-tenancy enabled, create the initial platform admin u
 ```bash
 export PARAKO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 export PARAKO_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
-yarn start
+pnpm start
 ```
 
 After logging in at `_platforms.<domain>`, create a permanent admin account, then close the shell session. See [Multi-Tenancy — Special Tenants](multi-tenancy.md#special-tenants) for details.

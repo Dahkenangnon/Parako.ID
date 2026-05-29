@@ -10,7 +10,7 @@ order: 2
 Before you begin, ensure you have:
 
 - **Node.js** >= 24 — [Download](https://nodejs.org/)
-- **Yarn** >= 1.22.22 — Install with `corepack enable && corepack prepare yarn@stable --activate`
+- **pnpm** >= 11 — Install with `corepack enable && corepack prepare pnpm@11.4.0 --activate` (Corepack also reads the `packageManager` field in `package.json` and pins the exact version automatically.)
 
 Optional for production:
 
@@ -25,7 +25,7 @@ Clone the repository and install dependencies:
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd Parako.ID
-yarn install
+pnpm install
 ```
 
 Copy the example environment file and generate required secrets:
@@ -47,17 +47,17 @@ ENCRYPTION_KEY=$(openssl rand -hex 32)
 Push the database schema:
 
 ```bash
-yarn db:push
+pnpm db:push
 ```
 
 JWKS keys are automatically generated on first startup and stored in the database — no manual step needed.
 
-> **Note:** For file-based single-tenant setups (`USE_FILE_CONFIG=true`), you can use `yarn keys generate` after building (`yarn build`) to write keys to a local file instead.
+> **Note:** For file-based single-tenant setups (`USE_FILE_CONFIG=true`), you can use `pnpm keys generate` after building (`pnpm build`) to write keys to a local file instead.
 
 Start the development server:
 
 ```bash
-yarn dev
+pnpm dev
 ```
 
 Parako.ID is now running at `http://localhost:9007`.
@@ -106,7 +106,7 @@ The recommended way to create OIDC clients is through the admin panel:
    - **Allowed scopes** — What user data the client can access
 3. Note the `client_id` and `client_secret`. Store the secret securely — it is encrypted at rest and cannot be retrieved later.
 
-> **Alternative:** For file-based single-tenant setups, you can use the CLI (`yarn client add`) after building (`yarn build`). The CLI writes to file-based config rather than the database. See [CLI Tools](cli-tools.md) for details.
+> **Alternative:** For file-based single-tenant setups, you can use the CLI (`pnpm client add`) after building (`pnpm build`). The CLI writes to file-based config rather than the database. See [CLI Tools](cli-tools.md) for details.
 
 See [OIDC Clients](oidc-clients.md) for full client management documentation.
 

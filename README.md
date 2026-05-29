@@ -33,8 +33,8 @@ Most auth services charge per user, own your data, and disappear when funding dr
 - **Multi-tenancy** — tenant isolation with shared or separate databases
 - **Multi-account sessions** — switch between identities seamlessly
 - **Admin panel** — manage users, clients, and settings from the browser
-- **CLI tools** — `yarn client add`, `yarn client list`, `yarn keys generate`
-- **Systemd support** — `yarn systemd install` as a PM2 alternative
+- **CLI tools** — `pnpm client add`, `pnpm client list`, `pnpm keys generate`
+- **Systemd support** — `pnpm systemd install` as a PM2 alternative
 
 ## Install
 
@@ -48,17 +48,17 @@ Or manually:
 wget https://github.com/Dahkenangnon/Parako.ID/releases/latest/download/parako-id-v*.tar.gz
 tar -xzf parako-id-v*.tar.gz && cd parako-id-release
 cp .env.example .env   # edit with your settings
-yarn start
+pnpm start
 ```
 
-**Requirements:** Node.js ≥ 24, Yarn
+**Requirements:** Node.js ≥ 24, pnpm ≥ 11
 
 ## Development
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git && cd Parako.ID
-yarn install && cp .env.example .env
-yarn db:push && yarn keys generate && yarn dev
+pnpm install && cp .env.example .env
+pnpm db:push && pnpm keys generate && pnpm dev
 ```
 
 Visit `http://localhost:9007/auth/register` to create your first account.
@@ -74,7 +74,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
 
-Deploy with systemd (`yarn systemd install`) or PM2 (`pm2 start ecosystem.config.cjs`).
+Deploy with systemd (`pnpm systemd install`) or PM2 (`pm2 start ecosystem.config.cjs`).
 
 ## Updating
 
@@ -90,10 +90,10 @@ For source installs:
 
 ```bash
 git pull
-yarn install
-yarn db:migrate:deploy   # PostgreSQL only
-yarn build
-yarn restart
+pnpm install
+pnpm db:migrate:deploy   # PostgreSQL only
+pnpm build
+pnpm restart
 ```
 
 ## Documentation

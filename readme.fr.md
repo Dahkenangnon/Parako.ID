@@ -33,8 +33,8 @@ Parako.ID vous donne le contrôle total sur l'authentification. Déployez sur n'
 - **Multi-tenancy** — isolation des tenants avec bases partagées ou séparées
 - **Sessions multi-comptes** — basculez entre les identités en toute fluidité
 - **Tableau de bord d'administration** — gérez utilisateurs, clients et paramètres depuis le navigateur
-- **Outils CLI** — `yarn client add`, `yarn client list`, `yarn keys generate`
-- **Support systemd** — `yarn systemd install` comme alternative à PM2
+- **Outils CLI** — `pnpm client add`, `pnpm client list`, `pnpm keys generate`
+- **Support systemd** — `pnpm systemd install` comme alternative à PM2
 
 ## Installation
 
@@ -48,17 +48,17 @@ Ou manuellement :
 wget https://github.com/Dahkenangnon/Parako.ID/releases/latest/download/parako-id-v*.tar.gz
 tar -xzf parako-id-v*.tar.gz && cd parako-id-release
 cp .env.example .env   # modifiez selon vos besoins
-yarn start
+pnpm start
 ```
 
-**Prérequis :** Node.js ≥ 24, Yarn
+**Prérequis :** Node.js ≥ 24, pnpm ≥ 11
 
 ## Développement
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git && cd Parako.ID
-yarn install && cp .env.example .env
-yarn db:push && yarn keys generate && yarn dev
+pnpm install && cp .env.example .env
+pnpm db:push && pnpm keys generate && pnpm dev
 ```
 
 Rendez-vous sur `http://localhost:9007/auth/register` pour créer votre premier compte.
@@ -74,7 +74,7 @@ REDIS_HOST=localhost
 REDIS_PORT=6379
 ```
 
-Déployez avec systemd (`yarn systemd install`) ou PM2 (`pm2 start ecosystem.config.cjs`).
+Déployez avec systemd (`pnpm systemd install`) ou PM2 (`pm2 start ecosystem.config.cjs`).
 
 ## Mise à jour
 
@@ -90,10 +90,10 @@ Pour les installations depuis les sources :
 
 ```bash
 git pull
-yarn install
-yarn db:migrate:deploy   # PostgreSQL uniquement
-yarn build
-yarn restart
+pnpm install
+pnpm db:migrate:deploy   # PostgreSQL uniquement
+pnpm build
+pnpm restart
 ```
 
 ## Documentation

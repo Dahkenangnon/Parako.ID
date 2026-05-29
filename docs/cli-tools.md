@@ -11,9 +11,9 @@ Parako.ID includes three CLI tools for server-side management:
 
 | Tool    | Command                  | Purpose                              |
 | ------- | ------------------------ | ------------------------------------ |
-| Client  | `yarn client <command>`  | Manage OIDC client applications      |
-| Keys    | `yarn keys <command>`    | Manage JWKS signing keys             |
-| Systemd | `yarn systemd <command>` | Generate and manage systemd services |
+| Client  | `pnpm client <command>`  | Manage OIDC client applications      |
+| Keys    | `pnpm keys <command>`    | Manage JWKS signing keys             |
+| Systemd | `pnpm systemd <command>` | Generate and manage systemd services |
 
 All CLI tools work with local files (`parako-rp.jsonc`, `runtime/jwks/jwks.json`) and do not require the application server to be running.
 
@@ -24,7 +24,7 @@ For version updates, see [Updates & Maintenance](updates-and-maintenance.md). Up
 Manage OIDC/OAuth2 client registrations.
 
 ```bash
-yarn client <command>
+pnpm client <command>
 ```
 
 ### Commands
@@ -39,7 +39,7 @@ The CLI exposes only `add` and `list`. For everything else — inspecting, updat
 ### Adding a Client
 
 ```bash
-yarn client add
+pnpm client add
 ```
 
 The interactive wizard prompts for:
@@ -61,7 +61,7 @@ The wizard writes the new entry to `parako-rp.jsonc` and prints the `client_id` 
 ### Listing Clients
 
 ```bash
-yarn client list
+pnpm client list
 ```
 
 Displays all registered clients with their `client_id`, type, and active status.
@@ -75,7 +75,7 @@ Open `parako-rp.jsonc` directly, edit the entry's fields, save, and restart Para
 Manage JWKS (JSON Web Key Sets) for signing OIDC tokens.
 
 ```bash
-yarn keys <command>
+pnpm keys <command>
 ```
 
 ### Commands
@@ -87,7 +87,7 @@ yarn keys <command>
 ### Generating Keys
 
 ```bash
-yarn keys generate
+pnpm keys generate
 ```
 
 Generates a new key set with three algorithms: RS256, ES256, and EdDSA. Required before first startup — the OIDC provider cannot sign tokens without keys.
@@ -107,7 +107,7 @@ See [Security](security.md) for full key-store configuration.
 Generate and manage systemd unit files as an alternative to PM2.
 
 ```bash
-yarn systemd <command>
+pnpm systemd <command>
 ```
 
 ### Commands
@@ -142,22 +142,22 @@ yarn systemd <command>
 
 ```bash
 # Preview generated unit files
-yarn systemd generate
+pnpm systemd generate
 
 # Or write them to a directory
-yarn systemd generate -o /tmp/parako-units
+pnpm systemd generate -o /tmp/parako-units
 
 # Install services (interactive prompts for missing flags)
-sudo yarn systemd install
+sudo pnpm systemd install
 
 # Non-interactive install with custom memory caps
-sudo yarn systemd install \
+sudo pnpm systemd install \
   --user parako --dir /opt/parako \
   --env-file /opt/parako/.env --node-path /usr/bin/node \
   --memory-app 2G --memory-worker 512M
 
 # Check status
-yarn systemd status
+pnpm systemd status
 ```
 
 `install` runs pre-install validation: it verifies the configured user exists, the working directory exists, and warns if the env file is missing. It refuses to overwrite existing unit files when content differs (showing a diff) unless you pass `--force`. Identical content is a safe no-op.
@@ -170,7 +170,7 @@ This creates two systemd services:
 ### Restarting
 
 ```bash
-sudo yarn systemd restart
+sudo pnpm systemd restart
 ```
 
 Restarts both the main app and the worker.
@@ -189,16 +189,16 @@ Generated unit files include systemd security hardening:
 
 ```bash
 # Tail both services (default)
-yarn systemd logs
+pnpm systemd logs
 
 # Tail only the worker
-yarn systemd logs --worker
+pnpm systemd logs --worker
 
 # Recent logs (last hour)
-yarn systemd logs --since "1 hour ago"
+pnpm systemd logs --since "1 hour ago"
 
 # Show entries without following
-yarn systemd logs --no-follow --since "today"
+pnpm systemd logs --no-follow --since "today"
 ```
 
 Or use `journalctl` directly:

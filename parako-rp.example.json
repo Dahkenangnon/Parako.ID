@@ -1,5 +1,5 @@
 {
-  "_comment": "Example OIDC client (Relying Party) registry. Copy this file to parako-rp.jsonc, edit the entries, and Parako.ID will load them on next start. Each entry follows the OpenID Connect Dynamic Client Registration shape; only the fields shown below are commonly set — others fall back to defaults. For interactive client creation, run: yarn client add",
+  "_comment": "Example OIDC client (Relying Party) registry. Copy this file to parako-rp.jsonc, edit the entries, and Parako.ID will load them on next start. Each entry follows the OpenID Connect Dynamic Client Registration shape; only the fields shown below are commonly set — others fall back to defaults. For interactive client creation, run: pnpm client add",
   "version": "1.0.0",
   "created_at": 0,
   "updated_at": 0,

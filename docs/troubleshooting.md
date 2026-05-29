@@ -11,9 +11,9 @@ order: 4
 
 ```bash
 # Clean and rebuild
-yarn clean
-yarn typecheck
-yarn build
+pnpm clean
+pnpm typecheck
+pnpm build
 ```
 
 If `typecheck` reports errors, fix the TypeScript issues before building.
@@ -22,7 +22,7 @@ If `typecheck` reports errors, fix the TypeScript issues before building.
 
 ```bash
 # Rebuild Tailwind
-yarn build:tailwind
+pnpm build:tailwind
 
 # Check for CSS syntax errors in src/assets/css/app.css
 ```
@@ -31,13 +31,13 @@ yarn build:tailwind
 
 ```bash
 # Regenerate Prisma client (SQLite)
-yarn db:generate
+pnpm db:generate
 
 # Regenerate Prisma client (PostgreSQL)
-yarn db:generate:pg
+pnpm db:generate:pg
 
 # Push schema changes
-yarn db:push
+pnpm db:push
 ```
 
 ## Database Connection Issues
@@ -68,8 +68,8 @@ yarn db:push
 
 **Symptom:** `Error: relation does not exist`
 
-- Run migrations: `yarn db:migrate:deploy`
-- Or push schema: `yarn db:push`
+- Run migrations: `pnpm db:migrate:deploy`
+- Or push schema: `pnpm db:push`
 
 ### SQLite
 
@@ -92,7 +92,7 @@ yarn db:push
 **Symptom:** `Error: No keys found` or OIDC provider fails to start
 
 ```bash
-yarn keys generate
+pnpm keys generate
 ```
 
 JWKS keys must be generated before the first startup.
@@ -101,7 +101,7 @@ JWKS keys must be generated before the first startup.
 
 **Symptom:** `invalid_client` error during token exchange
 
-- Verify client exists: `yarn client list`
+- Verify client exists: `pnpm client list`
 - Check `client_id` and `client_secret` match
 - Verify `token_endpoint_auth_method` matches your request (e.g., `client_secret_basic` requires HTTP Basic auth)
 - Check if the client is active (not deactivated)
@@ -204,7 +204,7 @@ pm2 logs parako-id --err --lines 50
 
 # Delete and restart
 pm2 delete ecosystem.config.cjs
-yarn start
+pnpm start
 ```
 
 ## Systemd Issues
@@ -232,7 +232,7 @@ journalctl -u parako-id --since "1 hour ago" -p err
 
 ```bash
 # Check status
-yarn systemd status
+pnpm systemd status
 
 # Validate unit file
 systemd-analyze verify /etc/systemd/system/parako-id.service

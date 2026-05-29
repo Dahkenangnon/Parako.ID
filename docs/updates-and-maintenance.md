@@ -30,7 +30,7 @@ This is the same script that handled the install. In `--update` mode it:
    - `runtime/assets/` — instance custom theme assets
    - `runtime/config-backups/` — admin-saved config snapshots
    - Only `runtime/locales/` is refreshed from the new tarball (so new translations land)
-8. Runs database migrations against the new code (`yarn db:migrate:deploy` for PostgreSQL or `yarn db:push` for SQLite — MongoDB is no-op)
+8. Runs database migrations against the new code (`pnpm db:migrate:deploy` for PostgreSQL or `pnpm db:push` for SQLite — MongoDB is no-op)
 9. Atomically swaps directories (old archived as `*.old.YYYYMMDDHHMMSS`)
 10. Starts the service via the recorded supervisor
 11. Health-checks `http://127.0.0.1:<port>/.well-known/openid-configuration` for up to 30 seconds
@@ -50,10 +50,10 @@ For installations cloned via `git clone`:
 
 ```bash
 git pull
-yarn install
-yarn db:migrate:deploy   # PostgreSQL only
-yarn build
-yarn restart
+pnpm install
+pnpm db:migrate:deploy   # PostgreSQL only
+pnpm build
+pnpm restart
 ```
 
 There is no automatic rollback for source installs. Take a database backup first if upgrading across schema changes.
@@ -71,9 +71,9 @@ sudo systemctl start parako-id parako-id-worker
 
 # Source: checkout previous tag
 git checkout <previous-tag>
-yarn install
-yarn build
-yarn restart
+pnpm install
+pnpm build
+pnpm restart
 ```
 
 If the upgrade modified the database schema, restore the database from a pre-upgrade backup before reverting application code.
@@ -133,7 +133,7 @@ psql -d parako -c "VACUUM ANALYZE;"
 psql -d parako -c "SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC;"
 
 # Run pending migrations
-yarn db:migrate:deploy
+pnpm db:migrate:deploy
 ```
 
 ### SQLite

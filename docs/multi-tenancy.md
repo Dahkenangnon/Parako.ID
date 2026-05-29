@@ -85,7 +85,7 @@ To create the initial admin user for `_platforms`, set the following environment
 ```bash
 export PARAKO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 export PARAKO_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
-yarn start
+pnpm start
 # Credentials exist only in this shell session — gone when it exits.
 ```
 

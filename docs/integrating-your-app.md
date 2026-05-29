@@ -21,7 +21,7 @@ The integration flow is the same regardless of your application framework:
 Register a client using the CLI or admin panel. See [OIDC Clients](oidc-clients.md) for details.
 
 ```bash
-yarn client add
+pnpm client add
 ```
 
 Note the `client_id` and `client_secret` (if applicable) from the output.

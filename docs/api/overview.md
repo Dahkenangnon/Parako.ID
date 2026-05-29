@@ -97,7 +97,7 @@ The recommended way is through the admin panel. The CLI is available as an alter
 **CLI alternative:**
 
 ```bash
-yarn client add
+pnpm client add
 # Select "Service Account" or "API" type
 # Follow the interactive prompts
 ```

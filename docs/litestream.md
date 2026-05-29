@@ -62,7 +62,7 @@ dbs:
 ```bash
 # Replicate in the background while running the app
 litestream replicate -config litestream.yml &
-yarn dev
+pnpm dev
 ```
 
 ### Production (with PM2)

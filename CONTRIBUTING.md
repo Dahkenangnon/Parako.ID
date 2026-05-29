@@ -4,7 +4,7 @@
 
 ### Prerequisites
 
-- **Node.js** 24+ and **Yarn**
+- **Node.js** 24+ and **pnpm** 11+
 - **MongoDB** (local or remote)
 - **Redis** (local or remote)\*\*\*\*
 
@@ -14,9 +14,9 @@
 # Clone and setup
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd id
-yarn install
-yarn parako setup
-yarn dev
+pnpm install
+pnpm parako setup
+pnpm dev
 ```
 
 ## 🛠️ Development Tools
@@ -166,8 +166,8 @@ git checkout -b feature/your-feature-name
 
 ### Before Submitting
 
-- [ ] **Run quality checks**: `yarn test:run && yarn lint:check && yarn format:check`
-- [ ] **Build validation**: `yarn build:scripts && yarn validate:build`
+- [ ] **Run quality checks**: `pnpm test:run && pnpm lint:check && pnpm format:check`
+- [ ] **Build validation**: `pnpm build:scripts && pnpm validate:build`
 - [ ] **Self-review completed**
 - [ ] **Conventional commit messages**
 - [ ] **PR focused on single feature/fix**
@@ -202,16 +202,16 @@ Our automated CI/CD pipeline includes:
 
 ```bash
 # Quality checks
-yarn lint:check          # Check linting
-yarn format:check        # Check formatting
-yarn test:run           # Run tests
-yarn test:coverage      # Run tests with coverage
+pnpm lint:check          # Check linting
+pnpm format:check        # Check formatting
+pnpm test:run           # Run tests
+pnpm test:coverage      # Run tests with coverage
 
 # Formatting
-yarn format             # Format all code
-yarn format:src         # Format source code only
+pnpm format             # Format all code
+pnpm format:src         # Format source code only
 
 # Building
-yarn build:scripts      # Build scripts
-yarn validate:build     # Validate build output
+pnpm build:scripts      # Build scripts
+pnpm validate:build     # Validate build output
 ```

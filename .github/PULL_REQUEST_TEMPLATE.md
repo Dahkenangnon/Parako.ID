@@ -14,9 +14,9 @@
 ## Checklist
 
 - [ ] My code follows the project's coding standards
-- [ ] I have run `yarn lint:check`, `yarn format:check`, and `yarn typecheck`
+- [ ] I have run `pnpm lint:check`, `pnpm format:check`, and `pnpm typecheck`
 - [ ] I have added or updated tests as appropriate
-- [ ] All tests pass (`yarn test:run`)
+- [ ] All tests pass (`pnpm test:run`)
 - [ ] I have used conventional commit messages
 - [ ] I have updated documentation if needed
 

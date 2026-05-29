@@ -65,10 +65,10 @@ All components are wired together via the InversifyJS dependency injection conta
 
 **Runtime requirements:**
 
-| Requirement | Version    |
-| ----------- | ---------- |
-| Node.js     | >= 24      |
-| Yarn        | >= 1.22.22 |
+| Requirement | Version |
+| ----------- | ------- |
+| Node.js     | >= 24   |
+| pnpm        | >= 11   |
 
 **Database options (choose one):**
 

@@ -40,13 +40,13 @@ STORAGE_SQLITE_PATH=./data/parako.db
 
 ```bash
 # Generate Prisma client for SQLite
-yarn db:generate
+pnpm db:generate
 
 # Push schema to database (creates file if needed)
-yarn db:push
+pnpm db:push
 
 # Open Prisma Studio to inspect data
-yarn db:studio
+pnpm db:studio
 ```
 
 ### Constraints
@@ -76,7 +76,7 @@ No schema push is needed — Mongoose creates collections automatically on first
 
 ```bash
 # Start the application
-yarn dev
+pnpm dev
 ```
 
 ### Multi-Tenancy
@@ -124,16 +124,16 @@ STORAGE_POSTGRESQL_URL=postgresql://user:password@localhost:5432/parako
 
 ```bash
 # Generate Prisma client for PostgreSQL
-yarn db:generate:pg
+pnpm db:generate:pg
 
 # Run migrations
-yarn db:migrate
+pnpm db:migrate
 
 # Deploy migrations (production, no prompts)
-yarn db:migrate:deploy
+pnpm db:migrate:deploy
 
 # Open Prisma Studio
-yarn db:studio
+pnpm db:studio
 ```
 
 ### Tables
