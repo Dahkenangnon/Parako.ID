@@ -1167,11 +1167,6 @@ export class AccountsController implements IAccountController {
           600
         );
 
-        // TODO: REMOVE AFTER TESTING — debug log for email MFA OTP
-        console.log(
-          `[DEBUG] Email MFA setup OTP for ${userData.username}: ${code}`
-        );
-
         const deviceInfos =
           this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
