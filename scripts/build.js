@@ -109,8 +109,13 @@ function copyViewsSync(src, dest) {
       mkdirSync(destPath, { recursive: true });
     } else if (entry.name.endsWith('.njk')) {
       // Strip HTML comments from Nunjucks templates (but preserve Nunjucks comments {# #})
+      // Loop until stable so nested or sequential `<!--` reveals after rewrites are also stripped.
       let content = readFileSync(srcPath, 'utf-8');
-      content = content.replace(/<!--[\s\S]*?-->/g, '');
+      let previous;
+      do {
+        previous = content;
+        content = content.replace(/<!--[\s\S]*?-->/g, '');
+      } while (content !== previous);
       mkdirSync(dirname(destPath), { recursive: true });
       writeFileSync(destPath, content);
     } else {
