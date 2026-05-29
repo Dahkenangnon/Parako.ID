@@ -59,8 +59,8 @@ export const createValidationErrorsHandlerForViews = (sessionManager: {
         .map(e => `${'path' in e ? e.path : 'Field'}: ${e.msg}`)
         .join(', ');
       sessionManager.flash(req).error(`Validation error: ${errorMessages}`);
-      const referer = req.get('Referer');
-      res.redirect(referer || req.originalUrl.split('?')[0]);
+      // Referer is attacker-controlled — always redirect to the same path on this origin.
+      res.redirect(req.originalUrl.split('?')[0]);
       return;
     }
     next();

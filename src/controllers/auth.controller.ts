@@ -4109,8 +4109,13 @@ export class AuthController implements IAuthController {
       this.sessionManager.getAuthenticatedUsers(req);
 
     if (!userData && !confirmed) {
-      // No session to logout from
-      return res.redirect(redirectUri as string);
+      // No session to logout from — validate the redirect target before honoring it.
+      const safeLoginFallback = `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`;
+      this.redirectAuthority
+        .redirect(res)
+        .to(typeof redirectUri === 'string' ? redirectUri : undefined)
+        .or(safeLoginFallback);
+      return;
     }
 
     const sessionInfo = userData
@@ -4391,7 +4396,12 @@ export class AuthController implements IAuthController {
               this.sessionManager
                 .flash(req)
                 .error('Failed to sign out from the selected account.');
-              return res.redirect(cancelUrl as string);
+              const dashboardFallback = `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`;
+              this.redirectAuthority
+                .redirect(res)
+                .to(typeof cancelUrl === 'string' ? cancelUrl : undefined)
+                .or(dashboardFallback);
+              return;
             }
           }
         } else {
@@ -4491,7 +4501,12 @@ export class AuthController implements IAuthController {
             } else {
               // Failed to remove account
               this.sessionManager.flash(req).error('Failed to sign out.');
-              return res.redirect(cancelUrl as string);
+              const dashboardFallback = `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`;
+              this.redirectAuthority
+                .redirect(res)
+                .to(typeof cancelUrl === 'string' ? cancelUrl : undefined)
+                .or(dashboardFallback);
+              return;
             }
           }
         }
