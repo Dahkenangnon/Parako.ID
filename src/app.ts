@@ -34,6 +34,37 @@ import { HARDENING } from './config/hardening-defaults.js';
 import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
 import { createPrecompressedStaticMiddleware } from './middlewares/precompressed-static.middleware.js';
 
+/**
+ * Paths under which responses are served from the static public/ directory
+ * or are otherwise unauthenticated, cache-friendly assets fetched by every
+ * page load. Excluding them from the IP-based rate limiter prevents normal
+ * navigation from exhausting a budget intended for authentication and OIDC
+ * endpoints.
+ */
+const STATIC_PATH_PREFIXES: ReadonlyArray<string> = [
+  '/css/',
+  '/js/',
+  '/images/',
+];
+
+const STATIC_EXACT_PATHS: ReadonlySet<string> = new Set([
+  '/favicon.ico',
+  '/favicon.svg',
+  '/robots.txt',
+  '/llms.txt',
+  '/manifest.json',
+  '/manifest.webmanifest',
+  '/service-worker.js',
+]);
+
+const isUnauthenticatedStaticPath = (path: string): boolean => {
+  if (STATIC_EXACT_PATHS.has(path)) return true;
+  for (const prefix of STATIC_PATH_PREFIXES) {
+    if (path.startsWith(prefix)) return true;
+  }
+  return false;
+};
+
 @injectable()
 export class Application implements IApplication {
   public readonly app: Express;
@@ -287,9 +318,10 @@ export class Application implements IApplication {
       standardHeaders: true,
       legacyHeaders: false,
       message: 'Too many requests from this IP, please try again later.',
-      skip: () => {
+      skip: (req: express.Request) => {
         const current = this.configManager.getConfig();
-        return !current.security.protection.rate_limiting.enabled;
+        if (!current.security.protection.rate_limiting.enabled) return true;
+        return isUnauthenticatedStaticPath(req.path);
       },
 
       handler: (
