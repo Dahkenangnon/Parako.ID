@@ -16,6 +16,7 @@ import {
   ReservedSlugError,
   NotFoundError,
 } from '../../errors/platform.errors.js';
+import { parsePositiveInt } from '../../utils/query-parse.js';
 
 /** Slug format: lowercase alphanumeric, hyphens, underscores, 1-63 chars. */
 const TENANT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
@@ -87,11 +88,16 @@ export class PlatformAdminController {
         return;
       }
 
-      const page = parseInt(req.query.page as string, 10) || 1;
-      const limit = Math.min(
-        parseInt(req.query.limit as string, 10) || 20,
-        MAX_PAGE_LIMIT
-      );
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 20,
+        min: 1,
+        max: MAX_PAGE_LIMIT,
+      });
 
       const users = await this.platformService.listTenantUsers(slug, {
         page,

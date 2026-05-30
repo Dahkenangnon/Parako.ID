@@ -12,6 +12,15 @@ import type { IActivityService } from '../../di/interfaces/activity-service.inte
 import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-service.interface.js';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import { TYPES } from '../../di/types.js';
+import {
+  parsePositiveInt,
+  parseEnum,
+  escapeRegExp,
+} from '../../utils/query-parse.js';
+import {
+  ADMIN_SESSION_SORT_FIELDS,
+  SORT_ORDER_VALUES,
+} from '../../middlewares/validation.middleware.js';
 
 /**
  * Admin Sessions Controller
@@ -48,24 +57,56 @@ export class AdminSessionsController implements IAdminSessionsController {
    */
   public list = async (req: Request, res: Response): Promise<void> => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 20,
+        min: 1,
+        max: 100,
+      });
       const search = ((req.query.search as string) || '').trim();
-      const username = ((req.query.username as string) || '').trim();
+      const username = ((req.query.username as string) || '')
+        .trim()
+        .slice(0, 100);
       const status = ((req.query.status as string) || 'all').trim();
-      const sortBy = (req.query.sortBy as string) || 'loginTime';
-      const sortOrder = (req.query.sortOrder as string) || 'desc';
+      const sortBy = parseEnum(
+        req.query.sortBy,
+        ADMIN_SESSION_SORT_FIELDS,
+        'loginTime'
+      );
+      const sortOrder = parseEnum(
+        req.query.sortOrder,
+        SORT_ORDER_VALUES,
+        'desc'
+      );
 
       // Express sessions pagination (separate from OIDC)
-      const expressPage = parseInt(req.query.expressPage as string) || 1;
-      const expressLimit = parseInt(req.query.expressLimit as string) || 20;
+      const expressPage = parsePositiveInt(req.query.expressPage, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const expressLimit = parsePositiveInt(req.query.expressLimit, {
+        default: 20,
+        min: 1,
+        max: 100,
+      });
 
       const filters: any = {
         'payload.kind': 'Session',
       };
 
+      // Anchored prefix match with the username escaped to neutralise the
+      // canonical ReDoS attack patterns (e.g. `(a+)+$`). The length cap above
+      // bounds parser work even if the escape were ever bypassed.
+      // Reference: https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
       if (username) {
-        filters['payload.accountId'] = { $regex: username, $options: 'i' };
+        filters['payload.accountId'] = {
+          $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
+        };
       }
 
       if (status === 'active') {

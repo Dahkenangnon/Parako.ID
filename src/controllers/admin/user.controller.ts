@@ -15,6 +15,20 @@ import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-servi
 import { TYPES } from '../../di/types.js';
 import { type IUser } from '../../types/user.js';
 import { validateIdentifier } from '../../utils/custom-identifier-validation.js';
+import {
+  parsePositiveInt,
+  parseEnum,
+  escapeRegExp,
+} from '../../utils/query-parse.js';
+import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
+
+const ADMIN_USER_LIST_SORT_FIELDS = [
+  'created_at',
+  'updated_at',
+  'username',
+  'email',
+  'last_login_at',
+] as const;
 
 /**
  * Admin Users Controller
@@ -51,33 +65,41 @@ export class AdminUsersController implements IAdminUsersController {
    */
   public list = async (req: Request, res: Response): Promise<void> => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const search = ((req.query.search as string) || '').trim();
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 20,
+        min: 1,
+        max: 100,
+      });
+      const search = ((req.query.search as string) || '').trim().slice(0, 200);
       const role = ((req.query.role as string) || '').trim();
       const status = ((req.query.status as string) || '').trim();
-      const ALLOWED_SORT_FIELDS = new Set([
-        'created_at',
-        'updated_at',
-        'username',
-        'email',
-        'last_login_at',
-      ]);
-      const rawSortBy = (req.query.sortBy as string) || 'created_at';
-      const sortBy = ALLOWED_SORT_FIELDS.has(rawSortBy)
-        ? rawSortBy
-        : 'created_at';
-      const sortOrder = (req.query.sortOrder as string) || 'desc';
+      const sortBy = parseEnum(
+        req.query.sortBy,
+        ADMIN_USER_LIST_SORT_FIELDS,
+        'created_at'
+      );
+      const sortOrder = parseEnum(
+        req.query.sortOrder,
+        SORT_ORDER_VALUES,
+        'desc'
+      );
 
       const filter: any = {};
 
-      if (search && search.trim()) {
+      // OWASP ReDoS: escape user-controlled input before $regex.
+      if (search) {
+        const safeSearch = new RegExp(escapeRegExp(search), 'i');
         filter.$or = [
-          { username: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } },
-          { name: { $regex: search, $options: 'i' } },
-          { given_name: { $regex: search, $options: 'i' } },
-          { family_name: { $regex: search, $options: 'i' } },
+          { username: { $regex: safeSearch } },
+          { email: { $regex: safeSearch } },
+          { name: { $regex: safeSearch } },
+          { given_name: { $regex: safeSearch } },
+          { family_name: { $regex: safeSearch } },
         ];
       }
 
@@ -961,8 +983,16 @@ export class AdminUsersController implements IAdminUsersController {
   public activities = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 50,
+        min: 1,
+        max: 100,
+      });
       const type = req.query.type as string;
 
       const user = await this.userService.findOne(id);

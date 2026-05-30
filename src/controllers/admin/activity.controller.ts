@@ -6,6 +6,15 @@ import type { ISessionManager } from '../../di/interfaces/session-manager.interf
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import type { IAdminActivitiesController } from '../../di/interfaces/admin-activities-controller.interface.js';
 import { TYPES } from '../../di/types.js';
+import {
+  parsePositiveInt,
+  parseEnum,
+  escapeRegExp,
+} from '../../utils/query-parse.js';
+import {
+  ADMIN_ACTIVITY_SORT_FIELDS,
+  SORT_ORDER_VALUES,
+} from '../../middlewares/validation.middleware.js';
 
 /**
  * Admin Activities Controller
@@ -29,32 +38,45 @@ export class AdminActivitiesController implements IAdminActivitiesController {
    */
   public list = async (req: Request, res: Response): Promise<void> => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const search = ((req.query.search as string) || '').trim();
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 50,
+        min: 1,
+        max: 100,
+      });
+      const search = ((req.query.search as string) || '').trim().slice(0, 200);
       const type = ((req.query.type as string) || '').trim();
       const status = ((req.query.status as string) || '').trim();
-      const username = ((req.query.username as string) || '').trim();
+      const username = ((req.query.username as string) || '')
+        .trim()
+        .slice(0, 100);
       const dateFrom = ((req.query.dateFrom as string) || '').trim();
       const dateTo = ((req.query.dateTo as string) || '').trim();
-      const ALLOWED_SORT_FIELDS = new Set([
-        'timestamp',
-        'username',
-        'type',
-        'status',
-      ]);
-      const rawSortBy = (req.query.sortBy as string) || 'timestamp';
-      const sortBy = ALLOWED_SORT_FIELDS.has(rawSortBy)
-        ? rawSortBy
-        : 'timestamp';
-      const sortOrder = (req.query.sortOrder as string) || 'desc';
+      const sortBy = parseEnum(
+        req.query.sortBy,
+        ADMIN_ACTIVITY_SORT_FIELDS,
+        'timestamp'
+      );
+      const sortOrder = parseEnum(
+        req.query.sortOrder,
+        SORT_ORDER_VALUES,
+        'desc'
+      );
 
       const filter: any = {};
 
-      if (search && search.trim()) {
+      // Anchored prefix match with escaped user input — closes the ReDoS
+      // sink that `$regex: search` would otherwise create. See OWASP:
+      // https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
+      if (search) {
+        const safeSearch = new RegExp(escapeRegExp(search), 'i');
         filter.$or = [
-          { description: { $regex: search, $options: 'i' } },
-          { username: { $regex: search, $options: 'i' } },
+          { description: { $regex: safeSearch } },
+          { username: { $regex: safeSearch } },
         ];
       }
 
@@ -66,8 +88,11 @@ export class AdminActivitiesController implements IAdminActivitiesController {
         filter.status = status;
       }
 
-      if (username && username.trim()) {
-        filter.username = { $regex: username, $options: 'i' };
+      if (username) {
+        // Anchored prefix match + escaped input (OWASP ReDoS).
+        filter.username = {
+          $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
+        };
       }
 
       if (dateFrom || dateTo) {

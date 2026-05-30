@@ -86,11 +86,37 @@ export const paginationValidators: ValidationChain[] = [
     .toInt(),
 ];
 
+// Sort field allowlists — exported so admin controllers can re-use them at
+// the controller boundary (defense-in-depth against the validator being
+// bypassed). Keep these in sync with the corresponding sortValidators(...)
+// calls below.
+export const ADMIN_USER_SORT_FIELDS = [
+  'created_at',
+  'username',
+  'email',
+  'last_login',
+] as const;
+export const ADMIN_SESSION_SORT_FIELDS = [
+  'loginTime',
+  'username',
+  'expiresAt',
+] as const;
+export const ADMIN_ACTIVITY_SORT_FIELDS = [
+  'timestamp',
+  'created_at',
+  'type',
+  'status',
+  'username',
+] as const;
+export const SORT_ORDER_VALUES = ['asc', 'desc'] as const;
+
 /**
  * Create sort validators with allowed field whitelist
  * @param allowedFields - Array of field names that can be sorted
  */
-export const sortValidators = (allowedFields: string[]): ValidationChain[] => [
+export const sortValidators = (
+  allowedFields: readonly string[]
+): ValidationChain[] => [
   query('sortBy')
     .optional({ values: 'falsy' })
     .isIn(allowedFields)
@@ -240,7 +266,7 @@ export const adminUserValidators: ValidationChain[] = [
     .optional({ values: 'falsy' })
     .isIn(['all', 'active', 'disabled', 'anonymized'])
     .withMessage('status must be one of: all, active, disabled, anonymized'),
-  ...sortValidators(['created_at', 'username', 'email', 'last_login']),
+  ...sortValidators(ADMIN_USER_SORT_FIELDS),
 ];
 
 /**
@@ -254,7 +280,7 @@ export const adminSessionValidators: ValidationChain[] = [
     .optional({ values: 'falsy' })
     .isIn(['all', 'active', 'expired'])
     .withMessage('status must be one of: all, active, expired'),
-  ...sortValidators(['loginTime', 'username', 'expiresAt']),
+  ...sortValidators(ADMIN_SESSION_SORT_FIELDS),
 ];
 
 /**
@@ -274,7 +300,7 @@ export const adminActivityValidators: ValidationChain[] = [
     .withMessage('status must be one of: all, success, failed, info, warning'),
   usernameValidator,
   ...dateRangeValidators,
-  ...sortValidators(['timestamp', 'created_at', 'type', 'status', 'username']),
+  ...sortValidators(ADMIN_ACTIVITY_SORT_FIELDS),
 ];
 
 /**

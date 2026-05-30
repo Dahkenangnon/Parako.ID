@@ -7,6 +7,14 @@ import type { ISessionManager } from '../../di/interfaces/session-manager.interf
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import type { IAdminUserGrantsController } from '../../di/interfaces/admin-user-grants-controller.interface.js';
 import { TYPES } from '../../di/types.js';
+import {
+  parsePositiveInt,
+  parseEnum,
+  escapeRegExp,
+} from '../../utils/query-parse.js';
+import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
+
+const ADMIN_GRANT_SORT_FIELDS = ['created_at', 'exp'] as const;
 
 @injectable()
 export class AdminUserGrantsController implements IAdminUserGrantsController {
@@ -26,26 +34,53 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
    */
   public list = async (req: Request, res: Response): Promise<void> => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const search = Array.isArray(req.query.search)
-        ? req.query.search[0]
-        : (req.query.search as string) || '';
-      const clientId = Array.isArray(req.query.clientId)
-        ? req.query.clientId[0]
-        : (req.query.clientId as string) || '';
-      const username = Array.isArray(req.query.username)
-        ? req.query.username[0]
-        : (req.query.username as string) || '';
-      const sortBy = (req.query.sortBy as string) || 'created_at';
-      const sortOrder = (req.query.sortOrder as string) === 'asc' ? 1 : -1;
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 20,
+        min: 1,
+        max: 100,
+      });
+      const search = (
+        Array.isArray(req.query.search)
+          ? req.query.search[0]
+          : (req.query.search as string) || ''
+      )
+        .toString()
+        .slice(0, 200);
+      const clientId = (
+        Array.isArray(req.query.clientId)
+          ? req.query.clientId[0]
+          : (req.query.clientId as string) || ''
+      ).toString();
+      const username = (
+        Array.isArray(req.query.username)
+          ? req.query.username[0]
+          : (req.query.username as string) || ''
+      ).toString();
+      const sortBy = parseEnum(
+        req.query.sortBy,
+        ADMIN_GRANT_SORT_FIELDS,
+        'created_at'
+      );
+      const sortOrder =
+        parseEnum(req.query.sortOrder, SORT_ORDER_VALUES, 'desc') === 'asc'
+          ? 1
+          : -1;
 
       const filters: any = {};
 
+      // Escape user-controlled search input before passing to Mongo $regex
+      // to neutralise ReDoS attacks. The 200-char cap above bounds parser
+      // work even in pathological inputs.
       if (search) {
+        const safeSearch = new RegExp(escapeRegExp(search), 'i');
         filters.$or = [
-          { 'payload.accountId': { $regex: search, $options: 'i' } },
-          { 'payload.clientId': { $regex: search, $options: 'i' } },
+          { 'payload.accountId': { $regex: safeSearch } },
+          { 'payload.clientId': { $regex: safeSearch } },
         ];
       }
 

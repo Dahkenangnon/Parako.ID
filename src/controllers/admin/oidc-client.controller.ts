@@ -9,6 +9,15 @@ import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-servi
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import { TYPES } from '../../di/types.js';
+import { parsePositiveInt, parseEnum } from '../../utils/query-parse.js';
+import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
+
+const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
+  'created_at',
+  'updated_at',
+  'client_name',
+  'application_type',
+] as const;
 import {
   APP_TYPE_PRESETS,
   GRANT_TYPES,
@@ -119,19 +128,43 @@ export class AdminOidcClientController {
    */
   public list = async (req: Request, res: Response): Promise<void> => {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const search = Array.isArray(req.query.search)
-        ? req.query.search[0]
-        : (req.query.search as string) || '';
-      const applicationType = Array.isArray(req.query.application_type)
-        ? req.query.application_type[0]
-        : (req.query.application_type as string) || '';
-      const status = Array.isArray(req.query.status)
-        ? req.query.status[0]
-        : (req.query.status as string) || '';
-      const sortBy = (req.query.sortBy as string) || 'created_at';
-      const sortOrder = (req.query.sortOrder as string) || 'desc';
+      const page = parsePositiveInt(req.query.page, {
+        default: 1,
+        min: 1,
+        max: 10_000,
+      });
+      const limit = parsePositiveInt(req.query.limit, {
+        default: 20,
+        min: 1,
+        max: 100,
+      });
+      const search = (
+        Array.isArray(req.query.search)
+          ? req.query.search[0]
+          : (req.query.search as string) || ''
+      )
+        .toString()
+        .slice(0, 200);
+      const applicationType = (
+        Array.isArray(req.query.application_type)
+          ? req.query.application_type[0]
+          : (req.query.application_type as string) || ''
+      ).toString();
+      const status = (
+        Array.isArray(req.query.status)
+          ? req.query.status[0]
+          : (req.query.status as string) || ''
+      ).toString();
+      const sortBy = parseEnum(
+        req.query.sortBy,
+        ADMIN_OIDC_CLIENT_SORT_FIELDS,
+        'created_at'
+      );
+      const sortOrder = parseEnum(
+        req.query.sortOrder,
+        SORT_ORDER_VALUES,
+        'desc'
+      );
 
       const filters: ClientFilters = {};
       if (applicationType) {
