@@ -212,7 +212,7 @@ async function main() {
   // Start type-check in background (non-blocking unless --strict)
   const typecheckPromise = typecheckAsync();
 
-  // Step 2: Server TS → dist/src/ (SWC)
+  // Step 2: Server TS → dist/src/ (SWC, production minify)
   step('server swc', () => {
     bin('swc', [
       'src',
@@ -220,7 +220,7 @@ async function main() {
       'dist/src',
       '--strip-leading-paths',
       '--config-file',
-      '.swcrc',
+      '.swcrc.prod',
       '--extensions',
       '.ts',
       '--ignore',
@@ -229,7 +229,7 @@ async function main() {
     return `${countFiles(join(ROOT, 'dist/src'), '.js')} files`;
   });
 
-  // Step 3: CLI scripts → dist/scripts/ (SWC)
+  // Step 3: CLI scripts → dist/scripts/ (SWC, production minify)
   step('scripts swc', () => {
     bin('swc', [
       'scripts/manage',
@@ -237,7 +237,7 @@ async function main() {
       'dist/scripts',
       '--strip-leading-paths',
       '--config-file',
-      '.swcrc',
+      '.swcrc.prod',
       '--extensions',
       '.ts',
     ]);
