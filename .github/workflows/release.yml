@@ -74,6 +74,83 @@ jobs:
         if: github.event_name == 'pull_request'
         run: pnpm exec commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
 
+  # Per-adapter integration coverage. Confirms the lazy adapter loader binds
+  # the correct repository family for each storage backend and that the
+  # integration suites pass against real Postgres and MongoDB services.
+  adapter-matrix:
+    name: Adapter matrix (${{ matrix.adapter }})
+    runs-on: ubuntu-latest
+    needs: ci
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [sqlite, postgresql, mongodb]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: parako
+          POSTGRES_PASSWORD: parako
+          POSTGRES_DB: parako_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parako"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      STORAGE_ADAPTER: ${{ matrix.adapter }}
+      STORAGE_POSTGRESQL_URL: postgresql://parako:parako@localhost:5432/parako_test
+      DATABASE_URL: postgresql://parako:parako@localhost:5432/parako_test
+      STORAGE_MONGODB_URI: mongodb://localhost:27017/parako_test
+      STORAGE_SQLITE_PATH: ./data/parako_ci.db
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          version: 11.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply Prisma schema (postgresql)
+        if: matrix.adapter == 'postgresql'
+        run: pnpm exec prisma db push --config=prisma.config.pg.ts --skip-generate --accept-data-loss
+
+      - name: Apply Prisma schema (sqlite)
+        if: matrix.adapter == 'sqlite'
+        run: pnpm exec prisma db push --config=prisma.config.ts --skip-generate --accept-data-loss
+
+      - name: Run tests
+        env:
+          ADAPTER_NAME: ${{ matrix.adapter }}
+        run: |
+          echo "Running tests with STORAGE_ADAPTER=$ADAPTER_NAME"
+          pnpm run test:run
+
   # Release Process (only on push to main branches)
   release:
     name: Release
