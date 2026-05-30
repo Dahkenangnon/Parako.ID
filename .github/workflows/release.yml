@@ -51,6 +51,9 @@ jobs:
           pnpm exec commitlint --version
           pnpm exec eslint --version
 
+      - name: Audit production dependencies
+        run: pnpm audit --audit-level=high --prod
+
       - name: Run ESLint
         run: pnpm run lint:check
 
