@@ -63,8 +63,14 @@ export class SmsService {
     @inject(TYPES.Logger) private logger: ILogger
   ) {
     this.initializeProvider();
-    // Clean up expired rate limit entries every 5 minutes
-    setInterval(() => this.cleanupRateLimitCache(), 5 * 60 * 1000);
+    // Clean up expired rate limit entries every 5 minutes. The timer is
+    // unref'd so it never keeps the event loop alive during graceful
+    // shutdown — see https://nodejs.org/api/timers.html#timersunref
+    const cleanupTimer = setInterval(
+      () => this.cleanupRateLimitCache(),
+      5 * 60 * 1000
+    );
+    cleanupTimer.unref();
   }
 
   /**

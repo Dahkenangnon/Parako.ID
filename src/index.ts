@@ -238,7 +238,7 @@ class ParakoServer {
             }
           );
 
-          await initRateLimitRedis(redisUrl, basePrefix);
+          await initRateLimitRedis(redisUrl, basePrefix, logger);
 
           logger.info('Redis Pub/Sub event bus initialized');
         }

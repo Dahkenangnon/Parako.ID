@@ -198,6 +198,10 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
         }
       }
     }, this.CACHE_CHECK_INTERVAL);
+    // Allow the event loop to exit during graceful shutdown without waiting
+    // for the next poll tick. Reference:
+    // https://nodejs.org/api/timers.html#timersunref
+    this.cacheCheckInterval.unref();
   }
 
   /**

@@ -26,16 +26,25 @@ const isDev = process.env.NODE_ENV !== 'production';
 let redisClient: Redis | null = null;
 let redisBasePrefix = 'parako';
 
+/** Minimal logger contract used by the rate-limiter init. */
+export interface RateLimitInitLogger {
+  info(message: string, context?: Record<string, unknown>): void;
+  warn(message: string, context?: Record<string, unknown>): void;
+}
+
 /**
  * Initialize Redis client for rate limiting.
  * Call this during app initialization if using Redis in production.
  *
- * @param redisUrl  - Redis connection URL
- * @param basePrefix - Base key prefix (from deployment.redis_prefix config)
+ * @param redisUrl   Redis connection URL
+ * @param basePrefix Base key prefix (from deployment.redis_prefix config)
+ * @param logger     Structured logger. Defaults to `console` to keep the
+ *                   function callable from pre-DI bootstrap paths.
  */
 export async function initRateLimitRedis(
   redisUrl?: string,
-  basePrefix?: string
+  basePrefix?: string,
+  logger: RateLimitInitLogger = console
 ): Promise<void> {
   if (basePrefix) redisBasePrefix = basePrefix;
 
@@ -47,11 +56,16 @@ export async function initRateLimitRedis(
       });
 
       await redisClient.connect();
-      console.info('[RateLimiter] Redis connected for rate limiting');
+      logger.info('Rate-limiter Redis client connected', {
+        component: 'rate-limiter',
+      });
     } catch (error) {
-      console.warn(
-        '[RateLimiter] Redis connection failed, falling back to memory store:',
-        error
+      logger.warn(
+        'Rate-limiter Redis connection failed; falling back to in-memory store',
+        {
+          component: 'rate-limiter',
+          err: error instanceof Error ? error.message : String(error),
+        }
       );
       redisClient = null;
     }
