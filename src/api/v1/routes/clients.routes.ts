@@ -12,7 +12,12 @@ import { Router } from 'express';
 import type { IClientsRouteController } from './index.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
+import { validateBody } from '../middleware/validate-body.middleware.js';
 import { SCOPES } from '../scopes.js';
+import {
+  createClientSchema,
+  updateClientSchema,
+} from '../validators/clients.validator.js';
 
 /**
  * Create the `/clients` sub-router.
@@ -36,6 +41,7 @@ export function clientRoutes(controller: IClientsRouteController): Router {
     '/',
     requireScope(SCOPES.CLIENTS_WRITE),
     apiRateLimiter('write'),
+    validateBody(createClientSchema),
     controller.create
   );
 
@@ -52,6 +58,7 @@ export function clientRoutes(controller: IClientsRouteController): Router {
     '/:client_id',
     requireScope(SCOPES.CLIENTS_WRITE),
     apiRateLimiter('write'),
+    validateBody(updateClientSchema),
     controller.update
   );
 
@@ -60,6 +67,7 @@ export function clientRoutes(controller: IClientsRouteController): Router {
     '/:client_id',
     requireScope(SCOPES.CLIENTS_WRITE),
     apiRateLimiter('write'),
+    validateBody(updateClientSchema),
     controller.patch
   );
 

@@ -18,10 +18,10 @@ import {
   buildCursorResponse,
   parsePaginationParams,
 } from '../pagination.js';
-import {
-  createUserSchema,
-  updateUserSchema,
-  passwordResetSchema,
+import type {
+  CreateUserInput,
+  UpdateUserInput,
+  PasswordResetInput,
 } from '../validators/users.validator.js';
 
 /** Service and logger dependencies required by {@link UsersController}. */
@@ -175,7 +175,8 @@ export class UsersController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = createUserSchema.parse(req.body);
+      // Body already validated by validateBody(createUserSchema) at the route.
+      const body = req.body as CreateUserInput;
       const user = await this.authService.registerUser(body);
 
       this.logger.info('User created via API', {
@@ -216,7 +217,7 @@ export class UsersController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = updateUserSchema.parse(req.body);
+      const body = req.body as UpdateUserInput;
       const user = await this.userService.updateById(req.params.user_id, body);
 
       if (!user) {
@@ -238,7 +239,7 @@ export class UsersController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = updateUserSchema.parse(req.body);
+      const body = req.body as UpdateUserInput;
       const user = await this.userService.updateById(req.params.user_id, body);
 
       if (!user) {
@@ -331,7 +332,7 @@ export class UsersController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { new_password } = passwordResetSchema.parse(req.body);
+      const { new_password } = req.body as PasswordResetInput;
 
       const user = await this.userService.findById(req.params.user_id);
 

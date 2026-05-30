@@ -16,7 +16,12 @@ import { Router } from 'express';
 import type { ITenantsRouteController } from './index.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
+import { validateBody } from '../middleware/validate-body.middleware.js';
 import { SCOPES } from '../scopes.js';
+import {
+  createTenantSchema,
+  updateConfigSectionSchema,
+} from '../validators/tenants.validator.js';
 
 /**
  * Create the `/tenants` sub-router.
@@ -40,6 +45,7 @@ export function tenantRoutes(controller: ITenantsRouteController): Router {
     '/',
     requireScope(SCOPES.TENANTS_WRITE),
     apiRateLimiter('write'),
+    validateBody(createTenantSchema),
     controller.create
   );
 
@@ -64,6 +70,7 @@ export function tenantRoutes(controller: ITenantsRouteController): Router {
     '/:slug/config/:section',
     requireScope(SCOPES.CROSS_TENANT_WRITE),
     apiRateLimiter('write'),
+    validateBody(updateConfigSectionSchema),
     controller.updateConfig
   );
 

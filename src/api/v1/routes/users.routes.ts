@@ -13,7 +13,13 @@ import { Router } from 'express';
 import type { IUsersRouteController } from './index.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
+import { validateBody } from '../middleware/validate-body.middleware.js';
 import { SCOPES } from '../scopes.js';
+import {
+  createUserSchema,
+  updateUserSchema,
+  passwordResetSchema,
+} from '../validators/users.validator.js';
 
 /**
  * Create the `/users` sub-router.
@@ -37,6 +43,7 @@ export function userRoutes(controller: IUsersRouteController): Router {
     '/',
     requireScope(SCOPES.USERS_WRITE),
     apiRateLimiter('write'),
+    validateBody(createUserSchema),
     controller.create
   );
 
@@ -53,6 +60,7 @@ export function userRoutes(controller: IUsersRouteController): Router {
     '/:user_id',
     requireScope(SCOPES.USERS_WRITE),
     apiRateLimiter('write'),
+    validateBody(updateUserSchema),
     controller.update
   );
 
@@ -61,6 +69,7 @@ export function userRoutes(controller: IUsersRouteController): Router {
     '/:user_id',
     requireScope(SCOPES.USERS_WRITE),
     apiRateLimiter('write'),
+    validateBody(updateUserSchema),
     controller.patch
   );
 
@@ -93,6 +102,7 @@ export function userRoutes(controller: IUsersRouteController): Router {
     '/:user_id/password-reset',
     requireScope(SCOPES.USERS_WRITE),
     apiRateLimiter('sensitive'),
+    validateBody(passwordResetSchema),
     controller.passwordReset
   );
 

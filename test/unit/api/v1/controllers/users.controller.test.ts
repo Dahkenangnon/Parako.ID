@@ -272,33 +272,6 @@ describe('api/v1/controllers/UsersController', () => {
       );
     });
 
-    it('should call next with Zod error when email is missing', async () => {
-      const req = createMockRequest({
-        body: { password: 'securepassword123' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(deps.authService.registerUser).not.toHaveBeenCalled();
-    });
-
-    it('should call next with Zod error when password is too short', async () => {
-      const req = createMockRequest({
-        body: { email: 'jane@example.com', password: 'short' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const passedError = vi.mocked(next).mock.calls[0][0] as any;
-      expect(passedError.issues).toBeDefined();
-    });
-
     it('should call next(error) on service failure', async () => {
       const error = new Error('Registration failed');
       vi.mocked(deps.authService.registerUser).mockRejectedValue(error);
@@ -420,20 +393,6 @@ describe('api/v1/controllers/UsersController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
-    });
-
-    it('should call next with Zod error when email is invalid', async () => {
-      const req = createMockRequest({
-        params: { user_id: '507f1f77bcf86cd799439011' },
-        body: { email: 'not-an-email' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.update(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(deps.userService.updateById).not.toHaveBeenCalled();
     });
   });
 
@@ -709,34 +668,6 @@ describe('api/v1/controllers/UsersController', () => {
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
       expect(deps.authService.adminChangeUserPassword).not.toHaveBeenCalled();
-    });
-
-    it('should call next with Zod error when new_password is too short', async () => {
-      const req = createMockRequest({
-        params: { user_id: '507f1f77bcf86cd799439011' },
-        body: { new_password: 'short' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.passwordReset(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const passedError = vi.mocked(next).mock.calls[0][0] as any;
-      expect(passedError.issues).toBeDefined();
-    });
-
-    it('should call next with Zod error when new_password is missing', async () => {
-      const req = createMockRequest({
-        params: { user_id: '507f1f77bcf86cd799439011' },
-        body: {},
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.passwordReset(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 

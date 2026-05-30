@@ -14,7 +14,7 @@ import type { Provider } from 'oidc-provider';
 
 import { notFound } from '../errors.js';
 import { apiSuccess, apiCreated, apiNoContent, apiList } from '../response.js';
-import { createRegistrationTokenSchema } from '../validators/registration-tokens.validator.js';
+import type { CreateRegistrationTokenInput } from '../validators/registration-tokens.validator.js';
 
 /** Service and logger dependencies required by {@link RegistrationTokensController}. */
 export interface RegistrationTokensControllerDeps {
@@ -80,7 +80,7 @@ export class RegistrationTokensController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = createRegistrationTokenSchema.parse(req.body);
+      const body = req.body as CreateRegistrationTokenInput;
       const tenantId = this.getTenantId();
       const provider =
         await this.providerService.getProviderForTenant(tenantId);

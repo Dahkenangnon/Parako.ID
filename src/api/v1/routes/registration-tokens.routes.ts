@@ -11,7 +11,9 @@ import { Router } from 'express';
 import type { IRegistrationTokensRouteController } from './index.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
+import { validateBody } from '../middleware/validate-body.middleware.js';
 import { SCOPES } from '../scopes.js';
+import { createRegistrationTokenSchema } from '../validators/registration-tokens.validator.js';
 
 /**
  * Create the `/registration-tokens` sub-router.
@@ -37,6 +39,7 @@ export function registrationTokenRoutes(
     '/',
     requireScope(SCOPES.REGISTRATION_TOKENS_WRITE),
     apiRateLimiter('write'),
+    validateBody(createRegistrationTokenSchema),
     controller.create
   );
 

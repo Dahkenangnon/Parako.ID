@@ -256,33 +256,6 @@ describe('api/v1/controllers/ClientsController', () => {
       );
     });
 
-    it('should call next with Zod error when body is invalid', async () => {
-      const req = createMockRequest({
-        body: { client_name: '' }, // min length 1 violated
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(deps.oidcAdapter.client.createClient).not.toHaveBeenCalled();
-    });
-
-    it('should call next with Zod error when client_name is missing', async () => {
-      const req = createMockRequest({
-        body: { application_type: 'web' }, // client_name required
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const passedError = vi.mocked(next).mock.calls[0][0] as any;
-      expect(passedError.issues).toBeDefined();
-    });
-
     it('should call next(error) on adapter failure', async () => {
       const error = new Error('Adapter failure');
       vi.mocked(deps.oidcAdapter.client.createClient).mockRejectedValue(error);
@@ -408,20 +381,6 @@ describe('api/v1/controllers/ClientsController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
-    });
-
-    it('should call next with Zod error when body has invalid fields', async () => {
-      const req = createMockRequest({
-        params: { client_id: 'test-client-001' },
-        body: { client_uri: 'not-a-url' }, // must be a valid URL
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.update(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(deps.oidcAdapter.client.updateClient).not.toHaveBeenCalled();
     });
   });
 

@@ -245,48 +245,6 @@ describe('api/v1/controllers/TenantsController', () => {
       expect(error.status).toBe(409);
     });
 
-    it('should call next with Zod error when slug format is invalid', async () => {
-      const req = createMockRequest({
-        body: { slug: 'INVALID_SLUG!', display_name: 'Test' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const passedError = vi.mocked(next).mock.calls[0][0] as any;
-      expect(passedError.issues).toBeDefined();
-      expect(deps.platformAdminService.createTenant).not.toHaveBeenCalled();
-    });
-
-    it('should call next with Zod error when slug is too short', async () => {
-      const req = createMockRequest({
-        body: { slug: 'a', display_name: 'Test' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect(deps.platformAdminService.createTenant).not.toHaveBeenCalled();
-    });
-
-    it('should call next with Zod error when display_name is missing', async () => {
-      const req = createMockRequest({
-        body: { slug: 'valid-slug' },
-      });
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      const passedError = vi.mocked(next).mock.calls[0][0] as any;
-      expect(passedError.issues).toBeDefined();
-    });
-
     it('should propagate unexpected service errors via next()', async () => {
       const error = new Error('Unexpected internal error');
       vi.mocked(deps.platformAdminService.createTenant).mockRejectedValue(

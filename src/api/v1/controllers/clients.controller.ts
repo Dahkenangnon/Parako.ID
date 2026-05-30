@@ -18,9 +18,9 @@ import {
   buildCursorResponse,
   parsePaginationParams,
 } from '../pagination.js';
-import {
-  createClientSchema,
-  updateClientSchema,
+import type {
+  CreateClientInput,
+  UpdateClientInput,
 } from '../validators/clients.validator.js';
 
 /** Service and logger dependencies required by {@link ClientsController}. */
@@ -143,7 +143,7 @@ export class ClientsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = createClientSchema.parse(req.body);
+      const body = req.body as CreateClientInput;
       const client = await this.adapter.createClient(body);
 
       this.logger.info('OIDC client created', { client_id: client.client_id });
@@ -184,7 +184,7 @@ export class ClientsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = updateClientSchema.parse(req.body);
+      const body = req.body as UpdateClientInput;
       const client = await this.adapter.updateClient(
         req.params.client_id,
         body
@@ -209,7 +209,7 @@ export class ClientsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = updateClientSchema.parse(req.body);
+      const body = req.body as UpdateClientInput;
       const client = await this.adapter.updateClient(
         req.params.client_id,
         body

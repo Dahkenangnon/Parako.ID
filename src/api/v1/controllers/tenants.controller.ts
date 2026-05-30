@@ -24,9 +24,9 @@ import {
 } from '../errors.js';
 import { apiSuccess, apiCreated, apiList } from '../response.js';
 import { buildCursorResponse, parsePaginationParams } from '../pagination.js';
-import {
-  createTenantSchema,
-  updateConfigSectionSchema,
+import type {
+  CreateTenantInput,
+  UpdateConfigSectionInput,
 } from '../validators/tenants.validator.js';
 
 /** Service and logger dependencies required by {@link TenantsController}. */
@@ -112,7 +112,7 @@ export class TenantsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const body = createTenantSchema.parse(req.body);
+      const body = req.body as CreateTenantInput;
 
       let tenant: any;
       try {
@@ -236,7 +236,7 @@ export class TenantsController {
         );
       }
 
-      const data = updateConfigSectionSchema.parse(req.body);
+      const data = req.body as UpdateConfigSectionInput;
       const tenantId = String(tenant.id ?? tenant._id ?? tenant.slug);
 
       if (!this.tenantSettingsOverrideService) {
