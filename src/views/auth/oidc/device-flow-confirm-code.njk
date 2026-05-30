@@ -104,7 +104,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/device-flow-confirm-code.js"></script>
+<script src="{{ asset('js/auth/oidc/device-flow-confirm-code.js') }}"></script>
 
 <!-- Complete configuration and translations for DeviceFlowConfirmCodeManager -->
 <script id="___OIDC_DEVICE_FLOW_CONFIRM_CODE_STATE___" type="application/json">

@@ -167,7 +167,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/login.js"></script>
+<script src="{{ asset('js/auth/oidc/login.js') }}"></script>
 
 <!-- Complete configuration and translations for OIDCLoginManager -->
 <script id="___OIDC_LOGIN_STATE___" type="application/json">

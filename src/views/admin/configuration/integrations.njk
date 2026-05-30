@@ -196,7 +196,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/admin/configuration/common.js"></script>
-<script src="/js/admin/configuration/integrations.js"></script>
-<script src="/js/admin/configuration/validation.js"></script>
+<script src="{{ asset('js/admin/configuration/common.js') }}"></script>
+<script src="{{ asset('js/admin/configuration/integrations.js') }}"></script>
+<script src="{{ asset('js/admin/configuration/validation.js') }}"></script>
 {% endblock %}

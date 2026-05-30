@@ -183,7 +183,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/account/settings/passkeys.js"></script>
+<script src="{{ asset('js/account/settings/passkeys.js') }}"></script>
 
 <!-- Configuration for Passkeys Management -->
 <script id="___PASSKEYS_STATE___" type="application/json">

@@ -219,5 +219,5 @@
       importColumns: {{ importColumns | dump | safe if importColumns else "[]" }},
     };
   </script>
-  <script src="/js/admin/data-transfer/data-transfer.js" defer></script>
+  <script src="{{ asset('js/admin/data-transfer/data-transfer.js') }}" defer></script>
 {% endblock %}

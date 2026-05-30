@@ -120,7 +120,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/mfa.js"></script>
+<script src="{{ asset('js/auth/oidc/mfa.js') }}"></script>
 
 <!-- Complete configuration and translations for MFAManager -->
 <script id="___OIDC_MFA_STATE___" type="application/json">

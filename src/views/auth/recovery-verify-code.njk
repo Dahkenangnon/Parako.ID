@@ -85,7 +85,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/recovery-verify-code.js"></script>
+<script src="{{ asset('js/auth/recovery-verify-code.js') }}"></script>
 
 <!-- Complete configuration and translations for RecoveryVerifyCodeManager -->
 <script id="___RECOVERY_VERIFY_CODE_STATE___" type="application/json">

@@ -1233,6 +1233,6 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/admin/configuration/validation.js"></script>
-<script src="/js/admin/configuration/security.js"></script>
+<script src="{{ asset('js/admin/configuration/validation.js') }}"></script>
+<script src="{{ asset('js/admin/configuration/security.js') }}"></script>
 {% endblock %}

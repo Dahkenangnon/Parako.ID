@@ -465,8 +465,17 @@ export class Application implements IApplication {
     const publicPath = path.resolve(this.__dirname, '../../public');
     this.app.use(
       express.static(publicPath, {
-        maxAge: this.isProduction ? '1d' : 0,
+        maxAge: this.isProduction ? HARDENING.static.maxAge : 0,
+        immutable: this.isProduction && HARDENING.static.immutable,
         etag: true,
+        setHeaders: (res, filePath) => {
+          if (
+            filePath.endsWith(`${path.sep}manifest.json`) ||
+            filePath.endsWith(`${path.sep}service-worker.js`)
+          ) {
+            res.setHeader('Cache-Control', 'public, no-cache');
+          }
+        },
       })
     );
 

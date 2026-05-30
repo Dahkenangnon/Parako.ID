@@ -1621,11 +1621,11 @@
                               "debug": {{ (app.env === 'development') | tojson }}
                             }
                             </script>
-                            <script src="/js/account/settings/confirm-handler.js"></script>
-                            <script src="/js/account/settings/avatar.js"></script>
-                            <script src="/js/account/settings/password.js"></script>
-                            <script src="/js/account/settings/language.js"></script>
-                            <script src="/js/account/settings/mfa.js"></script>
-                            <script src="/js/account/settings/password-visibility.js"></script>
-                            <script src="/js/account/settings/index.js"></script>
+                            <script src="{{ asset('js/account/settings/confirm-handler.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/avatar.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/password.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/language.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/mfa.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/password-visibility.js') }}"></script>
+                            <script src="{{ asset('js/account/settings/index.js') }}"></script>
                         {% endblock %}

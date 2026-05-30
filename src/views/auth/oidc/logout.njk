@@ -62,7 +62,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/logout.js"></script>
+<script src="{{ asset('js/auth/oidc/logout.js') }}"></script>
 
 <!-- Complete configuration and translations for OIDCLogoutManager -->
 <script id="___OIDC_LOGOUT_STATE___" type="application/json">

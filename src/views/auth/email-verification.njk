@@ -109,7 +109,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/email-verification.js"></script>
+<script src="{{ asset('js/auth/email-verification.js') }}"></script>
 
 <!-- Complete configuration and translations for EmailVerificationManager -->
 <script id="___EMAIL_VERIFICATION_STATE___" type="application/json">

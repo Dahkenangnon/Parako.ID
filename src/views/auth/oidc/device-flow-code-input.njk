@@ -81,7 +81,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/device-flow-code-input.js"></script>
+<script src="{{ asset('js/auth/oidc/device-flow-code-input.js') }}"></script>
 
 <!-- Complete configuration and translations for DeviceFlowCodeInputManager -->
 <script id="___OIDC_DEVICE_FLOW_CODE_INPUT_STATE___" type="application/json">

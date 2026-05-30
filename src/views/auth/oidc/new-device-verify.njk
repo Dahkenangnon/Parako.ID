@@ -118,7 +118,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/mfa.js"></script>
+<script src="{{ asset('js/auth/oidc/mfa.js') }}"></script>
 
 <!-- Configuration for OTP input -->
 <script id="___OIDC_MFA_STATE___" type="application/json">

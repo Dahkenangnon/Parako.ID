@@ -24,6 +24,13 @@ import {
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { globSync } from 'glob';
+import {
+  cleanPriorOutputs,
+  hashFile,
+  manifestFromEsbuildMeta,
+  readManifest,
+  writeManifest,
+} from './build-manifest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -204,9 +211,29 @@ async function main() {
   const totalStart = performance.now();
   console.log();
 
-  // Step 1: Clean
+  const PUBLIC_ROOT = join(ROOT, 'public');
+  const PUBLIC_JS = join(PUBLIC_ROOT, 'js');
+  const PUBLIC_CSS = join(PUBLIC_ROOT, 'css');
+  const ASSETS_JS_OUTBASE = join(ROOT, 'src/assets/js');
+  const MANIFEST_PATH = join(PUBLIC_ROOT, 'manifest.json');
+  const ESBUILD_META_PATH = join(PUBLIC_ROOT, '.esbuild-meta.json');
+  const priorManifest = readManifest(MANIFEST_PATH);
+
+  // Step 1: Clean. Remove dist/ entirely, every hashed asset emitted by a
+  // prior build, the esbuild JS bundle directory in its entirety, and the
+  // Tailwind CSS outputs. Other files under public/ (theme.css, favicon,
+  // images, robots.txt, llms.txt) are left untouched.
   step('clean', () => {
     rmSync(join(ROOT, 'dist'), { recursive: true, force: true });
+    cleanPriorOutputs(PUBLIC_ROOT, priorManifest);
+    rmSync(PUBLIC_JS, { recursive: true, force: true });
+    for (const name of readdirSync(PUBLIC_CSS).filter(n =>
+      /^styles(-[A-Za-z0-9]+)?\.css$/.test(n)
+    )) {
+      rmSync(join(PUBLIC_CSS, name), { force: true });
+    }
+    rmSync(MANIFEST_PATH, { force: true });
+    rmSync(ESBUILD_META_PATH, { force: true });
   });
 
   // Start type-check in background (non-blocking unless --strict)
@@ -244,7 +271,9 @@ async function main() {
     return `${countFiles(join(ROOT, 'dist/scripts'), '.js')} files`;
   });
 
-  // Step 4: Client-side TS → public/js/ (esbuild, minified, console-stripped)
+  // Step 4: Client-side TS → public/js/ (esbuild, minified, console-stripped,
+  // content-hashed filenames; the metafile lets the manifest step locate the
+  // hashed outputs without having to re-scan the directory).
   step('client js', () => {
     const entries = globSync('src/assets/js/**/*.ts', { cwd: ROOT });
     if (entries.length === 0) return '0 files';
@@ -257,13 +286,18 @@ async function main() {
       '--target=es2020',
       '--outdir=public/js',
       '--outbase=src/assets/js',
+      '--entry-names=[dir]/[name]-[hash]',
+      `--metafile=${relative(ROOT, ESBUILD_META_PATH)}`,
       '--drop:console',
       '--legal-comments=none',
     ]);
     return `${entries.length} files to public/js/`;
   });
 
-  // Step 5: Tailwind CSS → public/css/styles.css
+  // Step 5: Tailwind CSS → public/css/styles.css then content-hashed.
+  // tailwindcss has no native hashing; the post-process renames the emitted
+  // file so the basename includes the truncated sha256.
+  let hashedTailwindCss = null;
   step('tailwind css', () => {
     bin('tailwindcss', [
       '-i',
@@ -272,6 +306,11 @@ async function main() {
       './public/css/styles.css',
       '--minify',
     ]);
+    hashedTailwindCss = hashFile(
+      join(PUBLIC_ROOT, 'css/styles.css'),
+      PUBLIC_ROOT
+    );
+    return hashedTailwindCss;
   });
 
   // Step 6: Copy Nunjucks views → dist/src/views/ (strip HTML comments)
@@ -280,6 +319,23 @@ async function main() {
     const dest = join(ROOT, 'dist/src/views');
     copyViewsSync(src, dest);
     return `${countFiles(dest)} files`;
+  });
+
+  // Step 7: Emit public/manifest.json mapping logical asset names to the
+  // content-hashed paths just produced.
+  step('manifest', () => {
+    const mapping = manifestFromEsbuildMeta(
+      ESBUILD_META_PATH,
+      PUBLIC_ROOT,
+      'js',
+      ASSETS_JS_OUTBASE
+    );
+    if (hashedTailwindCss) {
+      mapping['css/styles.css'] = hashedTailwindCss;
+    }
+    writeManifest(MANIFEST_PATH, mapping);
+    rmSync(ESBUILD_META_PATH, { force: true });
+    return `${Object.keys(mapping).length} entries`;
   });
 
   // Step 7: Build manifest for deployment traceability

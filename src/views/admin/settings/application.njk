@@ -116,6 +116,6 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/admin/settings/common.js"></script>
-<script src="/js/admin/settings/application.js"></script>
+<script src="{{ asset('js/admin/settings/common.js') }}"></script>
+<script src="{{ asset('js/admin/settings/application.js') }}"></script>
 {% endblock %}

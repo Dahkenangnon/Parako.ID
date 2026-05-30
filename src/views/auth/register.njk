@@ -295,7 +295,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/register.js"></script>
+<script src="{{ asset('js/auth/register.js') }}"></script>
 
 <!-- Complete configuration and translations for RegisterManager -->
 <script id="___REGISTER_STATE___" type="application/json">

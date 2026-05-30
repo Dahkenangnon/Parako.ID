@@ -207,7 +207,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/logout.js"></script>
+<script src="{{ asset('js/auth/logout.js') }}"></script>
 
 <!-- Complete configuration and translations for LogoutManager -->
 <script id="___LOGOUT_STATE___" type="application/json">

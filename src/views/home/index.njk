@@ -162,7 +162,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/login.js"></script>
+<script src="{{ asset('js/auth/login.js') }}"></script>
 
 <!-- Complete configuration and translations for LoginManager -->
 <script id="___LOGIN_STATE___" type="application/json">

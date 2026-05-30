@@ -504,6 +504,6 @@
       "debug": {{ (app.env === 'development') | tojson }}
     }
     </script>
-    <script src="/js/account/settings/confirm-handler.js"></script>
-    <script src="/js/account/settings/index.js"></script>
+    <script src="{{ asset('js/account/settings/confirm-handler.js') }}"></script>
+    <script src="{{ asset('js/account/settings/index.js') }}"></script>
 {% endblock %}

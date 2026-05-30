@@ -15,6 +15,9 @@ test-results/
 *.bundle.js
 public/js/
 public/css/styles.css
+public/css/styles-*.css
+public/manifest.json
+public/.esbuild-meta.json
 runtime/locales/.merged/
 options/locales/.merged/
 

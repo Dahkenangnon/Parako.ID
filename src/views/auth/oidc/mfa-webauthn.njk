@@ -73,7 +73,7 @@
 {% endblock %}
 {% block scripts %}
 {{ super() }}
-<script src="/js/webauthn/authenticate.js"></script>
+<script src="{{ asset('js/webauthn/authenticate.js') }}"></script>
 
 <!-- Configuration for WebAuthn Authentication (OIDC Flow) -->
 <script id="___WEBAUTHN_AUTH_STATE___" type="application/json">

@@ -104,7 +104,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/oidc/device-flow-success.js"></script>
+<script src="{{ asset('js/auth/oidc/device-flow-success.js') }}"></script>
 
 <!-- Complete configuration and translations for DeviceFlowSuccessManager -->
 <script id="___OIDC_DEVICE_FLOW_SUCCESS_STATE___" type="application/json">

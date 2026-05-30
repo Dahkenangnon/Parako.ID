@@ -74,7 +74,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/recovery-backup-codes.js"></script>
+<script src="{{ asset('js/auth/recovery-backup-codes.js') }}"></script>
 
 <!-- Complete configuration and translations for RecoveryBackupCodesManager -->
 <script id="___RECOVERY_BACKUP_CODES_STATE___" type="application/json">

@@ -1,4 +1,6 @@
 import nunjucks from 'nunjucks';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   formatDateTimeForUser,
   getShortRelativeTime,
@@ -7,6 +9,54 @@ import {
   type DateTimeFormatOptions,
   type SupportedLanguage,
 } from './misc.js';
+
+type AssetManifest = Readonly<Record<string, string>>;
+
+const MANIFEST_PATH = resolve(process.cwd(), 'public/manifest.json');
+let cachedManifest: AssetManifest | null = null;
+
+function loadManifest(): AssetManifest {
+  if (cachedManifest !== null) return cachedManifest;
+
+  if (!existsSync(MANIFEST_PATH)) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        `Asset manifest not found at ${MANIFEST_PATH}. ` +
+          'Run `pnpm build` to generate it.'
+      );
+    }
+    cachedManifest = {};
+    return cachedManifest;
+  }
+
+  try {
+    cachedManifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8'));
+    return cachedManifest as AssetManifest;
+  } catch (err) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        `Asset manifest at ${MANIFEST_PATH} is malformed: ${(err as Error).message}`
+      );
+    }
+    cachedManifest = {};
+    return cachedManifest;
+  }
+}
+
+/**
+ * Resolve a logical asset path to its content-hashed URL.
+ *
+ * Logical paths are written without a leading slash and match the keys in
+ * `public/manifest.json`. When the manifest is absent (development without a
+ * build) the helper returns the logical path with a leading slash so the
+ * static middleware can serve the unhashed source.
+ */
+export function resolveAssetPath(logicalPath: string): string {
+  const normalized = logicalPath.replace(/^\/+/, '');
+  const manifest = loadManifest();
+  const resolved = manifest[normalized];
+  return `/${resolved ?? normalized}`;
+}
 
 /**
  * Format time using native Intl.DateTimeFormat
@@ -160,6 +210,10 @@ function addGlobalFunctions(env: nunjucks.Environment): void {
   env.addGlobal('isProduction', process.env.NODE_ENV === 'production');
 
   env.addGlobal('availableTimezones', getAvailableTimezones());
+
+  env.addGlobal('asset', (logicalPath: string) =>
+    resolveAssetPath(logicalPath)
+  );
 }
 
 /**

@@ -539,6 +539,6 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/admin/settings.js"></script>
-<script src="/js/admin/settings/integrations.js"></script>
+<script src="{{ asset('js/admin/settings.js') }}"></script>
+<script src="{{ asset('js/admin/settings/integrations.js') }}"></script>
 {% endblock %}

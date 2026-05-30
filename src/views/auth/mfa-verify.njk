@@ -106,7 +106,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/mfa-verify.js"></script>
+<script src="{{ asset('js/auth/mfa-verify.js') }}"></script>
 
 <!-- Complete configuration and translations for MFAVerifyManager -->
 <script id="___MFA_VERIFY_STATE___" type="application/json">

@@ -110,5 +110,5 @@
       "debug": {{ (app.env === 'development') | tojson }}
     }
     </script>
-    <script src="/js/account/recovery-codes.js"></script>
+    <script src="{{ asset('js/account/recovery-codes.js') }}"></script>
 {% endblock %}

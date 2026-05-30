@@ -68,7 +68,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/webauthn/register.js"></script>
+<script src="{{ asset('js/webauthn/register.js') }}"></script>
 
 <!-- Configuration for WebAuthn Registration -->
 <script id="___WEBAUTHN_REGISTER_STATE___" type="application/json">

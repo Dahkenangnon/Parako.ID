@@ -2,3 +2,5 @@ uploads/
 js/
 css/*
 !css/theme.css
+manifest.json
+.esbuild-meta.json

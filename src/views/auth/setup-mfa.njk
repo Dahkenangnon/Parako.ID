@@ -47,7 +47,7 @@
 
 {% block scripts %}
 {{ super() }}
-<script src="/js/auth/setup-mfa.js"></script>
+<script src="{{ asset('js/auth/setup-mfa.js') }}"></script>
 
 <!-- Complete configuration and translations for SetupMFAManager -->
 <script id="___SETUP_MFA_STATE___" type="application/json">
