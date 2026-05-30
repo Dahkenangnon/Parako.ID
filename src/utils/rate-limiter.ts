@@ -17,7 +17,7 @@ import rateLimit, {
 } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import type { Request, Response } from 'express';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
 
 const isDev = process.env.NODE_ENV !== 'production';

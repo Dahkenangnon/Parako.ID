@@ -27,7 +27,7 @@ import {
   checkRedisAvailability,
   type QueueRedisOptions,
 } from './jobs/redis.js';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { buildRedisKeyForTenant } from './multi-tenancy/redis-key.js';
 import {
   tenantContext,

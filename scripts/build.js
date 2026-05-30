@@ -138,18 +138,14 @@ function getGitSha() {
   }
 }
 
-// Run tsc --noEmit as a background type-check, returns a promise
-function typecheckAsync() {
+// Run tsc --noEmit for one tsconfig as a background type-check, returns a promise.
+function typecheckOne(project, label) {
   return new Promise(resolve => {
     const start = performance.now();
-    const child = spawn(
-      join(BIN, 'tsc'),
-      ['--noEmit', '-p', 'tsconfig.build.json'],
-      {
-        cwd: ROOT,
-        stdio: 'pipe',
-      }
-    );
+    const child = spawn(join(BIN, 'tsc'), ['--noEmit', '-p', project], {
+      cwd: ROOT,
+      stdio: 'pipe',
+    });
 
     let stdout = '';
     child.stdout.on('data', data => {
@@ -165,10 +161,12 @@ function typecheckAsync() {
       if (errorLines.length > 0) {
         const icon = STRICT ? red('\u2717') : yellow('\u26A0');
         console.log(
-          `  ${icon} ${'typecheck'.padEnd(16)} ${dim(`${elapsed}s`)}  ${yellow(`${errorLines.length} error(s)`)}`
+          `  ${icon} ${label.padEnd(16)} ${dim(`${elapsed}s`)}  ${yellow(`${errorLines.length} error(s)`)}`
         );
         if (STRICT) {
-          console.error(`\n${red('Typecheck failed (--strict mode):')}`);
+          console.error(
+            `\n${red(`Typecheck failed (${label}, --strict mode):`)}`
+          );
           for (const line of errorLines.slice(0, 20)) {
             console.error(`  ${red(line)}`);
           }
@@ -178,12 +176,24 @@ function typecheckAsync() {
         }
       } else {
         console.log(
-          `  ${green('\u2713')} ${'typecheck'.padEnd(16)} ${dim(`${elapsed}s`)}  ${dim('0 errors')}`
+          `  ${green('\u2713')} ${label.padEnd(16)} ${dim(`${elapsed}s`)}  ${dim('0 errors')}`
         );
       }
       resolve({ code, errorCount: errorLines.length });
     });
   });
+}
+
+// Run tsc --noEmit against both server and browser tsconfigs in parallel.
+async function typecheckAsync() {
+  const [server, browser] = await Promise.all([
+    typecheckOne('tsconfig.build.json', 'typecheck:srv'),
+    typecheckOne('tsconfig.assets.json', 'typecheck:web'),
+  ]);
+  return {
+    code: server.code || browser.code,
+    errorCount: server.errorCount + browser.errorCount,
+  };
 }
 
 // ---------------------------------------------------------------------------

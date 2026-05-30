@@ -1,4 +1,4 @@
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import { buildRedisKey } from '../../../multi-tenancy/redis-key.js';
 import OIDCRedisAdapter from './index.js';

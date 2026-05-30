@@ -1,7 +1,7 @@
 import { injectable, inject } from 'inversify';
 import { PrismaClient } from '@prisma/client';
 import type { Db } from 'mongodb';
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import { TYPES } from '../../di/types.js';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';

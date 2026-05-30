@@ -73,8 +73,9 @@ interface ImportResult {
 (function () {
   'use strict';
 
-  const config = (window as unknown as WindowWithApis).__ENTITY_CONFIG__;
-  if (!config) return;
+  const maybeConfig = (window as unknown as WindowWithApis).__ENTITY_CONFIG__;
+  if (!maybeConfig) return;
+  const config: EntityConfig = maybeConfig;
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
   const MAX_PREVIEW_ROWS = 5;

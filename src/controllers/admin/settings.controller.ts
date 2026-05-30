@@ -1,7 +1,7 @@
 import { injectable, inject } from 'inversify';
 import { Request, Response } from 'express';
 import mongoose from 'mongoose';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IAdminSettingsController } from '../../di/interfaces/admin-settings-controller.interface.js';
 import type { ISessionManager } from '../../di/interfaces/session-manager.interface.js';

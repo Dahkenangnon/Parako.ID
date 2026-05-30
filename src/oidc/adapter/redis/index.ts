@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IOIDCRedisAdapter } from '../../../di/interfaces/oidc-redis-adapter.interface.js';
 import { isEmpty } from '../../../utils/misc.js';

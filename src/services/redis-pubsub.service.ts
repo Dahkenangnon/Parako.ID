@@ -1,5 +1,5 @@
 import { injectable, inject } from 'inversify';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IRedisPubSubService } from '../di/interfaces/redis-pubsub-service.interface.js';
 import { TYPES } from '../di/types.js';

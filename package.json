@@ -53,7 +53,7 @@
     "start": "cross-env NODE_ENV=production pm2 start ecosystem.config.cjs && pm2 save",
     "restart": "cross-env NODE_ENV=production pm2 startOrRestart ecosystem.config.cjs && pm2 save",
     "prod:worker": "cross-env NODE_ENV=production pm2 start ecosystem.config.cjs --only parako-id-worker && pm2 save",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json && tsc --noEmit -p tsconfig.assets.json",
     "lint": "npx eslint .",
     "lint:fix": "npx eslint . --fix",
     "lint:check": "npx eslint . --max-warnings 0",
