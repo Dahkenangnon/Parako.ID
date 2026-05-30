@@ -135,9 +135,10 @@ export function encrypt(plaintext: string): EncryptionResult {
       version: CURRENT_VERSION,
     };
   } catch (error) {
-    throw new Error(
-      `Encryption failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-    );
+    // Preserve the underlying error via Error.cause (Node ≥16) so that callers
+    // and log inspectors can walk the chain back to the original failure.
+    // Reference: https://nodejs.org/api/errors.html
+    throw new Error('Encryption failed', { cause: error });
   }
 }
 
@@ -188,10 +189,12 @@ export function decrypt(
 
     return decrypted;
   } catch (error) {
-    // GCM will throw an error if the auth tag doesn't match (tampering detected)
+    // GCM throws when the auth tag mismatches (tampering detected). Preserve the
+    // original error via Error.cause so the failure mode (bad key vs tampered
+    // ciphertext vs malformed input) remains discoverable in logs.
     throw new Error(
-      `Decryption failed: ${error instanceof Error ? error.message : 'Unknown error'}. ` +
-        'This could indicate data tampering or wrong encryption key.'
+      'Decryption failed — possible data tampering or wrong encryption key',
+      { cause: error }
     );
   }
 }

@@ -35,8 +35,11 @@ export class FileKeyStore implements IKeyStore {
     try {
       raw = this.fileSystemUtils.readFileSync(jwksPath);
     } catch (err) {
+      // Preserve the underlying filesystem error via Error.cause so failures
+      // (ENOENT vs EACCES vs others) remain diagnosable in production logs.
       throw new Error(
-        `Failed to read JWKS file at ${jwksPath}: ${(err as Error).message}. Generate keys with: yarn keys generate --file`
+        `Failed to read JWKS file at ${jwksPath}. Generate keys with: yarn keys generate --file`,
+        { cause: err }
       );
     }
 
