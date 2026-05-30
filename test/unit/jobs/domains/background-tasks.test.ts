@@ -8,7 +8,8 @@ vi.mock('ioredis', () => {
     quit: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn(),
   };
-  return { default: vi.fn().mockImplementation(() => mockRedis) };
+  const RedisCtor = vi.fn().mockImplementation(() => mockRedis);
+  return { default: RedisCtor, Redis: RedisCtor };
 });
 
 // Mock bullmq

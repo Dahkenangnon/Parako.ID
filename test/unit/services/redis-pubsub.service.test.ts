@@ -19,7 +19,7 @@ vi.mock('ioredis', () => {
     on: mockOn,
     duplicate: mockDuplicate,
   }));
-  return { default: MockRedis };
+  return { default: MockRedis, Redis: MockRedis };
 });
 
 // Mock inversify decorators
