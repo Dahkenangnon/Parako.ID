@@ -32,6 +32,7 @@ import { tenantContext } from './multi-tenancy/tenant-context.js';
 import { createMediaFileRoutes } from './routes/media.js';
 import { HARDENING } from './config/hardening-defaults.js';
 import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
+import { createPrecompressedStaticMiddleware } from './middlewares/precompressed-static.middleware.js';
 
 @injectable()
 export class Application implements IApplication {
@@ -463,6 +464,7 @@ export class Application implements IApplication {
     );
 
     const publicPath = path.resolve(this.__dirname, '../../public');
+    this.app.use(createPrecompressedStaticMiddleware(publicPath));
     this.app.use(
       express.static(publicPath, {
         maxAge: this.isProduction ? HARDENING.static.maxAge : 0,

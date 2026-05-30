@@ -26,11 +26,17 @@ import { fileURLToPath } from 'node:url';
 import { globSync } from 'glob';
 import {
   cleanPriorOutputs,
+  collectFiles,
   hashFile,
   manifestFromEsbuildMeta,
   readManifest,
   writeManifest,
 } from './build-manifest.js';
+import {
+  brotliCompressSync,
+  constants as zlibConstants,
+  gzipSync,
+} from 'node:zlib';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -336,6 +342,37 @@ async function main() {
     writeManifest(MANIFEST_PATH, mapping);
     rmSync(ESBUILD_META_PATH, { force: true });
     return `${Object.keys(mapping).length} entries`;
+  });
+
+  // Step 8: Pre-compress text static assets at the highest Brotli and gzip
+  // qualities so the request path serves them without re-encoding. HTML is
+  // not pre-compressed; it is rendered per-request and the runtime
+  // compression filter intentionally excludes it.
+  step('precompress', () => {
+    const targets = collectFiles(PUBLIC_ROOT, ['.css', '.js', '.svg', '.json']);
+    let count = 0;
+    for (const filePath of targets) {
+      if (
+        filePath.endsWith('.br') ||
+        filePath.endsWith('.gz') ||
+        filePath === MANIFEST_PATH
+      ) {
+        continue;
+      }
+      const buffer = readFileSync(filePath);
+      writeFileSync(
+        `${filePath}.br`,
+        brotliCompressSync(buffer, {
+          params: {
+            [zlibConstants.BROTLI_PARAM_QUALITY]:
+              zlibConstants.BROTLI_MAX_QUALITY,
+          },
+        })
+      );
+      writeFileSync(`${filePath}.gz`, gzipSync(buffer, { level: 9 }));
+      count++;
+    }
+    return `${count} files`;
   });
 
   // Step 7: Build manifest for deployment traceability
