@@ -23,6 +23,7 @@ import {
   SHUTDOWN_TIMEOUT_MS,
   safeShutdownStep,
 } from './utils/shutdown.js';
+import { HARDENING } from './config/hardening-defaults.js';
 //
 // Validate DI container at startup (fail fast if bindings are missing)
 assertContainerValid(container);
@@ -342,6 +343,17 @@ class ParakoServer {
 
         resolve();
       });
+
+      this.httpServer.keepAliveTimeout = HARDENING.timeouts.keepAliveMs;
+      this.httpServer.headersTimeout = HARDENING.timeouts.headersMs;
+      if (typeof this.httpServer.requestTimeout === 'number') {
+        this.httpServer.requestTimeout = HARDENING.timeouts.requestMs;
+      }
+      if (HARDENING.timeouts.tcpNoDelay) {
+        this.httpServer.on('connection', socket => {
+          socket.setNoDelay(true);
+        });
+      }
 
       this.httpServer.listen(port);
     });

@@ -3,19 +3,24 @@
  * PM2 Ecosystem Configuration for Parako.ID
  *
  * Environment Variables:
- *   APP_NAME           - PM2 process name (default: 'parako-id')
- *   PORT               - Server port (default: 9007)
- *   PM2_INSTANCES      - Number of instances, 'max' for all CPUs (default: 'max')
- *   PM2_MAX_MEMORY     - Max memory before restart (default: '1G')
+ *   APP_NAME              - PM2 process name (default: 'parako-id')
+ *   PORT                  - Server port (default: 9007)
+ *   PM2_INSTANCES         - Number of instances (default: 1)
+ *   PM2_MAX_MEMORY        - Max memory before restart (default: '400M')
  *   PM2_WORKER_MAX_MEMORY - Max memory for worker (default: '512M')
- *   PM2_UID / PM2_GID  - Run as specific user/group (optional, for hardened setups)
+ *   PM2_UID / PM2_GID     - Run as specific user/group (optional)
  *
  * ┌──────────────────────────────────────────────────────────────────────────┐
- * │ SQLITE USERS: You MUST set PM2_INSTANCES=1.                            │
- * │ SQLite does not support concurrent writes from multiple processes.      │
- * │ The application enforces this at startup (src/index.ts) and will       │
- * │ refuse to start if PM2_INSTANCES > 1 with STORAGE_ADAPTER=sqlite.     │
- * │ For multi-process deployments, use PostgreSQL or MongoDB instead.      │
+ * │ DEFAULT: single instance. Safe for SQLite and for memory-constrained     │
+ * │ hosts. `pm2 reload` is NOT zero-downtime in this configuration: the      │
+ * │ single process is drained, exited, and respawned, producing a brief     │
+ * │ unavailability window. Deployments with an uptime SLA on PostgreSQL or   │
+ * │ MongoDB should set PM2_INSTANCES=2 (or higher) and ensure sufficient     │
+ * │ memory headroom.                                                         │
+ * │                                                                          │
+ * │ SQLITE USERS: PM2_INSTANCES must remain 1. SQLite does not support       │
+ * │ concurrent writes from multiple processes. The application enforces     │
+ * │ this at startup (src/index.ts) and refuses to start otherwise.          │
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -30,7 +35,7 @@ const config = {
 
       // Cluster mode for zero-downtime reloads and load balancing
       exec_mode: 'cluster',
-      instances: process.env.PM2_INSTANCES || 'max',
+      instances: process.env.PM2_INSTANCES || 1,
 
       // Graceful start: wait for process.send('ready') before routing traffic
       wait_ready: true,
@@ -47,7 +52,7 @@ const config = {
       max_restarts: 10,
       min_uptime: '10s',
       restart_delay: 3000,
-      max_memory_restart: process.env.PM2_MAX_MEMORY || '1G',
+      max_memory_restart: process.env.PM2_MAX_MEMORY || '400M',
 
       // Logging
       error_file: './logs/pm2_error.log',
