@@ -4,7 +4,7 @@ import {
   isValidPhoneNumber,
   CountryCode,
 } from 'libphonenumber-js';
-import Twilio from 'twilio';
+import type Twilio from 'twilio';
 import { TYPES } from '../di/types.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
@@ -358,6 +358,7 @@ class TwilioProvider implements ISmsProvider {
   private authToken: string;
   private fromNumber: string;
   private client: ReturnType<typeof Twilio> | null = null;
+  private clientPromise: Promise<ReturnType<typeof Twilio>> | null = null;
 
   constructor(
     config: SmsProviderConfig,
@@ -366,11 +367,20 @@ class TwilioProvider implements ISmsProvider {
     this.accountSid = config.api_key || '';
     this.authToken = config.api_secret || '';
     this.fromNumber = config.from_number || '';
+  }
 
-    if (this.isConfigured()) {
-      this.client = Twilio(this.accountSid, this.authToken);
-      this.logger.info('Twilio SMS provider initialized');
+  private async getClient(): Promise<ReturnType<typeof Twilio>> {
+    if (this.client) return this.client;
+    if (!this.clientPromise) {
+      this.clientPromise = (async () => {
+        const { default: createClient } = await import('twilio');
+        const instance = createClient(this.accountSid, this.authToken);
+        this.client = instance;
+        this.logger.info('Twilio SMS provider initialized');
+        return instance;
+      })();
     }
+    return this.clientPromise;
   }
 
   getProviderName(): string {
@@ -382,12 +392,13 @@ class TwilioProvider implements ISmsProvider {
   }
 
   async sendSms(to: string, message: string): Promise<SmsResult> {
-    if (!this.isConfigured() || !this.client) {
+    if (!this.isConfigured()) {
       return { success: false, error: 'Twilio not properly configured' };
     }
 
     try {
-      const result = await this.client.messages.create({
+      const client = await this.getClient();
+      const result = await client.messages.create({
         body: message,
         to,
         from: this.fromNumber,
