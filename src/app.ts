@@ -391,13 +391,50 @@ export class Application implements IApplication {
 
     // Helmet sets a defense-in-depth header bundle (X-Content-Type-Options,
     // X-Frame-Options, Referrer-Policy, Cross-Origin-*, Origin-Agent-Cluster,
-    // Strict-Transport-Security, X-DNS-Prefetch-Control, …). CSP is left
-    // unmanaged here because the existing Nunjucks-rendered CSP carries
-    // per-page nonces — a follow-up issue will consolidate that into
-    // helmet's directive form. Reference: https://github.com/helmetjs/helmet
+    // Strict-Transport-Security, X-DNS-Prefetch-Control, …).
+    //
+    // The Content-Security-Policy directives below extend the helmet
+    // defaults with explicit values tuned for this application:
+    //
+    // - `script-src 'self'` forbids inline executable scripts and all
+    //   third-party origins. Every executable script ships through the
+    //   asset pipeline; server-rendered JSON `<script type="application/json">`
+    //   data islands are not blocked because they are not executable.
+    // - `style-src` retains `'unsafe-inline'` so the per-tenant theme color
+    //   and font overrides emitted by `base.njk` can render. Style strings
+    //   are constructed from configuration values, not from request input.
+    // - `img-src` allows arbitrary HTTPS origins to accommodate social
+    //   login avatars and operator-configured branding URLs alongside
+    //   inline `data:` thumbnails.
+    // - `frame-ancestors 'self'` and `base-uri 'self'` mitigate clickjacking
+    //   and base-tag injection, in line with RFC 9700 §4.16 guidance for
+    //   authorization-server pages.
+    // - `form-action 'self'` confines form submissions to first-party
+    //   endpoints, matching the OIDC interaction-routing model.
+    // - `worker-src 'self'` and `manifest-src 'self'` allow the bundled
+    //   service worker and PWA manifest.
     this.app.use(
       helmet({
-        contentSecurityPolicy: false,
+        contentSecurityPolicy: {
+          useDefaults: true,
+          directives: {
+            'default-src': ["'self'"],
+            'script-src': ["'self'"],
+            'script-src-attr': ["'none'"],
+            'style-src': ["'self'", "'unsafe-inline'"],
+            'img-src': ["'self'", 'data:', 'https:'],
+            'font-src': ["'self'", 'data:'],
+            'connect-src': ["'self'"],
+            'frame-ancestors': ["'self'"],
+            'frame-src': ["'self'"],
+            'object-src': ["'none'"],
+            'base-uri': ["'self'"],
+            'form-action': ["'self'"],
+            'worker-src': ["'self'"],
+            'manifest-src': ["'self'"],
+            'upgrade-insecure-requests': [],
+          },
+        },
         crossOriginEmbedderPolicy: false,
         crossOriginResourcePolicy: { policy: 'cross-origin' },
       })
