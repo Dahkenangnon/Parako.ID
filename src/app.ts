@@ -581,7 +581,10 @@ export class Application implements IApplication {
 
     // Signed URL media serving (local storage provider)
     // Mounted before session middleware — the signed URL IS the authorization
-    const uploadsBasePath = path.resolve(this.fileSyst.rootDir, 'uploads');
+    const configuredUploadDir = config.integrations.file_storage.upload_dir;
+    const uploadsBasePath = path.isAbsolute(configuredUploadDir)
+      ? configuredUploadDir
+      : path.resolve(this.fileSyst.rootDir, configuredUploadDir);
     const signingSecret = config.security.secrets.cookie_secrets[0];
     this.app.use(
       '/media/file',

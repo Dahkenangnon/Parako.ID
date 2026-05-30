@@ -10,16 +10,8 @@ export interface JsoncReaderOptions {
 }
 
 /**
- * Options for reading YAML files
- */
-export interface YamlReaderOptions {
-  encoding?: BufferEncoding;
-  throwOnError?: boolean;
-}
-
-/**
  * Interface for configuration file reader service
- * Supports JSONC, JSON, and YAML file formats with auto-detection
+ * Supports JSONC and JSON file formats with auto-detection
  */
 export interface IConfigFileReader {
   /**
@@ -42,25 +34,6 @@ export interface IConfigFileReader {
   ): Promise<T>;
 
   /**
-   * Read and parse a YAML file
-   * @param filePath - Path to the YAML file
-   * @param options - Options for reading the file
-   * @returns Parsed object
-   */
-  readYamlFile<T = any>(filePath: string, options?: YamlReaderOptions): T;
-
-  /**
-   * Read and parse a YAML file asynchronously
-   * @param filePath - Path to the YAML file
-   * @param options - Options for reading the file
-   * @returns Promise that resolves to parsed object
-   */
-  readYamlFileAsync<T = any>(
-    filePath: string,
-    options?: YamlReaderOptions
-  ): Promise<T>;
-
-  /**
    * Check if a file exists and is readable
    * @param filePath - Path to check
    * @returns True if file exists and is readable
@@ -69,14 +42,14 @@ export interface IConfigFileReader {
 
   /**
    * Read the main application configuration file (auto-detects format)
-   * Searches for: parako.yaml, parako.yml, parako.jsonc, parako.json
+   * Searches for: parako.jsonc, parako.json
    * @returns Parsed configuration object
    */
   readAppConfig<T = any>(): T;
 
   /**
    * Read the main application configuration file asynchronously (auto-detects format)
-   * Searches for: parako.yaml, parako.yml, parako.jsonc, parako.json
+   * Searches for: parako.jsonc, parako.json
    * @returns Promise that resolves to parsed configuration object
    */
   readAppConfigAsync<T = any>(): Promise<T>;

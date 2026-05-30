@@ -153,7 +153,6 @@
     "sharp": "^0.34.5",
     "twilio": "^5.12.2",
     "ua-parser-js": "^2.0.9",
-    "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {

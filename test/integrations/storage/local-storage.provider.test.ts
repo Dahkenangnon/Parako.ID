@@ -49,6 +49,7 @@ function createProvider(basePath: string) {
       },
       integrations: {
         file_storage: {
+          upload_dir: 'uploads',
           signed_url_expiry_seconds: 3600,
         },
       },

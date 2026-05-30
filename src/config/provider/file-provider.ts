@@ -13,12 +13,12 @@ import {
 
 /**
  * File-based configuration provider
- * Loads configuration from JSONC/YAML files using the ConfigFileReader
+ * Loads configuration from JSONC/JSON files using the ConfigFileReader
  * Only used when USE_FILE_CONFIG=true in development mode
  *
  * Usage:
  * 1. Set USE_FILE_CONFIG=true in your .env file
- * 2. Ensure a config file exists in the project root (parako.yaml, parako.jsonc, etc.)
+ * 2. Ensure a config file exists in the project root (parako.jsonc or parako.json)
  * 3. The configuration will be loaded and validated against AppConfigSchema
  *
  * Note: This provider does not support updates - use database provider for updates

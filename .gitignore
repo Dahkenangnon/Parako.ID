@@ -11,8 +11,8 @@ public/css/styles.css
 !public/css/theme.css
 public/js
 runtime/views/*
-uploads/
-.tmp-uploads/
+runtime/uploads/
+runtime/.tmp-uploads/
 # -------------------------------
 # Environment variables
 # -------------------------------

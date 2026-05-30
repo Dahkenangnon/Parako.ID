@@ -388,14 +388,13 @@ create_production_package() {
 
     # Copy sample config files (reference for users)
     cp parako.sample.jsonc "$release_dir/" 2>/dev/null || log_warning "parako.sample.jsonc not found"
-    cp parako.sample.yaml "$release_dir/" 2>/dev/null || log_warning "parako.sample.yaml not found"
 
     # Create empty runtime directories (security: no existing data copied)
     mkdir -p "$release_dir/logs"
 
-    # Create empty uploads directory structure (security: no existing uploads)
-    mkdir -p "$release_dir/public/uploads/avatars"
-    # Note: Uploads directories are created empty for security
+    # Create empty upload directories at the new runtime/ location
+    mkdir -p "$release_dir/runtime/uploads" "$release_dir/runtime/.tmp-uploads"
+    # Note: Upload directories are created empty for security
     
     # Copy essential documentation
     mkdir -p "$release_dir/docs"

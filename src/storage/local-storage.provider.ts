@@ -11,8 +11,9 @@ import { signLocalUrl } from './signed-url.js';
 /**
  * Local filesystem storage provider.
  *
- * Stores files at `{rootDir}/uploads/` (outside `public/`).
- * Serves them via HMAC-signed URLs through the `/media/file/` endpoint.
+ * Stores files at the configured `integrations.file_storage.upload_dir`
+ * (default `{rootDir}/runtime/uploads`). Serves them via HMAC-signed URLs
+ * through the `/media/file/` endpoint.
  */
 @injectable()
 export class LocalStorageProvider implements IStorageProvider {
@@ -26,7 +27,11 @@ export class LocalStorageProvider implements IStorageProvider {
     @inject(TYPES.ConfigManager)
     private readonly configManager: IConfigManager
   ) {
-    this.basePath = path.resolve(this.fileSystemUtils.rootDir, 'uploads');
+    const configured =
+      this.configManager.getConfig().integrations.file_storage.upload_dir;
+    this.basePath = path.isAbsolute(configured)
+      ? configured
+      : path.resolve(this.fileSystemUtils.rootDir, configured);
     if (!fs.existsSync(this.basePath)) {
       fs.mkdirSync(this.basePath, { recursive: true });
     }

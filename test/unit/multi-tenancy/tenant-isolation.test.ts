@@ -8,7 +8,7 @@ import {
   createTenantAwareKeyGenerator,
   getRateLimiterStorePrefix,
 } from '../../../src/utils/rate-limiter.js';
-import { getTenantUploadDir } from '../../../src/middlewares/upload.middleware.js';
+import { getTenantTempDir } from '../../../src/middlewares/upload.middleware.js';
 import { getTenantChannel } from '../../../src/services/redis-pubsub.service.js';
 
 describe('Tenant Isolation — Infrastructure', () => {
@@ -59,26 +59,26 @@ describe('Tenant Isolation — Infrastructure', () => {
   describe('Upload middleware tenant-scoped paths', () => {
     it('avatar destination includes tenant_id from context', () => {
       const dir = tenantContext.run('acme', () =>
-        getTenantUploadDir('/base', 'avatars')
+        getTenantTempDir('/base', 'avatars')
       );
 
       // path.resolve produces absolute path
-      expect(dir).toBe(path.resolve('/base/public/uploads/acme/avatars'));
+      expect(dir).toBe(path.resolve('/base/runtime/.tmp-uploads/acme/avatars'));
     });
 
     it('uses DEFAULT_TENANT_ID for default tenant uploads', () => {
-      const dir = getTenantUploadDir('/base', 'logos');
+      const dir = getTenantTempDir('/base', 'logos');
       expect(dir).toBe(
-        path.resolve(`/base/public/uploads/${DEFAULT_TENANT_ID}/logos`)
+        path.resolve(`/base/runtime/.tmp-uploads/${DEFAULT_TENANT_ID}/logos`)
       );
     });
 
     it('different tenants get different upload directories', () => {
       const dirA = tenantContext.run('acme', () =>
-        getTenantUploadDir('/base', 'avatars')
+        getTenantTempDir('/base', 'avatars')
       );
       const dirB = tenantContext.run('globex', () =>
-        getTenantUploadDir('/base', 'avatars')
+        getTenantTempDir('/base', 'avatars')
       );
 
       expect(dirA).not.toBe(dirB);
@@ -89,18 +89,18 @@ describe('Tenant Isolation — Infrastructure', () => {
     it('sanitizes tenant IDs with path traversal characters', () => {
       // Dots, slashes, and other dangerous chars are stripped
       const dir = tenantContext.run('../../../etc', () =>
-        getTenantUploadDir('/base', 'avatars')
+        getTenantTempDir('/base', 'avatars')
       );
 
       // After sanitization, '../../../etc' → 'etc'
       expect(dir).not.toContain('..');
       expect(dir).toContain('etc');
-      expect(dir).toBe(path.resolve('/base/public/uploads/etc/avatars'));
+      expect(dir).toBe(path.resolve('/base/runtime/.tmp-uploads/etc/avatars'));
     });
 
     it('sanitizes tenant IDs with special characters', () => {
       const dir = tenantContext.run('acme@corp!#$', () =>
-        getTenantUploadDir('/base', 'avatars')
+        getTenantTempDir('/base', 'avatars')
       );
 
       // Only alphanumeric, hyphens, and underscores survive

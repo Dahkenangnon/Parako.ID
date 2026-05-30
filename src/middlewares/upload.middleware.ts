@@ -21,34 +21,16 @@ function sanitizeTenantId(tid: string): string {
 
 /**
  * Get a tenant-scoped temp upload directory path.
- * Format: {rootDir}/.tmp-uploads/{tenantId}/{category}
+ * Format: {rootDir}/runtime/.tmp-uploads/{tenantId}/{category}
  */
-function getTenantTempDir(rootDir: string, category: string): string {
+export function getTenantTempDir(rootDir: string, category: string): string {
   const tid = sanitizeTenantId(tenantContext.getTenantId());
-  const base = path.resolve(rootDir, '.tmp-uploads');
+  const base = path.resolve(rootDir, 'runtime', '.tmp-uploads');
   const resolved = path.resolve(base, tid, category);
 
   if (!resolved.startsWith(base + path.sep) && resolved !== base) {
     throw new Error(
       `Invalid tenant upload path: tenant ID "${tid}" resolves outside temp directory`
-    );
-  }
-
-  return resolved;
-}
-
-/**
- * Get a tenant-scoped upload directory path (legacy, for public/uploads/).
- * Format: {rootDir}/public/uploads/{tenantId}/{category}
- */
-export function getTenantUploadDir(rootDir: string, category: string): string {
-  const tid = sanitizeTenantId(tenantContext.getTenantId());
-  const base = path.resolve(rootDir, 'public', 'uploads');
-  const resolved = path.resolve(base, tid, category);
-
-  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
-    throw new Error(
-      `Invalid tenant upload path: tenant ID "${tid}" resolves outside uploads directory`
     );
   }
 
@@ -83,7 +65,11 @@ export class UploadMiddleware implements IUploadMiddleware {
     @inject(TYPES.ImageProcessorService)
     private readonly imageProcessor: ImageProcessorService
   ) {
-    this.tmpDir = path.join(this.fileSystemUtils.rootDir, '.tmp-uploads');
+    this.tmpDir = path.join(
+      this.fileSystemUtils.rootDir,
+      'runtime',
+      '.tmp-uploads'
+    );
     if (!fs.existsSync(this.tmpDir)) {
       fs.mkdirSync(this.tmpDir, { recursive: true });
     }
@@ -94,7 +80,7 @@ export class UploadMiddleware implements IUploadMiddleware {
     this.faviconUpload = this.createFaviconUpload();
   }
 
-  // Multer instances — write to temp dir, NOT public/uploads
+  // Multer instances — write to runtime/.tmp-uploads, not the final storage location
 
   private createAvatarUpload(): multer.Multer {
     const rootDir = this.fileSystemUtils.rootDir;

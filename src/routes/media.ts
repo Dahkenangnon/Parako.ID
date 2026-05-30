@@ -97,7 +97,8 @@ export function createMediaFileRoutes(
 
     if (isProduction) {
       // In production with nginx, use X-Accel-Redirect for efficient serving
-      // nginx must have an internal location /_internal_uploads/ pointing to the uploads dir
+      // nginx must have an internal location /_internal_uploads/ aliased to the
+      // configured upload_dir (default runtime/uploads/)
       res.setHeader('X-Accel-Redirect', `/_internal_uploads/${filePath}`);
       res.end();
     } else {

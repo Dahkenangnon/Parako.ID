@@ -128,124 +128,10 @@ describe('ConfigFileReader', () => {
   });
 
   // ==========================================================================
-  // readYamlFile
-  // ==========================================================================
-  describe('readYamlFile', () => {
-    it('should parse valid YAML', () => {
-      const content = `
-name: test
-value: 42
-`;
-      const filePath = path.join(tmpDir, 'test.yaml');
-      fs.writeFileSync(filePath, content);
-
-      const result = reader.readYamlFile(filePath);
-      expect(result).toEqual({ name: 'test', value: 42 });
-    });
-
-    it('should parse nested structures and arrays', () => {
-      const content = `
-database:
-  hosts:
-    - localhost
-    - 127.0.0.1
-  port: 5432
-  options:
-    ssl: true
-    pool_size: 10
-`;
-      const filePath = path.join(tmpDir, 'nested.yaml');
-      fs.writeFileSync(filePath, content);
-
-      const result = reader.readYamlFile(filePath);
-      expect(result.database.hosts).toEqual(['localhost', '127.0.0.1']);
-      expect(result.database.port).toBe(5432);
-      expect(result.database.options.ssl).toBe(true);
-      expect(result.database.options.pool_size).toBe(10);
-    });
-
-    it('should throw on missing file by default', () => {
-      const filePath = path.join(tmpDir, 'missing.yaml');
-      expect(() => reader.readYamlFile(filePath)).toThrow(
-        /Failed to read YAML file/
-      );
-    });
-
-    it('should return {} with throwOnError: false for missing file', () => {
-      const filePath = path.join(tmpDir, 'missing.yaml');
-      const result = reader.readYamlFile(filePath, {
-        throwOnError: false,
-      });
-      expect(result).toEqual({});
-    });
-  });
-
-  // ==========================================================================
-  // readYamlFileAsync
-  // ==========================================================================
-  describe('readYamlFileAsync', () => {
-    it('should parse valid YAML asynchronously', async () => {
-      const content = `
-async: true
-items:
-  - one
-  - two
-`;
-      const filePath = path.join(tmpDir, 'async.yaml');
-      fs.writeFileSync(filePath, content);
-
-      const result = await reader.readYamlFileAsync(filePath);
-      expect(result).toEqual({ async: true, items: ['one', 'two'] });
-    });
-
-    it('should throw on missing file by default', async () => {
-      const filePath = path.join(tmpDir, 'missing.yaml');
-      await expect(reader.readYamlFileAsync(filePath)).rejects.toThrow(
-        /Failed to read YAML file/
-      );
-    });
-
-    it('should return {} with throwOnError: false for missing file', async () => {
-      const filePath = path.join(tmpDir, 'missing.yaml');
-      const result = await reader.readYamlFileAsync(filePath, {
-        throwOnError: false,
-      });
-      expect(result).toEqual({});
-    });
-  });
-
-  // ==========================================================================
-  // readAppConfig — auto-detection priority: .yaml > .yml > .jsonc > .json
+  // readAppConfig — auto-detection priority: .jsonc > .json
   // ==========================================================================
   describe('readAppConfig', () => {
-    it('should prefer .yaml over .yml, .jsonc, .json', () => {
-      fs.writeFileSync(path.join(tmpDir, 'parako.yaml'), 'source: yaml\n');
-      fs.writeFileSync(path.join(tmpDir, 'parako.yml'), 'source: yml\n');
-      fs.writeFileSync(
-        path.join(tmpDir, 'parako.jsonc'),
-        '{ "source": "jsonc" }'
-      );
-      fs.writeFileSync(
-        path.join(tmpDir, 'parako.json'),
-        '{ "source": "json" }'
-      );
-
-      const result = reader.readAppConfig();
-      expect(result.source).toBe('yaml');
-    });
-
-    it('should fall back to .yml when .yaml is absent', () => {
-      fs.writeFileSync(path.join(tmpDir, 'parako.yml'), 'source: yml\n');
-      fs.writeFileSync(
-        path.join(tmpDir, 'parako.jsonc'),
-        '{ "source": "jsonc" }'
-      );
-
-      const result = reader.readAppConfig();
-      expect(result.source).toBe('yml');
-    });
-
-    it('should fall back to .jsonc when YAML files are absent', () => {
+    it('should prefer .jsonc over .json', () => {
       fs.writeFileSync(
         path.join(tmpDir, 'parako.jsonc'),
         '{ "source": "jsonc" }'
@@ -275,20 +161,6 @@ items:
       );
     });
 
-    it('should actually parse YAML format correctly', () => {
-      const content = `
-application:
-  title: Test App
-  locales:
-    default: en
-`;
-      fs.writeFileSync(path.join(tmpDir, 'parako.yaml'), content);
-
-      const result = reader.readAppConfig();
-      expect(result.application.title).toBe('Test App');
-      expect(result.application.locales.default).toBe('en');
-    });
-
     it('should actually parse JSONC format correctly', () => {
       const content = `{
         // JSONC comment
@@ -307,17 +179,6 @@ application:
   // readAppConfigAsync
   // ==========================================================================
   describe('readAppConfigAsync', () => {
-    it('should prefer .yaml over other formats (async)', async () => {
-      fs.writeFileSync(path.join(tmpDir, 'parako.yaml'), 'source: yaml\n');
-      fs.writeFileSync(
-        path.join(tmpDir, 'parako.jsonc'),
-        '{ "source": "jsonc" }'
-      );
-
-      const result = await reader.readAppConfigAsync();
-      expect(result.source).toBe('yaml');
-    });
-
     it('should fall back to .jsonc async', async () => {
       fs.writeFileSync(
         path.join(tmpDir, 'parako.jsonc'),

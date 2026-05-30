@@ -1,20 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseJsonc, ParseError } from 'jsonc-parser';
-import { parse as parseYaml } from 'yaml';
 import { injectable, inject } from 'inversify';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type {
   IConfigFileReader,
   JsoncReaderOptions,
-  YamlReaderOptions,
 } from '../di/interfaces/config-file-reader.interface.js';
 import { TYPES } from '../di/types.js';
 import { resolveEnvVars } from './env-interpolation.js';
 
 /**
  * Configuration file reader utility class
- * Handles reading and parsing JSONC, JSON, and YAML configuration files
+ * Handles reading and parsing JSONC and JSON configuration files
  * with auto-detection of format by file extension
  */
 @injectable()
@@ -132,56 +130,6 @@ export class ConfigFileReader implements IConfigFileReader {
   }
 
   /**
-   * Read and parse a YAML file
-   *
-   * @param filePath - Path to the YAML file
-   * @param options - Options for reading the file
-   * @returns Parsed object
-   * @throws Error if file cannot be read or parsed
-   */
-  readYamlFile<T = any>(filePath: string, options: YamlReaderOptions = {}): T {
-    const { encoding = 'utf8', throwOnError = true } = options;
-
-    try {
-      const fileContent = fs.readFileSync(filePath, encoding);
-      return parseYaml(fileContent) as T;
-    } catch (error) {
-      if (throwOnError) {
-        throw new Error(
-          `Failed to read YAML file '${filePath}': ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-      return {} as T;
-    }
-  }
-
-  /**
-   * Read and parse a YAML file asynchronously
-   *
-   * @param filePath - Path to the YAML file
-   * @param options - Options for reading the file
-   * @returns Promise that resolves to parsed object
-   */
-  async readYamlFileAsync<T = any>(
-    filePath: string,
-    options: YamlReaderOptions = {}
-  ): Promise<T> {
-    const { encoding = 'utf8', throwOnError = true } = options;
-
-    try {
-      const fileContent = await fs.promises.readFile(filePath, encoding);
-      return parseYaml(fileContent) as T;
-    } catch (error) {
-      if (throwOnError) {
-        throw new Error(
-          `Failed to read YAML file '${filePath}': ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-      return {} as T;
-    }
-  }
-
-  /**
    * Convert ParseErrorCode to human-readable error message
    *
    * @param errorCode - Error code from jsonc-parser
@@ -229,53 +177,47 @@ export class ConfigFileReader implements IConfigFileReader {
 
   /**
    * Read the main application configuration file (auto-detects format)
-   * Searches for: parako.yaml, parako.yml, parako.jsonc, parako.json
+   * Searches for: parako.jsonc, parako.json
    *
    * @returns Parsed configuration object
    */
   readAppConfig<T = any>(): T {
-    const extensions = ['yaml', 'yml', 'jsonc', 'json'];
+    const extensions = ['jsonc', 'json'];
     for (const ext of extensions) {
       const configPath = path.join(
         this.fileSystemUtils.rootDir,
         `parako.${ext}`
       );
       if (this.isFileReadable(configPath)) {
-        const parsed =
-          ext === 'yaml' || ext === 'yml'
-            ? this.readYamlFile<T>(configPath)
-            : this.readJsoncFile<T>(configPath);
+        const parsed = this.readJsoncFile<T>(configPath);
         return resolveEnvVars(parsed) as T;
       }
     }
     throw new Error(
-      'App configuration file not found. Expected: parako.yaml, parako.yml, parako.jsonc, or parako.json'
+      'App configuration file not found. Expected: parako.jsonc or parako.json'
     );
   }
 
   /**
    * Read the main application configuration file asynchronously (auto-detects format)
-   * Searches for: parako.yaml, parako.yml, parako.jsonc, parako.json
+   * Searches for: parako.jsonc, parako.json
    *
    * @returns Promise that resolves to parsed configuration object
    */
   async readAppConfigAsync<T = any>(): Promise<T> {
-    const extensions = ['yaml', 'yml', 'jsonc', 'json'];
+    const extensions = ['jsonc', 'json'];
     for (const ext of extensions) {
       const configPath = path.join(
         this.fileSystemUtils.rootDir,
         `parako.${ext}`
       );
       if (this.isFileReadable(configPath)) {
-        const parsed =
-          ext === 'yaml' || ext === 'yml'
-            ? await this.readYamlFileAsync<T>(configPath)
-            : await this.readJsoncFileAsync<T>(configPath);
+        const parsed = await this.readJsoncFileAsync<T>(configPath);
         return resolveEnvVars(parsed) as T;
       }
     }
     throw new Error(
-      'App configuration file not found. Expected: parako.yaml, parako.yml, parako.jsonc, or parako.json'
+      'App configuration file not found. Expected: parako.jsonc or parako.json'
     );
   }
 

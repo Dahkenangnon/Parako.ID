@@ -16,7 +16,7 @@ Configuration is assembled from three sources, merged in priority order:
 │  1. Bootstrap (.env)                │  ← Always loaded first
 │     Infrastructure fields           │     Cannot be changed at runtime
 ├─────────────────────────────────────┤
-│  2a. File (parako.yaml / .jsonc)    │  ← Development only
+│  2a. File (parako.jsonc)            │  ← Development only
 │      OR                             │     USE_FILE_CONFIG=true
 │  2b. Database (settings table)      │  ← Production default
 │      Single source of truth         │     Managed via admin panel or API
@@ -33,7 +33,7 @@ Configuration is assembled from three sources, merged in priority order:
 | Priority    | Source                                 | When used                                                                               |
 | ----------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
 | 1 (highest) | Bootstrap (`.env`)                     | Always — minimal config to start the application                                        |
-| 2           | File (`parako.yaml` or `parako.jsonc`) | Development only — when `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` |
+| 2           | File (`parako.jsonc`)                  | Development only — when `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` |
 | 3           | Database (`settings` table/collection) | Production — stored and managed via admin panel                                         |
 | 4           | Computed fields                        | Always — auto-generated secrets and derived values                                      |
 | 5 (lowest)  | `getDefaultFullConfig()`               | Always — fallback for any missing fields                                                |
@@ -156,18 +156,12 @@ For local development, you can manage the full configuration in a single file in
 
 Parako.ID searches for config files in this order:
 
-1. `parako.yaml`
-2. `parako.yml`
-3. `parako.jsonc`
-4. `parako.json`
+1. `parako.jsonc`
+2. `parako.json`
 
-Sample files are provided in the repository root:
+A sample file is provided in the repository root:
 
 ```bash
-# YAML format (recommended)
-cp parako.sample.yaml parako.yaml
-
-# Or JSONC format
 cp parako.sample.jsonc parako.jsonc
 ```
 
@@ -175,10 +169,13 @@ cp parako.sample.jsonc parako.jsonc
 
 You only need to provide the keys you want to override. Missing keys fall back to the defaults returned by `getDefaultFullConfig()`. For example, to only customize branding:
 
-```yaml
-branding:
-  companyName: My Company
-  logo: /images/my-logo.svg
+```jsonc
+{
+  "branding": {
+    "companyName": "My Company",
+    "logo": "/images/my-logo.svg",
+  },
+}
 ```
 
 All other sections (security, features, oidc, etc.) use their defaults.
@@ -187,23 +184,30 @@ All other sections (security, features, oidc, etc.) use their defaults.
 
 Reference environment variables in your config file with `${VAR}` syntax:
 
-```yaml
-security:
-  secrets:
-    jwt_secret: ${JWT_SECRET}
-    cookie_secrets:
-      - ${COOKIE_SECRET_1}
-      - ${COOKIE_SECRET_2}
-    hmac_secret: ${HMAC_SECRET}
+```jsonc
+{
+  "security": {
+    "secrets": {
+      "jwt_secret": "${JWT_SECRET}",
+      "cookie_secrets": ["${COOKIE_SECRET_1}", "${COOKIE_SECRET_2}"],
+      "hmac_secret": "${HMAC_SECRET}",
+    },
+  },
+}
 ```
 
 Default values are supported with `${VAR:-default}` syntax:
 
-```yaml
-features:
-  social_providers:
-    google:
-      client_id: ${GOOGLE_CLIENT_ID:-your-google-client-id}
+```jsonc
+{
+  "features": {
+    "social_providers": {
+      "google": {
+        "client_id": "${GOOGLE_CLIENT_ID:-your-google-client-id}",
+      },
+    },
+  },
+}
 ```
 
 ### File Config Limitations
@@ -237,7 +241,7 @@ Changes made via the admin panel or API take effect immediately — no server re
 
 ## Configuration Sections Reference
 
-The full configuration is organized into 9 top-level sections. For the complete schema with all fields and defaults, see `parako.sample.yaml` in the repository root.
+The full configuration is organized into 9 top-level sections. For the complete schema with all fields and defaults, see `parako.sample.jsonc` in the repository root.
 
 ### `application`
 
@@ -347,6 +351,10 @@ External service connections.
 | `ipqualityscore`                                                                 | object | `{enabled: false}`               | IP reputation service      |
 | `fingerprintjs`                                                                  | object | `{enabled: false}`               | Browser fingerprinting     |
 | `file_storage`                                                                   | object | `{provider: "local"}`            | File storage (local or S3) |
+
+> **`file_storage.upload_dir`** controls where local-storage uploads land on disk. The default `./runtime/uploads` keeps mutable data under `runtime/` (alongside `jwks/`, `config-backups/`, etc.) for clean Docker mounts and backups. Set an absolute path (e.g. `/var/lib/parako/uploads`) to point uploads at a dedicated volume without changing the source.
+>
+> **nginx X-Accel-Redirect deployments:** the internal location `/_internal_uploads/` must `alias` the configured `upload_dir` (default `runtime/uploads/`). Earlier releases shipped uploads at `./uploads/`; existing deployments should move the directory and update the nginx alias when upgrading.
 
 ### `notifications`
 
@@ -711,13 +719,13 @@ Store these values in your `.env` file. Never commit secrets to version control.
 
 ### File Config Not Loading
 
-**Symptom:** Application ignores your `parako.yaml` / `parako.jsonc` file.
+**Symptom:** Application ignores your `parako.jsonc` file.
 
 **Checklist:**
 
 1. Verify `USE_FILE_CONFIG=true` in `.env`.
 2. Verify `DEPLOYMENT_ENVIRONMENT=development` in `.env`. File config is ignored in staging/production.
-3. Verify the config file exists in the project root with a supported name (`parako.yaml`, `parako.yml`, `parako.jsonc`, or `parako.json`).
+3. Verify the config file exists in the project root with a supported name (`parako.jsonc` or `parako.json`).
 
 ### Bootstrap Fields in Admin Panel
 

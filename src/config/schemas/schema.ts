@@ -3330,7 +3330,7 @@ export const AppConfigSchema = z.object({
           .describe('Storage backend: local filesystem or AWS S3'),
         upload_dir: z
           .string()
-          .default('./uploads')
+          .default('./runtime/uploads')
           .describe(
             'Base directory for local uploads (relative to project root)'
           ),
@@ -3388,7 +3388,7 @@ export const AppConfigSchema = z.object({
       })
       .default({
         provider: 'local' as const,
-        upload_dir: './uploads',
+        upload_dir: './runtime/uploads',
         signed_url_expiry_seconds: 3600,
         s3: {
           region: 'us-east-1',

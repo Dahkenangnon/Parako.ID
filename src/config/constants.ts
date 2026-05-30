@@ -923,7 +923,7 @@ function _buildDefaultFullConfig(): AppConfig {
       },
       file_storage: {
         provider: 'local' as const,
-        upload_dir: './uploads',
+        upload_dir: './runtime/uploads',
         signed_url_expiry_seconds: 3600,
         s3: {
           region: 'us-east-1',
