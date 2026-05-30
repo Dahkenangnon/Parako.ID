@@ -1,7 +1,11 @@
 import { Application, Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { setNoCache } from './middleware/cache.middleware.js';
-import { mfaVerifyLimiter } from '../../utils/rate-limiter.js';
+import {
+  mfaVerifyLimiter,
+  loginBruteForceByIdentifierAndIp,
+  loginBruteForceByIp,
+} from '../../utils/rate-limiter.js';
 import type { Provider } from 'oidc-provider';
 import { TYPES } from '../../di/types.js';
 import type { IOIDCInteractionHandler } from '../../di/interfaces/oidc-interaction-handler.interface.js';
@@ -123,6 +127,8 @@ export class OidcRoutesManager implements IOidcRoutesManager {
     router.post(
       `${oidcPath}/interaction/:uid/login`,
       setNoCache,
+      loginBruteForceByIp,
+      loginBruteForceByIdentifierAndIp,
       async (req: Request, res: Response, next: NextFunction) => {
         try {
           const provider = await this.resolveProvider();

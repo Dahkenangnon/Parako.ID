@@ -275,6 +275,7 @@ export class AuthController implements IAuthController {
       }
 
       if (!user) {
+        res.locals.loginFailed = true;
         this.activity.failed(
           'login_failed',
           'Login failed: Invalid credentials',
@@ -722,6 +723,7 @@ export class AuthController implements IAuthController {
         }
       }
     } catch (error) {
+      res.locals.loginFailed = true;
       const errorMessage =
         error instanceof Error
           ? error.message

@@ -19,6 +19,7 @@ import { RedisStore } from 'rate-limit-redis';
 import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
+import { HARDENING } from '../config/hardening-defaults.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -95,13 +96,39 @@ interface RateLimiterOptions {
   devMultiplier?: number;
   /** Custom handler for rate limit exceeded */
   handler?: (req: Request, res: Response) => void;
+  /**
+   * When true, requests judged successful by {@link requestWasSuccessful} are
+   * not counted against the quota. Used to build failure-only counters.
+   */
+  skipSuccessfulRequests?: boolean;
+  /**
+   * Optional extra component appended to the key after the IP. Lets a limiter
+   * scope its bucket to (IP + submitted identifier), (IP + tenant), etc.
+   */
+  keyExtra?: (req: Request) => string;
+  /**
+   * Override the default status-code-based success detection. Required when a
+   * handler renders a 200 response on credential failure (form re-render with
+   * a flash error) — set `res.locals.loginFailed = true` and read it here.
+   */
+  requestWasSuccessful?: (req: Request, res: Response) => boolean;
 }
 
 /**
  * Factory function to create rate limiters with dev/prod awareness
  */
 function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
-  const { name, windowMs, max, message, devMultiplier = 10, handler } = options;
+  const {
+    name,
+    windowMs,
+    max,
+    message,
+    devMultiplier = 10,
+    handler,
+    skipSuccessfulRequests,
+    keyExtra,
+    requestWasSuccessful,
+  } = options;
 
   // In development, multiply the max by devMultiplier to avoid hitting limits
   const effectiveMax = isDev ? max * devMultiplier : max;
@@ -113,16 +140,15 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req: Request) => {
-      // Unified format: {prefix}:{tenantId}:rl:{name}:{ip}
+      // Unified format: {prefix}:{tenantId}:rl:{name}:{ip}[:{extra}]
       // buildRedisKey reads tenantId from ALS, producing consistent keys
       // across both single-tenant (tenantId='default') and multi-tenant modes.
-      return buildRedisKey(
-        redisBasePrefix,
-        'rl',
-        name,
-        ipKeyGenerator(req.ip ?? '127.0.0.1')
-      );
+      const ipKey = ipKeyGenerator(req.ip ?? '127.0.0.1');
+      const fullKey = keyExtra ? `${ipKey}:${keyExtra(req)}` : ipKey;
+      return buildRedisKey(redisBasePrefix, 'rl', name, fullKey);
     },
+    skipSuccessfulRequests,
+    requestWasSuccessful,
     handler: handler
       ? (req, res) => handler(req, res)
       : (req, res, _next, opts) => {
@@ -144,6 +170,23 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
   });
 }
 
+/**
+ * Marker used by the login brute-force limiters to override status-code-based
+ * success detection. The OIDC login handler renders the login form with a
+ * 200 status on credential failure, so the limiter cannot rely on
+ * `res.statusCode >= 400` alone to count failed attempts.
+ */
+export const LOGIN_FAILED_RES_LOCAL = 'loginFailed' as const;
+
+const loginRequestWasSuccessful = (_req: Request, res: Response): boolean =>
+  res.locals[LOGIN_FAILED_RES_LOCAL] !== true;
+
+const normalizeLoginIdentifier = (raw: unknown): string => {
+  if (typeof raw !== 'string') return 'missing';
+  const trimmed = raw.toLowerCase().trim();
+  return trimmed.length > 0 ? trimmed : 'missing';
+};
+
 // AUTH RATE LIMITERS
 
 /**
@@ -157,6 +200,36 @@ export const loginLimiter = createLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
   message: 'Too many login attempts. Please try again later.',
+});
+
+/**
+ * Brute-force limiter keyed on (caller IP + submitted identifier). Counts
+ * only requests where the handler marks the credential check as failed via
+ * `res.locals.loginFailed = true`; successful sign-ins decrement the bucket.
+ * Catches password guessing against a single account from one origin.
+ */
+export const loginBruteForceByIdentifierAndIp = createLimiter({
+  name: 'login-brute-identifier',
+  windowMs: HARDENING.bruteForce.perIdentifier.windowMs,
+  max: HARDENING.bruteForce.perIdentifier.max,
+  message: 'Too many failed login attempts. Please try again later.',
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: loginRequestWasSuccessful,
+  keyExtra: req => normalizeLoginIdentifier(req.body?.login),
+});
+
+/**
+ * Brute-force limiter keyed on caller IP alone, with a wider window and
+ * larger budget. Catches username spraying that the per-identifier counter
+ * cannot see because spraying changes the identifier on every attempt.
+ */
+export const loginBruteForceByIp = createLimiter({
+  name: 'login-brute-ip',
+  windowMs: HARDENING.bruteForce.perIp.windowMs,
+  max: HARDENING.bruteForce.perIp.max,
+  message: 'Too many failed login attempts. Please try again later.',
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: loginRequestWasSuccessful,
 });
 
 /**

@@ -68,6 +68,23 @@ export const HARDENING = {
     scope: '/',
     cacheStrategy: 'stale-while-revalidate',
   },
+  bruteForce: {
+    // Failed-login budget keyed on identifier+IP. Counts only requests whose
+    // response status is >= 400 so a correct password resets the counter to
+    // zero. The narrow key catches password guessing against a single
+    // account from one origin.
+    perIdentifier: {
+      max: 5,
+      windowMs: 60 * 60 * 1000,
+    },
+    // Failed-login budget keyed on IP alone. Catches username spraying that
+    // the per-identifier counter would not see, since spraying changes the
+    // identifier on every attempt.
+    perIp: {
+      max: 100,
+      windowMs: 24 * 60 * 60 * 1000,
+    },
+  },
 } as const;
 
 // Node http requires headersTimeout to exceed keepAliveTimeout. With the

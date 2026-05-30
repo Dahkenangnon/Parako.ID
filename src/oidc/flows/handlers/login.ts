@@ -159,6 +159,7 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
         if (!user) {
           this.logger.info('Invalid credentials');
           this.metricsService.recordLoginAttempt('failure', loginMethodLabel);
+          res.locals.loginFailed = true;
 
           this.sessionManager
             .flash(req)
@@ -548,6 +549,7 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
           'error',
           (req.body.login_method as string) || 'unknown'
         );
+        res.locals.loginFailed = true;
 
         this.sessionManager
           .flash(req)

@@ -12,6 +12,8 @@ import type { OIDCSocialContext } from '../types/session-data.js';
 // Centralized rate limiters with dev/prod awareness
 import {
   loginLimiter,
+  loginBruteForceByIdentifierAndIp,
+  loginBruteForceByIp,
   registerLimiter,
   mfaVerifyLimiter,
   socialLoginLimiter,
@@ -63,6 +65,8 @@ export const authRoutes = (
   router.post(
     routes.login,
     loginLimiter,
+    loginBruteForceByIp,
+    loginBruteForceByIdentifierAndIp,
     securityMiddleware.validateCsrfToken,
     authController.processLogin
   );
