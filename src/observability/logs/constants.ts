@@ -94,7 +94,7 @@ export function getEnvironmentDefaults(environment: string) {
             level: 'info',
             pretty_print: false,
             file_logging: {
-              enabled: true,
+              enabled: false,
               directory: 'logs',
               max_size: '10m',
               max_files: 5,
@@ -168,7 +168,7 @@ export function getEnvironmentDefaults(environment: string) {
             level: 'info',
             pretty_print: false,
             file_logging: {
-              enabled: true,
+              enabled: false,
               directory: 'logs',
               max_size: '10m',
               max_files: 3,

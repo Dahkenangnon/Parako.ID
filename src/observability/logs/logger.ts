@@ -237,11 +237,21 @@ export class AppLogger implements ILogger {
     const logFile = join(directory, 'app.log');
     this.fileSystemUtils.ensureDir(directory);
 
-    return pino.destination({
-      dest: logFile,
-      sync: false,
-      mkdir: true,
-    }) as FlushableDestination;
+    // Worker-thread transport keeps file I/O off the main event loop. The
+    // catch covers runtimes where worker_threads or pino/file cannot be
+    // resolved; the async destination is acceptable as a degraded fallback.
+    try {
+      return pino.transport({
+        target: 'pino/file',
+        options: { destination: logFile, mkdir: true, append: true },
+      }) as FlushableDestination;
+    } catch {
+      return pino.destination({
+        dest: logFile,
+        sync: false,
+        mkdir: true,
+      }) as FlushableDestination;
+    }
   }
 
   // Public API
