@@ -4,3 +4,7 @@ css/*
 !css/theme.css
 manifest.json
 .esbuild-meta.json
+*.br
+*.gz
+service-worker.js
+manifest.webmanifest
