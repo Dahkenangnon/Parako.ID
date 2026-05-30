@@ -45,9 +45,9 @@ export class LocalStorageProvider implements IStorageProvider {
     }
 
     const dir = path.dirname(fullPath);
-    fs.mkdirSync(dir, { recursive: true });
+    await fs.promises.mkdir(dir, { recursive: true });
 
-    fs.writeFileSync(fullPath, buffer);
+    await fs.promises.writeFile(fullPath, buffer);
     this.logger.debug('File stored locally', { key });
 
     return key;
@@ -67,10 +67,8 @@ export class LocalStorageProvider implements IStorageProvider {
         return;
       }
 
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-        this.logger.debug('File deleted', { key });
-      }
+      await fs.promises.rm(fullPath, { force: true });
+      this.logger.debug('File deleted', { key });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'local_storage_delete',
