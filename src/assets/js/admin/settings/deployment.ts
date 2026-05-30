@@ -42,9 +42,16 @@
       const originsInput = document.getElementById(
         'server.allowed_origins'
       ) as HTMLInputElement | null;
+      const devOriginsInput = document.getElementById(
+        'server.dev_allowed_origins'
+      ) as HTMLInputElement | null;
+      const trustHopsInput = document.getElementById(
+        'server.trust_proxy_hops'
+      ) as HTMLInputElement | null;
 
       const url = urlInput?.value || '';
       const allowedOrigins = originsInput?.value || '';
+      const devAllowedOrigins = devOriginsInput?.value || '';
 
       if (!url || !allowedOrigins) {
         await this.showError(
@@ -61,7 +68,56 @@
         return false;
       }
 
+      const invalidOrigin = this.findFirstInvalidOrigin(allowedOrigins);
+      if (invalidOrigin) {
+        await this.showError(
+          'Invalid Allowed Origin',
+          `"${invalidOrigin}" is not a valid origin URL.`
+        );
+        return false;
+      }
+
+      if (devAllowedOrigins) {
+        const invalidDev = this.findFirstInvalidOrigin(devAllowedOrigins);
+        if (invalidDev) {
+          await this.showError(
+            'Invalid Dev Allowed Origin',
+            `"${invalidDev}" is not a valid origin URL.`
+          );
+          return false;
+        }
+      }
+
+      const hops = Number.parseInt(trustHopsInput?.value || '', 10);
+      if (
+        !Number.isFinite(hops) ||
+        Number.isNaN(hops) ||
+        hops < 0 ||
+        hops > 10
+      ) {
+        await this.showError(
+          'Invalid Trust Proxy Hops',
+          'Trust proxy hops must be an integer between 0 and 10.'
+        );
+        return false;
+      }
+
       return true;
+    }
+
+    private findFirstInvalidOrigin(commaSeparated: string): string | null {
+      const candidates = commaSeparated
+        .split(',')
+        .map(value => value.trim())
+        .filter(value => value.length > 0);
+      for (const candidate of candidates) {
+        try {
+          new URL(candidate);
+        } catch {
+          return candidate;
+        }
+      }
+      return null;
     }
 
     private async showError(title: string, message: string): Promise<void> {

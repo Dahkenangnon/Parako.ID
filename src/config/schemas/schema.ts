@@ -1081,12 +1081,35 @@ export const AppConfigSchema = z.object({
      * It must be set via PORT environment variable in .env file.
      */
     server: z.object({
-      allowed_origins: z.string().min(1, 'Allowed origins cannot be empty'),
-      proxy: z
-        .boolean()
-        .default(false)
+      // Per the Fetch spec, `Access-Control-Allow-Origin: *` combined with
+      // credentials is forbidden — browsers reject it. The default is `[]`
+      // (no cross-origin access) so misconfiguration fails loud rather than
+      // silently shipping an exploitable wildcard. References:
+      //   https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS/Errors/CORSNotSupportingCredentials
+      //   https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Access-Control-Allow-Credentials
+      allowed_origins: z
+        .array(z.url())
+        .default([])
         .describe(
-          'Trust proxy headers (enable in production behind reverse proxy)'
+          'Origins permitted for credentialed CORS requests in production'
+        ),
+      dev_allowed_origins: z
+        .array(z.url())
+        .default(['http://localhost:9007', 'http://localhost:5173'])
+        .describe(
+          'Origins permitted for credentialed CORS requests outside production'
+        ),
+      // Hop count (integer) preferred over a boolean; setting `true` lets a
+      // client spoof X-Forwarded-For. Reference:
+      //   https://expressjs.com/en/guide/behind-proxies/
+      trust_proxy_hops: z
+        .number()
+        .int()
+        .min(0)
+        .max(10)
+        .default(1)
+        .describe(
+          'Number of reverse proxies in front of the app (0 disables, 1 = single nginx, 2 = CDN+LB, etc.)'
         ),
     }),
 

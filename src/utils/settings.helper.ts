@@ -503,12 +503,52 @@ export function convertDeploymentFormData(data: any): any {
   }
 
   const booleanFields = [
-    'server.proxy',
     'cookies.defaults.httpOnly',
     'cookies.defaults.secure',
   ];
 
   converted = convertBooleanFields(converted, booleanFields);
+
+  // ── deployment.server CORS + trust-proxy migration ──────────────────────
+  //
+  // The admin form posts CORS origins as a comma-separated string and
+  // trust-proxy hops as a numeric string. The schema is `string[]` and
+  // `number` respectively, and the legacy `proxy: boolean` field is
+  // replaced by `trust_proxy_hops: number`. Normalise here so the rest of
+  // the codebase only ever sees the canonical shape.
+  //
+  // Wildcard ("*") + credentials is forbidden by the Fetch spec:
+  // https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS/Errors/CORSNotSupportingCredentials
+  const normaliseOriginList = (value: unknown): string[] | undefined => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return undefined;
+    if (value === '*' || value.trim() === '') return [];
+    return value
+      .split(/[,\n]/)
+      .map(origin => origin.trim())
+      .filter(origin => origin.length > 0);
+  };
+
+  if (converted.server) {
+    const server = converted.server;
+    const migratedAllowed = normaliseOriginList(server.allowed_origins);
+    if (migratedAllowed !== undefined) server.allowed_origins = migratedAllowed;
+
+    const migratedDev = normaliseOriginList(server.dev_allowed_origins);
+    if (migratedDev !== undefined) server.dev_allowed_origins = migratedDev;
+
+    if (
+      server.trust_proxy_hops === undefined &&
+      typeof server.proxy === 'boolean'
+    ) {
+      server.trust_proxy_hops = server.proxy ? 1 : 0;
+    }
+    if (typeof server.trust_proxy_hops === 'string') {
+      const parsed = Number.parseInt(server.trust_proxy_hops, 10);
+      if (!Number.isNaN(parsed)) server.trust_proxy_hops = parsed;
+    }
+    delete server.proxy;
+  }
 
   return converted;
 }

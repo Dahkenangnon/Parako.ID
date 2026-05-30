@@ -409,8 +409,19 @@ const deploymentRoutesSchema = new Schema(
 // 8. Server
 const deploymentServerSchema = new Schema(
   {
-    allowed_origins: { type: String, required: true },
-    proxy: { type: Boolean, required: true },
+    // CORS allowlists are arrays so cors v2+ can emit Vary: Origin and
+    // legitimately combine with credentials: true (the Fetch spec forbids
+    // wildcard + credentials). See src/config/schemas/schema.ts for the
+    // canonical Zod definition.
+    allowed_origins: { type: [String], default: [] },
+    dev_allowed_origins: {
+      type: [String],
+      default: ['http://localhost:9007', 'http://localhost:5173'],
+    },
+    // Hop count; replaces the previous boolean `proxy`. 1 = single nginx,
+    // 2 = CDN/CloudFront → ALB → app. See Express "behind proxies":
+    // https://expressjs.com/en/guide/behind-proxies/
+    trust_proxy_hops: { type: Number, default: 1, min: 0, max: 10 },
   },
   { _id: false }
 );

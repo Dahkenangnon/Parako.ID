@@ -46,23 +46,28 @@
                             <h3 class="text-base font-medium text-foreground mb-4">Server Configuration</h3>
                             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <div>
-                                    <label for="server.allowed_origins" class="block text-sm font-medium text-foreground mb-2">Allowed Origins</label>
+                                    <label for="server.allowed_origins" class="block text-sm font-medium text-foreground mb-2">Allowed Origins (production)</label>
                                     <input type="text" id="server.allowed_origins" name="server[allowed_origins]"
-                                           value="{{ config.server and config.server.allowed_origins or '' }}" required
+                                           value="{{ (config.server and config.server.allowed_origins) | join(', ') if config.server and config.server.allowed_origins else '' }}" required
+                                           placeholder="https://yourdomain.com, https://app.yourdomain.com"
                                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of allowed origins (e.g., https://yourdomain.com, https://app.yourdomain.com)</p>
+                                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of origins permitted for credentialed CORS. Wildcard ("*") is rejected by browsers when credentials are sent.</p>
                                 </div>
-                                <div class="flex items-start space-x-2 pt-8">
-                                    <input type="checkbox" id="server.proxy"
-                                           name="server[proxy]"
-                                           {% if config.server and config.server.proxy %}checked{% endif %}
-                                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2 mt-0.5">
-                                    <div>
-                                        <label for="server.proxy" class="text-sm font-medium text-foreground">
-                                            Behind Proxy
-                                        </label>
-                                        <p class="text-xs text-muted-foreground mt-1">Enable when behind a reverse proxy (nginx, Apache, etc.)</p>
-                                    </div>
+                                <div>
+                                    <label for="server.dev_allowed_origins" class="block text-sm font-medium text-foreground mb-2">Allowed Origins (non-production)</label>
+                                    <input type="text" id="server.dev_allowed_origins" name="server[dev_allowed_origins]"
+                                           value="{{ (config.server and config.server.dev_allowed_origins) | join(', ') if config.server and config.server.dev_allowed_origins else '' }}"
+                                           placeholder="http://localhost:9007, http://localhost:5173"
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Used when NODE_ENV is not "production" (e.g., local SPAs on dev ports).</p>
+                                </div>
+                                <div>
+                                    <label for="server.trust_proxy_hops" class="block text-sm font-medium text-foreground mb-2">Trust Proxy Hops</label>
+                                    <input type="number" id="server.trust_proxy_hops" name="server[trust_proxy_hops]"
+                                           value="{{ config.server.trust_proxy_hops if config.server and config.server.trust_proxy_hops is defined else 1 }}"
+                                           min="0" max="10" step="1" required
+                                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                    <p class="mt-1 text-xs text-muted-foreground">Number of reverse proxies in front of the app. 0 disables X-Forwarded-* parsing, 1 = single nginx, 2 = CDN/CloudFront → ALB → app.</p>
                                 </div>
                             </div>
                         </div>

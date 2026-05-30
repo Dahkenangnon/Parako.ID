@@ -233,8 +233,13 @@ function _buildDefaultFullConfig(): AppConfig {
     deployment: {
       url: 'https://example.com',
       server: {
-        allowed_origins: '*',
-        proxy: false,
+        // Empty by default — production deployments MUST configure explicit
+        // origins. Wildcard with credentials: true is rejected by browsers.
+        allowed_origins: [] as string[],
+        dev_allowed_origins: ['http://localhost:9007', 'http://localhost:5173'],
+        // Hop count; replaces the previous `proxy` boolean. 1 = single proxy
+        // (nginx); 2 = CDN/CloudFront → ALB → app.
+        trust_proxy_hops: 1,
       },
       redis_prefix: 'parako',
       cookies: {

@@ -172,8 +172,16 @@
   "deployment": {
     "url": "http://localhost:9007", // Public URL of your application
     "server": {
-      "allowed_origins": "*", // CORS allowed origins (use specific domains in production)
-      "proxy": false, // Set to true if behind reverse proxy (nginx, cloudflare, etc.)
+      // Origins permitted for credentialed CORS requests in production.
+      // Wildcard "*" with credentials: true is forbidden by the Fetch spec,
+      // so list each origin explicitly. Empty array = no cross-origin access.
+      "allowed_origins": [],
+      // Origins permitted outside production (e.g., local SPAs on dev ports).
+      "dev_allowed_origins": ["http://localhost:9007", "http://localhost:5173"],
+      // Number of reverse proxies between the client and the app. 0 disables
+      // X-Forwarded-* parsing; 1 = single nginx; 2 = CDN/CloudFront → ALB → app.
+      // See https://expressjs.com/en/guide/behind-proxies/
+      "trust_proxy_hops": 1,
     },
     "redis_prefix": "parako", // Base Redis key prefix (subsystems append :session:, :oidc:, :rl:, :pubsub:)
     "cookies": {

@@ -485,6 +485,37 @@ export class ConfigValidationMiddleware {
       }
     }
 
+    if (data.server?.dev_allowed_origins) {
+      const devOrigins = data.server.dev_allowed_origins;
+
+      if (!Array.isArray(devOrigins)) {
+        errors.push('Dev allowed origins must be an array');
+      } else {
+        for (const origin of devOrigins) {
+          try {
+            new URL(origin);
+          } catch {
+            errors.push(`Invalid dev origin URL: ${origin}`);
+          }
+        }
+      }
+    }
+
+    if (
+      data.server?.trust_proxy_hops !== undefined &&
+      data.server?.trust_proxy_hops !== null
+    ) {
+      const hops = data.server.trust_proxy_hops;
+      if (
+        typeof hops !== 'number' ||
+        !Number.isInteger(hops) ||
+        hops < 0 ||
+        hops > 10
+      ) {
+        errors.push('trust_proxy_hops must be an integer between 0 and 10');
+      }
+    }
+
     return {
       valid: errors.length === 0,
       errors,
