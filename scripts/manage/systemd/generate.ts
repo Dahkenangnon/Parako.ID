@@ -1,7 +1,7 @@
 import inquirer from 'inquirer';
 import { log } from '../shared/logger.js';
 import rootDir from '../shared/file.js';
-import { executeCommand } from '../shared/utils.js';
+import { assertInteractiveTty, executeCommand } from '../shared/utils.js';
 import {
   SERVICE_NAME,
   APP_SCRIPT,
@@ -22,9 +22,15 @@ async function detectNodePath(): Promise<string> {
 }
 
 /**
- * Prompt the user interactively for systemd configuration
+ * Prompt the user interactively for systemd configuration.
+ *
+ * The shared `assertInteractiveTty` guard refuses to run when stdin is
+ * not a TTY (e.g. piped from CI), preventing the prompt from hanging the
+ * caller indefinitely.
  */
 export async function promptForConfig(): Promise<SystemdConfig> {
+  assertInteractiveTty('systemd generate');
+
   const defaultUser = process.env.USER || 'parako';
   const defaultNodePath = await detectNodePath();
 

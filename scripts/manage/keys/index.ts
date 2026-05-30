@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import fs from 'node:fs';
 import path from 'node:path';
 import * as jose from 'jose';
+import { assertInteractiveTty } from '../shared/utils.js';
 
 export interface JWK extends jose.JWK {
   use?: string;
@@ -83,9 +84,14 @@ export async function generateKeys(
 }
 
 /**
- * Interactive generation with confirmation prompts
+ * Interactive generation with confirmation prompts.
+ *
+ * Bails out via `assertInteractiveTty` if stdin is not a TTY so the
+ * command never hangs a CI pipeline that pipes empty input.
  */
 export async function generateKeysInteractive(): Promise<void> {
+  assertInteractiveTty('keys generate');
+
   const outputPath = path.resolve('./runtime/jwks/jwks.json');
   const fileExists = fs.existsSync(outputPath);
 

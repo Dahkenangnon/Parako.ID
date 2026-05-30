@@ -10,6 +10,7 @@ import {
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import rootDir from './file.js';
 
 // Re-export logger for convenience
@@ -342,16 +343,38 @@ export function validateUrl(input: string): string | boolean {
 }
 
 /**
- * Generate a secure random secret
+ * Refuse to start an interactive prompt when stdin is not a TTY.
+ *
+ * Inquirer reads from `process.stdin`; if a CI pipeline or wrapper
+ * redirects stdin (e.g. `pnpm client add < /dev/null`), the prompt would
+ * block forever waiting for input. Failing fast surfaces the issue
+ * instead of hanging the calling process. Reference:
+ * https://nodejs.org/api/tty.html#readstreamistty
+ */
+export function assertInteractiveTty(commandLabel: string): void {
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      `Refusing to start interactive prompt for "${commandLabel}": ` +
+        'stdin is not a TTY. Run from an interactive terminal or pass ' +
+        'the required values via flags.'
+    );
+  }
+}
+
+/**
+ * Generate a cryptographically secure random hex secret.
+ *
+ * Uses Node's CSPRNG (`crypto.randomBytes`) — see
+ * https://nodejs.org/api/crypto.html#cryptorandombytessize-callback —
+ * which is appropriate for tokens, session secrets and other
+ * security-sensitive identifiers. `Math.random()` is NOT acceptable for
+ * this use case (https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues).
+ *
+ * @param length Number of random bytes; the returned string is `length * 2`
+ *               hex characters long (default 32 bytes = 64 hex chars).
  */
 export function generateSecureSecret(length: number = 32): string {
-  const chars =
-    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return randomBytes(length).toString('hex');
 }
 
 // CONFIG UTILITIES
@@ -486,9 +509,15 @@ export async function executeCommand(
   args: string[] = []
 ): Promise<ExecuteCommandResult> {
   return new Promise(resolve => {
+    // `shell: false` is mandatory — passing `shell: true` re-introduces a
+    // command-injection vector if any caller ever interpolates user input
+    // into `command` or `args`. All current callers pass bare executables
+    // (`systemctl`, `id`, `which`, `daemon-reload`) which don't need shell
+    // expansion. Reference:
+    // https://nodejs.org/api/child_process.html#child_processspawncommand-args-options
     const child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true,
+      shell: false,
     });
 
     let stdout = '';

@@ -2,15 +2,19 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { CLIENT_TYPES } from './types.js';
 import { addClient, findClientById } from './local-client-manager.js';
-import { log } from '../shared/utils.js';
+import { assertInteractiveTty, log } from '../shared/utils.js';
 import { displayClient } from './display.js';
 import type { OidcClient } from './local-types.js';
 
 /**
- * Add a new client interactively
+ * Add a new client interactively.
+ *
+ * Bails out via `assertInteractiveTty` if stdin is not a TTY so the
+ * command never hangs a CI pipeline that pipes empty input.
  */
 export async function addClientInteractive(): Promise<void> {
   try {
+    assertInteractiveTty('client add');
     log.title('🆕 Add New OIDC Client');
     log.subtitle("Let's create a new client for your application");
     console.log(
