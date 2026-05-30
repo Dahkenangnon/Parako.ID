@@ -200,6 +200,35 @@ export default tseslint.config(
     },
   },
   {
+    // Service worker files (run in ServiceWorkerGlobalScope, not window).
+    files: ['src/assets/js/sw/service-worker.ts', 'public/service-worker.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        self: 'readonly',
+        caches: 'readonly',
+        clients: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        Request: 'readonly',
+        Response: 'readonly',
+        Cache: 'readonly',
+        ServiceWorkerGlobalScope: 'readonly',
+        WorkerGlobalScope: 'readonly',
+        ExtendableEvent: 'readonly',
+        FetchEvent: 'readonly',
+        Promise: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-console': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-expressions': 'off',
+    },
+  },
+  {
     ignores: [
       'dist/**',
       'node_modules/**',

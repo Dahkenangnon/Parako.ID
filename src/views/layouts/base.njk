@@ -57,6 +57,9 @@
     <!-- Preconnect for Performance -->
     <link rel="preconnect" href="https://unpkg.com">
 
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest">
+
     <!-- Stylesheets -->
     <link rel="stylesheet" href="{{ asset('css/styles.css') }}">
     <link rel="stylesheet" href="{{ asset('css/theme.css') }}">
@@ -106,6 +109,7 @@
         <script src="{{ asset('js/main.js') }}"></script>
         <script src="{{ asset('js/flash.js') }}"></script>
         <script src="{{ asset('js/user.js') }}"></script>
+        <script src="{{ asset('js/sw/register.js') }}"></script>
         
         <!-- Global configuration for MainManager -->
         <script id="___MAIN_STATE___" type="application/json">

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rootDir": "./src/assets/js/sw",
+    "noEmit": true,
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/assets/js/sw/service-worker.ts"]
+}

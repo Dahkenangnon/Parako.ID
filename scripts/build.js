@@ -197,15 +197,17 @@ function typecheckOne(project, label) {
   });
 }
 
-// Run tsc --noEmit against both server and browser tsconfigs in parallel.
+// Run tsc --noEmit against the server, browser, and service-worker
+// tsconfigs in parallel.
 async function typecheckAsync() {
-  const [server, browser] = await Promise.all([
+  const [server, browser, sw] = await Promise.all([
     typecheckOne('tsconfig.build.json', 'typecheck:srv'),
     typecheckOne('tsconfig.assets.json', 'typecheck:web'),
+    typecheckOne('tsconfig.sw.json', 'typecheck:sw'),
   ]);
   return {
-    code: server.code || browser.code,
-    errorCount: server.errorCount + browser.errorCount,
+    code: server.code || browser.code || sw.code,
+    errorCount: server.errorCount + browser.errorCount + sw.errorCount,
   };
 }
 
@@ -279,9 +281,14 @@ async function main() {
 
   // Step 4: Client-side TS → public/js/ (esbuild, minified, console-stripped,
   // content-hashed filenames; the metafile lets the manifest step locate the
-  // hashed outputs without having to re-scan the directory).
+  // hashed outputs without having to re-scan the directory). The service
+  // worker is built separately by step 7b because it needs a different
+  // bundling context (IIFE, no console drop, root scope path).
   step('client js', () => {
-    const entries = globSync('src/assets/js/**/*.ts', { cwd: ROOT });
+    const entries = globSync('src/assets/js/**/*.ts', {
+      cwd: ROOT,
+      ignore: ['src/assets/js/sw/service-worker.ts'],
+    });
     if (entries.length === 0) return '0 files';
 
     bin('esbuild', [
@@ -342,6 +349,60 @@ async function main() {
     writeManifest(MANIFEST_PATH, mapping);
     rmSync(ESBUILD_META_PATH, { force: true });
     return `${Object.keys(mapping).length} entries`;
+  });
+
+  // Step 7b: Build the service worker. The SW runs in its own global scope
+  // (self, no DOM) and must be served from the application root so its
+  // controlled scope is "/". It is compiled as IIFE and keeps console
+  // statements so registration and runtime errors remain observable in the
+  // browser devtools.
+  step('service worker', () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8'));
+    const precache = Object.values(manifest).map(p => `/${p}`);
+    const buildId = getGitSha() || `ts-${Date.now()}`;
+    const define = {
+      __PARAKO_BUILD_ID__: JSON.stringify(buildId),
+      __PARAKO_PRECACHE__: JSON.stringify(precache),
+    };
+
+    bin('esbuild', [
+      'src/assets/js/sw/service-worker.ts',
+      '--bundle',
+      '--minify',
+      '--format=iife',
+      '--platform=browser',
+      '--target=es2020',
+      '--outfile=public/service-worker.js',
+      ...Object.entries(define).map(([k, v]) => `--define:${k}=${v}`),
+      '--legal-comments=none',
+    ]);
+
+    return `build ${buildId}`;
+  });
+
+  // Step 7c: Emit the minimal PWA manifest. The values are stable across
+  // deployments; the file is regenerated each build so a future change to
+  // branding propagates without an extra step.
+  step('webmanifest', () => {
+    const webmanifest = {
+      name: 'Parako.ID',
+      short_name: 'Parako',
+      start_url: '/',
+      display: 'minimal-ui',
+      theme_color: '#2563eb',
+      background_color: '#ffffff',
+      icons: [
+        {
+          src: '/images/logo-icon-light.svg',
+          sizes: 'any',
+          type: 'image/svg+xml',
+        },
+      ],
+    };
+    writeFileSync(
+      join(PUBLIC_ROOT, 'manifest.webmanifest'),
+      JSON.stringify(webmanifest, null, 2)
+    );
   });
 
   // Step 8: Pre-compress text static assets at the highest Brotli and gzip

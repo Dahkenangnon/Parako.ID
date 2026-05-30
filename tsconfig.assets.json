@@ -10,5 +10,10 @@
     "types": []
   },
   "include": ["src/assets/js/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "src/assets/js/sw/service-worker.ts"
+  ]
 }

@@ -17,7 +17,9 @@ public/js/
 public/css/styles.css
 public/css/styles-*.css
 public/manifest.json
+public/manifest.webmanifest
 public/.esbuild-meta.json
+public/service-worker.js
 runtime/locales/.merged/
 options/locales/.merged/
 
