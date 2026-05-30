@@ -9,6 +9,7 @@ import type { IStorageProvider } from '../storage/storage-provider.interface.js'
 import { TYPES } from '../di/types.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { isValidHttpUrl } from '../utils/views.js';
+import { ImageProcessorService } from '../services/image-processor.service.js';
 
 /**
  * Sanitize a tenant ID for use in filesystem paths.
@@ -78,7 +79,9 @@ export class UploadMiddleware implements IUploadMiddleware {
     @inject(TYPES.FileSystemUtils)
     private readonly fileSystemUtils: IFileSystemUtils,
     @inject(TYPES.StorageProvider)
-    private readonly storageProvider: IStorageProvider
+    private readonly storageProvider: IStorageProvider,
+    @inject(TYPES.ImageProcessorService)
+    private readonly imageProcessor: ImageProcessorService
   ) {
     this.tmpDir = path.join(this.fileSystemUtils.rootDir, '.tmp-uploads');
     if (!fs.existsSync(this.tmpDir)) {
@@ -238,6 +241,21 @@ export class UploadMiddleware implements IUploadMiddleware {
     const buffer = await fs.promises.readFile(file.path);
 
     await this.storageProvider.store(buffer, key, file.mimetype);
+
+    // Raster image inputs get scaled WebP, AVIF, and JPEG variants written
+    // alongside the source. Variant generation failures are not fatal: the
+    // source is already stored and the view layer falls back to it when a
+    // variant is missing.
+    if (this.imageProcessor.isRasterImage(file.mimetype)) {
+      try {
+        await this.imageProcessor.generateVariants(buffer, key, file.mimetype);
+      } catch (err) {
+        this.logger.warn('Image variant generation failed', {
+          key,
+          error: (err as Error).message,
+        });
+      }
+    }
 
     try {
       await fs.promises.unlink(file.path);

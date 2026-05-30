@@ -57,6 +57,7 @@ export const TYPES = {
   SocialLoginManager: Symbol.for('SocialLoginManager'),
 
   StorageProvider: Symbol.for('StorageProvider'),
+  ImageProcessorService: Symbol.for('ImageProcessorService'),
 
   LocalsMiddleware: Symbol.for('LocalsMiddleware'),
   SecurityMiddleware: Symbol.for('SecurityMiddleware'),

@@ -6,6 +6,7 @@ import type { IFileSystemUtils } from '../interfaces/file-system-utils.interface
 import type { ILogger } from '../interfaces/logger.interface.js';
 import { LocalStorageProvider } from '../../storage/local-storage.provider.js';
 import { S3StorageProvider } from '../../storage/s3-storage.provider.js';
+import { ImageProcessorService } from '../../services/image-processor.service.js';
 
 export const storageModule: ContainerModule = new ContainerModule(
   (options: ContainerModuleLoadOptions) => {
@@ -26,6 +27,11 @@ export const storageModule: ContainerModule = new ContainerModule(
         );
         return new LocalStorageProvider(fileSystemUtils, logger, configManager);
       })
+      .inSingletonScope();
+
+    options
+      .bind<ImageProcessorService>(TYPES.ImageProcessorService)
+      .to(ImageProcessorService)
       .inSingletonScope();
   }
 );

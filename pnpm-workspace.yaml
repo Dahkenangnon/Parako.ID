@@ -15,6 +15,7 @@ allowBuilds:
   '@prisma/engines': true # Downloads platform-specific Prisma engines
   '@swc/core': true # Native SWC bindings for fast TS transpile
   msgpackr-extract: true # Native msgpack codec for prisma-studio caching
+  sharp: true # Native libvips bindings used for image variant generation
 minimumReleaseAgeExclude:
   - oidc-provider@9.8.4
 
