@@ -62,6 +62,27 @@ idempotent, read-only OIDC endpoints (`/.well-known/openid-configuration`
 and `/oidc/v1/jwks`). Apply it alongside the main configuration and only
 on builds of nginx that include `--with-http_v3_module`.
 
+## S3-compatible object storage
+
+`integrations.file_storage.provider = 's3'` routes uploads through the AWS
+SDK v3 client. The same client speaks to AWS S3 and to every major
+S3-compatible backend; the configuration matrix below summarises what each
+provider expects.
+
+| Provider            | `endpoint`                                      | `region`                          | `force_path_style` |
+| ------------------- | ----------------------------------------------- | --------------------------------- | ------------------ |
+| AWS S3              | _empty_ (the SDK derives the URL)               | `us-east-1`, `eu-west-1`, …       | `false`            |
+| Cloudflare R2       | `https://<account-id>.r2.cloudflarestorage.com` | `auto`                            | `false`            |
+| MinIO               | server URL, e.g. `https://minio.example.com`    | any non-empty string              | `true`             |
+| Backblaze B2        | `https://s3.<region>.backblazeb2.com`           | bucket region, e.g. `us-west-004` | `false`            |
+| DigitalOcean Spaces | `https://<region>.digitaloceanspaces.com`       | datacentre, e.g. `nyc3`           | `false`            |
+| Wasabi              | `https://s3.<region>.wasabisys.com`             | region, e.g. `us-east-1`          | `false`            |
+
+`access_key_id` and `secret_access_key` are the credentials issued by the
+chosen provider. The Parako S3 provider rejects startup when any of
+`region`, `bucket`, `access_key_id`, or `secret_access_key` is missing so a
+misconfiguration surfaces immediately rather than at first upload.
+
 ## Multi-tenant subdomain routing
 
 When a single nginx instance serves multiple Parako.ID tenants on

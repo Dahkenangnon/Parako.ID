@@ -3342,16 +3342,48 @@ export const AppConfigSchema = z.object({
           .describe('Expiry duration for signed/presigned URLs in seconds'),
         s3: z
           .object({
-            region: z.string().default('us-east-1'),
-            bucket: z.string().default(''),
-            access_key_id: z.string().default(''),
-            secret_access_key: z.string().default(''),
+            region: z
+              .string()
+              .default('us-east-1')
+              .describe(
+                "S3 region. AWS S3: a regional code such as 'us-east-1' or 'eu-west-1'. Cloudflare R2: 'auto'. Backblaze B2: the bucket's region code such as 'us-west-004'. DigitalOcean Spaces: the datacentre code such as 'nyc3' or 'ams3'. Wasabi: the region code such as 'us-east-1'. MinIO: any non-empty string (the server ignores it)."
+              ),
+            bucket: z
+              .string()
+              .default('')
+              .describe('Name of the bucket where objects are stored.'),
+            access_key_id: z
+              .string()
+              .default('')
+              .describe(
+                'S3 access key identifier. For Cloudflare R2 and DigitalOcean Spaces this is the API token / access key. For MinIO it is the root or service account access key.'
+              ),
+            secret_access_key: z
+              .string()
+              .default('')
+              .describe(
+                'S3 secret access key paired with access_key_id. Treat as a credential and rotate per the provider guidelines.'
+              ),
+            endpoint: z
+              .union([z.url(), z.literal('')])
+              .default('')
+              .describe(
+                "Optional custom S3-compatible endpoint URL. Leave empty for AWS S3 (the SDK derives the URL from the region). Required for every other backend. Cloudflare R2: 'https://<account-id>.r2.cloudflarestorage.com'. MinIO: the server URL such as 'https://minio.example.com' or 'http://localhost:9000'. Backblaze B2: 'https://s3.<region>.backblazeb2.com'. DigitalOcean Spaces: 'https://<region>.digitaloceanspaces.com'. Wasabi: 'https://s3.<region>.wasabisys.com'."
+              ),
+            force_path_style: z
+              .boolean()
+              .default(false)
+              .describe(
+                'Use path-style URLs (https://endpoint/bucket/key) instead of the default virtual-hosted style (https://bucket.endpoint/key). Set to true only when the backend requires it: MinIO defaults to path-style and most self-hosted MinIO deployments need this. AWS S3, Cloudflare R2, DigitalOcean Spaces, and Backblaze B2 accept the default virtual-hosted style.'
+              ),
           })
           .default({
             region: 'us-east-1',
             bucket: '',
             access_key_id: '',
             secret_access_key: '',
+            endpoint: '',
+            force_path_style: false,
           }),
       })
       .default({
@@ -3363,6 +3395,8 @@ export const AppConfigSchema = z.object({
           bucket: '',
           access_key_id: '',
           secret_access_key: '',
+          endpoint: '',
+          force_path_style: false,
         },
       }),
   }),

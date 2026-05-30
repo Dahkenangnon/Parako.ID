@@ -930,6 +930,8 @@ function _buildDefaultFullConfig(): AppConfig {
           bucket: '',
           access_key_id: '',
           secret_access_key: '',
+          endpoint: '',
+          force_path_style: false,
         },
       },
     },
