@@ -54,9 +54,6 @@
     <meta name="robots" content="index, follow">
     <meta name="theme-color" content="{{ branding.colors and branding.colors.primary or '#2563eb' }}">
     
-    <!-- Preconnect for Performance -->
-    <link rel="preconnect" href="https://unpkg.com">
-
     <!-- Web App Manifest -->
     <link rel="manifest" href="/manifest.webmanifest">
 
@@ -92,8 +89,8 @@
     {% endif %}
 
     <!-- Scripts -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="{{ asset('js/vendor/lucide.js') }}" defer></script>
+    <script src="{{ asset('js/vendor/alpine.js') }}" defer></script>
 
     <!-- Additional Head Content -->
     {% block head %}{% endblock %}
