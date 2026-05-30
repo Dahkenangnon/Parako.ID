@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import process from 'node:process';
 import { TYPES } from './di/types.js';
-import { container, assertContainerValid } from './di/index.js';
+import { containerReady, assertContainerValid } from './di/index.js';
 import type { IConfigManager } from './di/interfaces/config-manager.interface.js';
 import type { ILogger } from './di/interfaces/logger.interface.js';
 import type { IDatabaseConnectionManager } from './di/interfaces/database-connection-manager.interface.js';
@@ -35,7 +35,8 @@ import {
 } from './multi-tenancy/tenant-context.js';
 import { SHUTDOWN_TIMEOUT_MS, safeShutdownStep } from './utils/shutdown.js';
 
-// Validate DI container at startup (fail fast if bindings are missing)
+// Validate DI container at startup (fail fast if bindings are missing).
+const container = await containerReady;
 assertContainerValid(container);
 
 const configManager = container.get<IConfigManager>(TYPES.ConfigManager);

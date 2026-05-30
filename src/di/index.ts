@@ -14,31 +14,66 @@ import { apiModule } from './modules/api.module.js';
 import { Application } from '../app.js';
 import { TYPES } from './types.js';
 import { IApplication } from './interfaces/application.interface.js';
+import type { IConfigProvider } from './interfaces/config-provider.interface.js';
+import type { BootstrapConfig } from '../config/schemas/bootstrap-schema.js';
+import {
+  loadAdapterBundle,
+  type AdapterBundle,
+  type StorageAdapter,
+} from './loaders/adapter-loader.js';
 
-const container = new Container({
-  defaultScope: 'Transient', // Default to transient for better performance
-});
+const resolveStorageAdapter = (
+  provider: IConfigProvider<BootstrapConfig>
+): StorageAdapter => {
+  const raw = provider.getConfigValue<string>('storage.adapter', 'sqlite');
+  if (raw === 'mongodb' || raw === 'postgresql' || raw === 'sqlite') {
+    return raw;
+  }
+  throw new Error(`Unsupported storage adapter: ${raw}`);
+};
 
-container.load(
-  configModule, // Configuration first
-  databaseModule, // Database connections
-  servicesModule, // Business logic services
-  modelsModule, // Model factories
-  middlewareModule, // Middleware
-  controllersModule, // Controllers
-  oidcModule, // OIDC services
-  storageModule, // Storage provider (local/S3)
-  apiModule, // Management API v1 controllers + routes
-  appModule // Application services (MainRoutesManager)
-);
+/**
+ * Construct the DI container. The function dynamic-imports only the runtime
+ * modules required by the active storage adapter so a single-adapter
+ * deployment does not pay the heap cost of the unused families. The result
+ * is exposed as a module-level promise (`containerReady`) so entry points
+ * can await initialization once and pass the resolved container around.
+ */
+export async function buildContainer(): Promise<Container> {
+  const container = new Container({
+    defaultScope: 'Transient',
+  });
 
-// Bind Application after all modules are loaded to avoid circular dependencies
-container
-  .bind<IApplication>(TYPES.Application)
-  .to(Application)
-  .inSingletonScope();
+  container.load(configModule);
 
-export { container };
+  const provider = container.get<IConfigProvider<BootstrapConfig>>(
+    TYPES.BootstrapConfigProvider
+  );
+  const adapter = resolveStorageAdapter(provider);
+  const bundle = await loadAdapterBundle(adapter);
+  container.bind<AdapterBundle>(TYPES.AdapterBundle).toConstantValue(bundle);
+
+  container.load(
+    databaseModule,
+    servicesModule,
+    modelsModule,
+    middlewareModule,
+    controllersModule,
+    oidcModule,
+    storageModule,
+    apiModule,
+    appModule
+  );
+
+  container
+    .bind<IApplication>(TYPES.Application)
+    .to(Application)
+    .inSingletonScope();
+
+  return container;
+}
+
+export const containerReady: Promise<Container> = buildContainer();
 
 export {
   validateContainer,

@@ -1,11 +1,11 @@
 /**
- * TDD — databaseModule repository bindings
+ * databaseModule repository bindings.
  *
  * Verifies that TYPES.UserRepository (and the other repo symbols) resolve to
- * the correct implementation class depending on storage.adapter.
+ * the implementation class supplied by the active AdapterBundle.
  *
- * Adapter = 'sqlite' | 'postgresql'  →  Prisma implementations
- * Adapter = 'mongodb'                →  Mongoose implementations
+ *   bundle.kind === 'prisma'   →  Prisma implementations
+ *   bundle.kind === 'mongoose' →  Mongoose implementations
  */
 import 'reflect-metadata';
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -13,19 +13,21 @@ import { Container } from 'inversify';
 import { databaseModule } from '../../../src/di/modules/database.module.js';
 import { TYPES } from '../../../src/di/types.js';
 
-// ── Prisma repos ─────────────────────────────────────────────────────────────
 import { PrismaUserRepository } from '../../../src/db/repositories/prisma/user.repository.js';
 import { PrismaActivityRepository } from '../../../src/db/repositories/prisma/activity.repository.js';
 import { PrismaSettingsRepository } from '../../../src/db/repositories/prisma/settings.repository.js';
 import { PrismaSocialIntegrationRepository } from '../../../src/db/repositories/prisma/social-integration.repository.js';
+import { PrismaTenantRepository } from '../../../src/db/repositories/prisma/tenant.repository.js';
+import { PrismaTenantSettingsOverrideRepository } from '../../../src/db/repositories/prisma/tenant-settings-override.repository.js';
 
-// ── Mongoose repos ────────────────────────────────────────────────────────────
 import { MongooseUserRepository } from '../../../src/db/repositories/mongoose/user.repository.js';
 import { MongooseActivityRepository } from '../../../src/db/repositories/mongoose/activity.repository.js';
 import { MongooseSettingsRepository } from '../../../src/db/repositories/mongoose/settings.repository.js';
 import { MongooseSocialIntegrationRepository } from '../../../src/db/repositories/mongoose/social-integration.repository.js';
+import { MongooseTenantRepository } from '../../../src/db/repositories/mongoose/tenant.repository.js';
+import { MongooseTenantSettingsOverrideRepository } from '../../../src/db/repositories/mongoose/tenant-settings-override.repository.js';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+import type { AdapterBundle } from '../../../src/di/loaders/adapter-loader.js';
 
 function mockBootstrapProvider(adapter: 'mongodb' | 'sqlite' | 'postgresql') {
   const values: Record<string, unknown> = {
@@ -44,31 +46,54 @@ function mockBootstrapProvider(adapter: 'mongodb' | 'sqlite' | 'postgresql') {
   };
 }
 
-function buildContainer(adapter: 'mongodb' | 'sqlite' | 'postgresql') {
+const prismaBundle: AdapterBundle = {
+  kind: 'prisma',
+  createClient: () => ({}) as never,
+  UserRepository: PrismaUserRepository,
+  ActivityRepository: PrismaActivityRepository,
+  SettingsRepository: PrismaSettingsRepository,
+  SocialIntegrationRepository: PrismaSocialIntegrationRepository,
+  TenantRepository: PrismaTenantRepository,
+  TenantSettingsOverrideRepository: PrismaTenantSettingsOverrideRepository,
+};
+
+const mongooseBundle: AdapterBundle = {
+  kind: 'mongoose',
+  UserRepository: MongooseUserRepository,
+  ActivityRepository: MongooseActivityRepository,
+  SettingsRepository: MongooseSettingsRepository,
+  SocialIntegrationRepository: MongooseSocialIntegrationRepository,
+  TenantRepository: MongooseTenantRepository,
+  TenantSettingsOverrideRepository: MongooseTenantSettingsOverrideRepository,
+};
+
+function buildContainer(
+  adapter: 'mongodb' | 'sqlite' | 'postgresql',
+  bundle: AdapterBundle
+) {
   const c = new Container({ defaultScope: 'Transient' });
 
-  // Minimal mocks BootstrapConfigProvider needs
   c.bind(TYPES.BootstrapConfigProvider).toConstantValue(
     mockBootstrapProvider(adapter)
   );
+  c.bind(TYPES.AdapterBundle).toConstantValue(bundle);
 
-  // Mock Mongoose model constants — needed when adapter=mongodb
-  c.bind(TYPES.UserModel).toConstantValue({} as any);
-  c.bind(TYPES.ActivityModel).toConstantValue({} as any);
-  c.bind(TYPES.SettingsModel).toConstantValue({} as any);
-  c.bind(TYPES.SocialIntegrationModel).toConstantValue({} as any);
+  c.bind(TYPES.UserModel).toConstantValue({} as never);
+  c.bind(TYPES.ActivityModel).toConstantValue({} as never);
+  c.bind(TYPES.SettingsModel).toConstantValue({} as never);
+  c.bind(TYPES.SocialIntegrationModel).toConstantValue({} as never);
+  c.bind(TYPES.TenantModel).toConstantValue({} as never);
+  c.bind(TYPES.TenantSettingsOverrideModel).toConstantValue({} as never);
 
   c.load(databaseModule);
   return c;
 }
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
-
 describe('databaseModule — repository bindings', () => {
   describe('adapter = sqlite', () => {
     let c: Container;
     beforeAll(() => {
-      c = buildContainer('sqlite');
+      c = buildContainer('sqlite', prismaBundle);
     });
 
     it('UserRepository → PrismaUserRepository', () => {
@@ -97,7 +122,7 @@ describe('databaseModule — repository bindings', () => {
   describe('adapter = mongodb', () => {
     let c: Container;
     beforeAll(() => {
-      c = buildContainer('mongodb');
+      c = buildContainer('mongodb', mongooseBundle);
     });
 
     it('UserRepository → MongooseUserRepository', () => {

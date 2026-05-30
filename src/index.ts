@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import http from 'node:http';
 import process from 'node:process';
 import { TYPES } from './di/types.js';
-import { container, assertContainerValid } from './di/index.js';
+import { containerReady, assertContainerValid } from './di/index.js';
 import { IConfigManager } from './di/interfaces/config-manager.interface.js';
 import { IApplication } from './di/interfaces/application.interface.js';
 import { IEmailService } from './di/interfaces/email-service.interface.js';
@@ -24,8 +24,9 @@ import {
   safeShutdownStep,
 } from './utils/shutdown.js';
 import { HARDENING } from './config/hardening-defaults.js';
-//
-// Validate DI container at startup (fail fast if bindings are missing)
+
+// Validate DI container at startup (fail fast if bindings are missing).
+const container = await containerReady;
 assertContainerValid(container);
 
 const configManager = container.get<IConfigManager>(TYPES.ConfigManager);
