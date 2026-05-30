@@ -481,10 +481,18 @@
     margin: 0;
 }
 
-/* User button */
+/* User button.
+ *
+ * The expanded markup uses `flex items-center gap-3 w-full`. When
+ * collapsed, the avatar is the only visible flex child and the trailing
+ * `sidebar-text` wrapper still consumes a `gap-3` slot. Zeroing the gap
+ * in the collapsed state restores symmetry so the avatar centres in the
+ * narrow band.
+ */
 #sidebar.sidebar-collapsed .sidebar-user-btn {
     justify-content: center;
     padding: 0.625rem 0;
+    gap: 0;
     cursor: pointer;
 }
 

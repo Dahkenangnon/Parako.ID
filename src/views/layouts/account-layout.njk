@@ -414,10 +414,20 @@
     margin: 0;
 }
 
-/* User button */
+/* User button.
+ *
+ * The button keeps `flex items-center gap-3 w-full` from the expanded
+ * markup. When collapsed, the avatar is the only visible child but the
+ * two surrounding `sidebar-text` elements (label wrapper and chevron)
+ * still consume two `gap-3` slots (24px total) on the cross axis. With a
+ * 48px-wide collapsed sidebar that leaves zero free space for
+ * `justify-content: center` to distribute, so the avatar pins to the
+ * left edge. Zeroing the gap in the collapsed state restores symmetry.
+ */
 #sidebar.sidebar-collapsed .sidebar-user-btn {
     justify-content: center;
     padding: 0.625rem 0;
+    gap: 0;
     cursor: pointer;
 }
 
