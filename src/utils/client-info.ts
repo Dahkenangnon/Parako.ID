@@ -540,9 +540,15 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
     // Helper function to check if direct IP is from a trusted proxy
     const isFromTrustedProxy = (): boolean => {
       if (trustedProxies.length === 0) {
-        // If no trusted proxies configured, trust the proxy setting from Express
-        // This maintains backward compatibility
-        return req.app.get('trust proxy') === true;
+        // Trust the proxy setting from Express. After the schema migration
+        // `trust proxy` is a hop count (integer ≥ 0) — any positive value
+        // means we trust at least one proxy. We accept legacy boolean `true`
+        // for backwards compatibility with older configurations that haven't
+        // been migrated yet (see src/utils/settings.helper.ts).
+        const trustProxy = req.app.get('trust proxy');
+        if (trustProxy === true) return true;
+        if (typeof trustProxy === 'number') return trustProxy > 0;
+        return false;
       }
 
       for (const proxyRange of trustedProxies) {

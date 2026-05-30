@@ -6,6 +6,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import hpp from 'hpp';
 import { injectable, inject } from 'inversify';
 import { TYPES } from './di/types.js';
@@ -228,7 +229,15 @@ export class Application implements IApplication {
 
   private configureBasicSettings(): void {
     this.app.disable('x-powered-by');
-    this.app.set('trust proxy', this.isProduction);
+    // Express recommends a hop count (integer) over a boolean: a boolean
+    // `true` trusts every proxy and lets a client spoof X-Forwarded-For.
+    // Reference: https://expressjs.com/en/guide/behind-proxies/
+    const trustProxyHops =
+      this.configManager.getConfig().deployment.server.trust_proxy_hops ?? 1;
+    this.app.set('trust proxy', trustProxyHops);
+    this.logger.info('Express trust proxy configured', {
+      hops: trustProxyHops,
+    });
     this.app.set('env', this.environment);
     this.app.set('strict routing', false);
     this.app.set('view engine', 'njk');
@@ -298,29 +307,44 @@ export class Application implements IApplication {
       },
     });
 
-    // Always mount the limiter — `skip` callback dynamically disables it
-    if (this.isProduction) {
-      this.app.use(limiter as unknown as express.RequestHandler);
-      this.logger.info('Rate limiting configured', {
-        requestsPerMinute: rateLimitConfig.requests_per_minute,
-        windowMinutes: rateLimitConfig.window_minutes,
-        enabled: rateLimitConfig.enabled,
-      });
-    } else {
-      this.logger.info('Rate limiting skipped (non-production)');
-    }
+    // Always mount the rate limiter; the `skip` callback dynamically
+    // disables it based on live config. Gating the mount on isProduction
+    // left auth endpoints wide open in dev / staging, contrary to OWASP
+    // (https://cheatsheetseries.owasp.org/cheatsheets/Nodejs_Security_Cheat_Sheet.html)
+    // and RFC 9700 §4.7.
+    this.app.use(limiter as unknown as express.RequestHandler);
+    this.logger.info('Rate limiting configured', {
+      requestsPerMinute: rateLimitConfig.requests_per_minute,
+      windowMinutes: rateLimitConfig.window_minutes,
+      enabled: rateLimitConfig.enabled,
+    });
 
     this.app.use(hpp() as unknown as express.RequestHandler);
     this.logger.info('Data sanitization active');
 
-    // so cross-origin SPAs can send tenant identification.
+    // CORS — separate allowlists for production vs non-production. Wildcard
+    // origin combined with `credentials: true` is forbidden by the Fetch spec
+    // (https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS/Errors/CORSNotSupportingCredentials),
+    // so dev mode used to set `origin: true` (reflect any origin) — that lets
+    // any localhost-served page send credentialed requests, which is still a
+    // hole. Use an explicit dev allowlist instead.
     const tenantHeader =
       config.features?.multi_tenancy?.tenant_header ?? 'x-tenant-id';
+    const corsAllowlist = this.isProduction
+      ? config.deployment.server.allowed_origins
+      : config.deployment.server.dev_allowed_origins;
+
+    if (this.isProduction && corsAllowlist.length === 0) {
+      // Fail loud: a production app exposing credentialed endpoints with an
+      // empty CORS allowlist will silently reject every cross-origin caller.
+      this.logger.warn(
+        'CORS allowlist is empty in production — cross-origin browser callers will be rejected'
+      );
+    }
+
     this.app.use(
       cors({
-        origin: this.isProduction
-          ? config.deployment.server.allowed_origins
-          : true,
+        origin: corsAllowlist,
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
         allowedHeaders: ['Content-Type', 'Authorization', tenantHeader],
         credentials: true,
@@ -328,18 +352,21 @@ export class Application implements IApplication {
       })
     );
 
-    this.app.use((_req, res, next) => {
-      res.setHeader('X-XSS-Protection', '1; mode=block');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader(
-        'Strict-Transport-Security',
-        'max-age=31536000; includeSubDomains; preload'
-      );
-      next();
-    });
+    // Helmet sets a defense-in-depth header bundle (X-Content-Type-Options,
+    // X-Frame-Options, Referrer-Policy, Cross-Origin-*, Origin-Agent-Cluster,
+    // Strict-Transport-Security, X-DNS-Prefetch-Control, …). CSP is left
+    // unmanaged here because the existing Nunjucks-rendered CSP carries
+    // per-page nonces — a follow-up issue will consolidate that into
+    // helmet's directive form. Reference: https://github.com/helmetjs/helmet
+    this.app.use(
+      helmet({
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+      })
+    );
 
-    this.logger.info('CORS and security headers configured');
+    this.logger.info('CORS, helmet and rate-limit middleware configured');
   }
 
   private enforceHTTPS = (
