@@ -21,6 +21,11 @@ import {
   type AdapterBundle,
   type StorageAdapter,
 } from './loaders/adapter-loader.js';
+import {
+  loadOptionalDeps,
+  type OptionalDepsHandles,
+  type StorageProviderName,
+} from './loaders/optional-deps.js';
 
 const resolveStorageAdapter = (
   provider: IConfigProvider<BootstrapConfig>
@@ -30,6 +35,16 @@ const resolveStorageAdapter = (
     return raw;
   }
   throw new Error(`Unsupported storage adapter: ${raw}`);
+};
+
+const resolveStorageProvider = (
+  provider: IConfigProvider<BootstrapConfig>
+): StorageProviderName => {
+  const raw = provider.getConfigValue<string>(
+    'integrations.file_storage.provider',
+    'local'
+  );
+  return raw === 's3' ? 's3' : 'local';
 };
 
 /**
@@ -50,8 +65,15 @@ export async function buildContainer(): Promise<Container> {
     TYPES.BootstrapConfigProvider
   );
   const adapter = resolveStorageAdapter(provider);
-  const bundle = await loadAdapterBundle(adapter);
+  const storageProvider = resolveStorageProvider(provider);
+  const [bundle, optionalDeps] = await Promise.all([
+    loadAdapterBundle(adapter),
+    loadOptionalDeps(storageProvider),
+  ]);
   container.bind<AdapterBundle>(TYPES.AdapterBundle).toConstantValue(bundle);
+  container
+    .bind<OptionalDepsHandles>(TYPES.OptionalDepsHandles)
+    .toConstantValue(optionalDeps);
 
   container.load(
     databaseModule,

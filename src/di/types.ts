@@ -59,6 +59,7 @@ export const TYPES = {
   StorageProvider: Symbol.for('StorageProvider'),
   ImageProcessorService: Symbol.for('ImageProcessorService'),
   AdapterBundle: Symbol.for('AdapterBundle'),
+  OptionalDepsHandles: Symbol.for('OptionalDepsHandles'),
 
   LocalsMiddleware: Symbol.for('LocalsMiddleware'),
   SecurityMiddleware: Symbol.for('SecurityMiddleware'),
