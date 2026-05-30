@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import { Request, Response } from 'express';
 import { injectable, inject } from 'inversify';
 import { type SocialProvider } from '../types/social-integration.js';

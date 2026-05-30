@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
 import type { IViewResolver } from '../../../di/interfaces/view-resolver.interface.js';
 import type { Client, KoaContextWithOIDC } from 'oidc-provider';

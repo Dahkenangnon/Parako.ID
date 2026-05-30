@@ -6,8 +6,8 @@
 
 import inquirer from 'inquirer';
 import chalk from 'chalk';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import * as jose from 'jose';
 
 export interface JWK extends jose.JWK {
