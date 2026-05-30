@@ -3,10 +3,10 @@
  * Tests the Prisma-backed OIDC adapter against a real SQLite database.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { execFileSync } from 'child_process';
-import { existsSync, unlinkSync } from 'fs';
-import { tmpdir } from 'os';
-import { join, resolve } from 'path';
+import { execFileSync } from 'node:child_process';
+import { existsSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import { PrismaOidcStoreAdapter } from '../../../../src/oidc/adapter/prisma/index.js';

@@ -195,7 +195,11 @@ export class AdminActivitiesController implements IAdminActivitiesController {
   ): Promise<void> => {
     try {
       const { days } = req.body;
-      const olderThanDays = parseInt(days as string) || 90;
+      const olderThanDays = parsePositiveInt(days, {
+        default: 90,
+        min: 1,
+        max: 36500,
+      });
 
       const result =
         await this.activityService.deleteOldActivities(olderThanDays);

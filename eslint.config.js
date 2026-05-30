@@ -1,15 +1,76 @@
 import tseslint from 'typescript-eslint';
 
+/**
+ * Node.js built-in modules that must be imported via the `node:` protocol so
+ * they are unambiguously distinguished from npm packages with conflicting
+ * names. Reference: https://nodejs.org/api/modules.html
+ */
+const NODE_BUILTINS = [
+  'assert',
+  'async_hooks',
+  'buffer',
+  'child_process',
+  'cluster',
+  'console',
+  'constants',
+  'crypto',
+  'dgram',
+  'diagnostics_channel',
+  'dns',
+  'domain',
+  'events',
+  'fs',
+  'fs/promises',
+  'http',
+  'http2',
+  'https',
+  'inspector',
+  'module',
+  'net',
+  'os',
+  'path',
+  'path/posix',
+  'path/win32',
+  'perf_hooks',
+  'process',
+  'punycode',
+  'querystring',
+  'readline',
+  'repl',
+  'stream',
+  'stream/promises',
+  'stream/web',
+  'string_decoder',
+  'sys',
+  'timers',
+  'timers/promises',
+  'tls',
+  'trace_events',
+  'tty',
+  'url',
+  'util',
+  'util/types',
+  'v8',
+  'vm',
+  'wasi',
+  'worker_threads',
+  'zlib',
+];
+
+const restrictedNodeBuiltinImports = NODE_BUILTINS.map(name => ({
+  name,
+  message: `Import "node:${name}" instead of "${name}" so Node built-ins are unambiguously distinguished from npm packages — https://nodejs.org/api/modules.html`,
+}));
+
 export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Node.js backend files
     files: ['src/**/*.ts', 'scripts/**/*.ts', 'test/**/*.ts', '*.js', '*.ts'],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
-        // Node.js globals
         process: 'readonly',
         Buffer: 'readonly',
         __dirname: 'readonly',
@@ -19,7 +80,6 @@ export default tseslint.config(
         module: 'readonly',
         require: 'readonly',
         exports: 'readonly',
-        // ES2020 globals
         BigInt: 'readonly',
         Promise: 'readonly',
         Symbol: 'readonly',
@@ -32,7 +92,7 @@ export default tseslint.config(
       },
     },
     rules: {
-      // TypeScript specific rules
+      // TypeScript hygiene
       '@typescript-eslint/explicit-function-return-type': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': [
@@ -40,13 +100,13 @@ export default tseslint.config(
         { argsIgnorePattern: '^_' },
       ],
 
-      // General rules
-      'no-console': 'off',
-      'no-unused-vars': 'off', // Use TypeScript version instead
+      // Static-analysis safety nets — no runtime eval/Function constructor.
       'no-eval': 'error',
       'no-implied-eval': 'error',
       'no-new-func': 'error',
 
+      // Defensive coding defaults
+      radix: 'error',
       'prefer-const': 'error',
       'no-var': 'error',
       'object-shorthand': 'error',
@@ -55,16 +115,23 @@ export default tseslint.config(
       'no-useless-catch': 'error',
       'no-case-declarations': 'warn',
       'no-dupe-keys': 'error',
+      'no-console': 'off',
+      'no-unused-vars': 'off',
+
+      // Force the `node:` protocol on Node built-ins.
+      'no-restricted-imports': [
+        'error',
+        { paths: restrictedNodeBuiltinImports },
+      ],
     },
   },
   {
     // Browser frontend files
     files: ['public/**/*.js', 'src/assets/**/*.ts'],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2022,
       sourceType: 'module',
       globals: {
-        // Browser globals
         window: 'readonly',
         document: 'readonly',
         navigator: 'readonly',
@@ -85,7 +152,6 @@ export default tseslint.config(
         atob: 'readonly',
         URL: 'readonly',
         URLSearchParams: 'readonly',
-        // DOM types
         NodeListOf: 'readonly',
         HTMLCollection: 'readonly',
         Element: 'readonly',
@@ -99,20 +165,16 @@ export default tseslint.config(
         HTMLSelectElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         HTMLImageElement: 'readonly',
-        // File and Blob APIs
         Blob: 'readonly',
         FileReader: 'readonly',
         File: 'readonly',
-        // Event types
         Event: 'readonly',
         EventSource: 'readonly',
         KeyboardEvent: 'readonly',
         MessageEvent: 'readonly',
         ClipboardEvent: 'readonly',
         PageTransitionEvent: 'readonly',
-        // Observer types
         MutationObserver: 'readonly',
-        // ES2020 globals
         BigInt: 'readonly',
         Promise: 'readonly',
         Symbol: 'readonly',
@@ -125,7 +187,6 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Only errors for frontend code - suppress all warnings
       'no-console': 'off',
       'no-unused-vars': 'off',
       'prefer-const': 'off',
@@ -134,7 +195,6 @@ export default tseslint.config(
       'prefer-template': 'off',
       'no-useless-escape': 'off',
       'no-case-declarations': 'off',
-      // Keep only critical errors
       'no-dupe-keys': 'error',
       'no-undef': 'error',
     },

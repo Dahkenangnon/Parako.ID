@@ -250,7 +250,8 @@
       );
       if (accountCountElement) {
         const count = parseInt(
-          accountCountElement.getAttribute('data-account-count') || '1'
+          accountCountElement.getAttribute('data-account-count') || '1',
+          10
         );
         if (!isNaN(count)) return count;
       }
