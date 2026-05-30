@@ -18,6 +18,7 @@ import {
   recoveryLimiter,
   forgotPasswordLimiter,
 } from '../utils/rate-limiter.js';
+import { rootLogger } from '../observability/logs/logger.js';
 import {
   authQueryValidators,
   logoutValidators,
@@ -288,12 +289,10 @@ export const authRoutes = (
         // Non-OIDC flow — redirect to dashboard
         return res.redirect('/');
       } catch (error) {
-        // console.error here (not the structured logger): the route
-        // handler is a closure and the surrounding factory does not
-        // capture the DI logger. This branch is the last-resort error
-        // path before rendering the 500 view; the alternative is
-        // silently dropping the error from the journals.
-        console.error('Tier 1 social completion error:', error);
+        rootLogger.error(
+          { err: error, flow: 'tier1-social-completion' },
+          'Tier 1 social completion error'
+        );
         return res.status(500).render('auth/oidc/error.njk', {
           title: 'Server Error',
           error: 'An unexpected error occurred. Please try again.',

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { rootLogger } from '../observability/logs/logger.js';
 
 export type SupportedLanguage = 'en' | 'fr';
 
@@ -239,7 +240,10 @@ export function formatDateTimeForUser(
     return result;
   } catch (error) {
     const err = error as Error;
-    console.error('Error formatting datetime for user:', err.message);
+    rootLogger.error(
+      { err, fn: 'formatDateTimeForUser' },
+      'Error formatting datetime for user'
+    );
 
     // Fallback to simple formatting
     return date.toLocaleDateString(
@@ -369,7 +373,10 @@ export function formatDateTimeWithMetadata(
     };
   } catch (error) {
     const err = error as Error;
-    console.error('Error formatting datetime with metadata:', err.message);
+    rootLogger.error(
+      { err, fn: 'formatDateTimeWithMetadata' },
+      'Error formatting datetime with metadata'
+    );
 
     return {
       formatted: formatDateTimeForUser(date, options),
@@ -423,7 +430,10 @@ export function getShortRelativeTime(
     }
   } catch (error) {
     const err = error as Error;
-    console.error('Error getting short relative time:', err.message);
+    rootLogger.error(
+      { err, fn: 'getShortRelativeTime' },
+      'Error getting short relative time'
+    );
     return 'unknown';
   }
 }
@@ -601,7 +611,10 @@ export function formatDateRange(
     return `${startFormatted} - ${endFormatted}`;
   } catch (error) {
     const err = error as Error;
-    console.error('Error formatting date range:', err.message);
+    rootLogger.error(
+      { err, fn: 'formatDateRange' },
+      'Error formatting date range'
+    );
     return `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`;
   }
 }

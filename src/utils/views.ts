@@ -9,6 +9,7 @@ import {
   type DateTimeFormatOptions,
   type SupportedLanguage,
 } from './misc.js';
+import { rootLogger } from '../observability/logs/logger.js';
 
 type AssetManifest = Readonly<Record<string, string>>;
 
@@ -447,7 +448,10 @@ function addCustomFilters(env: nunjucks.Environment): void {
     try {
       return JSON.stringify(obj);
     } catch (error) {
-      console.error(error as Error, { filter: 'tojson', obj });
+      rootLogger.error(
+        { err: error, filter: 'tojson', obj },
+        'Nunjucks filter error'
+      );
       return 'null';
     }
   });
@@ -567,12 +571,10 @@ function addCustomFilters(env: nunjucks.Environment): void {
           currency,
         }).format(amount);
       } catch (error) {
-        console.error(error as Error, {
-          filter: 'currency',
-          amount,
-          currency,
-          locale,
-        });
+        rootLogger.error(
+          { err: error, filter: 'currency', amount, currency, locale },
+          'Nunjucks filter error'
+        );
         return `${currency} ${amount}`;
       }
     }
@@ -584,7 +586,10 @@ function addCustomFilters(env: nunjucks.Environment): void {
     try {
       return `${(value * 100).toFixed(decimals)}%`;
     } catch (error) {
-      console.error(error as Error, { filter: 'percentage', value, decimals });
+      rootLogger.error(
+        { err: error, filter: 'percentage', value, decimals },
+        'Nunjucks filter error'
+      );
       return `${value}%`;
     }
   });

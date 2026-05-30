@@ -115,6 +115,34 @@ const serializers = {
   },
 };
 
+// Module-level Pino instance for call sites that cannot reach the DI logger
+// (pure utility modules, Nunjucks filter callbacks, bare route closures).
+// Writes to stdout/stderr — captured by PM2/systemd in production. Shares
+// serializers and default redaction paths with AppLogger so sensitive fields
+// stay masked regardless of which access path emits the line.
+const moduleLoggerEnvironment =
+  process.env.DEPLOYMENT_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development';
+const moduleLoggerDefaults = getEnvironmentDefaults(moduleLoggerEnvironment);
+
+export const rootLogger: PinoInstance = pino({
+  name: moduleLoggerDefaults.application.name,
+  level: moduleLoggerDefaults.security.logging.level,
+  base: {
+    service: 'oidc-server',
+    component: 'parako-id',
+    env: moduleLoggerEnvironment,
+  },
+  timestamp: pino.stdTimeFunctions.isoTime,
+  formatters: {
+    level: label => ({ level: label }),
+  },
+  serializers,
+  redact: {
+    paths: moduleLoggerDefaults.security.logging.redaction.paths,
+    remove: true,
+  },
+});
+
 // Logger Class
 
 @injectable()
