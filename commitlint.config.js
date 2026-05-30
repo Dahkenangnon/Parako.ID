@@ -1,1 +1,31 @@
-export default { extends: ['@commitlint/config-conventional'] };
+export default {
+  extends: ['@commitlint/config-conventional'],
+  rules: {
+    'scope-enum': [
+      2,
+      'always',
+      [
+        'build',
+        'ci',
+        'cli',
+        'config',
+        'db',
+        'deps',
+        'docs',
+        'errors',
+        'i18n',
+        'jobs',
+        'lifecycle',
+        'lint',
+        'oidc',
+        'reliability',
+        'release',
+        'security',
+        'tenant',
+        'test',
+        'types',
+        'webauthn',
+      ],
+    ],
+  },
+};
