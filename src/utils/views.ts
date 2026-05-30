@@ -58,6 +58,83 @@ export function resolveAssetPath(logicalPath: string): string {
   return `/${resolved ?? normalized}`;
 }
 
+const HTML_ESCAPE_MAP: Readonly<Record<string, string>> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+const escapeAttribute = (value: string): string =>
+  value.replace(/[&<>"']/g, ch => HTML_ESCAPE_MAP[ch]);
+
+interface ImageOptions {
+  readonly alt?: string;
+  readonly loading?: 'lazy' | 'eager';
+  readonly decoding?: 'async' | 'sync' | 'auto';
+  readonly fetchpriority?: 'high' | 'low' | 'auto';
+  readonly sizes?: string;
+  readonly className?: string;
+  readonly width?: number | string;
+  readonly height?: number | string;
+  readonly id?: string;
+}
+
+const isLogicalAssetPath = (src: string): boolean => {
+  if (!src) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return false;
+  return !src.startsWith('/');
+};
+
+/**
+ * Render an `<img>` element with attributes tuned for performance and
+ * accessibility. Source paths that match `public/manifest.json` entries are
+ * rewritten to the content-hashed URL via the asset() resolver; absolute
+ * URLs and already-rooted paths pass through unchanged. Defaults set
+ * `loading="lazy"` and `decoding="async"` so out-of-viewport images do not
+ * block first paint; pass `loading: 'eager'` for above-the-fold imagery.
+ *
+ * The helper currently emits a single `<img>`. When the storage layer
+ * starts surfacing variant URLs, this is the call site where `<picture>`
+ * markup with `<source srcset>` per format will be added so view templates
+ * do not need to change again.
+ */
+export function renderImage(src: string, options: ImageOptions = {}): string {
+  const normalizedSrc = isLogicalAssetPath(src) ? resolveAssetPath(src) : src;
+  const alt = options.alt ?? '';
+  const loading = options.loading ?? 'lazy';
+  const decoding = options.decoding ?? 'async';
+
+  const attributes: string[] = [
+    `src="${escapeAttribute(normalizedSrc)}"`,
+    `alt="${escapeAttribute(alt)}"`,
+    `loading="${loading}"`,
+    `decoding="${decoding}"`,
+  ];
+
+  if (options.fetchpriority) {
+    attributes.push(`fetchpriority="${options.fetchpriority}"`);
+  }
+  if (options.sizes) {
+    attributes.push(`sizes="${escapeAttribute(options.sizes)}"`);
+  }
+  if (options.className) {
+    attributes.push(`class="${escapeAttribute(options.className)}"`);
+  }
+  if (options.width !== undefined) {
+    attributes.push(`width="${escapeAttribute(String(options.width))}"`);
+  }
+  if (options.height !== undefined) {
+    attributes.push(`height="${escapeAttribute(String(options.height))}"`);
+  }
+  if (options.id) {
+    attributes.push(`id="${escapeAttribute(options.id)}"`);
+  }
+
+  return `<img ${attributes.join(' ')}>`;
+}
+
 /**
  * Format time using native Intl.DateTimeFormat
  * @param date - Date to format
@@ -213,6 +290,12 @@ function addGlobalFunctions(env: nunjucks.Environment): void {
 
   env.addGlobal('asset', (logicalPath: string) =>
     resolveAssetPath(logicalPath)
+  );
+
+  env.addGlobal(
+    'image',
+    (src: string, options?: ImageOptions) =>
+      new nunjucks.runtime.SafeString(renderImage(src, options))
   );
 }
 

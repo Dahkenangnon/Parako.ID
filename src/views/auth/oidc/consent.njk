@@ -8,8 +8,8 @@
                     method="post"
                     class="space-y-4">
                     <div class="flex justify-center mb-3">
-                        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto"/>
-                        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto"/>
+                        {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+                        {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
                     </div>
 
                     <!-- Application Info -->
@@ -19,8 +19,8 @@
                             {% if client.logoUri and (client.logoUri.startsWith('https://') or client.logoUri.startsWith('http://')) %}
                                 <img src="{{ client.logoUri }}" alt="{{ client.clientName }}" class="h-10 w-10 object-cover" onerror="this.src='{{ branding.logo }}';"/>
                             {% else %}
-                                <img src="{{ branding.logo }}" alt="{{ client.clientName }}" class="dark:hidden h-10 w-10 object-cover"/>
-                                <img src="{{ branding.logoDark }}" alt="{{ client.clientName }}" class="hidden dark:block h-10 w-10 object-cover"/>
+                                {{ image(branding.logo, { alt: client.clientName, className: 'dark:hidden h-10 w-10 object-cover', loading: 'eager', fetchpriority: 'high' }) }}
+                                {{ image(branding.logoDark, { alt: client.clientName, className: 'hidden dark:block h-10 w-10 object-cover', loading: 'eager', fetchpriority: 'high' }) }}
                             {% endif %}
                         </div>
                         <div class="flex flex-col">

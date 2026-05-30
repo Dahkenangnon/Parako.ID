@@ -160,8 +160,8 @@
             <div class="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
                 <div class="flex items-center gap-2">
                     {% if branding.logo %}
-                        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-10 w-auto object-contain" />
-                        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-10 w-auto object-contain" />
+                        {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-10 w-auto object-contain', loading: 'eager', fetchpriority: 'high' }) }}
+                        {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-10 w-auto object-contain', loading: 'eager', fetchpriority: 'high' }) }}
                     {% endif %}
                     <span class="text-lg font-bold text-sidebar-foreground">{{ app.title }}</span>
                 </div>
@@ -265,8 +265,8 @@
             </button>
             <div class="flex items-center gap-2">
                 {% if branding.logo %}
-                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-8 w-auto object-contain" />
-                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-8 w-auto object-contain" />
+                    {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-8 w-auto object-contain', loading: 'eager', fetchpriority: 'high' }) }}
+                    {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-8 w-auto object-contain', loading: 'eager', fetchpriority: 'high' }) }}
                 {% endif %}
                 <span class="text-lg font-semibold">{{ app.title }}</span>
             </div>

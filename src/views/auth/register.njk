@@ -2,8 +2,8 @@
 
 {% block auth_content %}
                 <div class="flex justify-center mb-2">
-                    <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-12 w-auto" />
-                    <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-12 w-auto" />
+                    {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+                    {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
                 </div>
                 <p class="auth-heading text-gray-800 dark:text-foreground text-center mb-2 text-sm font-semibold">
                     {% if stepMessage %}

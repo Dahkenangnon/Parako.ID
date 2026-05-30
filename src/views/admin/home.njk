@@ -5,8 +5,8 @@
     <!-- Header Section -->
     <div class="text-center mb-6">
       <div class="inline-flex items-center justify-center mb-4">
-        <img src="{{ branding.logo }}" alt="{{ app.title }} Logo" class="dark:hidden h-24 w-auto" />
-        <img src="{{ branding.logoDark }}" alt="{{ app.title }} Logo" class="hidden dark:block h-24 w-auto" />
+        {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-24 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+        {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-24 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
       </div>
         <h1 class="text-3xl font-bold text-foreground mb-2">Your Parako.ID Control Panel</h1>
         <p class="text-sm text-muted-foreground">Manage system settings, users and oidc/oauth2 applications</p>
