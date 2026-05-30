@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment -- this file uses // @ts-expect-error to bridge oidc-provider's loosely-typed TTL function signatures with our typed config. */
 import type {
   AccessToken,
   BackchannelAuthenticationRequest,
@@ -10,6 +9,34 @@ import type {
 } from 'oidc-provider';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
+
+/**
+ * Per-client TTL overrides honored when present on the Client metadata.
+ *
+ * `oidc-provider`'s Client type does not declare a `ttl` property — the
+ * library accepts arbitrary metadata extensions and exposes them
+ * untyped. This helper bridges the typed config with that opaque shape
+ * so the rest of the module never needs to reach for `as any` or
+ * `// @ts-ignore`.
+ */
+type TtlOverrideKey =
+  | 'AccessToken'
+  | 'BackchannelAuthenticationRequest'
+  | 'ClientCredentials'
+  | 'RefreshToken';
+
+function getClientTtlOverride(
+  client: Client | undefined,
+  key: TtlOverrideKey
+): number | undefined {
+  if (!client) return undefined;
+  const ttl = (client as { ttl?: Partial<Record<TtlOverrideKey, unknown>> })
+    .ttl;
+  const value = ttl?.[key];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
 
 /**
  * Factory function to create TTL configuration
@@ -51,15 +78,12 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
           return token.resourceServer.accessTokenTTL;
         }
 
-        // @ts-ignore
-        if (client?.ttl?.AccessToken) {
-          //@ts-ignore
-          return client.ttl.AccessToken;
-        }
+        const override = getClientTtlOverride(client, 'AccessToken');
+        if (override !== undefined) return override;
 
         return config.oidc.token_ttl.access_token;
       } catch (error: unknown) {
-        const err = error as Error;
+        const err = error instanceof Error ? error : new Error(String(error));
         logger.error(err, {
           context: `Error in AccessTokenTTL: ${err.message}`,
         });
@@ -99,15 +123,15 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
             }
           }
 
-          // @ts-ignore
-          if (client?.ttl?.BackchannelAuthenticationRequest) {
-            // @ts-ignore
-            return client.ttl.BackchannelAuthenticationRequest;
-          }
+          const override = getClientTtlOverride(
+            client,
+            'BackchannelAuthenticationRequest'
+          );
+          if (override !== undefined) return override;
 
           return config.oidc.token_ttl.backchannel_auth;
         } catch (error: unknown) {
-          const err = error as Error;
+          const err = error instanceof Error ? error : new Error(String(error));
           logger.error(err, {
             context: `Error in BackchannelAuthenticationRequestTTL: ${err.message}`,
           });
@@ -133,15 +157,12 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
           return token.resourceServer.accessTokenTTL;
         }
 
-        // @ts-ignore
-        if (client?.ttl?.ClientCredentials) {
-          // @ts-ignore
-          return client.ttl.ClientCredentials;
-        }
+        const override = getClientTtlOverride(client, 'ClientCredentials');
+        if (override !== undefined) return override;
 
         return config.oidc.token_ttl.client_credentials;
       } catch (error: unknown) {
-        const err = error as Error;
+        const err = error instanceof Error ? error : new Error(String(error));
         logger.error(err, {
           context: `Error in ClientCredentialsTTL: ${err.message}`,
         });
@@ -191,15 +212,12 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
           );
         }
 
-        // @ts-ignore
-        if (client?.ttl?.RefreshToken) {
-          // @ts-ignore
-          return client.ttl.RefreshToken;
-        }
+        const override = getClientTtlOverride(client, 'RefreshToken');
+        if (override !== undefined) return override;
 
         return config.oidc.token_ttl.refresh_token;
       } catch (error: unknown) {
-        const err = error as Error;
+        const err = error instanceof Error ? error : new Error(String(error));
         logger.error(err, {
           context: `Error in RefreshTokenTTL: ${err.message}`,
         });

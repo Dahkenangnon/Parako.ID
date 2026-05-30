@@ -5,7 +5,7 @@
     "moduleResolution": "NodeNext",
     "outDir": "./dist/src",
     "strict": true,
-    "useUnknownInCatchVariables": false,
+    "useUnknownInCatchVariables": true,
     "allowJs": true,
     "declaration": false,
     "declarationMap": false,
