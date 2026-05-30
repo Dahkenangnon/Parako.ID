@@ -33,6 +33,7 @@ import {
   tenantContext,
   DEFAULT_TENANT_ID,
 } from './multi-tenancy/tenant-context.js';
+import { SHUTDOWN_TIMEOUT_MS, safeShutdownStep } from './utils/shutdown.js';
 
 // Validate DI container at startup (fail fast if bindings are missing)
 assertContainerValid(container);
@@ -308,55 +309,70 @@ async function gracefulShutdown(signal: string): Promise<void> {
       component: 'worker',
     });
     process.exit(1);
-  }, 10_000);
+  }, SHUTDOWN_TIMEOUT_MS);
+  shutdownTimeout.unref();
 
   try {
     // 1. Stop accepting new jobs
     if (workerManager) {
-      await workerManager.closeAll();
+      await safeShutdownStep(
+        'worker-manager',
+        () => workerManager!.closeAll(),
+        logger
+      );
     }
 
     // 2. Close queues
     if (queueManager) {
-      await queueManager.closeAll();
+      await safeShutdownStep(
+        'queue-manager',
+        () => queueManager!.closeAll(),
+        logger
+      );
     }
 
     // 3. Close Redis publisher
     if (redisPublisher) {
-      try {
-        await redisPublisher.quit();
-      } catch {
-        // best-effort
-      }
+      await safeShutdownStep(
+        'redis-publisher',
+        async () => {
+          await redisPublisher!.quit();
+        },
+        logger
+      );
       redisPublisher = null;
     }
 
     // 4. Disconnect database
-    try {
-      await databaseConnectionManager.disconnect();
-    } catch (dbError) {
-      logger.warn('Database disconnect error during shutdown', {
-        component: 'worker',
-        error: dbError instanceof Error ? dbError.message : String(dbError),
-      });
-    }
+    await safeShutdownStep(
+      'database-disconnect',
+      () => databaseConnectionManager.disconnect(),
+      logger
+    );
 
     // 5. Cleanup config manager
-    try {
-      configManager.cleanup();
-    } catch {
-      // best-effort
-    }
+    await safeShutdownStep(
+      'config-cleanup',
+      async () => {
+        configManager.cleanup();
+      },
+      logger
+    );
 
     clearTimeout(shutdownTimeout);
     logger.info('Worker shutdown completed gracefully', {
       component: 'worker',
     });
 
+    // Logger is torn down last — any failure here cannot be reported through
+    // the logger, hence the console.error fallback.
     try {
       await logger.shutdown();
-    } catch {
-      // best-effort
+    } catch (loggerError) {
+      console.error(
+        'Worker logger shutdown failed:',
+        loggerError instanceof Error ? loggerError.message : String(loggerError)
+      );
     }
 
     process.exit(0);
@@ -396,12 +412,21 @@ process.on('unhandledRejection', async (reason: unknown) => {
   process.exit(1);
 });
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+function onShutdown(signal: string): void {
+  gracefulShutdown(signal).catch((err: unknown) => {
+    logger.fatal('Worker shutdown handler crashed', {
+      component: 'worker',
+      signal,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    process.exit(1);
+  });
+}
+
+process.on('SIGTERM', () => onShutdown('SIGTERM'));
+process.on('SIGINT', () => onShutdown('SIGINT'));
 process.on('message', msg => {
-  if (msg === 'shutdown') {
-    gracefulShutdown('PM2_SHUTDOWN');
-  }
+  if (msg === 'shutdown') onShutdown('PM2_SHUTDOWN');
 });
 
 bootstrap().catch(async error => {

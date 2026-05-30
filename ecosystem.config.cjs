@@ -37,7 +37,9 @@ const config = {
       listen_timeout: 30000,
 
       // Graceful shutdown: send 'shutdown' message, wait up to kill_timeout
-      kill_timeout: 10000,
+      // Must exceed the in-app SHUTDOWN_TIMEOUT_MS (10s, see src/utils/shutdown.ts)
+      // so the application's own forced-exit triggers before PM2 sends SIGKILL.
+      kill_timeout: 14000,
       shutdown_with_message: true,
 
       // Restart policy
@@ -78,7 +80,9 @@ const config = {
       wait_ready: true,
       listen_timeout: 15000,
 
-      kill_timeout: 10000,
+      // Must exceed the in-app SHUTDOWN_TIMEOUT_MS (10s, see src/utils/shutdown.ts)
+      // so the application's own forced-exit triggers before PM2 sends SIGKILL.
+      kill_timeout: 14000,
       shutdown_with_message: true,
 
       autorestart: true,

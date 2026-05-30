@@ -18,6 +18,11 @@ import {
   initRateLimitRedis,
   getRateLimitRedisClient,
 } from './utils/rate-limiter.js';
+import {
+  SERVER_CLOSE_TIMEOUT_MS,
+  SHUTDOWN_TIMEOUT_MS,
+  safeShutdownStep,
+} from './utils/shutdown.js';
 //
 // Validate DI container at startup (fail fast if bindings are missing)
 assertContainerValid(container);
@@ -357,7 +362,8 @@ class ParakoServer {
         const error = new Error('Server close timeout');
         logger.error(error, { timeout: 'server_close' });
         reject(error);
-      }, 5000);
+      }, SERVER_CLOSE_TIMEOUT_MS);
+      closeTimeout.unref();
 
       this.httpServer.close(async error => {
         clearTimeout(closeTimeout);
@@ -423,12 +429,11 @@ async function bootstrap(): Promise<void> {
   try {
     const server = new ParakoServer();
 
-    await server.initialize().then(() => {
-      server.start();
-    });
+    await server.initialize();
+    await server.start();
 
     let isShuttingDown = false;
-    const gracefulShutdown = async (signal: string) => {
+    const gracefulShutdown = async (signal: string): Promise<void> => {
       if (isShuttingDown) {
         logger.info(
           `${signal} received - shutdown already in progress, ignoring`
@@ -448,64 +453,57 @@ async function bootstrap(): Promise<void> {
             timeout: 'shutdown',
           });
           process.exit(1);
-        }, 8000);
+        }, SHUTDOWN_TIMEOUT_MS);
+        shutdownTimeout.unref();
 
-        // Shutdown ActivityService first to flush pending activity logs
-        try {
-          const activityService = container.get<IActivityService>(
-            TYPES.ActivityService
-          );
-          await activityService.shutdown();
-          logger.info('ActivityService shutdown complete');
-        } catch (activityError) {
-          console.error(
-            'ActivityService shutdown failed:',
-            activityError instanceof Error
-              ? activityError.message
-              : String(activityError)
-          );
-        }
+        await safeShutdownStep(
+          'activity-service',
+          async () => {
+            const activityService = container.get<IActivityService>(
+              TYPES.ActivityService
+            );
+            await activityService.shutdown();
+            logger.info('ActivityService shutdown complete');
+          },
+          logger
+        );
 
-        // Disconnect Redis Pub/Sub event bus
-        try {
-          const pubsubService = container.get<IRedisPubSubService>(
-            TYPES.RedisPubSubService
-          );
-          await pubsubService.disconnect();
-        } catch (e) {
-          console.error(
-            'Redis Pub/Sub disconnect failed:',
-            e instanceof Error ? e.message : String(e)
-          );
-        }
+        await safeShutdownStep(
+          'redis-pubsub',
+          async () => {
+            const pubsubService = container.get<IRedisPubSubService>(
+              TYPES.RedisPubSubService
+            );
+            await pubsubService.disconnect();
+          },
+          logger
+        );
 
-        try {
-          const rlClient = getRateLimitRedisClient();
-          if (rlClient) await rlClient.quit();
-        } catch (e) {
-          console.error(
-            'Rate-limit Redis disconnect failed:',
-            e instanceof Error ? e.message : String(e)
-          );
-        }
+        await safeShutdownStep(
+          'rate-limit-redis',
+          async () => {
+            const rlClient = getRateLimitRedisClient();
+            if (rlClient) await rlClient.quit();
+          },
+          logger
+        );
 
         await server.stop();
         clearTimeout(shutdownTimeout);
 
-        try {
-          configManager.cleanup();
-        } catch (configError) {
-          console.error(
-            'Configuration cleanup failed:',
-            configError instanceof Error
-              ? configError.message
-              : String(configError)
-          );
-        }
+        await safeShutdownStep(
+          'config-cleanup',
+          async () => {
+            configManager.cleanup();
+          },
+          logger
+        );
 
         logger.info('Server shutdown completed gracefully');
 
-        // Shutdown logger last to ensure all logs are flushed
+        // Shutdown logger last to ensure all logs are flushed.
+        // Any failure here must use console.error: the logger is being torn
+        // down, so safeShutdownStep would have nowhere to report.
         try {
           await logger.shutdown();
         } catch (loggerError) {
@@ -527,13 +525,20 @@ async function bootstrap(): Promise<void> {
       }
     };
 
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    const onShutdown = (signal: string): void => {
+      gracefulShutdown(signal).catch((err: unknown) => {
+        logger.fatal('Shutdown handler crashed', {
+          signal,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        process.exit(1);
+      });
+    };
 
+    process.on('SIGTERM', () => onShutdown('SIGTERM'));
+    process.on('SIGINT', () => onShutdown('SIGINT'));
     process.on('message', msg => {
-      if (msg === 'shutdown') {
-        gracefulShutdown('PM2_SHUTDOWN');
-      }
+      if (msg === 'shutdown') onShutdown('PM2_SHUTDOWN');
     });
   } catch (error) {
     logger.error(error as Error, { step: 'bootstrap' });
