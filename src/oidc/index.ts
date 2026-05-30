@@ -17,6 +17,7 @@ import {
   tenantContext,
   DEFAULT_TENANT_ID,
 } from '../multi-tenancy/tenant-context.js';
+import { createOidcCacheMiddleware } from './middleware/cache-headers.js';
 
 @injectable()
 export class OidcManager implements IOidcManager {
@@ -83,27 +84,17 @@ export class OidcManager implements IOidcManager {
     // 1. renderMiddleware — enables ctx.render() in Koa context
     provider.use(this.koaMiddleware.renderMiddleware);
 
-    // 2. Pre/Post middleware + JWKS cache headers
+    // 2. Pre/Post middleware
     provider.use(async (ctx, next) => {
       await this.oidcMiddleware.preMiddleware(ctx as KoaContextWithOIDC);
       await next();
-
-      // JWKS cache headers
-      if (ctx.oidc?.route === 'jwks' && ctx.status === 200) {
-        const cfg = this.configManager.getConfig();
-        const overlapSeconds =
-          cfg.security?.key_store?.overlap_window_seconds ?? 7200;
-        const maxAge = Math.max(
-          60,
-          Math.min(3600, Math.floor(overlapSeconds / 2))
-        );
-        ctx.set('Cache-Control', `public, max-age=${maxAge}`);
-      }
-
       await this.oidcMiddleware.postMiddleware(ctx as KoaContextWithOIDC);
     });
 
-    // 3. Event listeners (logging, metrics)
+    // 3. ETag and Cache-Control for JWKS and discovery responses.
+    provider.use(createOidcCacheMiddleware(this.configManager));
+
+    // 4. Event listeners (logging, metrics)
     await this.oidcListener.setupListeners(provider);
   }
 
