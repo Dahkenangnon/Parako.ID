@@ -458,6 +458,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
       );
 
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-store');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${filename}"`
@@ -497,6 +498,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
         await this.dataTransferService.generateImportTemplate(config);
 
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'no-store');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${filename}"`

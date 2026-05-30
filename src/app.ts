@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import nunjucks from 'nunjucks';
 import compression from 'compression';
@@ -29,6 +30,8 @@ import type { IMetricsService } from './di/interfaces/metrics-service.interface.
 import type { ITenantContextMiddleware } from './di/interfaces/tenant-context-middleware.interface.js';
 import { tenantContext } from './multi-tenancy/tenant-context.js';
 import { createMediaFileRoutes } from './routes/media.js';
+import { HARDENING } from './config/hardening-defaults.js';
+import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
 
 @injectable()
 export class Application implements IApplication {
@@ -240,6 +243,7 @@ export class Application implements IApplication {
     });
     this.app.set('env', this.environment);
     this.app.set('strict routing', false);
+    this.app.set('etag', 'weak');
     this.app.set('view engine', 'njk');
     this.app.set('view cache', this.isProduction);
   }
@@ -382,6 +386,39 @@ export class Application implements IApplication {
     res.redirect(301, httpsUrl);
   };
 
+  /**
+   * Negotiated gzip / Brotli compression. Brotli quality and gzip level are
+   * tuned to keep CPU bounded on a single core. HTML responses are not
+   * compressed by default because they may carry CSRF tokens or session
+   * material; compressing them would expose the BREACH side channel
+   * described in RFC 7457 section 2.6.
+   */
+  private buildCompressionMiddleware(): express.RequestHandler {
+    return compression({
+      threshold: HARDENING.compression.threshold,
+      level: HARDENING.compression.gzipLevel,
+      brotli: {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]:
+            HARDENING.compression.brotliQuality,
+        },
+      },
+      filter: (req: express.Request, res: express.Response) => {
+        if (req.headers['x-no-compression']) return false;
+        if (!HARDENING.compression.compressHtml) {
+          const contentType = res.getHeader('Content-Type');
+          if (
+            typeof contentType === 'string' &&
+            contentType.includes('text/html')
+          ) {
+            return false;
+          }
+        }
+        return compression.filter(req, res);
+      },
+    });
+  }
+
   private setupMiddleware(): void {
     // Request logging — early in the stack, hooks into res.finish only
     // (does not wrap req/res, safe with OIDC sessions)
@@ -408,7 +445,8 @@ export class Application implements IApplication {
     const config = this.configManager.getConfig();
     this.app.use(cookieParser(config.security.secrets.cookie_secrets[0]));
 
-    this.app.use(compression());
+    this.app.use(this.buildCompressionMiddleware());
+    this.app.use(varyHeadersMiddleware);
 
     this.app.use(
       mongoSanitize({
