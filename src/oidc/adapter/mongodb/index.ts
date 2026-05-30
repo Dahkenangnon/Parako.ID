@@ -19,7 +19,10 @@ import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
  * Extends the native Set class to add MongoDB-specific functionality.
  */
 class CollectionSet extends Set<string> {
-  constructor(private readonly db: Db) {
+  constructor(
+    private readonly db: Db,
+    private readonly logger: ILogger
+  ) {
     super();
   }
 
@@ -30,6 +33,11 @@ class CollectionSet extends Set<string> {
    * - DeviceCode gets a unique userCode index
    * - Session gets a unique uid index
    * - All collections get an expiresAt TTL index
+   *
+   * Failures are logged at warn level and swallowed so a missing or
+   * conflicting index never blocks application bootstrap. Queries on the
+   * affected collection will fall back to a collection scan until the
+   * operator fixes the index manually.
    */
   add(name: string): this {
     const isNew = !this.has(name);
@@ -48,9 +56,25 @@ class CollectionSet extends Set<string> {
               : []),
             { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
           ])
-          .catch(() => {});
-      } catch {
-        // Don't rethrow to avoid breaking the application
+          .catch((err: unknown) => {
+            this.logger.warn(
+              'Background OIDC index creation failed; queries will use collection scan',
+              {
+                collection: name,
+                step: 'oidc-mongo-index-create',
+                err: err instanceof Error ? err.message : String(err),
+              }
+            );
+          });
+      } catch (err) {
+        this.logger.warn(
+          'OIDC index creation threw synchronously; continuing without indexes',
+          {
+            collection: name,
+            step: 'oidc-mongo-index-create',
+            err: err instanceof Error ? err.message : String(err),
+          }
+        );
       }
     }
     return this;
@@ -404,7 +428,7 @@ export async function connectMongoDB(
  *   new Provider(issuer, { adapter });
  */
 export function createMongoAdapterFactory(db: Db, logger: ILogger) {
-  const collections = new CollectionSet(db);
+  const collections = new CollectionSet(db, logger);
 
   return (modelName: string) => {
     collections.add(modelName);

@@ -83,7 +83,17 @@ export class AdminOidcClientController {
           action,
           timestamp: Date.now(),
         })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          this.logger.warn(
+            'Pubsub broadcast of OIDC client invalidation failed',
+            {
+              step: 'admin-oidc-client-invalidate-broadcast',
+              clientId,
+              action,
+              err: err instanceof Error ? err.message : String(err),
+            }
+          );
+        });
     }
   }
 

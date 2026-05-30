@@ -1243,9 +1243,16 @@ export class SessionManager implements ISessionManager {
       }
     }
 
-    // Lazy cleanup of stale entries
+    // Lazy cleanup of stale entries — best-effort; index lag is recoverable
+    // on the next sweep so failures only warrant a warn-level log.
     if (staleIds.length > 0) {
-      this.redisClient.srem(key, ...staleIds).catch(() => {});
+      this.redisClient.srem(key, ...staleIds).catch((err: unknown) => {
+        this.logger.warn('Redis session-index lazy cleanup failed (srem)', {
+          step: 'redis-session-index-cleanup',
+          key,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
 
     this.logger.debug('Found Express sessions for user (excluding current)', {
@@ -1536,9 +1543,16 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        // Lazy cleanup of stale entries
+        // Lazy cleanup of stale entries — best-effort; recoverable on the
+        // next sweep, so a failure here is non-fatal but still observable.
         if (staleIds.length > 0) {
-          this.redisClient.srem(key, ...staleIds).catch(() => {});
+          this.redisClient.srem(key, ...staleIds).catch((err: unknown) => {
+            this.logger.warn('Redis session-index lazy cleanup failed (srem)', {
+              step: 'redis-session-index-cleanup',
+              key,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
         }
 
         results.sort((a, b) => {
@@ -2072,7 +2086,8 @@ export class SessionManager implements ISessionManager {
     }
     const store = new PrismaSessionStore(
       this.prismaClient,
-      this.options.ttl ?? 86400
+      this.options.ttl ?? 86400,
+      this.logger
     );
     store.startCleanup();
     this.store = store;

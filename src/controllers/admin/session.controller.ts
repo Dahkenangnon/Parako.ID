@@ -358,7 +358,16 @@ export class AdminSessionsController implements IAdminSessionsController {
                 username: targetUsername,
                 sessionId,
               })
-              .catch(() => {});
+              .catch((err: unknown) => {
+                this.logger.warn(
+                  'Pubsub broadcast of session revocation failed',
+                  {
+                    step: 'admin-session-revoke-broadcast',
+                    sessionId,
+                    err: err instanceof Error ? err.message : String(err),
+                  }
+                );
+              });
           }
 
           this.sessionManager
@@ -406,7 +415,16 @@ export class AdminSessionsController implements IAdminSessionsController {
                 username: targetUsername,
                 sessionId,
               })
-              .catch(() => {});
+              .catch((err: unknown) => {
+                this.logger.warn(
+                  'Pubsub broadcast of session revocation failed',
+                  {
+                    step: 'admin-session-revoke-broadcast',
+                    sessionId,
+                    err: err instanceof Error ? err.message : String(err),
+                  }
+                );
+              });
           }
 
           this.sessionManager
@@ -491,7 +509,16 @@ export class AdminSessionsController implements IAdminSessionsController {
               username,
               action: 'revoke_all',
             })
-            .catch(() => {});
+            .catch((err: unknown) => {
+              this.logger.warn(
+                'Pubsub broadcast of revoke-all session event failed',
+                {
+                  step: 'admin-session-revoke-all-broadcast',
+                  username,
+                  err: err instanceof Error ? err.message : String(err),
+                }
+              );
+            });
         }
 
         this.sessionManager

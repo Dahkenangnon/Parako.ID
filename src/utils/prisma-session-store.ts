@@ -1,6 +1,11 @@
 import { Store, type SessionData } from 'express-session';
 import type { PrismaClient } from '@prisma/client';
 
+/** Minimal logger contract — kept narrow so the store stays portable. */
+export interface PrismaSessionStoreLogger {
+  warn(message: string, context?: Record<string, unknown>): void;
+}
+
 /**
  * Session store backed by Prisma (SQLite or PostgreSQL).
  *
@@ -14,7 +19,8 @@ export class PrismaSessionStore extends Store {
 
   constructor(
     private readonly prisma: PrismaClient,
-    private readonly ttl: number
+    private readonly ttl: number,
+    private readonly logger?: PrismaSessionStoreLogger
   ) {
     super();
   }
@@ -24,7 +30,12 @@ export class PrismaSessionStore extends Store {
     this.cleanupInterval = setInterval(() => {
       this.prisma.session
         .deleteMany({ where: { expires_at: { lt: new Date() } } })
-        .catch(() => {});
+        .catch((err: unknown) => {
+          this.logger?.warn('Prisma session-store cleanup sweep failed', {
+            step: 'prisma-session-store-cleanup',
+            err: err instanceof Error ? err.message : String(err),
+          });
+        });
     }, intervalMs);
     // Prevent timer from keeping the process alive during shutdown
     if (this.cleanupInterval.unref) this.cleanupInterval.unref();

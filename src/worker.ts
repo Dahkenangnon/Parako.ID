@@ -405,8 +405,13 @@ process.on('unhandledRejection', async (reason: unknown) => {
 
   try {
     await databaseConnectionManager.disconnect();
-  } catch {
-    // best-effort
+  } catch (err) {
+    // Logger may already be torn down — fall back to console so the message
+    // still reaches PM2/systemd stderr capture before the process exits.
+    console.error(
+      'Emergency worker database disconnect failed:',
+      err instanceof Error ? err.message : String(err)
+    );
   }
 
   process.exit(1);
@@ -440,8 +445,13 @@ bootstrap().catch(async error => {
 
   try {
     await databaseConnectionManager.disconnect();
-  } catch {
-    // best-effort
+  } catch (err) {
+    // Same rationale as the unhandledRejection handler above — surface the
+    // error via stderr so PM2/systemd captures it even if Pino is torn down.
+    console.error(
+      'Worker bootstrap emergency database disconnect failed:',
+      err instanceof Error ? err.message : String(err)
+    );
   }
 
   process.exit(1);

@@ -581,7 +581,13 @@ export class AdminUsersController implements IAdminUsersController {
             username: user.username,
             action: 'force_password_reset',
           })
-          .catch(() => {});
+          .catch((err: unknown) => {
+            this.logger.warn('Pubsub broadcast of user invalidation failed', {
+              step: 'admin-user-force-password-reset-broadcast',
+              username: user.username,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
       }
 
       if (new_password && new_password.trim()) {
@@ -836,7 +842,13 @@ export class AdminUsersController implements IAdminUsersController {
             username: updatedUser.username,
             action: 'disabled',
           })
-          .catch(() => {});
+          .catch((err: unknown) => {
+            this.logger.warn('Pubsub broadcast of user disable failed', {
+              step: 'admin-user-disable-broadcast',
+              username: updatedUser.username,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
       }
 
       const currentUser = this.sessionManager.getActiveUser(req);
@@ -936,7 +948,13 @@ export class AdminUsersController implements IAdminUsersController {
             username: user.username,
             action: 'deleted',
           })
-          .catch(() => {});
+          .catch((err: unknown) => {
+            this.logger.warn('Pubsub broadcast of user deletion failed', {
+              step: 'admin-user-delete-broadcast',
+              username: user.username,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
       }
 
       const currentUser = this.sessionManager.getActiveUser(req);
