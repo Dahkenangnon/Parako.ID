@@ -11,6 +11,19 @@ export const SHUTDOWN_TIMEOUT_MS = 10_000;
 export const SERVER_CLOSE_TIMEOUT_MS = 5_000;
 
 /**
+ * Process-wide flag observed by the readiness probe. Flipped to true at the
+ * start of the shutdown sequence so load balancers and orchestrators stop
+ * routing new traffic before in-flight requests finish draining.
+ */
+let shuttingDown = false;
+
+export const markShuttingDown = (): void => {
+  shuttingDown = true;
+};
+
+export const isShuttingDown = (): boolean => shuttingDown;
+
+/**
  * Run a single shutdown step. Never throws — failures are reported through the
  * structured logger so the rest of the shutdown sequence can continue. The very
  * last shutdown step (after `logger.shutdown()`) is the only place where a

@@ -43,6 +43,33 @@ half-closed.
 `proxy_read_timeout` is set to 305 seconds to give the application's
 300-second request timeout a small grace window.
 
+## Health and readiness endpoints
+
+Two distinct endpoints expose process state for orchestrators and load
+balancers. Use the right one for the right decision.
+
+| Endpoint                | Purpose                                                     | Returns 200 when                                     | Returns 503 when                                           |
+| ----------------------- | ----------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| `GET /health`           | Liveness — is the process up?                               | Database manager reports `isConnected()`             | Database manager reports disconnected                      |
+| `GET /health?deep=true` | Diagnostic — can the DB actually be reached?                | Database connected AND a probe call succeeds in ≤3 s | Either check fails or the probe times out                  |
+| `GET /readyz`           | Readiness — should this instance receive traffic right now? | Not shutting down AND database connected             | Shutdown sequence has started, OR database is disconnected |
+
+Outer load balancers (AWS ALB, GCP LB, K8s services, HAProxy) should poll
+`/readyz` for traffic-routing decisions. When the process receives
+`SIGTERM`, `/readyz` flips to `503 { "status": "shutting_down" }` before
+the in-flight drain begins, so the load balancer pulls the instance out of
+rotation while existing requests finish on the original socket.
+
+`/health` is intended for liveness probes — process-up checks that should
+not cause traffic re-routing during a graceful shutdown.
+
+Plain (community) nginx has no active upstream health-check directive, so
+the sample `nginx.conf` does not probe these endpoints. They are consumed
+by the outer LB tier, by container orchestrators (K8s liveness/readiness),
+and by operators running manual `curl` checks. PM2 reload coordination
+relies on `process.send('ready')` plus `wait_ready: true` in the ecosystem
+config and is unaffected by these HTTP endpoints.
+
 ## Restart semantics
 
 The default PM2 ecosystem ships with `instances: 1`. `pm2 reload` is _not_

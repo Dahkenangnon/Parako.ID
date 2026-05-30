@@ -33,6 +33,7 @@ import { createMediaFileRoutes } from './routes/media.js';
 import { HARDENING } from './config/hardening-defaults.js';
 import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
 import { createPrecompressedStaticMiddleware } from './middlewares/precompressed-static.middleware.js';
+import { isShuttingDown } from './utils/shutdown.js';
 
 /**
  * Paths under which responses are served from the static public/ directory
@@ -214,6 +215,34 @@ export class Application implements IApplication {
             checks: { database: 'error' },
           });
         }
+      }
+    );
+
+    // Readiness probe: outer load balancers poll this to decide whether to
+    // route traffic. Returns 503 during shutdown drain so connections move
+    // off the instance before in-flight requests complete.
+    this.app.get(
+      '/readyz',
+      healthLimiter as unknown as express.RequestHandler,
+      (_req, res) => {
+        if (isShuttingDown()) {
+          res.status(503).json({
+            status: 'shutting_down',
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+        if (!this.databaseConnectionManager.isConnected()) {
+          res.status(503).json({
+            status: 'db_disconnected',
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+        res.status(200).json({
+          status: 'ready',
+          timestamp: new Date().toISOString(),
+        });
       }
     );
   }

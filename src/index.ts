@@ -21,6 +21,7 @@ import {
 import {
   SERVER_CLOSE_TIMEOUT_MS,
   SHUTDOWN_TIMEOUT_MS,
+  markShuttingDown,
   safeShutdownStep,
 } from './utils/shutdown.js';
 import { HARDENING } from './config/hardening-defaults.js';
@@ -362,6 +363,10 @@ class ParakoServer {
 
   public async stop(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Flip the readiness flag first: load balancers see 503 on /readyz
+      // before any further request is admitted.
+      markShuttingDown();
+
       logger.info('Stopping HTTP server...');
 
       // Signal keep-alive clients to close so in-flight requests drain
