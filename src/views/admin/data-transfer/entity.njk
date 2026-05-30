@@ -209,15 +209,12 @@
     {% endif %}
   </div>
 
-  <!-- Pass entity config to client-side JS -->
-  <script>
-    window.__ENTITY_CONFIG__ = {
-      entityId: "{{ entity.entityId }}",
-      format: "{{ entity.format }}",
-      hasImport: {{ "true" if entity.hasImport else "false" }},
-      hasExport: {{ "true" if entity.hasExport else "false" }},
-      importColumns: {{ importColumns | dump | safe if importColumns else "[]" }},
-    };
-  </script>
+  <script id="__ENTITY_CONFIG__" type="application/json">{
+    "entityId": "{{ entity.entityId }}",
+    "format": "{{ entity.format }}",
+    "hasImport": {{ "true" if entity.hasImport else "false" }},
+    "hasExport": {{ "true" if entity.hasExport else "false" }},
+    "importColumns": {{ importColumns | dump | safe if importColumns else "[]" }}
+  }</script>
   <script src="{{ asset('js/admin/data-transfer/data-transfer.js') }}" defer></script>
 {% endblock %}

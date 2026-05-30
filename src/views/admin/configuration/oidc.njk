@@ -283,29 +283,5 @@
 {% block scripts %}
 {{ super() }}
 <script src="{{ asset('js/admin/configuration/validation.js') }}"></script>
-<script>
-(function () {
-    // Client-side validation for token TTL max enforcement
-    var ttlInputs = document.querySelectorAll('.ttl-input');
-    ttlInputs.forEach(function (input) {
-        input.addEventListener('change', function () {
-            var max = parseInt(this.getAttribute('max'), 10);
-            var val = parseInt(this.value, 10);
-            if (this.value !== '' && !isNaN(max)) {
-                if (isNaN(val) || val < 1) {
-                    this.setCustomValidity('Must be at least 1 second');
-                    this.reportValidity();
-                } else if (val > max) {
-                    this.setCustomValidity('Cannot exceed the system limit of ' + max + ' seconds');
-                    this.reportValidity();
-                } else {
-                    this.setCustomValidity('');
-                }
-            } else {
-                this.setCustomValidity('');
-            }
-        });
-    });
-})();
-</script>
+<script src="{{ asset('js/admin/configuration/oidc-ttl.js') }}" defer></script>
 {% endblock %}

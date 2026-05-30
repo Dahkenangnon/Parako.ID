@@ -9,7 +9,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": []
   },
-  "include": ["src/assets/js/**/*.ts"],
+  "include": ["src/assets/js/**/*.ts", "src/assets/js/**/*.d.ts"],
   "exclude": [
     "node_modules",
     "dist",

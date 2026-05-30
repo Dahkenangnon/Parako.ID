@@ -43,8 +43,17 @@ interface LucideApi {
 interface WindowWithApis {
   dialog: DialogApi;
   lucide?: LucideApi;
-  __ENTITY_CONFIG__?: EntityConfig;
 }
+
+const readEntityConfig = (): EntityConfig | null => {
+  const node = document.getElementById('__ENTITY_CONFIG__');
+  if (!node || !node.textContent) return null;
+  try {
+    return JSON.parse(node.textContent) as EntityConfig;
+  } catch {
+    return null;
+  }
+};
 
 interface ParsedRow {
   [key: string]: unknown;
@@ -73,7 +82,7 @@ interface ImportResult {
 (function () {
   'use strict';
 
-  const maybeConfig = (window as unknown as WindowWithApis).__ENTITY_CONFIG__;
+  const maybeConfig = readEntityConfig();
   if (!maybeConfig) return;
   const config: EntityConfig = maybeConfig;
 

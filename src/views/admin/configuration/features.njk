@@ -289,39 +289,5 @@
 {% block scripts %}
 {{ super() }}
 <script src="{{ asset('js/admin/configuration/common.js') }}"></script>
-<script>
-(function () {
-    'use strict';
-
-    // Toggle provider credential panels
-    var toggles = document.querySelectorAll('[data-provider-toggle]');
-    toggles.forEach(function (checkbox) {
-        checkbox.addEventListener('change', function () {
-            var providerId = checkbox.getAttribute('data-provider-toggle');
-            var credsPanel = document.getElementById('creds-' + providerId);
-            if (credsPanel) {
-                if (checkbox.checked) {
-                    credsPanel.classList.remove('hidden');
-                } else {
-                    credsPanel.classList.add('hidden');
-                }
-            }
-        });
-    });
-
-    // Client-side validation for max providers per user
-    var maxInput = document.getElementById('options_max_providers');
-    if (maxInput) {
-        maxInput.addEventListener('change', function () {
-            var val = parseInt(this.value, 10);
-            if (this.value !== '' && (isNaN(val) || val < 1 || val > 10)) {
-                this.setCustomValidity('Must be between 1 and 10');
-                this.reportValidity();
-            } else {
-                this.setCustomValidity('');
-            }
-        });
-    }
-})();
-</script>
+<script src="{{ asset('js/admin/configuration/features.js') }}" defer></script>
 {% endblock %}
