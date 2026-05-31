@@ -86,7 +86,10 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
-  # Per-adapter integration coverage (skipped on tag pushes)
+  # Per-adapter integration coverage (skipped on tag pushes).
+  # The matrix uses `include` to bind an adapter-specific DATABASE_URL —
+  # Prisma's sqlite datasource requires a `file:` URL, postgres needs a
+  # `postgresql://` URL, and mongodb does not use Prisma at all.
   adapter-matrix:
     name: Adapter matrix (${{ matrix.adapter }})
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
@@ -98,7 +101,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        adapter: [sqlite, postgresql, mongodb]
+        include:
+          - adapter: sqlite
+            database_url: 'file:./runtime/data/parako_ci.db'
+          - adapter: postgresql
+            database_url: 'postgresql://parako:parako@localhost:5432/parako_test'
+          - adapter: mongodb
+            database_url: 'postgresql://unused:unused@localhost:5432/unused'
     services:
       postgres:
         image: postgres:16-alpine
@@ -125,7 +134,7 @@ jobs:
     env:
       STORAGE_ADAPTER: ${{ matrix.adapter }}
       STORAGE_POSTGRESQL_URL: postgresql://parako:parako@localhost:5432/parako_test
-      DATABASE_URL: postgresql://parako:parako@localhost:5432/parako_test
+      DATABASE_URL: ${{ matrix.database_url }}
       STORAGE_MONGODB_URI: mongodb://localhost:27017/parako_test
       STORAGE_SQLITE_PATH: ./runtime/data/parako_ci.db
       ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
@@ -149,6 +158,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Prepare runtime directories
+        if: matrix.adapter == 'sqlite'
+        run: mkdir -p runtime/data
+
       - name: Apply Prisma schema (postgresql)
         if: matrix.adapter == 'postgresql'
         run: pnpm exec prisma db push --config=prisma.config.pg.ts --accept-data-loss
@@ -165,18 +178,25 @@ jobs:
           pnpm run test:run
 
   # Release — fires on:
-  #   - tag push (v*.*.*)
-  #   - main-branch push when head_commit subject is chore(release): vX.Y.Z
-  #   - workflow_dispatch with a non-empty `version` input (re-release of an existing tag)
+  #   - tag push (v*.*.*) — ci is skipped on tags, so `needs.ci.result == 'skipped'`
+  #   - main-branch push when head_commit subject is chore(release): vX.Y.Z — ci runs first
+  #   - workflow_dispatch with a non-empty `version` input — ci runs first
   # Builds artifacts via scripts/release.sh, extracts the CHANGELOG section, and
   # creates the GitHub Release with the tag + body + artifacts. Tag creation is
   # idempotent — if the tag already exists, the existing one is reused.
+  # `needs: ci` + `always()` guard: gates the release on ci passing when ci
+  # runs, but allows the release through when ci is skipped (tag-push path).
   release:
     name: Release
+    needs: ci
     if: |
-      startsWith(github.ref, 'refs/tags/v') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release): v'))
+      always() &&
+      (needs.ci.result == 'success' || needs.ci.result == 'skipped') &&
+      (
+        startsWith(github.ref, 'refs/tags/v') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore(release): v'))
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
