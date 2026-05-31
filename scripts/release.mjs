@@ -1,15 +1,21 @@
 #!/usr/bin/env node
 /**
  * Release helper — bumps the root package.json version, stamps a new
- * dated section into CHANGELOG.md from the git log, and commits both
- * changes locally.
+ * dated section into CHANGELOG.md from the git log, commits both
+ * changes, and (by default) pushes the commit to the current branch's
+ * remote.
  *
- * This script does NOT tag, push, or build artifacts. Tagging is owned
- * by .github/workflows/auto-tag-release.yml (fires on push to main when
- * the head-commit subject matches `chore(release): vX.Y.Z`). Artifact
- * build is owned by .github/workflows/release.yml (fires on tag push).
+ * This script does NOT tag and does NOT build artifacts. Both are
+ * owned by .github/workflows/release.yml: it detects the
+ * `chore(release): vX.Y.Z` head-commit subject on `main`, creates and
+ * pushes the matching `vX.Y.Z` tag, builds the release artifacts via
+ * scripts/release.sh, and publishes the GitHub Release with the
+ * matching CHANGELOG section as its body.
  *
- *   Usage:  pnpm release <patch|minor|major>
+ *   Usage:  pnpm release <patch|minor|major> [--no-push]
+ *
+ * Pass `--no-push` to keep the chore(release) commit local for review
+ * (useful for hand-trimming the CHANGELOG section before pushing).
  */
 
 import { execFileSync } from 'node:child_process';
