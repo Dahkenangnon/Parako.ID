@@ -136,11 +136,21 @@ function readVersion(dir) {
   return JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')).version;
 }
 
+function currentBranch() {
+  return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+}
+
 function main() {
-  const bump = process.argv[2];
+  const args = process.argv.slice(2);
+  const bump = args.find(a => !a.startsWith('-'));
+  const noPush = args.includes('--no-push');
   const valid = ['patch', 'minor', 'major'];
   if (!valid.includes(bump)) {
-    process.stderr.write(`Usage: pnpm release <${valid.join('|')}>\n`);
+    process.stderr.write(
+      `Usage: pnpm release <${valid.join('|')}> [--no-push]\n`
+    );
     process.exit(1);
   }
 
@@ -164,11 +174,24 @@ function main() {
   runInherit('git', ['add', 'package.json', 'CHANGELOG.md']);
   runInherit('git', ['commit', '-m', `chore(release): v${version}`]);
 
+  if (noPush) {
+    process.stdout.write(
+      `\nCommitted chore(release): v${version} locally (no push).\n` +
+        `  Review: git show HEAD\n` +
+        `  Push:   git push origin ${currentBranch()}\n` +
+        `\nThe release.yml workflow fires on the chore(release) commit push.\n`
+    );
+    return;
+  }
+
+  const branch = currentBranch();
   process.stdout.write(
-    `\nCommitted chore(release): v${version} locally.\n` +
-      `  Review: git show HEAD\n` +
-      `  Push:   git push origin main\n` +
-      `\nauto-tag-release.yml will create v${version} once the push lands.\n`
+    `\nPushing chore(release): v${version} → origin/${branch}…\n`
+  );
+  runInherit('git', ['push', 'origin', branch]);
+  process.stdout.write(
+    `\nReleased v${version} (commit pushed).\n` +
+      `Watch the workflow at: https://github.com/Dahkenangnon/Parako.ID/actions\n`
   );
 }
 
