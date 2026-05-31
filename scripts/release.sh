@@ -301,7 +301,7 @@ validate_build_output() {
         "dist/src/index.js"
         "dist/scripts/manage/client.js"
         "dist/scripts/manage/keys.js"
-        "dist/scripts/manage/update.js"
+        "dist/scripts/manage/systemd.js"
     )
     
     for path in "${critical_paths[@]}"; do
