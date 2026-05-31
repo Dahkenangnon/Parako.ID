@@ -46,7 +46,7 @@ pnpm client list   # List all registered clients
 pnpm client add    # Add a new client (interactive)
 ```
 
-The CLI is intentionally minimal. For inspecting, updating, removing, importing, or exporting clients, use the admin panel at `/admin` or the [Management API](api/endpoints.md). For a programmatic starting point, copy [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json) (at the repo root) to `parako-rp.jsonc` and edit it directly.
+The CLI is intentionally minimal. For inspecting, updating, removing, importing, or exporting clients, use the admin panel at `/admin` or the [Management API](api/endpoints.md). For a programmatic starting point, copy [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json) (at the repo root) to `runtime/parako-rp.jsonc` and edit it directly.
 
 ## Registering Clients via Admin Panel
 
@@ -78,7 +78,7 @@ Navigate to `/admin` and sign in with an admin or superadmin account. The **OIDC
 
 ### Static Clients
 
-Clients defined in `parako-rp.jsonc` are loaded at startup and made available to the OIDC provider automatically. They are not shown in the admin panel — the admin panel only displays managed clients. To modify static clients, edit `parako-rp.jsonc` directly.
+Clients defined in `runtime/parako-rp.jsonc` are loaded at startup and made available to the OIDC provider automatically. They are not shown in the admin panel — the admin panel only displays managed clients. To modify static clients, edit `runtime/parako-rp.jsonc` directly.
 
 ## Client Configuration Fields
 

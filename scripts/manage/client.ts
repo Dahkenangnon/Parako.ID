@@ -120,7 +120,7 @@ program.on('--help', () => {
       'Client secrets are auto-generated for secure clients',
     ],
     fileInfo: {
-      configFile: 'parako-rp.jsonc',
+      configFile: 'runtime/parako-rp.jsonc',
     },
   });
 });

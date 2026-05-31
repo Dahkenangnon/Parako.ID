@@ -296,7 +296,7 @@ export class ConfigManager implements IConfigManager {
           persistedConfig = await this.fileProvider.loadConfiguration();
           configProvider = 'file';
           console.info(
-            'Persisted configuration loaded from file (parako.jsonc) - development mode'
+            'Persisted configuration loaded from file (runtime/parako.jsonc) - development mode'
           );
         } else {
           // Fallback: Use bootstrap config as base if file is not available

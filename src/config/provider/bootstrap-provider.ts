@@ -21,8 +21,8 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
 
   constructor() {
     super();
-    this.envFilePath = '.env';
-    this.envLocalFilePath = '.env.local';
+    this.envFilePath = 'runtime/.env';
+    this.envLocalFilePath = 'runtime/.env.local';
   }
 
   /**

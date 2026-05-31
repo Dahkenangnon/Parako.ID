@@ -18,10 +18,13 @@ function createReader(rootDir: string): ConfigFileReader {
 
 describe('ConfigFileReader', () => {
   let tmpDir: string;
+  let runtimeDir: string;
   let reader: ConfigFileReader;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cfr-test-'));
+    runtimeDir = path.join(tmpDir, 'runtime');
+    fs.mkdirSync(runtimeDir, { recursive: true });
     reader = createReader(tmpDir);
   });
 
@@ -127,11 +130,11 @@ describe('ConfigFileReader', () => {
   describe('readAppConfig', () => {
     it('should prefer .jsonc over .json', () => {
       fs.writeFileSync(
-        path.join(tmpDir, 'parako.jsonc'),
+        path.join(runtimeDir, 'parako.jsonc'),
         '{ "source": "jsonc" }'
       );
       fs.writeFileSync(
-        path.join(tmpDir, 'parako.json'),
+        path.join(runtimeDir, 'parako.json'),
         '{ "source": "json" }'
       );
 
@@ -141,7 +144,7 @@ describe('ConfigFileReader', () => {
 
     it('should fall back to .json when others are absent', () => {
       fs.writeFileSync(
-        path.join(tmpDir, 'parako.json'),
+        path.join(runtimeDir, 'parako.json'),
         '{ "source": "json" }'
       );
 
@@ -162,7 +165,7 @@ describe('ConfigFileReader', () => {
           "title": "Test App",
         },
       }`;
-      fs.writeFileSync(path.join(tmpDir, 'parako.jsonc'), content);
+      fs.writeFileSync(path.join(runtimeDir, 'parako.jsonc'), content);
 
       const result = reader.readAppConfig();
       expect(result.application.title).toBe('Test App');
@@ -173,7 +176,7 @@ describe('ConfigFileReader', () => {
   describe('readAppConfigAsync', () => {
     it('should fall back to .jsonc async', async () => {
       fs.writeFileSync(
-        path.join(tmpDir, 'parako.jsonc'),
+        path.join(runtimeDir, 'parako.jsonc'),
         '{ "source": "jsonc" }'
       );
 
@@ -195,7 +198,7 @@ describe('ConfigFileReader', () => {
         // RP config
         "clients": [{ "id": "test-client" }],
       }`;
-      fs.writeFileSync(path.join(tmpDir, 'parako-rp.jsonc'), content);
+      fs.writeFileSync(path.join(runtimeDir, 'parako-rp.jsonc'), content);
 
       const result = reader.readParakoRpConfig();
       expect(result.clients).toHaveLength(1);
@@ -215,7 +218,7 @@ describe('ConfigFileReader', () => {
       const content = `{
         "clients": [{ "id": "async-client" }],
       }`;
-      fs.writeFileSync(path.join(tmpDir, 'parako-rp.jsonc'), content);
+      fs.writeFileSync(path.join(runtimeDir, 'parako-rp.jsonc'), content);
 
       const result = await reader.readParakoRpConfigAsync();
       expect(result.clients[0].id).toBe('async-client');

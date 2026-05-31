@@ -13,10 +13,10 @@ Configuration is assembled from three sources, merged in priority order:
 
 ```
 ┌─────────────────────────────────────┐
-│  1. Bootstrap (.env)                │  ← Always loaded first
+│  1. Bootstrap (runtime/.env)        │  ← Always loaded first
 │     Infrastructure fields           │     Cannot be changed at runtime
 ├─────────────────────────────────────┤
-│  2a. File (parako.jsonc)            │  ← Development only
+│  2a. File (runtime/parako.jsonc)    │  ← Development only
 │      OR                             │     USE_FILE_CONFIG=true
 │  2b. Database (settings table)      │  ← Production default
 │      Single source of truth         │     Managed via admin panel or API
@@ -32,8 +32,8 @@ Configuration is assembled from three sources, merged in priority order:
 
 | Priority    | Source                                 | When used                                                                               |
 | ----------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| 1 (highest) | Bootstrap (`.env`)                     | Always — minimal config to start the application                                        |
-| 2           | File (`parako.jsonc`)                  | Development only — when `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` |
+| 1 (highest) | Bootstrap (`runtime/.env`)             | Always — minimal config to start the application                                        |
+| 2           | File (`runtime/parako.jsonc`)          | Development only — when `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` |
 | 3           | Database (`settings` table/collection) | Production — stored and managed via admin panel                                         |
 | 4           | Computed fields                        | Always — auto-generated secrets and derived values                                      |
 | 5 (lowest)  | `getDefaultFullConfig()`               | Always — fallback for any missing fields                                                |
@@ -46,12 +46,12 @@ All configuration is validated against Zod schemas at startup. Invalid configura
 
 ## Bootstrap Environment Variables
 
-These variables are set in your `.env` file. Bootstrap fields cannot be changed at runtime via the admin panel — they require a restart.
+These variables are set in your `runtime/.env` file. Bootstrap fields cannot be changed at runtime via the admin panel — they require a restart.
 
-Copy `.env.example` to `.env` and update the values:
+Copy `.env.example` to `runtime/.env` and update the values:
 
 ```bash
-cp .env.example .env
+cp .env.example runtime/.env
 ```
 
 ### Core Settings
@@ -152,17 +152,17 @@ These secrets are referenced in file configuration via `${VAR}` interpolation. W
 
 For local development, you can manage the full configuration in a single file instead of the database. This is the default setup when you first clone the repository.
 
-**Requirements:** `USE_FILE_CONFIG=true` in `.env` AND `DEPLOYMENT_ENVIRONMENT=development`.
+**Requirements:** `USE_FILE_CONFIG=true` in `runtime/.env` AND `DEPLOYMENT_ENVIRONMENT=development`.
 
 Parako.ID searches for config files in this order:
 
-1. `parako.jsonc`
-2. `parako.json`
+1. `runtime/parako.jsonc`
+2. `runtime/parako.json`
 
 A sample file is provided in the repository root:
 
 ```bash
-cp parako.sample.jsonc parako.jsonc
+cp parako.sample.jsonc runtime/parako.jsonc
 ```
 
 ### Partial Overrides
@@ -451,7 +451,7 @@ Tenant configs are loaded on demand via `ensureTenantConfig()` and cached in mem
 
 ## Bootstrap-Only Fields
 
-These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts`). They can **only** be set via `.env`, are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
+These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts`). They can **only** be set via `runtime/.env`, are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
 
 | #   | Field Path                                                 | Set By                                            |
 | --- | ---------------------------------------------------------- | ------------------------------------------------- |
@@ -469,7 +469,7 @@ These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts
 
 > **Notes:**
 >
-> - `deployment.url` (`DEPLOYMENT_URL`) is intentionally **not** bootstrap-only. If unset in `.env`, it falls back to the persisted `deployment.url` from the database or file config (default `http://localhost:9007`) — see the Core Settings table for the full precedence rules.
+> - `deployment.url` (`DEPLOYMENT_URL`) is intentionally **not** bootstrap-only. If unset in `runtime/.env`, it falls back to the persisted `deployment.url` from the database or file config (default `http://localhost:9007`) — see the Core Settings table for the full precedence rules.
 > - `features.multi_tenancy.enabled` is not in `BOOTSTRAP_ONLY_FIELDS` either, but is effectively bootstrap-only at runtime — `createRuntimeConfig()` always overrides it from `bootstrapConfig.multiTenancy.enabled` regardless of the database value.
 
 ---
@@ -695,7 +695,7 @@ export HMAC_SECRET=$(openssl rand -hex 32)
 export PAIRWISE_SALT=$(openssl rand -hex 16)
 ```
 
-Store these values in your `.env` file. Never commit secrets to version control.
+Store these values in your `runtime/.env` file. Never commit secrets to version control.
 
 ---
 
@@ -719,25 +719,25 @@ Store these values in your `.env` file. Never commit secrets to version control.
 
 ### File Config Not Loading
 
-**Symptom:** Application ignores your `parako.jsonc` file.
+**Symptom:** Application ignores your `runtime/parako.jsonc` file.
 
 **Checklist:**
 
-1. Verify `USE_FILE_CONFIG=true` in `.env`.
-2. Verify `DEPLOYMENT_ENVIRONMENT=development` in `.env`. File config is ignored in staging/production.
-3. Verify the config file exists in the project root with a supported name (`parako.jsonc` or `parako.json`).
+1. Verify `USE_FILE_CONFIG=true` in `runtime/.env`.
+2. Verify `DEPLOYMENT_ENVIRONMENT=development` in `runtime/.env`. File config is ignored in staging/production.
+3. Verify the config file exists under `runtime/` with a supported name (`runtime/parako.jsonc` or `runtime/parako.json`).
 
 ### Bootstrap Fields in Admin Panel
 
 **Symptom:** Fields like port, database URI, or environment are read-only in the admin panel.
 
-**Expected behavior:** These are [bootstrap-only fields](#bootstrap-only-fields) that can only be changed in `.env`. This is by design for security.
+**Expected behavior:** These are [bootstrap-only fields](#bootstrap-only-fields) that can only be changed in `runtime/.env`. This is by design for security.
 
 ### Missing Secrets in Production
 
 **Symptom:** Fatal startup error: `[FATAL] JWT_SECRET is not set`.
 
-**Fix:** Set all required secret environment variables in `.env`. Auto-generation is disabled in production to prevent running with non-persistent secrets.
+**Fix:** Set all required secret environment variables in `runtime/.env`. Auto-generation is disabled in production to prevent running with non-persistent secrets.
 
 ### Config Changes Not Propagating
 

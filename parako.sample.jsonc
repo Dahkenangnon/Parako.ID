@@ -1,5 +1,9 @@
 {
   // ============================================================================
+  // Sample full application configuration. Copy this file to
+  // runtime/parako.jsonc (or runtime/parako.json) and set USE_FILE_CONFIG=true
+  // in runtime/.env to enable file-based config in development mode.
+  // ============================================================================
   // APPLICATION - Core Identity & Metadata
   // Basic application information and localization
   // ============================================================================

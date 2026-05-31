@@ -112,14 +112,14 @@ JWKS keys must be generated before the first startup.
 
 - The redirect URI in the authorization request must exactly match one registered with the client
 - Check for trailing slashes, http vs https, port numbers
-- View client redirect URIs: open `/admin` → OIDC Clients, or `cat parako-rp.jsonc`
+- View client redirect URIs: open `/admin` → OIDC Clients, or `cat runtime/parako-rp.jsonc`
 
 ### Invalid scope
 
 **Symptom:** `invalid_scope` error
 
 - Verify the requested scopes are registered with the client
-- Check the client's allowed scopes: open `/admin` → OIDC Clients, or `cat parako-rp.jsonc`
+- Check the client's allowed scopes: open `/admin` → OIDC Clients, or `cat runtime/parako-rp.jsonc`
 
 ## Login / Authentication Issues
 
@@ -203,7 +203,7 @@ pm2 list
 pm2 logs parako-id --err --lines 50
 
 # Delete and restart
-pm2 delete ecosystem.config.cjs
+pm2 delete runtime/ecosystem.config.cjs
 pnpm start
 ```
 

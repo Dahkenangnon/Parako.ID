@@ -89,7 +89,7 @@ REDIS_PASSWORD=your_redis_password
 
 ## PM2 Deployment
 
-PM2 is the default process manager. Parako.ID includes a pre-configured `ecosystem.config.cjs`.
+PM2 is the default process manager. Parako.ID ships a pre-configured `runtime/ecosystem.config.cjs` (operator-tunable; never overwritten on upgrade — see [upgrades](./upgrades.md)).
 
 ### Build and Start
 
@@ -127,7 +127,7 @@ Customize PM2 behavior via environment variables:
 ```bash
 pnpm start                           # Start all processes
 pnpm restart                         # Restart all processes
-pm2 stop ecosystem.config.cjs       # Stop all processes
+pm2 stop runtime/ecosystem.config.cjs  # Stop all processes
 pm2 logs                             # View all logs
 pm2 logs parako-id                   # Application logs only
 pm2 logs parako-id-worker            # Worker logs only

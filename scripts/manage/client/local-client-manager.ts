@@ -49,7 +49,7 @@ export function generateClientSecret(length: number = 64): string {
  * Get the config file path
  */
 function getConfigPath(): string {
-  return path.join(rootDir, 'parako-rp.jsonc');
+  return path.join(rootDir, 'runtime', 'parako-rp.jsonc');
 }
 
 /**

@@ -17,8 +17,8 @@ import {
  * Only used when USE_FILE_CONFIG=true in development mode
  *
  * Usage:
- * 1. Set USE_FILE_CONFIG=true in your .env file
- * 2. Ensure a config file exists in the project root (parako.jsonc or parako.json)
+ * 1. Set USE_FILE_CONFIG=true in your runtime/.env file
+ * 2. Ensure a config file exists at runtime/parako.jsonc or runtime/parako.json
  * 3. The configuration will be loaded and validated against AppConfigSchema
  *
  * Note: This provider does not support updates - use database provider for updates
@@ -77,8 +77,8 @@ export class FileConfigProvider extends AbstractConfigProvider {
    */
   async isAvailable(): Promise<boolean> {
     try {
-      // readAppConfig() already searches rootDir/parako.{yaml,yml,jsonc,json}
-      // and throws if none found — so we just attempt a lightweight check.
+      // readAppConfig() already searches runtime/parako.{jsonc,json} under
+      // rootDir and throws if none found — so we just attempt a lightweight check.
       this.configFileReader.readAppConfig();
       return true;
     } catch {

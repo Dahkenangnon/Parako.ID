@@ -15,7 +15,7 @@ Parako.ID includes three CLI tools for server-side management:
 | Keys    | `pnpm keys <command>`    | Manage JWKS signing keys             |
 | Systemd | `pnpm systemd <command>` | Generate and manage systemd services |
 
-All CLI tools work with local files (`parako-rp.jsonc`, `runtime/jwks/jwks.json`) and do not require the application server to be running.
+All CLI tools work with local files (`runtime/parako-rp.jsonc`, `runtime/jwks/jwks.json`) and do not require the application server to be running.
 
 For version updates, see [Updates & Maintenance](updates-and-maintenance.md). Updates are performed manually via `git pull` until a dedicated bash installer ships in a future release.
 
@@ -34,7 +34,7 @@ pnpm client <command>
 | `add`   | `create`, `new` | Add a new OIDC client (interactive) |
 | `list`  | `ls`            | List all registered clients         |
 
-The CLI exposes only `add` and `list`. For everything else — inspecting, updating, removing, importing, or exporting clients — use the **admin panel** at `/admin` or the [Management API](api/endpoints.md). For a programmatic starting point, copy the [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json) shipped at the repo root to `parako-rp.jsonc` and edit it directly.
+The CLI exposes only `add` and `list`. For everything else — inspecting, updating, removing, importing, or exporting clients — use the **admin panel** at `/admin` or the [Management API](api/endpoints.md). For a programmatic starting point, copy the [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json) shipped at the repo root to `runtime/parako-rp.jsonc` and edit it directly.
 
 ### Adding a Client
 
@@ -56,7 +56,7 @@ The interactive wizard prompts for:
 3. **Redirect URIs** — Comma-separated callback URLs
 4. **Scopes** — Allowed scopes for this client
 
-The wizard writes the new entry to `parako-rp.jsonc` and prints the `client_id` and `client_secret` (for confidential clients). The secret is stored in plain text in `parako-rp.jsonc`; protect that file accordingly.
+The wizard writes the new entry to `runtime/parako-rp.jsonc` and prints the `client_id` and `client_secret` (for confidential clients). The secret is stored in plain text in `runtime/parako-rp.jsonc`; protect that file accordingly.
 
 ### Listing Clients
 
@@ -68,7 +68,7 @@ Displays all registered clients with their `client_id`, type, and active status.
 
 ### Editing a Client (without the CLI)
 
-Open `parako-rp.jsonc` directly, edit the entry's fields, save, and restart Parako.ID. The shape is documented in [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json). For runtime edits without a restart, use the admin panel.
+Open `runtime/parako-rp.jsonc` directly, edit the entry's fields, save, and restart Parako.ID. The shape is documented in [`parako-rp.example.json`](https://github.com/Dahkenangnon/Parako.ID/blob/main/parako-rp.example.json). For runtime edits without a restart, use the admin panel.
 
 ## Key Management
 

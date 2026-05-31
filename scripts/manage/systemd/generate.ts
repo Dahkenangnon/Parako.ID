@@ -73,7 +73,7 @@ export async function promptForConfig(): Promise<SystemdConfig> {
       type: 'input',
       name: 'envFile',
       message: 'Environment file path:',
-      default: `${rootDir}/.env`,
+      default: `${rootDir}/runtime/.env`,
       validate: (input: string) => {
         if (!input) return 'Environment file path is required';
         if (!input.startsWith('/')) return 'Must be an absolute path';

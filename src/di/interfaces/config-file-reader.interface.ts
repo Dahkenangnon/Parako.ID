@@ -42,14 +42,14 @@ export interface IConfigFileReader {
 
   /**
    * Read the main application configuration file (auto-detects format)
-   * Searches for: parako.jsonc, parako.json
+   * Searches for: runtime/parako.jsonc, runtime/parako.json
    * @returns Parsed configuration object
    */
   readAppConfig<T = any>(): T;
 
   /**
    * Read the main application configuration file asynchronously (auto-detects format)
-   * Searches for: parako.jsonc, parako.json
+   * Searches for: runtime/parako.jsonc, runtime/parako.json
    * @returns Promise that resolves to parsed configuration object
    */
   readAppConfigAsync<T = any>(): Promise<T>;

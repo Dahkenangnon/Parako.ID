@@ -56,7 +56,7 @@ Manual tarball:
 ```bash
 wget https://github.com/Dahkenangnon/Parako.ID/releases/latest/download/parako-id-v*.tar.gz
 tar -xzf parako-id-v*.tar.gz && cd parako-id-release
-cp .env.example .env   # edit DB, Redis, and admin credentials
+cp .env.example runtime/.env   # edit DB, Redis, and admin credentials
 pnpm start
 ```
 
@@ -74,21 +74,22 @@ For local development:
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git && cd Parako.ID
-pnpm install && cp .env.example .env
+pnpm install && cp .env.example runtime/.env
 pnpm db:push && pnpm keys generate && pnpm dev
 ```
 
 ## Documentation
 
-| Section                                               | What it covers                                        |
-| ----------------------------------------------------- | ----------------------------------------------------- |
-| [Quickstart](https://docs.parako.id/quickstart)       | Install, first-user, first-client in under 10 minutes |
-| [Configuration](https://docs.parako.id/configuration) | Env vars, schema, hierarchy, secret rotation          |
-| [Multi-tenancy](https://docs.parako.id/multi-tenancy) | Per-tenant isolation, branding, OIDC instances        |
-| [Social login](https://docs.parako.id/social-login)   | Google, GitHub, Microsoft, LinkedIn, Facebook         |
-| [Deployment](https://docs.parako.id/deployment)       | systemd, PM2, reverse proxy, TLS, hardening           |
-| [CLI tools](https://docs.parako.id/cli-tools)         | `pnpm client`, `pnpm keys`, `pnpm systemd`            |
-| [Management API](https://docs.parako.id/api/overview) | Programmatic admin via 30 scoped permissions          |
+| Section                                               | What it covers                                         |
+| ----------------------------------------------------- | ------------------------------------------------------ |
+| [Quickstart](https://docs.parako.id/quickstart)       | Install, first-user, first-client in under 10 minutes  |
+| [Configuration](https://docs.parako.id/configuration) | Env vars, schema, hierarchy, secret rotation           |
+| [Multi-tenancy](https://docs.parako.id/multi-tenancy) | Per-tenant isolation, branding, OIDC instances         |
+| [Social login](https://docs.parako.id/social-login)   | Google, GitHub, Microsoft, LinkedIn, Facebook          |
+| [Deployment](https://docs.parako.id/deployment)       | systemd, PM2, reverse proxy, TLS, hardening            |
+| [CLI tools](https://docs.parako.id/cli-tools)         | `pnpm client`, `pnpm keys`, `pnpm systemd`             |
+| [Management API](https://docs.parako.id/api/overview) | Programmatic admin via 30 scoped permissions           |
+| [Upgrades](https://docs.parako.id/upgrades)           | What survives an upgrade and how to apply new defaults |
 
 ## Roadmap
 

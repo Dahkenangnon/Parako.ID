@@ -66,7 +66,7 @@ export interface ConfigMetadata {
   /**
    * Source of the configuration
    * - 'bootstrap': Only bootstrap config loaded (initial state)
-   * - 'file': Loaded from parako.jsonc file (development mode)
+   * - 'file': Loaded from runtime/parako.jsonc file (development mode)
    * - 'database': Loaded from MongoDB database (production mode)
    */
   configProvider: 'bootstrap' | 'file' | 'database';

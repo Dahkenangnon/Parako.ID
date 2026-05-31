@@ -269,7 +269,7 @@ Configure which JSON Web Algorithms (JWA) are enabled for each token and respons
 | `oidc.jwa.userinfo_encryption_enc_values`       | UserInfo response content encryption algorithms           |
 | `oidc.jwa.attest_signing_alg_values`            | Signing algorithms for WebAuthn attestation               |
 
-Configure in your `parako.jsonc` or via the admin panel under OIDC settings.
+Configure in your `runtime/parako.jsonc` or via the admin panel under OIDC settings.
 
 ## Encryption at Rest
 

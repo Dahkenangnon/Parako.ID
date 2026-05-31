@@ -367,7 +367,8 @@ create_production_package() {
     cp package.json "$release_dir/"
     cp pnpm-lock.yaml "$release_dir/" || { log_error "Failed to copy pnpm-lock.yaml"; exit 1; }
     cp pnpm-workspace.yaml "$release_dir/" || { log_error "Failed to copy pnpm-workspace.yaml"; exit 1; }
-    cp ecosystem.config.cjs "$release_dir/"
+    # ecosystem.config.cjs now lives under runtime/ and is copied along with the
+    # rest of the runtime tree below (no separate cp needed).
     cp README.md "$release_dir/"
     cp THIRD_PARTY_LICENSES.txt "$release_dir/" 2>/dev/null || log_warning "THIRD_PARTY_LICENSES.txt not found"
     
@@ -422,7 +423,7 @@ create_production_package() {
             keywords: pkg.keywords,
             scripts: {
                 'start': 'node --experimental-specifier-resolution=node dist/src/index.js',
-                'restart': 'pm2 startOrRestart ecosystem.config.cjs --env production && pm2 save',
+                'restart': 'pm2 startOrRestart runtime/ecosystem.config.cjs --env production && pm2 save',
                 'client': 'node dist/scripts/manage/client.js',
                 'keys': 'node dist/scripts/manage/keys.js',
                 'systemd': 'node dist/scripts/manage/systemd.js',

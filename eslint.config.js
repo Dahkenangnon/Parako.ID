@@ -241,7 +241,7 @@ export default tseslint.config(
       'parako-id-v*.tar.gz',
       'parako-id-v*.zip',
       'public/js/**',
-      'ecosystem.config.cjs',
+      'runtime/ecosystem.config.cjs',
       'runtime/locales/.merged/**',
       'options/locales/.merged/**',
       'data/**',

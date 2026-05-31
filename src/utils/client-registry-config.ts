@@ -151,6 +151,7 @@ export default class ClientRegistryManager implements IClientRegistryManager {
   ) {
     this.configPath = path.join(
       this.fileSystemUtils.rootDir,
+      'runtime',
       'parako-rp.jsonc'
     );
   }

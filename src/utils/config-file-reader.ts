@@ -177,7 +177,7 @@ export class ConfigFileReader implements IConfigFileReader {
 
   /**
    * Read the main application configuration file (auto-detects format)
-   * Searches for: parako.jsonc, parako.json
+   * Searches for: runtime/parako.jsonc, runtime/parako.json
    *
    * @returns Parsed configuration object
    */
@@ -186,6 +186,7 @@ export class ConfigFileReader implements IConfigFileReader {
     for (const ext of extensions) {
       const configPath = path.join(
         this.fileSystemUtils.rootDir,
+        'runtime',
         `parako.${ext}`
       );
       if (this.isFileReadable(configPath)) {
@@ -194,13 +195,13 @@ export class ConfigFileReader implements IConfigFileReader {
       }
     }
     throw new Error(
-      'App configuration file not found. Expected: parako.jsonc or parako.json'
+      'App configuration file not found. Expected: runtime/parako.jsonc or runtime/parako.json'
     );
   }
 
   /**
    * Read the main application configuration file asynchronously (auto-detects format)
-   * Searches for: parako.jsonc, parako.json
+   * Searches for: runtime/parako.jsonc, runtime/parako.json
    *
    * @returns Promise that resolves to parsed configuration object
    */
@@ -209,6 +210,7 @@ export class ConfigFileReader implements IConfigFileReader {
     for (const ext of extensions) {
       const configPath = path.join(
         this.fileSystemUtils.rootDir,
+        'runtime',
         `parako.${ext}`
       );
       if (this.isFileReadable(configPath)) {
@@ -217,7 +219,7 @@ export class ConfigFileReader implements IConfigFileReader {
       }
     }
     throw new Error(
-      'App configuration file not found. Expected: parako.jsonc or parako.json'
+      'App configuration file not found. Expected: runtime/parako.jsonc or runtime/parako.json'
     );
   }
 
@@ -229,6 +231,7 @@ export class ConfigFileReader implements IConfigFileReader {
   readParakoRpConfig<T = any>(): T {
     const configPath = path.join(
       this.fileSystemUtils.rootDir,
+      'runtime',
       'parako-rp.jsonc'
     );
 
@@ -249,6 +252,7 @@ export class ConfigFileReader implements IConfigFileReader {
   async readParakoRpConfigAsync<T = any>(): Promise<T> {
     const configPath = path.join(
       this.fileSystemUtils.rootDir,
+      'runtime',
       'parako-rp.jsonc'
     );
 
