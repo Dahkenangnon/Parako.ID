@@ -69,64 +69,26 @@
     }
 
     private async loadFingerprintJS(): Promise<{ visitorId: string }> {
-      return new Promise((resolve, reject) => {
-        if ((window as any).FingerprintJS) {
-          this.initFingerprintJS(
-            (window as any).FingerprintJS,
-            resolve,
-            reject
-          );
-          return;
-        }
-
-        const script = document.createElement('script');
-        script.src =
-          'https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3.4.2/dist/fp.min.js';
-        script.integrity =
-          'sha384-RGoAjUH4gJ40bAD0YPezgdsNOCbBWQlNwdWfA981c/7NgIyqm+TeAelFv346J7UO';
-        script.crossOrigin = 'anonymous';
-        script.async = true;
-
-        script.onload = () => {
-          if ((window as any).FingerprintJS) {
-            this.initFingerprintJS(
-              (window as any).FingerprintJS,
-              resolve,
-              reject
-            );
-          } else {
-            reject(new Error('FingerprintJS failed to load'));
-          }
-        };
-
-        script.onerror = () =>
-          reject(new Error('Failed to load FingerprintJS'));
-        document.head.appendChild(script);
-      });
-    }
-
-    private async initFingerprintJS(
-      FingerprintJS: any,
-      resolve: (data: { visitorId: string }) => void,
-      reject: (error: Error) => void
-    ): Promise<void> {
-      try {
-        const loadOptions: Record<string, unknown> = {};
-
-        if (this.config.fingerprintJSApiKey) {
-          loadOptions.apiKey = this.config.fingerprintJSApiKey;
-          this.log('Using FingerprintJS Pro');
-        }
-
-        const fp = await FingerprintJS.load(
-          Object.keys(loadOptions).length > 0 ? loadOptions : undefined
-        );
-        const result = await fp.get();
-
-        resolve({ visitorId: result.visitorId });
-      } catch (error) {
-        reject(error as Error);
+      // FingerprintJS is vendored locally via
+      // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the
+      // base layout, so it is always present on `window` by the time
+      // this runs. No network fetch, no CSP violation.
+      const FingerprintJS = (window as any).FingerprintJS;
+      if (!FingerprintJS) {
+        throw new Error('FingerprintJS not loaded');
       }
+
+      const loadOptions: Record<string, unknown> = {};
+      if (this.config.fingerprintJSApiKey) {
+        loadOptions.apiKey = this.config.fingerprintJSApiKey;
+        this.log('Using FingerprintJS Pro');
+      }
+
+      const fp = await FingerprintJS.load(
+        Object.keys(loadOptions).length > 0 ? loadOptions : undefined
+      );
+      const result = await fp.get();
+      return { visitorId: result.visitorId };
     }
 
     /**

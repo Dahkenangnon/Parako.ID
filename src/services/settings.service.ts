@@ -20,8 +20,6 @@ import type {
 } from '../di/interfaces/base-service.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 
-// ── IBaseService stubs ────────────────────────────────────────────────────────
-
 type PaginatedServiceResult<T> = {
   results: T[];
   page: number;
@@ -47,8 +45,6 @@ export class SettingsService implements ISettingsService {
     @inject(TYPES.SettingsRepository)
     private readonly settingsRepo: ISettingsRepository
   ) {}
-
-  // ── IBaseService contract ─────────────────────────────────────────────────
 
   async findOne(
     filter: Record<string, unknown> | string
@@ -160,8 +156,6 @@ export class SettingsService implements ISettingsService {
     throw new Error('aggregate is not supported by the repository abstraction');
   }
 
-  // ── Lock helpers ──────────────────────────────────────────────────────────
-
   private async acquireConfigLock(): Promise<() => void> {
     while (SettingsService.configUpdateLock) {
       await SettingsService.configUpdateLock;
@@ -177,8 +171,6 @@ export class SettingsService implements ISettingsService {
       SettingsService.configUpdateLock = null;
     };
   }
-
-  // ── Encryption helpers ────────────────────────────────────────────────────
 
   private encryptSensitiveFields(config: any): any {
     const encryptedConfig = JSON.parse(JSON.stringify(config));
@@ -261,8 +253,6 @@ export class SettingsService implements ISettingsService {
       );
     }
   }
-
-  // ── Public API ────────────────────────────────────────────────────────────
 
   public async loadAndDecryptConfiguration(): Promise<ISettings | null> {
     try {

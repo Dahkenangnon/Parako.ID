@@ -13,8 +13,6 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaUserRepository } from '../../../../src/db/repositories/prisma/user.repository.js';
 import type { CreateUserDto } from '../../../../src/db/repositories/interfaces/user.repository.js';
 
-// ─── Test DB Setup ───────────────────────────────────────────────────────────
-
 const TEST_DB = join(tmpdir(), `parako-user-prisma-${Date.now()}.db`);
 const PRISMA_BIN = resolve(process.cwd(), 'node_modules', '.bin', 'prisma');
 
@@ -47,8 +45,6 @@ beforeEach(async () => {
   await prisma.user.deleteMany({});
 });
 
-// ─── Fixture ─────────────────────────────────────────────────────────────────
-
 function makeUser(overrides: Partial<CreateUserDto> = {}): CreateUserDto {
   return {
     email: 'alice@example.com',
@@ -62,8 +58,6 @@ function makeUser(overrides: Partial<CreateUserDto> = {}): CreateUserDto {
     ...overrides,
   } as CreateUserDto;
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('PrismaUserRepository', () => {
   describe('create + findById', () => {

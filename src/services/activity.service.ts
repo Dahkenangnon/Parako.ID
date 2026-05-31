@@ -39,8 +39,6 @@ import {
   DEFAULT_TENANT_ID,
 } from '../multi-tenancy/tenant-context.js';
 
-// ── IBaseService stubs (not used by controllers for ActivityService) ───────────
-
 type PaginatedServiceResult<T> = {
   results: T[];
   page: number;
@@ -72,8 +70,6 @@ export class ActivityService implements IActivityService {
   ) {
     this.startBatchProcessor();
   }
-
-  // ── IBaseService contract (partial — controllers do not call these) ──────────
 
   async findOne(
     filter: Record<string, unknown> | string
@@ -174,8 +170,6 @@ export class ActivityService implements IActivityService {
     throw new Error('deleteOne is not supported — activities are append-only');
   }
 
-  // ── Device encryption helpers ────────────────────────────────────────────────
-
   private isDeviceEncryptionEnabled(): boolean {
     try {
       const config = this.configManager.getConfig();
@@ -261,8 +255,6 @@ export class ActivityService implements IActivityService {
       return deviceInfos;
     }
   }
-
-  // ── Batch processing ─────────────────────────────────────────────────────────
 
   private startBatchProcessor(): void {
     const processBatch = async (): Promise<void> => {
@@ -362,8 +354,6 @@ export class ActivityService implements IActivityService {
       this.processingBatch = false;
     }
   }
-
-  // ── Activity logging (fire-and-forget) ───────────────────────────────────────
 
   public success(
     type: string,
@@ -623,8 +613,6 @@ export class ActivityService implements IActivityService {
       });
     }
   }
-
-  // ── Public query methods ─────────────────────────────────────────────────────
 
   public async getUserActivities(
     userId: string,

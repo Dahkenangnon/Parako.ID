@@ -68,8 +68,6 @@ export interface IBaseService<T extends IBaseModel> {
 
   deleteMany(filter: FilterInput): Promise<BulkDeleteResult>;
 
-  // ===== PAGINATION =====
-
   findWithPagination(
     filter?: FilterInput,
     options?: {
@@ -86,8 +84,6 @@ export interface IBaseService<T extends IBaseModel> {
   }>;
 
   countDocuments(filter?: FilterInput): Promise<number>;
-
-  // ===== UTILITY =====
 
   /** Raw aggregation — implementation may throw for non-MongoDB backends. */
   aggregate(pipeline: unknown[]): Promise<unknown[]>;

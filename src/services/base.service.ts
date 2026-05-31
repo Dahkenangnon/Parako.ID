@@ -35,8 +35,6 @@ export abstract class BaseService<
     return newFilter as F;
   }
 
-  // ===== ESSENTIAL CRUD OPERATIONS =====
-
   public async createOne(
     data: Partial<T>,
     options: { session?: ClientSession } = {}
@@ -262,8 +260,6 @@ export abstract class BaseService<
     });
   }
 
-  // ===== PAGINATION =====
-
   public async findWithPagination(
     filter: QueryFilter<T> = {},
     options: {
@@ -345,8 +341,6 @@ export abstract class BaseService<
     const normalizedFilter = this.normalizeFilter(filter);
     return await this.model.countDocuments(normalizedFilter);
   }
-
-  // ===== UTILITY METHODS =====
 
   public async aggregate(
     pipeline: PipelineStage[],

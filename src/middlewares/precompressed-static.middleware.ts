@@ -1,5 +1,11 @@
 import { existsSync, statSync, createReadStream } from 'node:fs';
-import { extname, normalize, resolve as resolvePath, sep } from 'node:path';
+import {
+  extname,
+  isAbsolute,
+  normalize,
+  relative,
+  resolve as resolvePath,
+} from 'node:path';
 import type { Request, Response, NextFunction } from 'express';
 import { HARDENING } from '../config/hardening-defaults.js';
 
@@ -24,17 +30,34 @@ const acceptsEncoding = (header: string | undefined, name: string): boolean => {
   return false;
 };
 
+/**
+ * Verify `candidate` is the same directory as `basePath` or strictly
+ * underneath it. Uses `path.relative` + `path.isAbsolute` per the
+ * CodeQL `js/path-injection` documentation
+ * (https://codeql.github.com/codeql-query-help/javascript/js-path-injection/)
+ * — the dataflow analysis recognises this idiom as a sanitizer.
+ */
 const isWithin = (basePath: string, candidate: string): boolean => {
-  const baseWithSep = basePath.endsWith(sep) ? basePath : basePath + sep;
-  return candidate === basePath || candidate.startsWith(baseWithSep);
+  const rel = relative(basePath, candidate);
+  if (rel === '') return true;
+  if (rel.startsWith('..')) return false;
+  if (isAbsolute(rel)) return false;
+  return true;
 };
 
 const sendPrecompressed = (
   res: Response,
+  root: string,
   filePath: string,
   encoding: 'br' | 'gzip',
   contentType: string
 ): void => {
+  // Defense-in-depth: re-validate the suffixed path right before the
+  // FS calls. The suffix (`.br` / `.gz`) is a hardcoded literal, but
+  // re-checking gives CodeQL an unambiguous sanitizer at every sink.
+  if (!isWithin(root, filePath)) {
+    throw new Error('Precompressed file path escaped the public root');
+  }
   const size = statSync(filePath).size;
   res.setHeader('Content-Encoding', encoding);
   res.setHeader('Content-Type', contentType);
@@ -81,8 +104,9 @@ export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
 
     const tryEncoding = (encoding: 'br' | 'gzip'): boolean => {
       const filePath = `${candidate}.${encoding === 'br' ? 'br' : 'gz'}`;
+      if (!isWithin(root, filePath)) return false;
       if (!existsSync(filePath)) return false;
-      sendPrecompressed(res, filePath, encoding, contentType);
+      sendPrecompressed(res, root, filePath, encoding, contentType);
       return true;
     };
 

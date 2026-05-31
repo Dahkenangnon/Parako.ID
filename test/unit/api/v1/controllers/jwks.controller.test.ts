@@ -5,9 +5,7 @@ import { JwksController } from '../../../../../src/api/v1/controllers/jwks.contr
 import type { JwksControllerDeps } from '../../../../../src/api/v1/controllers/jwks.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): JwksControllerDeps {
   return {
@@ -55,9 +53,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleKey = {
   kid: 'key-001',
@@ -88,9 +84,7 @@ const sampleRetiredKey = {
   createdAt: new Date('2025-11-01T00:00:00Z'),
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/JwksController', () => {
   let deps: JwksControllerDeps;
@@ -101,9 +95,7 @@ describe('api/v1/controllers/JwksController', () => {
     controller = new JwksController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return all keys with public data only', async () => {
       const keys = [{ ...sampleKey }, { ...sampleExpiringKey }];
@@ -192,9 +184,7 @@ describe('api/v1/controllers/JwksController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a single key by kid with public data only', async () => {
       vi.mocked(deps.keyStore.listKeys).mockResolvedValue([{ ...sampleKey }]);
@@ -243,9 +233,7 @@ describe('api/v1/controllers/JwksController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // rotate
-  // -----------------------------------------------------------------------
   describe('rotate()', () => {
     it('should rotate keys, promote them, and return success with promoted count', async () => {
       vi.mocked(deps.keyStore.promoteKeys).mockResolvedValue(2);
@@ -326,9 +314,7 @@ describe('api/v1/controllers/JwksController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // retireExpired
-  // -----------------------------------------------------------------------
   describe('retireExpired()', () => {
     it('should retire expired keys and return the count', async () => {
       vi.mocked(deps.keyStore.retireExpiredKeys).mockResolvedValue(3);
@@ -389,9 +375,7 @@ describe('api/v1/controllers/JwksController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // retire
-  // -----------------------------------------------------------------------
   describe('retire()', () => {
     it('should verify the key exists and return 202 accepted for an active key', async () => {
       vi.mocked(deps.keyStore.listKeys).mockResolvedValue([{ ...sampleKey }]);

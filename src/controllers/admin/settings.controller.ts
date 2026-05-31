@@ -10,7 +10,9 @@ import type { IEmailService } from '../../di/interfaces/email-service.interface.
 import type { IActivityService } from '../../di/interfaces/activity-service.interface.js';
 import type { ISettingsService } from '../../di/interfaces/settings-service.interface.js';
 import type { IUploadMiddleware } from '../../di/interfaces/upload-middleware.interface.js';
+import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import { TYPES } from '../../di/types.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { getDefaultFullConfig } from '../../config/constants.js';
 import { mergeConfig } from '../../utils/config-merge.js';
 import {
@@ -44,8 +46,42 @@ export class AdminSettingsController implements IAdminSettingsController {
     @inject(TYPES.EmailService) private emailService: IEmailService,
     @inject(TYPES.ActivityService) private activityService: IActivityService,
     @inject(TYPES.SettingsService) private settingsService: ISettingsService,
-    @inject(TYPES.UploadMiddleware) private uploadMiddleware: IUploadMiddleware
+    @inject(TYPES.UploadMiddleware) private uploadMiddleware: IUploadMiddleware,
+    @inject(TYPES.ClientDeviceInfoManager)
+    private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
+  /**
+   * Audit a config-update operation. `type` is the activity-log event
+   * type, `description` the human-readable summary, and `entity_data`
+   * the payload that goes into the target's entity_data field.
+   */
+  private audit(
+    req: Request,
+    level: 'success' | 'failed' | 'warning' | 'info',
+    type: string,
+    description: string,
+    entity_data?: Record<string, unknown>
+  ): void {
+    const logger = activityLoggerFor(this.activityLoggerDeps, req, {
+      defaultActorType: 'admin',
+    });
+    const user = this.sessionManager.getActiveUser(req);
+    logger[level](type, user, description, {
+      target: {
+        target_type: 'config',
+        ...(entity_data ? { entity_data } : {}),
+      },
+    });
+  }
 
   /**
    * Get configuration section with sensitive fields masked for display
@@ -205,10 +241,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           config: config.application,
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
-
         const existingApplication = config.application || {};
         const mergedApplication = mergeConfig(existingApplication, req.body);
 
@@ -216,23 +248,13 @@ export class AdminSettingsController implements IAdminSettingsController {
           application: mergedApplication,
         });
 
-        this.activityService.success(
+        this.audit(
+          req,
+          'success',
           'update_config',
           'Updated application configuration',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                fieldsModified: Object.keys(req.body).length,
-              },
-            },
+            fieldsModified: Object.keys(req.body).length,
           }
         );
 
@@ -242,33 +264,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.redirect('/admin/settings/application');
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'application_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update application configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -293,9 +301,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           config: config.branding,
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
         const file = (req as any).file; // Multer adds this
 
         const convertedData = convertBrandingFormData(req.body);
@@ -322,23 +327,13 @@ export class AdminSettingsController implements IAdminSettingsController {
           branding: mergedBranding,
         });
 
-        this.activityService.success(
+        this.audit(
+          req,
+          'success',
           'update_config',
           'Updated branding configuration',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                fieldsModified: Object.keys(convertedData).length,
-              },
-            },
+            fieldsModified: Object.keys(convertedData).length,
           }
         );
 
@@ -348,33 +343,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.redirect('/admin/settings/branding');
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'branding_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update branding configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -390,9 +371,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   removeLogo = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       if (config.branding?.logo) {
@@ -406,55 +384,25 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Removed company logo',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'remove_logo',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Removed company logo', {
+        action: 'remove_logo',
+      });
 
       res.json({ success: true, message: 'Logo removed successfully' });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_removal_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to remove company logo',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -467,9 +415,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   resetColors = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       const defaultColors = getDefaultFullConfig().branding.colors;
@@ -481,55 +426,31 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
+      this.audit(
+        req,
+        'success',
         'update_config',
         'Reset theme colors to defaults',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'reset_colors',
-            },
-          },
+          action: 'reset_colors',
         }
       );
 
       res.json({ success: true, message: 'Colors reset to defaults' });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'color_reset_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to reset theme colors',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -542,9 +463,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   resetFonts = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       const defaultFonts = getDefaultFullConfig().branding.fonts;
@@ -556,57 +474,21 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Reset fonts to defaults',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'reset_fonts',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Reset fonts to defaults', {
+        action: 'reset_fonts',
+      });
 
       res.json({ success: true, message: 'Fonts reset to defaults' });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'font_reset_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
-        'update_config',
-        'Failed to reset fonts',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
-        }
-      );
+      this.audit(req, 'failed', 'update_config', 'Failed to reset fonts', {
+        error: errorMessage,
+      });
 
       res.status(500).json({ error: 'Failed to reset fonts' });
     }
@@ -617,9 +499,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   uploadLogoDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
       const file = (req as any).file;
 
@@ -641,26 +520,10 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Uploaded dark mode logo',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'upload_logo_dark',
-              filename: file.filename,
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Uploaded dark mode logo', {
+        action: 'upload_logo_dark',
+        filename: file.filename,
+      });
 
       res.json({
         success: true,
@@ -668,33 +531,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         url: logoDarkKey,
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_dark_upload_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to upload dark mode logo',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -707,9 +556,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   removeLogoDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       if (config.branding?.logoDark) {
@@ -723,58 +569,28 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Removed dark mode logo',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'remove_logo_dark',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Removed dark mode logo', {
+        action: 'remove_logo_dark',
+      });
 
       res.json({
         success: true,
         message: 'Dark mode logo removed successfully',
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_dark_removal_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to remove dark mode logo',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -787,9 +603,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   uploadLogoIcon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
       const file = (req as any).file;
 
@@ -811,26 +624,10 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Icon logo uploaded',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'upload_logo_icon',
-              filename: file.filename,
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Icon logo uploaded', {
+        action: 'upload_logo_icon',
+        filename: file.filename,
+      });
 
       res.json({
         success: true,
@@ -838,35 +635,15 @@ export class AdminSettingsController implements IAdminSettingsController {
         url: logoIconKey,
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_icon_upload_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
-        'update_config',
-        'Failed to upload icon logo',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
-        }
-      );
+      this.audit(req, 'failed', 'update_config', 'Failed to upload icon logo', {
+        error: errorMessage,
+      });
 
       res.status(500).json({ error: 'Failed to upload icon logo' });
     }
@@ -877,9 +654,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   removeLogoIcon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       if (config.branding?.logoIcon) {
@@ -893,60 +667,24 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Icon logo removed',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'remove_logo_icon',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Icon logo removed', {
+        action: 'remove_logo_icon',
+      });
 
       res.json({
         success: true,
         message: 'Icon logo removed successfully',
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_icon_removal_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
-        'update_config',
-        'Failed to remove icon logo',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
-        }
-      );
+      this.audit(req, 'failed', 'update_config', 'Failed to remove icon logo', {
+        error: errorMessage,
+      });
 
       res.status(500).json({ error: 'Failed to remove icon logo' });
     }
@@ -957,9 +695,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   uploadLogoIconDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
       const file = (req as any).file;
 
@@ -984,26 +719,10 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Dark icon logo uploaded',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'upload_logo_icon_dark',
-              filename: file.filename,
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Dark icon logo uploaded', {
+        action: 'upload_logo_icon_dark',
+        filename: file.filename,
+      });
 
       res.json({
         success: true,
@@ -1011,33 +730,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         url: logoIconDarkKey,
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_icon_dark_upload_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to upload dark icon logo',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -1050,9 +755,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   removeLogoIconDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       if (config.branding?.logoIconDark) {
@@ -1066,58 +768,28 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Dark icon logo removed',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'remove_logo_icon_dark',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Dark icon logo removed', {
+        action: 'remove_logo_icon_dark',
+      });
 
       res.json({
         success: true,
         message: 'Dark icon logo removed successfully',
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'logo_icon_dark_removal_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to remove dark icon logo',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -1130,9 +802,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   uploadFavicon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
       const file = (req as any).file;
 
@@ -1157,26 +826,10 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Uploaded favicon',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'upload_favicon',
-              filename: file.filename,
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Uploaded favicon', {
+        action: 'upload_favicon',
+        filename: file.filename,
+      });
 
       res.json({
         success: true,
@@ -1184,35 +837,15 @@ export class AdminSettingsController implements IAdminSettingsController {
         url: faviconKey,
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'favicon_upload_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
-        'update_config',
-        'Failed to upload favicon',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
-        }
-      );
+      this.audit(req, 'failed', 'update_config', 'Failed to upload favicon', {
+        error: errorMessage,
+      });
 
       res.status(500).json({ error: 'Failed to upload favicon' });
     }
@@ -1223,9 +856,6 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   removeFavicon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       if (config.branding?.favicon) {
@@ -1239,57 +869,21 @@ export class AdminSettingsController implements IAdminSettingsController {
         },
       });
 
-      this.activityService.success(
-        'update_config',
-        'Removed favicon',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: 'remove_favicon',
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'update_config', 'Removed favicon', {
+        action: 'remove_favicon',
+      });
 
       res.json({ success: true, message: 'Favicon removed successfully' });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'favicon_removal_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
-        'update_config',
-        'Failed to remove favicon',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
-        }
-      );
+      this.audit(req, 'failed', 'update_config', 'Failed to remove favicon', {
+        error: errorMessage,
+      });
 
       res.status(500).json({ error: 'Failed to remove favicon' });
     }
@@ -1309,10 +903,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           config: config.deployment,
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
-
         const convertedData = convertDeploymentFormData(req.body);
 
         // These fields (environment, port, database URI) must be set in .env file
@@ -1345,23 +935,13 @@ export class AdminSettingsController implements IAdminSettingsController {
           deployment: mergedDeployment,
         });
 
-        this.activityService.success(
+        this.audit(
+          req,
+          'success',
           'update_config',
           'Updated deployment configuration',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                fieldsModified: Object.keys(convertedData).length,
-              },
-            },
+            fieldsModified: Object.keys(convertedData).length,
           }
         );
 
@@ -1371,33 +951,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.redirect('/admin/settings/deployment');
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'deployment_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update deployment configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -1416,9 +982,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     res: Response,
     redirectUrl: string
   ): Promise<void> => {
-    const userData = this.sessionManager.getActiveUser(req);
-    const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
     const config = this.configManager.getPlatformConfig();
 
     const convertedData = convertSecurityFormData(req.body);
@@ -1458,23 +1021,13 @@ export class AdminSettingsController implements IAdminSettingsController {
       security: mergedSecurity,
     });
 
-    this.activityService.success(
+    this.audit(
+      req,
+      'success',
       'update_config',
       'Updated security configuration',
-      userData,
       {
-        ip_address: requestIp,
-        user_agent: userAgent,
-        actor: {
-          ...userData,
-          actor_type: 'admin',
-        },
-        target: {
-          target_type: 'config',
-          entity_data: {
-            fieldsModified: Object.keys(convertedData).length,
-          },
-        },
+        fieldsModified: Object.keys(convertedData).length,
       }
     );
 
@@ -1493,33 +1046,19 @@ export class AdminSettingsController implements IAdminSettingsController {
     error: unknown,
     redirectUrl: string
   ): void => {
-    const userData = this.sessionManager.getActiveUser(req);
-    const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
-
     this.logger.error(error as Error, {
       context: 'security_settings_update_failed',
     });
 
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
-    this.activityService.failed(
+    this.audit(
+      req,
+      'failed',
       'update_config',
       'Failed to update security configuration',
-      userData,
       {
-        ip_address: requestIp,
-        user_agent: userAgent,
-        actor: {
-          ...userData,
-          actor_type: 'admin',
-        },
-        target: {
-          target_type: 'config',
-          entity_data: {
-            error: errorMessage,
-          },
-        },
+        error: errorMessage,
       }
     );
 
@@ -1740,10 +1279,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           config: maskedConfig,
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
-
         const convertedData = convertFeaturesFormData(req.body);
 
         // Restore any masked sensitive fields to prevent saving masked values
@@ -1772,23 +1307,13 @@ export class AdminSettingsController implements IAdminSettingsController {
           features: mergedFeatures,
         });
 
-        this.activityService.success(
+        this.audit(
+          req,
+          'success',
           'update_config',
           'Updated features configuration',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                fieldsModified: Object.keys(convertedData).length,
-              },
-            },
+            fieldsModified: Object.keys(convertedData).length,
           }
         );
 
@@ -1798,33 +1323,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.redirect('/admin/settings/features');
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'features_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update features configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -1852,10 +1363,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           deploymentUrl: config.deployment.url || '',
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
-
         this.logger.debug('OIDC form data received', {
           section: 'oidc',
           hasData: !!req.body,
@@ -1901,23 +1408,13 @@ export class AdminSettingsController implements IAdminSettingsController {
             oidc: mergedOidc,
           });
 
-          this.activityService.success(
+          this.audit(
+            req,
+            'success',
             'update_config',
             'Updated OIDC configuration',
-            userData,
             {
-              ip_address: requestIp,
-              user_agent: userAgent,
-              actor: {
-                ...userData,
-                actor_type: 'admin',
-              },
-              target: {
-                target_type: 'config',
-                entity_data: {
-                  fieldsModified: Object.keys(req.body).length,
-                },
-              },
+              fieldsModified: Object.keys(req.body).length,
             }
           );
 
@@ -1941,23 +1438,13 @@ export class AdminSettingsController implements IAdminSettingsController {
             updateError instanceof Error
               ? updateError.message
               : 'Unknown error';
-          this.activityService.failed(
+          this.audit(
+            req,
+            'failed',
             'update_config',
             'Failed to update OIDC configuration',
-            userData,
             {
-              ip_address: requestIp,
-              user_agent: userAgent,
-              actor: {
-                ...userData,
-                actor_type: 'admin',
-              },
-              target: {
-                target_type: 'config',
-                entity_data: {
-                  error: errorMessage,
-                },
-              },
+              error: errorMessage,
             }
           );
 
@@ -1968,33 +1455,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         }
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'oidc_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update OIDC configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -2061,10 +1534,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           },
         });
       } else if (req.method === 'POST') {
-        const userData = this.sessionManager.getActiveUser(req);
-        const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-        const userAgent = req.get('user-agent') || 'unknown';
-
         const convertedData = convertIntegrationsFormData(req.body);
 
         const convertedNotifications = req.body.notifications
@@ -2125,23 +1594,13 @@ export class AdminSettingsController implements IAdminSettingsController {
 
         await this.configManager.update(updateData);
 
-        this.activityService.success(
+        this.audit(
+          req,
+          'success',
           'update_config',
           'Updated integrations configuration',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                fieldsModified: Object.keys(convertedData).length,
-              },
-            },
+            fieldsModified: Object.keys(convertedData).length,
           }
         );
 
@@ -2151,33 +1610,19 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.redirect('/admin/settings/integrations');
       }
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'integrations_settings_update_failed',
       });
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'update_config',
         'Failed to update integrations configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -2230,21 +1675,11 @@ export class AdminSettingsController implements IAdminSettingsController {
       });
 
       if (!email) {
-        this.activityService.failed(
+        this.audit(
+          req,
+          'failed',
           'test_email',
-          'Test email failed: Email address is required',
-          userData,
-          {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-            },
-          }
+          'Test email failed: Email address is required'
         );
 
         res.status(400).json({
@@ -2255,23 +1690,13 @@ export class AdminSettingsController implements IAdminSettingsController {
       }
 
       if (email.length > 254) {
-        this.activityService.failed(
+        this.audit(
+          req,
+          'failed',
           'test_email',
           'Test email failed: Email address too long',
-          userData,
           {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-              entity_data: {
-                emailLength: email.length,
-              },
-            },
+            emailLength: email.length,
           }
         );
 
@@ -2285,21 +1710,11 @@ export class AdminSettingsController implements IAdminSettingsController {
       const emailRegex =
         /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
       if (!emailRegex.test(email)) {
-        this.activityService.failed(
+        this.audit(
+          req,
+          'failed',
           'test_email',
-          'Test email failed: Invalid email format',
-          userData,
-          {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: {
-              ...userData,
-              actor_type: 'admin',
-            },
-            target: {
-              target_type: 'config',
-            },
-          }
+          'Test email failed: Invalid email format'
         );
 
         res.status(400).json({
@@ -2369,25 +1784,9 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'test_email_success',
       });
 
-      this.activityService.success(
-        'test_email',
-        'Test email sent successfully',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              recipientEmail: email,
-            },
-          },
-        }
-      );
+      this.audit(req, 'success', 'test_email', 'Test email sent successfully', {
+        recipientEmail: email,
+      });
 
       res.json({
         success: true,
@@ -2408,19 +1807,8 @@ export class AdminSettingsController implements IAdminSettingsController {
         errorMessage,
       });
 
-      this.activityService.failed('test_email', 'Test email failed', userData, {
-        ip_address: requestIp,
-        user_agent: userAgent,
-        actor: {
-          ...userData,
-          actor_type: 'admin',
-        },
-        target: {
-          target_type: 'config',
-          entity_data: {
-            error: errorMessage,
-          },
-        },
+      this.audit(req, 'failed', 'test_email', 'Test email failed', {
+        error: errorMessage,
       });
 
       res.status(500).json({
@@ -2517,24 +1905,14 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'rollback_success',
       });
 
-      this.activityService.success(
+      this.audit(
+        req,
+        'success',
         'rollback_config',
         'Configuration rolled back successfully',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              fromVersion: currentVersion,
-              toVersion: targetVersion.version,
-            },
-          },
+          fromVersion: currentVersion,
+          toVersion: targetVersion.version,
         }
       );
 
@@ -2559,23 +1937,13 @@ export class AdminSettingsController implements IAdminSettingsController {
         errorMessage,
       });
 
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'rollback_config',
         'Configuration rollback failed',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -2624,6 +1992,8 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   exportConfig = async (req: Request, res: Response): Promise<void> => {
     try {
+      const userData = this.sessionManager.getActiveUser(req);
+      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
       const config = this.configManager.getPlatformConfig();
 
       const sanitizedConfig = prepareSensitiveConfigForDisplay(config);
@@ -2632,10 +2002,6 @@ export class AdminSettingsController implements IAdminSettingsController {
       const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
       const filename = `parako-config-export-${dateStr}.json`;
 
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.info('Configuration export requested', {
         exportedBy: userData?.email || 'unknown',
         filename,
@@ -2643,25 +2009,9 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'config_export',
       });
 
-      this.activityService.info(
-        'export_config',
-        'Configuration exported',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              filename,
-            },
-          },
-        }
-      );
+      this.audit(req, 'info', 'export_config', 'Configuration exported', {
+        filename,
+      });
 
       res.setHeader('Content-Type', 'application/json');
       res.setHeader(
@@ -2798,6 +2148,9 @@ export class AdminSettingsController implements IAdminSettingsController {
    * POST /admin/settings/import/apply
    */
   applyImport = async (req: Request, res: Response): Promise<void> => {
+    const userData = this.sessionManager.getActiveUser(req);
+    const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
+
     try {
       const importedConfig = req.body.config;
 
@@ -2823,10 +2176,6 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
       const { _export_metadata, ...configData } = parsedConfig;
-
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
 
       const currentConfig = this.configManager.getPlatformConfig();
 
@@ -2858,21 +2207,11 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'config_import_applied',
       });
 
-      this.activityService.success(
+      this.audit(
+        req,
+        'success',
         'import_config',
-        'Configuration imported and applied successfully',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-          },
-        }
+        'Configuration imported and applied successfully'
       );
 
       res.json({
@@ -2881,10 +2220,6 @@ export class AdminSettingsController implements IAdminSettingsController {
           'Configuration imported successfully. All changes have been applied and the system has been reloaded.',
       });
     } catch (error) {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
-
       this.logger.error(error as Error, {
         context: 'config_import_apply_failed',
         importedBy: userData?.email,
@@ -2892,23 +2227,13 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
-      this.activityService.failed(
+      this.audit(
+        req,
+        'failed',
         'import_config',
         'Failed to import configuration',
-        userData,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              error: errorMessage,
-            },
-          },
+          error: errorMessage,
         }
       );
 
@@ -2966,23 +2291,13 @@ export class AdminSettingsController implements IAdminSettingsController {
       // For new/undefined fields, return empty string to allow setting for the first time
       const actualValue = getNestedValue(decryptedSettings, fieldPath) ?? '';
 
-      this.activityService.warning(
+      this.audit(
+        req,
+        'warning',
         'reveal_secret',
         'Admin revealed secret field',
-        null,
         {
-          ip_address: req.ip,
-          user_agent: req.get('user-agent'),
-          actor: {
-            ...userData,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              fieldPath,
-            },
-          },
+          fieldPath,
         }
       );
 

@@ -11,8 +11,6 @@ import type { IActivity } from '../../../src/models/activity.model.js';
 import type { IActivityRepository } from '../../../src/db/repositories/interfaces/activity.repository.js';
 import type { PaginatedResult } from '../../../src/db/repositories/interfaces/base.repository.js';
 
-// ── Stubs ─────────────────────────────────────────────────────────────────────
-
 const mockLogger = {
   info: vi.fn(),
   warn: vi.fn(),
@@ -33,8 +31,6 @@ const mockConfigManager = {
   }),
 } as any;
 
-// ── Mock IActivityRepository ──────────────────────────────────────────────────
-
 function makeMockRepo(): IActivityRepository {
   return {
     findById: vi.fn(),
@@ -49,8 +45,6 @@ function makeMockRepo(): IActivityRepository {
     getDistinctTypes: vi.fn(),
   } as unknown as IActivityRepository;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeActivity(overrides: Partial<IActivity> = {}): IActivity {
   return {
@@ -81,8 +75,6 @@ function makeService(repo: IActivityRepository): ActivityService {
   return new ActivityService(mockLogger, repo as any, mockConfigManager);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('ActivityService — IActivityRepository delegation', () => {
   let repo: IActivityRepository;
   let service: ActivityService;
@@ -96,8 +88,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
   afterEach(async () => {
     await service.shutdown();
   });
-
-  // ── getUserActivities ────────────────────────────────────────────────────────
 
   describe('getUserActivities', () => {
     it('delegates to repo.findByUser', async () => {
@@ -121,8 +111,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
       expect(result.totalPages).toBe(1);
     });
   });
-
-  // ── queryActivities ──────────────────────────────────────────────────────────
 
   describe('queryActivities', () => {
     it('delegates to repo.findMany', async () => {
@@ -153,8 +141,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
     });
   });
 
-  // ── deleteOldActivities ──────────────────────────────────────────────────────
-
   describe('deleteOldActivities', () => {
     it('delegates to repo.deleteOlderThan with computed cutoff date', async () => {
       vi.mocked(repo.deleteOlderThan).mockResolvedValue(42);
@@ -165,8 +151,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
       expect(result.deletedCount).toBe(42);
     });
   });
-
-  // ── getActivityStats ─────────────────────────────────────────────────────────
 
   describe('getActivityStats', () => {
     it('delegates to repo.count for each stat', async () => {
@@ -186,8 +170,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
       });
     });
   });
-
-  // ── deleteLog ────────────────────────────────────────────────────────────────
 
   describe('deleteLog', () => {
     it('delegates findById and delete to repo', async () => {

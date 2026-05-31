@@ -73,7 +73,6 @@ export async function jwksRotationHandler(
 
   const { tenantId } = parseResult.data;
 
-  // ── Promotion-only phase (scheduled by a previous rotation job) ──
   if (parseResult.data.phase === 'promote') {
     return handlePromotionPhase(
       keyStore,
@@ -84,7 +83,6 @@ export async function jwksRotationHandler(
     );
   }
 
-  // ── Full rotation flow ──
   try {
     log('Checking if key rotation is needed');
     const needs = await keyStore.needsRotation(tenantId);

@@ -8,11 +8,11 @@ import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device
 import type { IAdminUserGrantsController } from '../../di/interfaces/admin-user-grants-controller.interface.js';
 import { TYPES } from '../../di/types.js';
 import {
-  parsePositiveInt,
-  parseEnum,
   escapeRegExp,
-} from '../../utils/query-parse.js';
-import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
+  extractListingQuery,
+} from '../../validators/listing-query.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
+import { GuardError } from '../../utils/guard-error.js';
 
 const ADMIN_GRANT_SORT_FIELDS = ['created_at', 'exp'] as const;
 
@@ -29,362 +29,280 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activity,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * List all user grants with pagination, search, and filtering
    */
   public list = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const page = parsePositiveInt(req.query.page, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const limit = parsePositiveInt(req.query.limit, {
-        default: 20,
-        min: 1,
-        max: 100,
-      });
-      const search = (
-        Array.isArray(req.query.search)
-          ? req.query.search[0]
-          : (req.query.search as string) || ''
-      )
-        .toString()
-        .slice(0, 200);
-      const clientId = (
-        Array.isArray(req.query.clientId)
-          ? req.query.clientId[0]
-          : (req.query.clientId as string) || ''
-      ).toString();
-      const username = (
-        Array.isArray(req.query.username)
-          ? req.query.username[0]
-          : (req.query.username as string) || ''
-      ).toString();
-      const sortBy = parseEnum(
-        req.query.sortBy,
-        ADMIN_GRANT_SORT_FIELDS,
-        'created_at'
-      );
-      const sortOrder =
-        parseEnum(req.query.sortOrder, SORT_ORDER_VALUES, 'desc') === 'asc'
-          ? 1
-          : -1;
+    const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
+      req.query,
+      ADMIN_GRANT_SORT_FIELDS,
+      { sortBy: 'created_at' }
+    );
+    const clientId = (
+      Array.isArray(req.query.clientId)
+        ? req.query.clientId[0]
+        : (req.query.clientId as string) || ''
+    ).toString();
+    const username = (
+      Array.isArray(req.query.username)
+        ? req.query.username[0]
+        : (req.query.username as string) || ''
+    ).toString();
 
-      const filters: any = {};
+    const filters: any = {};
 
-      // Escape user-controlled search input before passing to Mongo $regex
-      // to neutralise ReDoS attacks. The 200-char cap above bounds parser
-      // work even in pathological inputs.
-      if (search) {
-        const safeSearch = new RegExp(escapeRegExp(search), 'i');
-        filters.$or = [
-          { 'payload.accountId': { $regex: safeSearch } },
-          { 'payload.clientId': { $regex: safeSearch } },
-        ];
-      }
+    // Escape user-controlled search input before passing to Mongo $regex
+    // to neutralise ReDoS attacks. The 200-char cap above bounds parser
+    // work even in pathological inputs.
+    if (search) {
+      const safeSearch = new RegExp(escapeRegExp(search), 'i');
+      filters.$or = [
+        { 'payload.accountId': { $regex: safeSearch } },
+        { 'payload.clientId': { $regex: safeSearch } },
+      ];
+    }
 
-      if (clientId) {
-        filters['payload.clientId'] = clientId;
-      }
+    if (clientId) {
+      filters['payload.clientId'] = clientId;
+    }
 
-      if (username) {
-        filters['payload.accountId'] = username;
-      }
+    if (username) {
+      filters['payload.accountId'] = username;
+    }
 
-      const totalGrants = await this.oidcAdapter.grant.countGrants(filters);
-      const totalPages = Math.ceil(totalGrants / limit);
-      const skip = (page - 1) * limit;
+    const totalGrants = await this.oidcAdapter.grant.countGrants(filters);
+    const totalPages = Math.ceil(totalGrants / limit);
+    const skip = (page - 1) * limit;
+    const sortOrderNumeric = sortOrder === 'asc' ? 1 : -1;
 
-      const grants = await this.oidcAdapter.grant.findGrantsWithPagination(
-        filters,
-        sortBy,
-        sortOrder,
-        skip,
-        limit
-      );
+    const grants = await this.oidcAdapter.grant.findGrantsWithPagination(
+      filters,
+      sortBy,
+      sortOrderNumeric,
+      skip,
+      limit
+    );
 
-      const processedGrants = await Promise.all(
-        grants.map(async (grant: any) => {
-          const payload = grant.payload as any;
+    const processedGrants = await Promise.all(
+      grants.map(async (grant: any) => {
+        const payload = grant.payload as any;
 
-          let clientInfo = {
-            id: payload.clientId || 'Unknown',
-            name: 'Unknown Application',
-            developer: 'Unknown Developer',
-            logo: '/images/clav.png',
-          };
+        let clientInfo = {
+          id: payload.clientId || 'Unknown',
+          name: 'Unknown Application',
+          developer: 'Unknown Developer',
+          logo: '/images/clav.png',
+        };
 
-          try {
-            if (payload.clientId) {
-              const client = await this.oidcAdapter.client.find(
-                payload.clientId
-              );
-              if (client) {
-                clientInfo = {
-                  id: payload.clientId,
-                  name:
-                    (client as any).clientName ||
-                    (client as any).clientId ||
-                    'Unknown Application',
-                  developer:
-                    (client as any).clientUri &&
-                    typeof (client as any).clientUri === 'string'
-                      ? new URL((client as any).clientUri).hostname
-                      : 'Unknown Developer',
-                  logo: (client as any).logoUri || '/images/clav.png',
-                };
-              }
-            }
-          } catch (error) {
-            this.logger.error(error as Error, {
-              context: 'client_info_load_failed',
-            });
-          }
-
-          const scopesSet = new Set<string>();
-          if (
-            payload.openid?.scope &&
-            typeof payload.openid.scope === 'string'
-          ) {
-            const scopeArray = payload.openid.scope.split(' ');
-            for (const scope of scopeArray) {
-              const trimmedScope = scope.trim();
-              if (trimmedScope) scopesSet.add(trimmedScope);
-            }
-          }
-
-          if (payload.resources && typeof payload.resources === 'object') {
-            const resources = payload.resources as Record<string, any>;
-            for (const scope of Object.values(resources)) {
-              if (scope && typeof scope === 'string') {
-                const scopeArray = scope.split(' ');
-                for (const s of scopeArray) {
-                  const trimmedScope = s.trim();
-                  if (trimmedScope) scopesSet.add(trimmedScope);
-                }
-              }
-            }
-          }
-
-          const formatTime = (timestamp: number | null): string => {
-            if (!timestamp) return 'Unknown';
-            const date = new Date(timestamp * 1000);
-            const now = new Date();
-            const diff = now.getTime() - date.getTime();
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const hours = Math.floor(diff / (1000 * 60 * 60));
-            const minutes = Math.floor(diff / (1000 * 60));
-
-            if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-            if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-            if (minutes > 0)
-              return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-            return 'Just now';
-          };
-
-          const formatDate = (timestamp: number | null): string => {
-            if (!timestamp) return 'Unknown';
-            return new Date(timestamp * 1000).toLocaleDateString();
-          };
-
-          return {
-            id: grant._id,
-            grantId: payload.jti || grant._id,
-            username: payload.accountId || 'Unknown',
-            client: clientInfo,
-            scopes: Array.from(scopesSet),
-            grantedAt: formatDate(payload.iat),
-            lastUsed: formatTime(payload.iat),
-            expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
-            expiresIn: formatTime(payload.exp),
-            isExpired: payload.exp ? Date.now() > payload.exp * 1000 : false,
-            rawPayload: payload,
-          };
-        })
-      );
-
-      const clientIds =
-        await this.oidcAdapter.grant.getDistinctValues('payload.clientId');
-      const uniqueClients = await Promise.all(
-        clientIds.map(async (clientId: any) => {
-          try {
-            const client = await this.oidcAdapter.client.find(clientId);
+        try {
+          if (payload.clientId) {
+            const client = await this.oidcAdapter.client.find(payload.clientId);
             if (client) {
-              return {
-                id: clientId,
-                name: (client as any).clientName || clientId,
+              clientInfo = {
+                id: payload.clientId,
+                name:
+                  (client as any).clientName ||
+                  (client as any).clientId ||
+                  'Unknown Application',
+                developer:
+                  (client as any).clientUri &&
+                  typeof (client as any).clientUri === 'string'
+                    ? new URL((client as any).clientUri).hostname
+                    : 'Unknown Developer',
+                logo: (client as any).logoUri || '/images/clav.png',
               };
             }
-
-            return { id: clientId, name: clientId };
-          } catch (error) {
-            this.logger.error(error as Error, {
-              context: 'client_info_load_failed',
-              clientId,
-            });
-            return { id: clientId, name: clientId };
           }
-        })
-      );
+        } catch (error) {
+          this.logger.error(error as Error, {
+            context: 'client_info_load_failed',
+          });
+        }
 
-      const usernames =
-        await this.oidcAdapter.grant.getDistinctValues('payload.accountId');
-      const uniqueUsernames = usernames.map((username: any) => ({
-        id: username,
-        name: username,
-      }));
+        const scopesSet = collectScopes(payload);
 
-      res.render('admin/user-grants/index', {
-        title: 'User Grants Management',
-        grants: processedGrants,
-        pagination: {
-          page,
-          limit,
-          totalPages,
-          totalGrants,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-          startIndex: (page - 1) * limit + 1,
-          endIndex: Math.min(page * limit, totalGrants),
-        },
-        filters: {
-          search,
-          clientId,
-          username,
-          sortBy,
-          sortOrder,
-        },
-        uniqueClients,
-        uniqueUsernames,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, { context: 'user_grants_load_failed' });
-      res.status(500).render('admin/error', {
-        title: 'Error',
-        message: 'Failed to load user grants',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
+        const formatTime = (timestamp: number | null): string => {
+          if (!timestamp) return 'Unknown';
+          const date = new Date(timestamp * 1000);
+          const now = new Date();
+          const diff = now.getTime() - date.getTime();
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor(diff / (1000 * 60 * 60));
+          const minutes = Math.floor(diff / (1000 * 60));
+
+          if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+          if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+          if (minutes > 0)
+            return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+          return 'Just now';
+        };
+
+        const formatDate = (timestamp: number | null): string => {
+          if (!timestamp) return 'Unknown';
+          return new Date(timestamp * 1000).toLocaleDateString();
+        };
+
+        return {
+          id: grant._id,
+          grantId: payload.jti || grant._id,
+          username: payload.accountId || 'Unknown',
+          client: clientInfo,
+          scopes: Array.from(scopesSet),
+          grantedAt: formatDate(payload.iat),
+          lastUsed: formatTime(payload.iat),
+          expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
+          expiresIn: formatTime(payload.exp),
+          isExpired: payload.exp ? Date.now() > payload.exp * 1000 : false,
+          rawPayload: payload,
+        };
+      })
+    );
+
+    const clientIds =
+      await this.oidcAdapter.grant.getDistinctValues('payload.clientId');
+    const uniqueClients = await Promise.all(
+      clientIds.map(async (clientId: any) => {
+        try {
+          const client = await this.oidcAdapter.client.find(clientId);
+          if (client) {
+            return {
+              id: clientId,
+              name: (client as any).clientName || clientId,
+            };
+          }
+
+          return { id: clientId, name: clientId };
+        } catch (error) {
+          this.logger.error(error as Error, {
+            context: 'client_info_load_failed',
+            clientId,
+          });
+          return { id: clientId, name: clientId };
+        }
+      })
+    );
+
+    const usernames =
+      await this.oidcAdapter.grant.getDistinctValues('payload.accountId');
+    const uniqueUsernames = usernames.map((username: any) => ({
+      id: username,
+      name: username,
+    }));
+
+    res.render('admin/user-grants/index', {
+      title: 'User Grants Management',
+      grants: processedGrants,
+      pagination: {
+        page,
+        limit,
+        totalPages,
+        totalGrants,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+        startIndex: (page - 1) * limit + 1,
+        endIndex: Math.min(page * limit, totalGrants),
+      },
+      filters: {
+        search,
+        clientId,
+        username,
+        sortBy,
+        sortOrder,
+      },
+      uniqueClients,
+      uniqueUsernames,
+    });
   };
 
   /**
    * Show detailed information about a specific grant
    */
   public show = async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+
+    const grant = await this.oidcAdapter.grant.findGrantById(id);
+
+    if (!grant) {
+      throw new GuardError('Grant not found', { status: 404 });
+    }
+
+    const payload = grant.payload as any;
+
+    let clientInfo = {
+      id: payload.clientId || 'Unknown',
+      name: 'Unknown Application',
+      developer: 'Unknown Developer',
+      logo: '/images/clav.png',
+      uri: '',
+      redirectUris: [] as string[],
+    };
+
     try {
-      const { id } = req.params;
-
-      const grant = await this.oidcAdapter.grant.findGrantById(id);
-
-      if (!grant) {
-        res.status(404).render('admin/error', {
-          title: 'Grant Not Found',
-          message: 'The requested grant could not be found',
-          error: 'Grant not found',
-        });
-        return;
-      }
-
-      const payload = grant.payload as any;
-
-      let clientInfo = {
-        id: payload.clientId || 'Unknown',
-        name: 'Unknown Application',
-        developer: 'Unknown Developer',
-        logo: '/images/clav.png',
-        uri: '',
-        redirectUris: [],
-      };
-
-      try {
-        if (payload.clientId) {
-          const client = await this.oidcAdapter.client.find(payload.clientId);
-          if (client) {
-            clientInfo = {
-              id: payload.clientId,
-              name:
-                (client as any).clientName ||
-                (client as any).clientId ||
-                'Unknown Application',
-              developer:
-                (client as any).clientUri &&
-                typeof (client as any).clientUri === 'string'
-                  ? new URL((client as any).clientUri).hostname
-                  : 'Unknown Developer',
-              logo: (client as any).logoUri || '/images/clav.png',
-              uri: (client as any).clientUri || '',
-              redirectUris: (client as any).redirectUris || [],
-            };
-          }
-        }
-      } catch (error) {
-        this.logger.error(error as Error, {
-          context: 'client_info_load_failed',
-        });
-      }
-
-      const scopesSet = new Set<string>();
-      if (payload.openid?.scope && typeof payload.openid.scope === 'string') {
-        const scopeArray = payload.openid.scope.split(' ');
-        for (const scope of scopeArray) {
-          const trimmedScope = scope.trim();
-          if (trimmedScope) scopesSet.add(trimmedScope);
+      if (payload.clientId) {
+        const client = await this.oidcAdapter.client.find(payload.clientId);
+        if (client) {
+          clientInfo = {
+            id: payload.clientId,
+            name:
+              (client as any).clientName ||
+              (client as any).clientId ||
+              'Unknown Application',
+            developer:
+              (client as any).clientUri &&
+              typeof (client as any).clientUri === 'string'
+                ? new URL((client as any).clientUri).hostname
+                : 'Unknown Developer',
+            logo: (client as any).logoUri || '/images/clav.png',
+            uri: (client as any).clientUri || '',
+            redirectUris: (client as any).redirectUris || [],
+          };
         }
       }
-
-      if (payload.resources && typeof payload.resources === 'object') {
-        const resources = payload.resources as Record<string, any>;
-        for (const scope of Object.values(resources)) {
-          if (scope && typeof scope === 'string') {
-            const scopeArray = scope.split(' ');
-            for (const s of scopeArray) {
-              const trimmedScope = s.trim();
-              if (trimmedScope) scopesSet.add(trimmedScope);
-            }
-          }
-        }
-      }
-
-      const formatDate = (timestamp: number | null): string => {
-        if (!timestamp) return 'Unknown';
-        return `${new Date(timestamp * 1000).toLocaleDateString()} ${new Date(
-          timestamp * 1000
-        ).toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        })}`;
-      };
-
-      const grantDetails = {
-        id: grant._id,
-        grantId: payload.jti || grant._id,
-        username: payload.accountId || 'Unknown',
-        client: clientInfo,
-        scopes: Array.from(scopesSet),
-        grantedAt: formatDate(payload.iat),
-        expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
-        expiresIn: formatDate(payload.exp),
-        isExpired: payload.exp ? Date.now() > payload.exp * 1000 : false,
-        rawPayload: payload,
-        created_at: grant.created_at ? new Date(grant.created_at) : new Date(),
-        updated_at: grant.updated_at ? new Date(grant.updated_at) : new Date(),
-      };
-
-      res.render('admin/user-grants/show', {
-        title: 'Grant Details',
-        grant: grantDetails,
-      });
     } catch (error) {
       this.logger.error(error as Error, {
-        context: 'grant_details_load_failed',
-      });
-      res.status(500).render('admin/error', {
-        title: 'Error',
-        message: 'Failed to load grant details',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        context: 'client_info_load_failed',
       });
     }
+
+    const scopesSet = collectScopes(payload);
+
+    const formatDate = (timestamp: number | null): string => {
+      if (!timestamp) return 'Unknown';
+      return `${new Date(timestamp * 1000).toLocaleDateString()} ${new Date(
+        timestamp * 1000
+      ).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    };
+
+    const grantDetails = {
+      id: grant._id,
+      grantId: payload.jti || grant._id,
+      username: payload.accountId || 'Unknown',
+      client: clientInfo,
+      scopes: Array.from(scopesSet),
+      grantedAt: formatDate(payload.iat),
+      expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
+      expiresIn: formatDate(payload.exp),
+      isExpired: payload.exp ? Date.now() > payload.exp * 1000 : false,
+      rawPayload: payload,
+      created_at: grant.created_at ? new Date(grant.created_at) : new Date(),
+      updated_at: grant.updated_at ? new Date(grant.updated_at) : new Date(),
+    };
+
+    res.render('admin/user-grants/show', {
+      title: 'Grant Details',
+      grant: grantDetails,
+    });
   };
 
   /**
@@ -394,15 +312,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     try {
       const { id } = req.params;
       const adminUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-      if (!adminUser) {
-        res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-        });
-        return;
-      }
 
       const grant = await this.oidcAdapter.grant.findGrantById(id);
 
@@ -415,70 +324,53 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       }
 
       const payload = grant.payload as any;
-
-      try {
-        // Use the jti field as the grant identifier
-        const grantId = payload.jti as string;
-        if (!grantId) {
-          res.status(400).json({
-            success: false,
-            error: 'Grant has no valid identifier',
-          });
-          return;
-        }
-
-        // Use the provider's Grant model to find and revoke the grant
-        const grantToRevoke = await this.oidcAdapter.grant.find(grantId);
-        if (grantToRevoke) {
-          await this.oidcAdapter.grant.destroy(grantId);
-
-          this.activity.success(
-            'grant_revoked_by_admin',
-            'Admin revoked grant for user and client',
-            null,
-            {
-              client_id: payload.clientId,
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
-              actor: {
-                ...adminUser,
-                actor_type: 'admin',
-              },
-              target: {
-                target_type: 'grant',
-                entity_id: grantId,
-                entity_data: {
-                  accountId: payload.accountId,
-                  clientId: payload.clientId,
-                },
-              },
-            }
-          );
-
-          this.logger.info(
-            `Admin ${adminUser.username} revoked grant ${grantId} for user ${payload.accountId} and client ${payload.clientId}`
-          );
-
-          res.json({
-            success: true,
-            message: 'Grant revoked successfully',
-          });
-        } else {
-          res.status(404).json({
-            success: false,
-            error: 'Grant not found in OIDC provider',
-          });
-        }
-      } catch (error) {
-        this.logger.error(error as Error, {
-          context: 'grant_revocation_failed',
-        });
-        res.status(500).json({
+      const grantId = payload.jti as string;
+      if (!grantId) {
+        res.status(400).json({
           success: false,
-          error: 'Failed to revoke grant',
+          error: 'Grant has no valid identifier',
         });
+        return;
       }
+
+      const grantToRevoke = await this.oidcAdapter.grant.find(grantId);
+      if (!grantToRevoke) {
+        res.status(404).json({
+          success: false,
+          error: 'Grant not found in OIDC provider',
+        });
+        return;
+      }
+
+      await this.oidcAdapter.grant.destroy(grantId);
+
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
+        'grant_revoked_by_admin',
+        null,
+        'Admin revoked grant for user and client',
+        {
+          client_id: payload.clientId,
+          target: {
+            target_type: 'grant',
+            entity_id: grantId,
+            entity_data: {
+              accountId: payload.accountId,
+              clientId: payload.clientId,
+            },
+          },
+        }
+      );
+
+      this.logger.info(
+        `Admin ${adminUser?.username ?? 'unknown'} revoked grant ${grantId} for user ${payload.accountId} and client ${payload.clientId}`
+      );
+
+      res.json({
+        success: true,
+        message: 'Grant revoked successfully',
+      });
     } catch (error) {
       this.logger.error(error as Error, { context: 'grant_revocation_failed' });
       res.status(500).json({
@@ -498,15 +390,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     try {
       const { username } = req.params;
       const adminUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-      if (!adminUser) {
-        res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-        });
-        return;
-      }
 
       const userGrants =
         await this.oidcAdapter.grant.findGrantsByAccountId(username);
@@ -524,7 +407,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       for (const grantDoc of userGrants) {
         try {
           const payload = grantDoc.payload as any;
-          // Use the jti field as the grant identifier
           const grantId = payload.jti as string;
           if (!grantId) {
             this.logger.warn(
@@ -533,7 +415,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
             continue;
           }
 
-          // Use the provider's Grant model to find and revoke the grant
           const grant = await this.oidcAdapter.grant.find(grantId);
           if (grant) {
             await this.oidcAdapter.grant.destroy(grantId);
@@ -546,35 +427,27 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
           this.logger.error(error as Error, {
             context: 'grant_revocation_failed',
           });
-          // Continue with other grants even if one fails
         }
       }
 
       if (revokedCount > 0) {
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req, {
+          defaultActorType: 'admin',
+        }).success(
           'all_user_grants_revoked_by_admin',
-          'Admin revoked all grants for user',
           null,
+          'Admin revoked all grants for user',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              ...adminUser,
-              actor_type: 'admin',
-            },
             target: {
               target_type: 'grant',
               username,
-              entity_data: {
-                revokedCount,
-              },
+              entity_data: { revokedCount },
             },
           }
         );
 
         this.logger.info(
-          `Admin ${adminUser.username} revoked all grants (${revokedCount}) for user ${username}`
+          `Admin ${adminUser?.username ?? 'unknown'} revoked all grants (${revokedCount}) for user ${username}`
         );
       }
 
@@ -604,15 +477,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     try {
       const { clientId } = req.params;
       const adminUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-      if (!adminUser) {
-        res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-        });
-        return;
-      }
 
       const clientGrants =
         await this.oidcAdapter.grant.findGrantsByClientId(clientId);
@@ -630,7 +494,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       for (const grantDoc of clientGrants) {
         try {
           const payload = grantDoc.payload as any;
-          // Use the jti field as the grant identifier
           const grantId = payload.jti as string;
           if (!grantId) {
             this.logger.warn(
@@ -639,7 +502,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
             continue;
           }
 
-          // Use the provider's Grant model to find and revoke the grant
           const grant = await this.oidcAdapter.grant.find(grantId);
           if (grant) {
             await this.oidcAdapter.grant.destroy(grantId);
@@ -652,36 +514,28 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
           this.logger.error(error as Error, {
             context: 'grant_revocation_failed',
           });
-          // Continue with other grants even if one fails
         }
       }
 
       if (revokedCount > 0) {
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req, {
+          defaultActorType: 'admin',
+        }).success(
           'all_client_grants_revoked_by_admin',
-          'Admin revoked all grants for client',
           null,
+          'Admin revoked all grants for client',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              ...adminUser,
-              actor_type: 'admin',
-            },
             target: {
               target_type: 'grant',
               entity_id: clientId,
               entity_name: clientId,
-              entity_data: {
-                revokedCount,
-              },
+              entity_data: { revokedCount },
             },
           }
         );
 
         this.logger.info(
-          `Admin ${adminUser.username} revoked all grants (${revokedCount}) for client ${clientId}`
+          `Admin ${adminUser?.username ?? 'unknown'} revoked all grants (${revokedCount}) for client ${clientId}`
         );
       }
 
@@ -704,7 +558,7 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
   /**
    * Get statistics about user grants
    */
-  public getStats = async (req: Request, res: Response): Promise<void> => {
+  public getStats = async (_req: Request, res: Response): Promise<void> => {
     try {
       const stats = await this.oidcAdapter.grant.getGrantStatistics();
 
@@ -734,4 +588,31 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       });
     }
   };
+}
+
+/** Collect OIDC + resource-server scopes from a grant payload into one set. */
+function collectScopes(payload: any): Set<string> {
+  const scopes = new Set<string>();
+
+  if (payload.openid?.scope && typeof payload.openid.scope === 'string') {
+    for (const scope of payload.openid.scope.split(' ')) {
+      const trimmed = scope.trim();
+      if (trimmed) scopes.add(trimmed);
+    }
+  }
+
+  if (payload.resources && typeof payload.resources === 'object') {
+    for (const scope of Object.values(
+      payload.resources as Record<string, unknown>
+    )) {
+      if (scope && typeof scope === 'string') {
+        for (const s of scope.split(' ')) {
+          const trimmed = s.trim();
+          if (trimmed) scopes.add(trimmed);
+        }
+      }
+    }
+  }
+
+  return scopes;
 }

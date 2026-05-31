@@ -1,7 +1,5 @@
 import type { IBaseModel } from './base.js';
 
-// ── Per-Section Typed Interfaces ────────────────────────────────────────────
-
 /** application.* — all freely customizable */
 export interface ITenantApplicationOverride {
   title?: string;
@@ -303,8 +301,6 @@ export interface ITenantNotificationsOverride {
   defaults?: ITenantNotificationDefaultsOverride;
 }
 
-// ── Main Override Interface ─────────────────────────────────────────────────
-
 /**
  * Per-tenant configuration overrides.
  * Only whitelisted fields can be overridden -- all fields are optional (sparse).
@@ -334,8 +330,6 @@ export interface ITenantSettingsOverride extends IBaseModel {
 }
 
 export type ITenantSettingsOverrideMethods = object;
-
-// ── Helper Type: Valid Dot-Path Union ───────────────────────────────────────
 
 /**
  * Union of all valid dot-paths that tenants may set in overrides.

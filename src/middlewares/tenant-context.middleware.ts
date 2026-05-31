@@ -65,7 +65,6 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
       const environment = config.deployment.environment;
       let tenantId = this.extractTenantId(req, mtConfig);
 
-      // ── Subdomain-session consistency validation ──────────────────────
       // When cookies are scoped to the base domain (e.g. .parako.test),
       // a session from acme.parako.test is sent to beta.parako.test too.
       const subdomain = this.extractSubdomain(req);

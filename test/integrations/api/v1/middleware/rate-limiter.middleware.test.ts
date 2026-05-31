@@ -7,14 +7,10 @@ import {
   type RateLimitTier,
 } from '../../../../../src/api/v1/middleware/rate-limiter.middleware.js';
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/middleware/rate-limiter', () => {
-  // -------------------------------------------------------------------------
   // 1. Returns a function (middleware) for each tier
-  // -------------------------------------------------------------------------
   describe('factory returns middleware', () => {
     const tiers: RateLimitTier[] = ['read', 'write', 'delete', 'sensitive'];
 
@@ -24,9 +20,7 @@ describe('api/v1/middleware/rate-limiter', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 2. Rate limit tier values are correct
-  // -------------------------------------------------------------------------
   describe('tier configuration values', () => {
     it('should configure read tier at 100 requests per 60 seconds', () => {
       // We verify by importing and checking the factory produces a middleware.
@@ -56,9 +50,7 @@ describe('api/v1/middleware/rate-limiter', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 3. Returned middleware is callable (smoke test)
-  // -------------------------------------------------------------------------
   describe('middleware is callable', () => {
     it('should return a middleware with the standard Express (req, res, next) arity', () => {
       const middleware = apiRateLimiter('read');
@@ -69,9 +61,7 @@ describe('api/v1/middleware/rate-limiter', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 4. RateLimitTier type exists and constrains valid values
-  // -------------------------------------------------------------------------
   describe('RateLimitTier type', () => {
     it('should accept all valid tier names via the factory', () => {
       // TypeScript compile-time check — if the type were wrong these
@@ -89,9 +79,7 @@ describe('api/v1/middleware/rate-limiter', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 5. Response headers — Content-Type and Retry-After (RFC 6585)
-  // -------------------------------------------------------------------------
   describe('rate limiter — response headers', () => {
     it('should set Content-Type to application/problem+json and Retry-After on 429', async () => {
       // Use 'sensitive' tier (limit=3) so we can exhaust it quickly

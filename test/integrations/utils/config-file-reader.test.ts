@@ -29,9 +29,7 @@ describe('ConfigFileReader', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // ==========================================================================
   // readJsoncFile
-  // ==========================================================================
   describe('readJsoncFile', () => {
     it('should parse valid JSONC with comments and trailing commas', () => {
       const content = `{
@@ -86,9 +84,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // readJsoncFileAsync
-  // ==========================================================================
   describe('readJsoncFileAsync', () => {
     it('should parse valid JSONC asynchronously', async () => {
       const content = `{
@@ -127,9 +123,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // readAppConfig — auto-detection priority: .jsonc > .json
-  // ==========================================================================
   describe('readAppConfig', () => {
     it('should prefer .jsonc over .json', () => {
       fs.writeFileSync(
@@ -175,9 +169,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // readAppConfigAsync
-  // ==========================================================================
   describe('readAppConfigAsync', () => {
     it('should fall back to .jsonc async', async () => {
       fs.writeFileSync(
@@ -196,9 +188,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // readParakoRpConfig
-  // ==========================================================================
   describe('readParakoRpConfig', () => {
     it('should read parako-rp.jsonc file', () => {
       const content = `{
@@ -219,9 +209,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // readParakoRpConfigAsync
-  // ==========================================================================
   describe('readParakoRpConfigAsync', () => {
     it('should read parako-rp.jsonc file asynchronously', async () => {
       const content = `{
@@ -240,9 +228,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // isFileReadable
-  // ==========================================================================
   describe('isFileReadable', () => {
     it('should return true for a readable file', () => {
       const filePath = path.join(tmpDir, 'readable.txt');
@@ -257,9 +243,7 @@ describe('ConfigFileReader', () => {
     });
   });
 
-  // ==========================================================================
   // stripJsonComments
-  // ==========================================================================
   describe('stripJsonComments', () => {
     it('should strip line comments and return clean JSON', () => {
       const input = `{

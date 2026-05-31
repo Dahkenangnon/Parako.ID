@@ -5,9 +5,7 @@ import { UsersController } from '../../../../../src/api/v1/controllers/users.con
 import type { UsersControllerDeps } from '../../../../../src/api/v1/controllers/users.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): UsersControllerDeps {
   return {
@@ -66,9 +64,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleUser = {
   _id: '507f1f77bcf86cd799439011',
@@ -92,9 +88,7 @@ const sampleUser = {
   },
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/UsersController', () => {
   let deps: UsersControllerDeps;
@@ -105,9 +99,7 @@ describe('api/v1/controllers/UsersController', () => {
     controller = new UsersController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return a paginated list of users with sensitive fields stripped', async () => {
       const users = [
@@ -220,9 +212,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // create
-  // -----------------------------------------------------------------------
   describe('create()', () => {
     it('should create a user and return 201 with sensitive fields stripped', async () => {
       const created = { ...sampleUser };
@@ -288,9 +278,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a user with sensitive fields stripped', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
@@ -350,9 +338,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // update
-  // -----------------------------------------------------------------------
   describe('update()', () => {
     it('should validate body, update, and return the user without sensitive fields', async () => {
       const updated = { ...sampleUser, name: 'Jane Updated' };
@@ -396,9 +382,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // patch
-  // -----------------------------------------------------------------------
   describe('patch()', () => {
     it('should accept a partial body and return the updated user', async () => {
       const patched = { ...sampleUser, nickname: 'JD' };
@@ -461,9 +445,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // destroy
-  // -----------------------------------------------------------------------
   describe('destroy()', () => {
     it('should destroy the user and return 204', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
@@ -522,9 +504,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // lock
-  // -----------------------------------------------------------------------
   describe('lock()', () => {
     it('should lock the user and return 200 with sensitive fields stripped', async () => {
       const locked = { ...sampleUser, account_enabled: false };
@@ -563,9 +543,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // unlock
-  // -----------------------------------------------------------------------
   describe('unlock()', () => {
     it('should unlock the user and return 200 with sensitive fields stripped', async () => {
       const unlocked = { ...sampleUser, account_enabled: true };
@@ -604,9 +582,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // passwordReset
-  // -----------------------------------------------------------------------
   describe('passwordReset()', () => {
     it('should validate and reset the password, returning 200', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
@@ -671,9 +647,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // mfaReset
-  // -----------------------------------------------------------------------
   describe('mfaReset()', () => {
     it('should reset MFA and return 200', async () => {
       const mfaDisabled = { ...sampleUser, mfa: { enabled: false } };
@@ -730,9 +704,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // activities
-  // -----------------------------------------------------------------------
   describe('activities()', () => {
     it('should return paginated activities for the user', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
@@ -787,9 +759,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // sessions
-  // -----------------------------------------------------------------------
   describe('sessions()', () => {
     it('should return sessions for the user', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
@@ -870,9 +840,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // DB abstraction
-  // -----------------------------------------------------------------------
   describe('DB abstraction', () => {
     describe('stripSensitiveFields', () => {
       it('should strip fields from plain object (Prisma-style, no toJSON)', async () => {

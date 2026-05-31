@@ -57,8 +57,6 @@ vi.mock('../../../src/multi-tenancy/tenant-context.js', () => ({
 
 import { SessionManager } from '../../../src/utils/session.js';
 
-// ── Test Helpers ──
-
 function createMockDeps() {
   const configManager = {
     subscribe: vi.fn(),
@@ -145,8 +143,6 @@ function createSessionManager(deps: ReturnType<typeof createMockDeps>) {
     }
   );
 }
-
-// ── Tests for findAllExpressSessions and countAllExpressSessions ──
 
 describe('SessionManager - Express session queries', () => {
   let deps: ReturnType<typeof createMockDeps>;

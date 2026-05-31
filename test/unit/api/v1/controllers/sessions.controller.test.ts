@@ -5,9 +5,7 @@ import { SessionsController } from '../../../../../src/api/v1/controllers/sessio
 import type { SessionsControllerDeps } from '../../../../../src/api/v1/controllers/sessions.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): SessionsControllerDeps {
   return {
@@ -53,9 +51,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleSession = {
   _id: 'sess-abc-123',
@@ -66,9 +62,7 @@ const sampleSession = {
   iat: 1741345200,
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/SessionsController', () => {
   let deps: SessionsControllerDeps;
@@ -79,9 +73,7 @@ describe('api/v1/controllers/SessionsController', () => {
     controller = new SessionsController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return a paginated list of sessions', async () => {
       const sessions = [
@@ -178,9 +170,7 @@ describe('api/v1/controllers/SessionsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a session by jti', async () => {
       vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue({
@@ -219,9 +209,7 @@ describe('api/v1/controllers/SessionsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // revoke
-  // -----------------------------------------------------------------------
   describe('revoke()', () => {
     it('should revoke the session and return 204', async () => {
       vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue({
@@ -278,9 +266,7 @@ describe('api/v1/controllers/SessionsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // bulkRevoke
-  // -----------------------------------------------------------------------
   describe('bulkRevoke()', () => {
     it('should use revokeByAccountId when username is provided and method exists', async () => {
       vi.mocked(deps.oidcAdapter.session.revokeByAccountId!).mockResolvedValue(
@@ -404,9 +390,7 @@ describe('api/v1/controllers/SessionsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // DB abstraction
-  // -----------------------------------------------------------------------
   describe('DB abstraction', () => {
     describe('bulkRevoke — JTI resolution', () => {
       it('should fall back to session.id when jti is absent (Prisma)', async () => {

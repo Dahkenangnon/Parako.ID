@@ -30,39 +30,31 @@ export class AdminHomeController implements IAdminHomeController {
    * Renders the admin dashboard home page
    */
   public dashboard = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const currentUser = this.sessionManager.getActiveUser(req);
+    const currentUser = this.sessionManager.getActiveUser(req);
 
-      if (!currentUser) {
-        this.logger.error('Admin dashboard access without authenticated user');
-        return res.redirect('/auth/login');
-      }
-
-      const stats = await this.getSystemStats();
-
-      const recentActivity = await this.getRecentActivity();
-
-      const config = this.configManager.getConfig();
-      const appInfo = {
-        title: config.application.title,
-        environment: config.deployment.environment,
-        mfaEnabled: config.security.authentication.multi_factor.enabled,
-      };
-
-      res.render('admin/home', {
-        title: `Admin Dashboard`,
-        stats,
-        recentActivity,
-        appInfo,
-        layout: 'layouts/admin-layout',
-      });
-    } catch (error) {
-      this.logger.error('Error rendering admin dashboard', { error });
-      res.status(500).render('error/500', {
-        title: 'Server Error',
-        message: 'Unable to load admin dashboard',
-      });
+    if (!currentUser) {
+      this.logger.error('Admin dashboard access without authenticated user');
+      res.redirect('/auth/login');
+      return;
     }
+
+    const stats = await this.getSystemStats();
+    const recentActivity = await this.getRecentActivity();
+
+    const config = this.configManager.getConfig();
+    const appInfo = {
+      title: config.application.title,
+      environment: config.deployment.environment,
+      mfaEnabled: config.security.authentication.multi_factor.enabled,
+    };
+
+    res.render('admin/home', {
+      title: 'Admin Dashboard',
+      stats,
+      recentActivity,
+      appInfo,
+      layout: 'layouts/admin-layout',
+    });
   };
 
   /**
@@ -104,11 +96,8 @@ export class AdminHomeController implements IAdminHomeController {
       });
 
       const oidcStats = await this.getOIDCStats();
-
       const sessionsStats = await this.getSessionsStats();
-
       const grantsStats = await this.getGrantsStats();
-
       const activityStats = await this.getActivityStats();
 
       return {
@@ -131,7 +120,7 @@ export class AdminHomeController implements IAdminHomeController {
         activities: activityStats,
       };
     } catch (error) {
-      this.logger.error('Error getting admin stats', { error });
+      this.logger.error(error as Error, { context: 'admin_stats_load_failed' });
       return {
         users: {
           total: 0,
@@ -183,7 +172,6 @@ export class AdminHomeController implements IAdminHomeController {
     try {
       const sessionStats =
         await this.oidcAdapter.session.getSessionStatistics();
-
       return {
         total: sessionStats.total,
         active: sessionStats.active,
@@ -193,11 +181,7 @@ export class AdminHomeController implements IAdminHomeController {
       this.logger.error(error as Error, {
         context: 'session_statistics_load_failed',
       });
-      return {
-        total: 0,
-        active: 0,
-        expired: 0,
-      };
+      return { total: 0, active: 0, expired: 0 };
     }
   }
 
@@ -207,21 +191,16 @@ export class AdminHomeController implements IAdminHomeController {
   async getGrantsStats() {
     try {
       const grantStats = await this.oidcAdapter.grant.getGrantStatistics();
-
       return {
         total: grantStats.total,
         active: grantStats.total - grantStats.expired,
-        revoked: grantStats.expired, // Using expired as "revoked" for display purposes
+        revoked: grantStats.expired,
       };
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'grant_statistics_load_failed',
       });
-      return {
-        total: 0,
-        active: 0,
-        revoked: 0,
-      };
+      return { total: 0, active: 0, revoked: 0 };
     }
   }
 
@@ -231,23 +210,17 @@ export class AdminHomeController implements IAdminHomeController {
   async getActivityStats() {
     try {
       const stats = await this.activity.getActivityStats();
-
       return {
         total: stats.totalActivities || 0,
         today: stats.todayCount || 0,
-        thisWeek: 0, // Not available in ActivityStats interface
-        thisMonth: 0, // Not available in ActivityStats interface
+        thisWeek: 0,
+        thisMonth: 0,
       };
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'activity_statistics_load_failed',
       });
-      return {
-        total: 0,
-        today: 0,
-        thisWeek: 0,
-        thisMonth: 0,
-      };
+      return { total: 0, today: 0, thisWeek: 0, thisMonth: 0 };
     }
   }
 
@@ -281,6 +254,10 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
+  /**
+   * Update the admin user's theme preference.
+   * POST /admin/update-theme — JSON endpoint consumed by admin UI.
+   */
   public updateTheme = async (req: Request, res: Response): Promise<void> => {
     try {
       const { theme } = req.body;
@@ -294,15 +271,13 @@ export class AdminHomeController implements IAdminHomeController {
       }
 
       this.sessionManager.set(req, 'userTheme', theme);
-
-      this.logger.info('Admin theme updated to:', theme);
+      this.logger.info('Admin theme updated', { theme });
 
       res.json({
         success: true,
         theme,
         message: 'Theme updated successfully',
       });
-      return;
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'admin_theme_update_failed',
@@ -311,7 +286,6 @@ export class AdminHomeController implements IAdminHomeController {
         success: false,
         error: 'Failed to update theme',
       });
-      return;
     }
   };
 }

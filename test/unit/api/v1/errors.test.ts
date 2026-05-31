@@ -19,9 +19,7 @@ import {
 } from '../../../../src/api/v1/errors.js';
 
 describe('api/v1/errors', () => {
-  // -----------------------------------------------------------------------
   // ApiError class
-  // -----------------------------------------------------------------------
   describe('ApiError', () => {
     it('should be an instance of Error', () => {
       const err = new ApiError({
@@ -142,9 +140,7 @@ describe('api/v1/errors', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // ERROR_TYPES constant
-  // -----------------------------------------------------------------------
   describe('ERROR_TYPES', () => {
     it('should contain all 14 URN strings', () => {
       const keys = Object.keys(ERROR_TYPES);
@@ -187,9 +183,7 @@ describe('api/v1/errors', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // Factory functions
-  // -----------------------------------------------------------------------
   describe('unauthorized()', () => {
     it('should return an ApiError with correct type, title, and status', () => {
       const err = unauthorized('Bearer token missing');

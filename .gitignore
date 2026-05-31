@@ -13,13 +13,15 @@ public/js
 runtime/views/*
 runtime/uploads/
 runtime/.tmp-uploads/
+runtime/logs/
+runtime/data/
 # -------------------------------
 # Environment variables
 # -------------------------------
 .env
 
 # -------------------------------
-# Logs
+# Logs (legacy path — kept one release while operators migrate to runtime/logs/)
 # -------------------------------
 /logs
 *.log
@@ -81,6 +83,6 @@ runtime/locales/.merged/
 THIRD_PARTY_LICENSES.txt
 
 # -------------------------------
-# Database files
+# Database files (legacy path — kept one release while operators migrate to runtime/data/)
 # -------------------------------
 data/

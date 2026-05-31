@@ -3,9 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { requireScope } from '../../../../../src/api/v1/middleware/scope-guard.middleware.js';
 import { ApiError, ERROR_TYPES } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockRequest(apiAuth?: { scope: string; client_id?: string }) {
   const req: Record<string, unknown> = {
@@ -35,14 +33,10 @@ function createMockResponse() {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/middleware/scope-guard', () => {
-  // -------------------------------------------------------------------------
   // 1. Calls next() when required scope is present
-  // -------------------------------------------------------------------------
   describe('single required scope present', () => {
     it('should call next() when the required scope is present in req.apiAuth.scope', () => {
       const middleware = requireScope('parako:clients:read');
@@ -58,9 +52,7 @@ describe('api/v1/middleware/scope-guard', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 2. Calls next() when any of multiple required scopes is present
-  // -------------------------------------------------------------------------
   describe('multiple required scopes (any match)', () => {
     it('should call next() when at least one of the required scopes is present', () => {
       const middleware = requireScope(
@@ -78,9 +70,7 @@ describe('api/v1/middleware/scope-guard', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 3. Throws ApiError with status 403 when scope is missing
-  // -------------------------------------------------------------------------
   describe('missing required scope', () => {
     it('should throw ApiError with status 403 when scope is missing', () => {
       const middleware = requireScope('parako:clients:write');
@@ -104,9 +94,7 @@ describe('api/v1/middleware/scope-guard', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 4. Thrown error includes required_scopes extension
-  // -------------------------------------------------------------------------
   describe('error extensions', () => {
     it('should include required_scopes in the thrown ApiError extensions', () => {
       const middleware = requireScope(
@@ -141,9 +129,7 @@ describe('api/v1/middleware/scope-guard', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 5. Throws when req.apiAuth is undefined (no auth context)
-  // -------------------------------------------------------------------------
   describe('no authentication context', () => {
     it('should throw ApiError with status 403 when req.apiAuth is undefined', () => {
       const middleware = requireScope('parako:clients:read');
@@ -168,9 +154,7 @@ describe('api/v1/middleware/scope-guard', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // 6. Works with space-separated multiple scopes in req.apiAuth.scope
-  // -------------------------------------------------------------------------
   describe('space-separated scopes in token', () => {
     it('should match when the required scope is among multiple space-separated scopes', () => {
       const middleware = requireScope('parako:users:read');

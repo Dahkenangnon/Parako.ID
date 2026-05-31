@@ -35,8 +35,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     super(model, db, logger);
   }
 
-  // ─── Session ───────────────────────────────────────────────────────────
-
   async findByAccountId(accountId: string): Promise<any[]> {
     if (typeof accountId !== 'string') {
       throw new TypeError('accountId must be a string');
@@ -228,8 +226,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       throw error;
     }
   }
-
-  // ─── Grant ─────────────────────────────────────────────────────────────
 
   async findGrantsByAccountId(accountId: string): Promise<OIDCDocument[]> {
     try {
@@ -580,8 +576,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     }
   }
 
-  // ─── AccessToken / RefreshToken / Interaction (deleteByAccountId) ──────
-
   /**
    * Delete all tokens/interactions for an account.
    * Works for AccessToken, RefreshToken, and Interaction models.
@@ -608,8 +602,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       throw error;
     }
   }
-
-  // ─── Client CRUD (IAdapterClientService) ─────────────────────────────────
 
   /**
    * Create a new OIDC client in the adapter's Client collection.
@@ -827,8 +819,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   generateClientSecret(): string {
     return generateClientSecret();
   }
-
-  // ─── Private: payload extraction ─────────────────────────────────────────
 
   private extractClientPayload(doc: any): OidcClientData {
     const payload = doc.payload || {};

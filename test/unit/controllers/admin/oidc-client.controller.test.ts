@@ -23,8 +23,6 @@ import {
   isPlatformOnlyScope,
 } from '../../../../src/api/v1/scopes.js';
 
-// ── Helpers ──
-
 function createMockDeps() {
   const logger = {
     info: vi.fn(),
@@ -133,16 +131,12 @@ function makeRes(): Response {
   return res;
 }
 
-// ── Platform-only scope counts ──
-
 const platformOnlyScopeCount = SCOPE_DEFINITIONS.filter(s =>
   isPlatformOnlyScope(s.value)
 ).length;
 
 const allScopeCount = SCOPE_DEFINITIONS.length;
 const nonPlatformScopeCount = allScopeCount - platformOnlyScopeCount;
-
-// ── Tests ──
 
 describe('AdminOidcClientController — platform-only scope guard', () => {
   let deps: ReturnType<typeof createMockDeps>;
@@ -153,8 +147,6 @@ describe('AdminOidcClientController — platform-only scope guard', () => {
     deps = createMockDeps();
     controller = createController(deps);
   });
-
-  // ── UI filtering (getScopeDefinitions) ──
 
   describe('scope filtering in UI (create/edit/show)', () => {
     it('returns all scopes for _platforms tenant in multi-tenant mode', async () => {
@@ -240,8 +232,6 @@ describe('AdminOidcClientController — platform-only scope guard', () => {
       expect(scopeDefinitions).toHaveLength(nonPlatformScopeCount);
     });
   });
-
-  // ── Server-side stripping (store/update) ──
 
   describe('server-side scope stripping in store()', () => {
     const formBody = {
@@ -329,8 +319,6 @@ describe('AdminOidcClientController — platform-only scope guard', () => {
       expect(updateCall.resourcesScopes).toContain('parako:users:read');
     });
   });
-
-  // ── Preset handling ──
 
   describe('preset handling', () => {
     const baseFormBody = {

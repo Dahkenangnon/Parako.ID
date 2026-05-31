@@ -23,7 +23,7 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
   if (adapter === 'sqlite') {
     // SQLite is always single-tenant (boot guard prevents multi-tenancy + SQLite).
     // No tenant extension applied — all data operates under DEFAULT_TENANT_ID.
-    const dbPath = config.storage.sqlite?.path ?? './data/parako.db';
+    const dbPath = config.storage.sqlite?.path ?? './runtime/data/parako.db';
     mkdirSync(dirname(dbPath), { recursive: true });
     const sqliteAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
     const client = new PrismaClient({ adapter: sqliteAdapter });

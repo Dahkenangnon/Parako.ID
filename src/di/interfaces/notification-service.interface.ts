@@ -59,8 +59,6 @@ export interface NotificationAction {
  * service instead of directly depending on EmailService.
  */
 export interface INotificationService {
-  // ===== User Notifications =====
-
   /**
    * Send email verification notification
    * @param recipient - Notification recipient
@@ -151,8 +149,6 @@ export interface INotificationService {
     locale?: string
   ): Promise<NotificationResult>;
 
-  // ===== Recovery Notifications =====
-
   /**
    * Send backup code count warning notification
    * Warns user when backup codes are running low
@@ -166,8 +162,6 @@ export interface INotificationService {
     settingsUrl: string
   ): Promise<NotificationResult>;
 
-  // ===== Admin Notifications =====
-
   /**
    * Send admin alert notification (always uses email)
    * @param adminEmails - List of admin email addresses
@@ -179,8 +173,6 @@ export interface INotificationService {
     subject: string,
     content: string
   ): Promise<NotificationResult>;
-
-  // ===== Helpers =====
 
   /**
    * Get the preferred notification channel for a user

@@ -1,5 +1,4 @@
 import express, { Router } from 'express';
-import { body } from 'express-validator';
 import { IAdminHomeController } from '../di/interfaces/admin-home-controller.interface.js';
 import { IAdminUsersController } from '../di/interfaces/admin-users-controller.interface.js';
 import { IAdminActivitiesController } from '../di/interfaces/admin-activities-controller.interface.js';
@@ -16,6 +15,7 @@ import { ISecurityMiddleware } from '../di/interfaces/security-middleware.interf
 import { ILocalsMiddleware } from '../di/interfaces/locals-middleware.interface.js';
 import { IConfigValidationMiddleware } from '../di/interfaces/config-validation-middleware.interface.js';
 import { ISessionManager } from '../di/interfaces/session-manager.interface.js';
+import type { ILogger } from '../di/interfaces/logger.interface.js';
 // Centralized rate limiters with dev/prod awareness
 import {
   configUpdateLimiter,
@@ -23,15 +23,27 @@ import {
   revealSecretLimiter,
 } from '../utils/rate-limiter.js';
 import {
-  adminUserValidators,
-  adminSessionValidators,
-  adminActivityValidators,
-  adminGrantValidators,
-  adminOidcClientValidators,
-  userActivityValidators,
-  oidcClientSourceValidator,
-  createValidationErrorsHandlerForViews,
-} from '../middlewares/validation.middleware.js';
+  validateHtmlBody,
+  validateHtmlQuery,
+} from '../middlewares/validate-html.middleware.js';
+import { adminUserListQuerySchema } from '../validators/admin/users.js';
+import {
+  adminUserCreateBodySchema,
+  adminUserUpdateBodySchema,
+} from '../validators/admin/users.js';
+import { adminSessionListQuerySchema } from '../validators/admin/sessions.js';
+import {
+  adminActivityListQuerySchema,
+  userActivityListQuerySchema,
+} from '../validators/admin/activities.js';
+import { adminGrantListQuerySchema } from '../validators/admin/grants.js';
+import {
+  adminOidcClientCreateBodySchema,
+  adminOidcClientListQuerySchema,
+  adminOidcClientUpdateBodySchema,
+  oidcClientSourceQuerySchema,
+} from '../validators/admin/oidc-clients.js';
+import { asyncHandler } from '../middlewares/async-handler.js';
 
 /**
  * Register admin routes with the DI injectable services
@@ -52,12 +64,60 @@ export const adminRoutes = (
   localsMiddleware: ILocalsMiddleware,
   configValidationMiddleware: IConfigValidationMiddleware,
   sessionManager: ISessionManager,
+  logger: ILogger,
   platformAdminController?: PlatformAdminController
 ): Router => {
   const router = express.Router();
+  const htmlDeps = { sessionManager, logger };
 
-  const handleValidationErrorsForViews =
-    createValidationErrorsHandlerForViews(sessionManager);
+  const validateUserList = validateHtmlQuery(
+    adminUserListQuerySchema,
+    htmlDeps
+  );
+  const validateUserCreate = validateHtmlBody(
+    adminUserCreateBodySchema,
+    htmlDeps,
+    '/admin/users/new'
+  );
+  const validateUserUpdate = validateHtmlBody(
+    adminUserUpdateBodySchema,
+    htmlDeps,
+    req => `/admin/users/${req.params.id}/edit`
+  );
+  const validateUserActivities = validateHtmlQuery(
+    userActivityListQuerySchema,
+    htmlDeps
+  );
+  const validateOidcClientList = validateHtmlQuery(
+    adminOidcClientListQuerySchema,
+    htmlDeps
+  );
+  const validateOidcClientCreate = validateHtmlBody(
+    adminOidcClientCreateBodySchema,
+    htmlDeps,
+    '/admin/oidc-clients/create'
+  );
+  const validateOidcClientUpdate = validateHtmlBody(
+    adminOidcClientUpdateBodySchema,
+    htmlDeps,
+    req => `/admin/oidc-clients/edit/${req.params.id}`
+  );
+  const validateOidcClientSource = validateHtmlQuery(
+    oidcClientSourceQuerySchema,
+    htmlDeps
+  );
+  const validateActivityList = validateHtmlQuery(
+    adminActivityListQuerySchema,
+    htmlDeps
+  );
+  const validateSessionList = validateHtmlQuery(
+    adminSessionListQuerySchema,
+    htmlDeps
+  );
+  const validateGrantList = validateHtmlQuery(
+    adminGrantListQuerySchema,
+    htmlDeps
+  );
 
   /**
    * Admin Routes
@@ -74,12 +134,12 @@ export const adminRoutes = (
   router.get(
     '/',
     localsMiddleware.setActivePage('dashboard'),
-    adminHomeController.dashboard
+    asyncHandler('admin.home.dashboard', adminHomeController.dashboard)
   );
   router.get(
     '/dashboard',
     localsMiddleware.setActivePage('dashboard'),
-    adminHomeController.dashboard
+    asyncHandler('admin.home.dashboard', adminHomeController.dashboard)
   );
 
   router.post(
@@ -93,52 +153,40 @@ export const adminRoutes = (
   router.get(
     '/users',
     localsMiddleware.setActivePage('users'),
-    adminUserValidators,
-    handleValidationErrorsForViews,
-    adminUsersController.list
+    validateUserList,
+    asyncHandler('admin.users.list', adminUsersController.list)
   );
 
   router.get(
     '/users/new',
     localsMiddleware.setActivePage('users-new'),
-    adminUsersController.create
+    asyncHandler('admin.users.create_form', adminUsersController.create)
   );
 
   router.post(
     '/users/new',
     securityMiddleware.validateCsrfToken,
-    [
-      body('email').isEmail().withMessage('Valid email is required'),
-      body('password')
-        .isLength({ min: 8 })
-        .withMessage('Password must be at least 8 characters'),
-      body('given_name').notEmpty().withMessage('First name is required'),
-      body('family_name').notEmpty().withMessage('Last name is required'),
-    ],
-    adminUsersController.store
+    validateUserCreate,
+    asyncHandler('admin.users.store', adminUsersController.store)
   );
 
   router.get(
     '/users/:id',
     localsMiddleware.setActivePage('users'),
-    adminUsersController.show
+    asyncHandler('admin.users.show', adminUsersController.show)
   );
 
   router.get(
     '/users/:id/edit',
     localsMiddleware.setActivePage('users'),
-    adminUsersController.edit
+    asyncHandler('admin.users.edit_form', adminUsersController.edit)
   );
 
   router.post(
     '/users/:id/edit',
     securityMiddleware.validateCsrfToken,
-    [
-      body('email').isEmail().withMessage('Valid email is required'),
-      body('given_name').notEmpty().withMessage('First name is required'),
-      body('family_name').notEmpty().withMessage('Last name is required'),
-    ],
-    adminUsersController.update
+    validateUserUpdate,
+    asyncHandler('admin.users.update', adminUsersController.update)
   );
 
   router.post(
@@ -159,79 +207,80 @@ export const adminRoutes = (
 
   router.get(
     '/users/:id/activities',
-    userActivityValidators,
-    handleValidationErrorsForViews,
-    adminUsersController.activities
+    validateUserActivities,
+    asyncHandler('admin.users.activities', adminUsersController.activities)
   );
 
   // OIDC Clients Management
   router.get(
     '/oidc-clients',
     localsMiddleware.setActivePage('oidc-clients'),
-    adminOidcClientValidators,
-    handleValidationErrorsForViews,
-    adminOidcClientController.list
+    validateOidcClientList,
+    asyncHandler('admin.oidc_clients.list', adminOidcClientController.list)
   );
   router.get(
     '/oidc-clients/create',
     localsMiddleware.setActivePage('oidc-clients'),
-    adminOidcClientController.create
+    asyncHandler(
+      'admin.oidc_clients.create_form',
+      adminOidcClientController.create
+    )
   );
   router.post(
     '/oidc-clients',
     securityMiddleware.validateCsrfToken,
-    [
-      body('client_name').notEmpty().withMessage('Client name is required'),
-      body('application_type')
-        .isIn(['web', 'spa', 'native'])
-        .withMessage('Valid application type is required'),
-    ],
-    adminOidcClientController.store
+    validateOidcClientCreate,
+    asyncHandler('admin.oidc_clients.store', adminOidcClientController.store)
   );
   router.get(
     '/oidc-clients/view/:id',
     localsMiddleware.setActivePage('oidc-clients'),
-    oidcClientSourceValidator,
-    handleValidationErrorsForViews,
-    adminOidcClientController.show
+    validateOidcClientSource,
+    asyncHandler('admin.oidc_clients.show', adminOidcClientController.show)
   );
   router.get(
     '/oidc-clients/edit/:id',
     localsMiddleware.setActivePage('oidc-clients'),
-    oidcClientSourceValidator,
-    handleValidationErrorsForViews,
-    adminOidcClientController.edit
+    validateOidcClientSource,
+    asyncHandler('admin.oidc_clients.edit_form', adminOidcClientController.edit)
   );
   router.post(
     '/oidc-clients/edit/:id',
     securityMiddleware.validateCsrfToken,
-    [
-      body('client_name').notEmpty().withMessage('Client name is required'),
-      body('application_type')
-        .isIn(['web', 'spa', 'native'])
-        .withMessage('Valid application type is required'),
-    ],
-    adminOidcClientController.update
+    validateOidcClientUpdate,
+    asyncHandler('admin.oidc_clients.update', adminOidcClientController.update)
   );
   router.post(
     '/oidc-clients/activate/:id',
     securityMiddleware.validateCsrfToken,
-    adminOidcClientController.activate
+    asyncHandler(
+      'admin.oidc_clients.activate',
+      adminOidcClientController.activate
+    )
   );
   router.post(
     '/oidc-clients/deactivate/:id',
     securityMiddleware.validateCsrfToken,
-    adminOidcClientController.deactivate
+    asyncHandler(
+      'admin.oidc_clients.deactivate',
+      adminOidcClientController.deactivate
+    )
   );
   router.post(
     '/oidc-clients/regenerate-secret/:id',
     securityMiddleware.validateCsrfToken,
-    adminOidcClientController.regenerateSecret
+    asyncHandler(
+      'admin.oidc_clients.regenerate_secret',
+      adminOidcClientController.regenerateSecret
+    )
   );
   router.post(
     '/oidc-clients/delete/:id',
     securityMiddleware.validateCsrfToken,
-    adminOidcClientController.destroy
+    asyncHandler(
+      'admin.oidc_clients.destroy',
+      adminOidcClientController.destroy
+    )
   );
   router.get('/oidc-clients/statistics', adminOidcClientController.statistics);
   router.get('/oidc-clients/search', adminOidcClientController.search);
@@ -246,50 +295,51 @@ export const adminRoutes = (
   router.get(
     '/jwks',
     localsMiddleware.setActivePage('jwks'),
-    adminJwksController.list
+    asyncHandler('admin.jwks.list', adminJwksController.list)
   );
   router.get(
     '/jwks/:kid',
     localsMiddleware.setActivePage('jwks'),
-    adminJwksController.show
+    asyncHandler('admin.jwks.show', adminJwksController.show)
   );
   router.post(
     '/jwks/rotate',
     securityMiddleware.validateCsrfToken,
-    adminJwksController.rotate
+    asyncHandler('admin.jwks.rotate', adminJwksController.rotate)
   );
   router.post(
     '/jwks/retire-expired',
     securityMiddleware.validateCsrfToken,
-    adminJwksController.retireExpired
+    asyncHandler('admin.jwks.retire_expired', adminJwksController.retireExpired)
   );
 
   // User Activities
   router.get(
     '/activities',
     localsMiddleware.setActivePage('activities'),
-    adminActivityValidators,
-    handleValidationErrorsForViews,
-    adminActivitiesController.list
+    validateActivityList,
+    asyncHandler('admin.activities.list', adminActivitiesController.list)
   );
   router.post(
     '/activities/clear-old',
     securityMiddleware.validateCsrfToken,
-    adminActivitiesController.clearOldActivities
+    asyncHandler(
+      'admin.activities.clear_old',
+      adminActivitiesController.clearOldActivities
+    )
   );
   router.get(
     '/activities/:id',
     localsMiddleware.setActivePage('activities'),
-    adminActivitiesController.show
+    asyncHandler('admin.activities.show', adminActivitiesController.show)
   );
 
   // User Sessions Management
   router.get(
     '/sessions',
     localsMiddleware.setActivePage('sessions'),
-    adminSessionValidators,
-    handleValidationErrorsForViews,
-    adminSessionsController.list
+    validateSessionList,
+    asyncHandler('admin.sessions.list', adminSessionsController.list)
   );
   router.get(
     '/sessions/stats',
@@ -299,26 +349,28 @@ export const adminRoutes = (
   router.get(
     '/sessions/:id',
     localsMiddleware.setActivePage('sessions'),
-    adminSessionsController.show
+    asyncHandler('admin.sessions.show', adminSessionsController.show)
   );
   router.post(
     '/sessions/revoke-user/:username',
     securityMiddleware.validateCsrfToken,
-    adminSessionsController.revokeUserSessions
+    asyncHandler(
+      'admin.sessions.revoke_user',
+      adminSessionsController.revokeUserSessions
+    )
   );
   router.post(
     '/sessions/:id/revoke',
     securityMiddleware.validateCsrfToken,
-    adminSessionsController.revokeSession
+    asyncHandler('admin.sessions.revoke', adminSessionsController.revokeSession)
   );
 
   // User Grants Management
   router.get(
     '/user-grants',
     localsMiddleware.setActivePage('user-grants'),
-    adminGrantValidators,
-    handleValidationErrorsForViews,
-    adminUserGrantsController.list
+    validateGrantList,
+    asyncHandler('admin.user_grants.list', adminUserGrantsController.list)
   );
   router.get(
     '/user-grants/stats',
@@ -328,7 +380,7 @@ export const adminRoutes = (
   router.get(
     '/user-grants/:id',
     localsMiddleware.setActivePage('user-grants'),
-    adminUserGrantsController.show
+    asyncHandler('admin.user_grants.show', adminUserGrantsController.show)
   );
   router.post(
     '/user-grants/:id/revoke',
@@ -721,15 +773,11 @@ export const adminRoutes = (
     adminSettingsController.applyImport
   );
 
-  // ── Tenant Configuration (per-tenant overrides) ────────────────────────────
-
   router.get(
     '/configuration',
     localsMiddleware.setActivePage('configuration'),
     adminConfigurationController.overview
   );
-
-  // ── Specific routes MUST come BEFORE the parameterized /:section route ────
 
   // Branding: logo upload/remove routes
   router.post(
@@ -845,8 +893,6 @@ export const adminRoutes = (
     configUpdateLimiter,
     adminConfigurationController.resetSection
   );
-
-  // ── Parameterized routes (MUST come AFTER specific routes) ────────────────
 
   router.get('/configuration/:section', adminConfigurationController.section);
   router.post(

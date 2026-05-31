@@ -26,8 +26,6 @@ import {
   type ProviderFactory,
 } from '../../../src/multi-tenancy/tenant-provider-registry.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),
@@ -180,8 +178,6 @@ function createMockProviderFactory(): ProviderFactory {
       return { issuer, proxy: false } as unknown as Provider;
     });
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('TenantProviderRegistry', () => {
   let logger: ILogger;

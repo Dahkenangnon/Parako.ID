@@ -1,5 +1,4 @@
 import express, { type Request, type Response, Router } from 'express';
-import { param, query } from 'express-validator';
 import { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js';
 import { IAuthController } from '../di/interfaces/auth-controller.interface.js';
 import { IConfigManager } from '../di/interfaces/config-manager.interface.js';
@@ -7,6 +6,7 @@ import { ISecurityMiddleware } from '../di/interfaces/security-middleware.interf
 import { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import type { ISocialTier1CompletionService } from '../services/social-tier1-completion.service.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
+import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { type SocialProvider } from '../types/social-integration.js';
 import type { OIDCSocialContext } from '../types/session-data.js';
 // Centralized rate limiters with dev/prod awareness
@@ -22,22 +22,17 @@ import {
 } from '../utils/rate-limiter.js';
 import { rootLogger } from '../observability/logs/logger.js';
 import {
-  authQueryValidators,
-  logoutValidators,
-  oauthCallbackValidators,
-  handleValidationErrors,
-} from '../middlewares/validation.middleware.js';
-
-/** Valid social providers for route param validation. */
-const VALID_SOCIAL_PROVIDERS = [
-  'google',
-  'github',
-  'facebook',
-  'linkedin',
-  'microsoft',
-  'apple',
-  'twitter',
-];
+  validateHtmlParams,
+  validateHtmlQuery,
+} from '../middlewares/validate-html.middleware.js';
+import { authQueryParamsSchema } from '../validators/auth/query-params.js';
+import { logoutQuerySchema } from '../validators/auth/logout.js';
+import { oauthCallbackQuerySchema } from '../validators/auth/oauth-callback.js';
+import {
+  socialProviderParamSchema,
+  socialRefQuerySchema,
+} from '../validators/auth/social.js';
+import { asyncHandler } from '../middlewares/async-handler.js';
 
 const router = express.Router();
 
@@ -51,16 +46,32 @@ export const authRoutes = (
   uIMiddleware: IUIMiddleware,
   authController: IAuthController,
   tier1CompletionService: ISocialTier1CompletionService,
-  sessionManager: ISessionManager
+  sessionManager: ISessionManager,
+  logger: ILogger
 ): Router => {
   const config = configManager.getConfig();
   const routes = config.deployment.routes.auth_routes;
+  const htmlDeps = { sessionManager, logger };
+  const validateAuthQuery = validateHtmlQuery(authQueryParamsSchema, htmlDeps);
+  const validateLogoutQuery = validateHtmlQuery(logoutQuerySchema, htmlDeps);
+  const validateOauthCallbackQuery = validateHtmlQuery(
+    oauthCallbackQuerySchema,
+    htmlDeps
+  );
+  const validateSocialProviderParams = validateHtmlParams(
+    socialProviderParamSchema,
+    htmlDeps,
+    '/auth/login'
+  );
+  const validateSocialRefQuery = validateHtmlQuery(
+    socialRefQuerySchema,
+    htmlDeps
+  );
 
   router.get(
     routes.login,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.login
+    validateAuthQuery,
+    asyncHandler('auth.login.form', authController.login)
   );
   router.post(
     routes.login,
@@ -68,187 +79,190 @@ export const authRoutes = (
     loginBruteForceByIp,
     loginBruteForceByIdentifierAndIp,
     securityMiddleware.validateCsrfToken,
-    authController.processLogin
+    asyncHandler('auth.login.process', authController.processLogin)
   );
   router.get(
     routes.register,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.register
+    validateAuthQuery,
+    asyncHandler('auth.register.form', authController.register)
   );
   router.post(
     routes.register,
     registerLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRegister
+    asyncHandler('auth.register.process', authController.processRegister)
   );
   router.get(
     routes.forgot_password,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.forgotPassword
+    validateAuthQuery,
+    asyncHandler('auth.forgot_password.form', authController.forgotPassword)
   );
   router.post(
     routes.forgot_password,
     forgotPasswordLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processForgotPassword
+    asyncHandler(
+      'auth.forgot_password.process',
+      authController.processForgotPassword
+    )
   );
   router.get(
     routes.reset_password,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.resetPassword
+    validateAuthQuery,
+    asyncHandler('auth.reset_password.form', authController.resetPassword)
   );
   router.post(
     routes.reset_password,
     securityMiddleware.validateCsrfToken,
-    authController.processResetPassword
+    asyncHandler(
+      'auth.reset_password.process',
+      authController.processResetPassword
+    )
   );
 
   router.get(
     routes.email_verification,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.emailVerification
+    validateAuthQuery,
+    asyncHandler(
+      'auth.email_verification.form',
+      authController.emailVerification
+    )
   );
   router.post(
     `${routes.email_verification}/request`,
     securityMiddleware.validateCsrfToken,
-    authController.requestEmailVerification
+    asyncHandler(
+      'auth.email_verification.request',
+      authController.requestEmailVerification
+    )
   );
   router.post(
     `${routes.email_verification}/resend`,
     securityMiddleware.requireAuth,
     securityMiddleware.validateCsrfToken,
-    authController.resendEmailVerification
+    asyncHandler(
+      'auth.email_verification.resend',
+      authController.resendEmailVerification
+    )
   );
   router.get(
     routes.verify_email,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.verifyEmail
+    validateAuthQuery,
+    asyncHandler('auth.verify_email', authController.verifyEmail)
   );
   router.get(
     routes.email_verification_success,
-    authController.emailVerificationSuccess
+    asyncHandler(
+      'auth.email_verification.success',
+      authController.emailVerificationSuccess
+    )
   );
 
   // Multi-factor authentication routes
   router.get(
     routes.account_select,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.accountSelect
+    validateAuthQuery,
+    asyncHandler('auth.account_select.form', authController.accountSelect)
   );
   router.get(
     routes.continue,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.continueWithAccount
+    validateAuthQuery,
+    asyncHandler(
+      'auth.continue_with_account',
+      authController.continueWithAccount
+    )
   );
   router.get(
     routes.multi_factor,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.multiFactor
+    validateAuthQuery,
+    asyncHandler('auth.multi_factor', authController.multiFactor)
   );
   router.get(
     routes.mfa_verify,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.mfaVerify
+    validateAuthQuery,
+    asyncHandler('auth.mfa_verify.form', authController.mfaVerify)
   );
   router.post(
     routes.mfa_verify,
     mfaVerifyLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processMfaVerify
+    asyncHandler('auth.mfa_verify.process', authController.processMfaVerify)
   );
   router.post(
     routes.mfa_resend,
     securityMiddleware.validateCsrfToken,
-    authController.resendMfaCode
+    asyncHandler('auth.mfa.resend_code', authController.resendMfaCode)
   );
 
   // MFA method selection (for multi-method MFA)
   router.get(
     routes.mfa_select,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.mfaSelect
+    validateAuthQuery,
+    asyncHandler('auth.mfa_select.form', authController.mfaSelect)
   );
   router.post(
     routes.mfa_select,
     securityMiddleware.validateCsrfToken,
-    authController.processMfaSelect
+    asyncHandler('auth.mfa_select.process', authController.processMfaSelect)
   );
 
   // WebAuthn MFA verification
   router.get(
     routes.mfa_webauthn,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.mfaWebAuthn
+    validateAuthQuery,
+    asyncHandler('auth.mfa_webauthn.form', authController.mfaWebAuthn)
   );
   router.post(
     `${routes.mfa_webauthn}/options`,
     securityMiddleware.validateCsrfToken,
-    authController.mfaWebAuthnOptions
+    asyncHandler('auth.mfa_webauthn.options', authController.mfaWebAuthnOptions)
   );
   router.post(
     `${routes.mfa_webauthn}/verify`,
     mfaVerifyLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processMfaWebAuthn
+    asyncHandler('auth.mfa_webauthn.verify', authController.processMfaWebAuthn)
   );
 
   router.get(
     routes.logout,
-    logoutValidators,
-    handleValidationErrors,
-    authController.logout
+    validateLogoutQuery,
+    asyncHandler('auth.logout.form', authController.logout)
   );
   router.post(
     routes.logout,
     securityMiddleware.validateCsrfToken,
-    authController.logout
+    asyncHandler('auth.logout.process', authController.logout)
   );
 
   // Social login/register initiation - Rate limited to prevent abuse
   router.get(
     '/social/:provider/login',
     socialLoginLimiter,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.socialLogin
+    validateAuthQuery,
+    asyncHandler('auth.social.login', authController.socialLogin)
   );
   router.get(
     '/social/:provider/register',
     socialLoginLimiter,
-    authQueryValidators,
-    handleValidationErrors,
-    authController.socialRegister
+    validateAuthQuery,
+    asyncHandler('auth.social.register', authController.socialRegister)
   );
 
   // Social callback (handles both login and register) - Rate limited
   router.get(
     '/social/:provider/callback',
     socialLoginLimiter,
-    oauthCallbackValidators,
-    handleValidationErrors,
-    authController.socialCallback
+    validateOauthCallbackQuery,
+    asyncHandler('auth.social.callback', authController.socialCallback)
   );
 
   // Tier 1 social completion — receives ref from _ops gateway redirect
   router.get(
     '/social/:provider/complete',
     socialLoginLimiter,
-    param('provider')
-      .isIn(VALID_SOCIAL_PROVIDERS)
-      .withMessage('Unknown provider'),
-    query('ref').isUUID(4).withMessage('Invalid ref parameter'),
-    handleValidationErrors,
+    validateSocialProviderParams,
+    validateSocialRefQuery,
     async (req: Request, res: Response) => {
       try {
         const provider = req.params.provider as SocialProvider;
@@ -307,84 +321,147 @@ export const authRoutes = (
   );
 
   // Social registration completion routes
-  router.get(routes.social_password_setup, authController.socialPasswordSetup);
+  router.get(
+    routes.social_password_setup,
+    asyncHandler(
+      'auth.social.password_setup.form',
+      authController.socialPasswordSetup
+    )
+  );
   router.post(
     routes.social_password_setup,
     securityMiddleware.validateCsrfToken,
-    authController.processSocialPasswordSetup
+    asyncHandler(
+      'auth.social.password_setup.process',
+      authController.processSocialPasswordSetup
+    )
   );
-  router.get(routes.social_contact_info, authController.socialContactInfo);
+  router.get(
+    routes.social_contact_info,
+    asyncHandler(
+      'auth.social.contact_info.form',
+      authController.socialContactInfo
+    )
+  );
   router.post(
     routes.social_contact_info,
     securityMiddleware.validateCsrfToken,
-    authController.processSocialContactInfo
+    asyncHandler(
+      'auth.social.contact_info.process',
+      authController.processSocialContactInfo
+    )
   );
 
-  router.get(routes.account_recovery, authController.accountRecovery);
+  router.get(
+    routes.account_recovery,
+    asyncHandler('auth.recovery.entry.form', authController.accountRecovery)
+  );
   router.post(
     routes.account_recovery,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processAccountRecovery
+    asyncHandler(
+      'auth.recovery.entry.process',
+      authController.processAccountRecovery
+    )
   );
 
   router.get(
     routes.recovery_method_select,
-    authController.recoveryMethodSelect
+    asyncHandler(
+      'auth.recovery.method_select.form',
+      authController.recoveryMethodSelect
+    )
   );
   router.post(
     routes.recovery_method_select,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoveryMethodSelect
+    asyncHandler(
+      'auth.recovery.method_select.process',
+      authController.processRecoveryMethodSelect
+    )
   );
 
-  router.get(routes.recovery_backup_codes, authController.recoveryBackupCodes);
+  router.get(
+    routes.recovery_backup_codes,
+    asyncHandler(
+      'auth.recovery.backup_codes.form',
+      authController.recoveryBackupCodes
+    )
+  );
   router.post(
     routes.recovery_backup_codes,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoveryBackupCodes
+    asyncHandler(
+      'auth.recovery.backup_codes.process',
+      authController.processRecoveryBackupCodes
+    )
   );
 
   router.get(
     routes.recovery_secondary_email,
-    authController.recoverySecondaryEmail
+    asyncHandler(
+      'auth.recovery.secondary_email.form',
+      authController.recoverySecondaryEmail
+    )
   );
   router.post(
     routes.recovery_secondary_email,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoverySecondaryEmail
+    asyncHandler(
+      'auth.recovery.secondary_email.process',
+      authController.processRecoverySecondaryEmail
+    )
   );
 
   // Security questions recovery
   router.get(
     routes.recovery_security_questions,
-    authController.recoverySecurityQuestions
+    asyncHandler(
+      'auth.recovery.security_questions.form',
+      authController.recoverySecurityQuestions
+    )
   );
   router.post(
     routes.recovery_security_questions,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoverySecurityQuestions
+    asyncHandler(
+      'auth.recovery.security_questions.process',
+      authController.processRecoverySecurityQuestions
+    )
   );
 
   // SMS recovery
-  router.get(routes.recovery_sms, authController.recoverySms);
+  router.get(
+    routes.recovery_sms,
+    asyncHandler('auth.recovery.sms.form', authController.recoverySms)
+  );
   router.post(
     routes.recovery_sms,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoverySms
+    asyncHandler('auth.recovery.sms.process', authController.processRecoverySms)
   );
 
-  router.get(routes.recovery_verify_code, authController.recoveryVerifyCode);
+  router.get(
+    routes.recovery_verify_code,
+    asyncHandler(
+      'auth.recovery.verify_code.form',
+      authController.recoveryVerifyCode
+    )
+  );
   router.post(
     routes.recovery_verify_code,
     recoveryLimiter,
     securityMiddleware.validateCsrfToken,
-    authController.processRecoveryVerifyCode
+    asyncHandler(
+      'auth.recovery.verify_code.process',
+      authController.processRecoveryVerifyCode
+    )
   );
 
   // Theme & Locale routes

@@ -514,8 +514,6 @@ export class AdminDataTransferController implements IAdminDataTransferController
     }
   };
 
-  // ── Private helpers ──────────────────────────────────────────────────────
-
   private getEntityConfigDeps(): EntityConfigDeps {
     return {
       userService: this.userService,

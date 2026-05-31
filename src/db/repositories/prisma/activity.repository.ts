@@ -13,8 +13,6 @@ import type {
 } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
 
-// ─── Include clause ────────────────────────────────────────────────────────────
-
 const ACTIVITY_INCLUDE = {
   actor: true,
   target: true,
@@ -24,8 +22,6 @@ const ACTIVITY_INCLUDE = {
 type ActivityFull = Prisma.ActivityGetPayload<{
   include: typeof ACTIVITY_INCLUDE;
 }>;
-
-// ─── Mapping ──────────────────────────────────────────────────────────────────
 
 function toIActivity(row: ActivityFull): IActivity {
   return {
@@ -141,8 +137,6 @@ function toIActivity(row: ActivityFull): IActivity {
     created_at: row.created_at.toISOString(),
   };
 }
-
-// ─── Repository ───────────────────────────────────────────────────────────────
 
 @injectable()
 export class PrismaActivityRepository
@@ -305,8 +299,6 @@ export class PrismaActivityRepository
   async delete(id: string): Promise<void> {
     await this.prisma.activity.delete({ where: { id } });
   }
-
-  // ── Unsupported base methods (activity is append-only) ───────────────────
 
   async findOne(filter: Record<string, unknown>): Promise<IActivity | null> {
     const row = await this.prisma.activity.findFirst({

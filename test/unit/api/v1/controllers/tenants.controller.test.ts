@@ -5,9 +5,7 @@ import { TenantsController } from '../../../../../src/api/v1/controllers/tenants
 import type { TenantsControllerDeps } from '../../../../../src/api/v1/controllers/tenants.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(
   overrides?: Partial<TenantsControllerDeps>
@@ -53,9 +51,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleTenant = {
   _id: '507f1f77bcf86cd799439011',
@@ -73,9 +69,7 @@ const sampleTenant2 = {
   status: 'active',
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/TenantsController', () => {
   let deps: TenantsControllerDeps;
@@ -86,9 +80,7 @@ describe('api/v1/controllers/TenantsController', () => {
     controller = new TenantsController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return a paginated list of tenants', async () => {
       const tenants = [{ ...sampleTenant }, { ...sampleTenant2 }];
@@ -153,9 +145,7 @@ describe('api/v1/controllers/TenantsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // create
-  // -----------------------------------------------------------------------
   describe('create()', () => {
     it('should validate and create a tenant, returning 201', async () => {
       const created = { ...sampleTenant };
@@ -263,9 +253,7 @@ describe('api/v1/controllers/TenantsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a tenant by slug', async () => {
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
@@ -307,9 +295,7 @@ describe('api/v1/controllers/TenantsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // getConfig
-  // -----------------------------------------------------------------------
   describe('getConfig()', () => {
     it('should return configuration overrides for a tenant', async () => {
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
@@ -401,9 +387,7 @@ describe('api/v1/controllers/TenantsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // updateConfig
-  // -----------------------------------------------------------------------
   describe('updateConfig()', () => {
     it('should validate and save configuration for a section', async () => {
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
@@ -529,9 +513,7 @@ describe('api/v1/controllers/TenantsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // DB abstraction
-  // -----------------------------------------------------------------------
   describe('DB abstraction', () => {
     describe('getConfig — tenant ID resolution', () => {
       it('should prefer tenant.id over tenant._id', async () => {

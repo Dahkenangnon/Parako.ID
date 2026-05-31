@@ -1,65 +1,96 @@
 import { Router } from 'express';
 import type { IWebAuthnController } from '../di/interfaces/webauthn-controller.interface.js';
 import type { ISecurityMiddleware } from '../di/interfaces/security-middleware.interface.js';
+import type { ILogger } from '../di/interfaces/logger.interface.js';
+import { asyncHandler } from '../middlewares/async-handler.js';
+import {
+  validateLegacyJsonBody,
+  validateLegacyJsonParams,
+} from '../middlewares/validate-json-legacy.middleware.js';
+import { webauthnVerifyRegistrationBodySchema } from '../validators/webauthn/registration.js';
+import {
+  webauthnRenameCredentialBodySchema,
+  webauthnRenameCredentialParamsSchema,
+} from '../validators/webauthn/rename.js';
 
 /**
  * Register WebAuthn API routes with DI injectable services
  */
 export const webauthnRoutes = (
   securityMiddleware: ISecurityMiddleware,
-  webauthnController: IWebAuthnController
+  webauthnController: IWebAuthnController,
+  logger: ILogger
 ): Router => {
   const router = Router();
+  const jsonDeps = { logger };
 
   // Authentication flow (for MFA during login)
   // These routes do NOT require authentication since user is in
   // the process of authenticating via MFA
 
-  // POST /api/webauthn/authenticate/options - Get authentication options for MFA
   router.post(
     '/authenticate/options',
     securityMiddleware.validateCsrfToken,
-    webauthnController.getAuthenticationOptions
+    asyncHandler(
+      'webauthn.authenticate.options',
+      webauthnController.getAuthenticationOptions
+    )
   );
 
-  // POST /api/webauthn/authenticate/verify - Verify authentication for MFA
   router.post(
     '/authenticate/verify',
     securityMiddleware.validateCsrfToken,
-    webauthnController.verifyAuthentication
+    asyncHandler(
+      'webauthn.authenticate.verify',
+      webauthnController.verifyAuthentication
+    )
   );
 
-  // Registration and credential management routes
-  // These routes require full authentication
-
-  // All subsequent routes require authentication
+  // Registration and credential management — require authentication + CSRF
   router.use(securityMiddleware.requireAuth);
-
-  // All subsequent routes require CSRF token validation
   router.use(securityMiddleware.validateCsrfToken);
 
-  // POST /api/webauthn/register/options - Get registration options
-  router.post('/register/options', webauthnController.getRegistrationOptions);
-
-  // POST /api/webauthn/register/verify - Verify registration and store credential
   router.post(
-    '/register/verify',
-    webauthnController.registrationVerifyValidation,
-    webauthnController.verifyRegistration
+    '/register/options',
+    asyncHandler(
+      'webauthn.register.options',
+      webauthnController.getRegistrationOptions
+    )
   );
 
-  router.get('/credentials', webauthnController.listCredentials);
+  router.post(
+    '/register/verify',
+    validateLegacyJsonBody(webauthnVerifyRegistrationBodySchema, jsonDeps),
+    asyncHandler(
+      'webauthn.register.verify',
+      webauthnController.verifyRegistration
+    )
+  );
+
+  router.get(
+    '/credentials',
+    asyncHandler(
+      'webauthn.credentials.list',
+      webauthnController.listCredentials
+    )
+  );
 
   router.delete(
     '/credentials/:credentialId',
-    webauthnController.removeCredential
+    asyncHandler(
+      'webauthn.credentials.remove',
+      webauthnController.removeCredential
+    )
   );
 
-  // PATCH /api/webauthn/credentials/:credentialId - Rename a passkey
   router.patch(
     '/credentials/:credentialId',
-    webauthnController.renameCredentialValidation,
-    webauthnController.renameCredential
+    validateLegacyJsonParams(webauthnRenameCredentialParamsSchema, jsonDeps),
+    validateLegacyJsonBody(webauthnRenameCredentialBodySchema, jsonDeps),
+    asyncHandler(
+      'webauthn.credentials.rename',
+      webauthnController.renameCredential
+    )
   );
 
   return router;

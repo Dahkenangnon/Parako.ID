@@ -6,6 +6,7 @@ import { ISecurityMiddleware } from '../di/interfaces/security-middleware.interf
 import { ILocalsMiddleware } from '../di/interfaces/locals-middleware.interface.js';
 import { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js';
 import { changePasswordLimiter } from '../utils/rate-limiter.js';
+import { asyncHandler } from '../middlewares/async-handler.js';
 
 /**
  * Register account routes with the DI injectable services
@@ -26,246 +27,270 @@ export const accountRoutes = (
 
   router.use(localsMiddleware.setAccountLocals);
 
-  // Account root — profile/my-account page
   router.get(
     routes.dashboard,
     localsMiddleware.setActivePage('my-account'),
-
-    accountController.myAccount
+    asyncHandler('account.dashboard', accountController.myAccount)
   );
 
-  // Settings redirect → first tab
-  router.get(routes.settings, accountController.settings);
+  router.get(
+    routes.settings,
+    asyncHandler('account.settings.redirect', accountController.settings)
+  );
 
   router.get(
     routes.settings_profile,
     localsMiddleware.setActivePage('settings-profile'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsProfile
+    asyncHandler('account.settings.profile', accountController.settingsProfile)
   );
   router.get(
     routes.settings_preferences,
     localsMiddleware.setActivePage('settings-preferences'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsPreferences
+    asyncHandler(
+      'account.settings.preferences',
+      accountController.settingsPreferences
+    )
   );
   router.get(
     routes.settings_notifications,
     localsMiddleware.setActivePage('settings-notifications'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsNotifications
+    asyncHandler(
+      'account.settings.notifications',
+      accountController.settingsNotifications
+    )
   );
   router.get(
     routes.settings_security,
     localsMiddleware.setActivePage('settings-security'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsSecurity
+    asyncHandler(
+      'account.settings.security',
+      accountController.settingsSecurity
+    )
   );
   router.get(
     routes.settings_recovery,
     localsMiddleware.setActivePage('settings-recovery'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsRecovery
+    asyncHandler(
+      'account.settings.recovery',
+      accountController.settingsRecovery
+    )
   );
   router.get(
     routes.settings_social,
     localsMiddleware.setActivePage('settings-social'),
     securityMiddleware.validateCsrfToken,
-    accountController.settingsSocial
+    asyncHandler('account.settings.social', accountController.settingsSocial)
   );
 
   router.get(
     routes.apps,
     localsMiddleware.setActivePage('apps'),
-
     securityMiddleware.validateCsrfToken,
-    accountController.apps
+    asyncHandler('account.apps.list', accountController.apps)
   );
 
   router.get(
     routes.sessions,
     localsMiddleware.setActivePage('sessions'),
-
     securityMiddleware.validateCsrfToken,
-    accountController.sessions
+    asyncHandler('account.sessions.list', accountController.sessions)
   );
 
   router.post(
     routes.update_profile,
     avatarUpload.avatarUpload.single('avatar'),
-
     securityMiddleware.validateCsrfToken,
-    accountController.updateProfile
+    asyncHandler('account.profile.update', accountController.updateProfile)
   );
 
   router.post(
     routes.change_password,
     changePasswordLimiter,
     securityMiddleware.validateCsrfToken,
-    accountController.changePassword
+    asyncHandler('account.password.change', accountController.changePassword)
   );
   router.delete(
     routes.remove_avatar,
-
     securityMiddleware.validateCsrfToken,
-    accountController.removeAvatar
+    asyncHandler('account.avatar.remove', accountController.removeAvatar)
   );
 
   // Multi-factor authentication
   router.post(
     routes.enable_mfa,
-
     securityMiddleware.validateCsrfToken,
-    accountController.enableMfa
+    asyncHandler('account.mfa.enable', accountController.enableMfa)
   );
   router.post(
     routes.disable_mfa,
-
     securityMiddleware.validateCsrfToken,
-    accountController.disableMfa
+    asyncHandler('account.mfa.disable', accountController.disableMfa)
   );
   router.get(
     routes.setup_mfa,
-
     securityMiddleware.validateCsrfToken,
-    accountController.setupMfaPage
+    asyncHandler('account.mfa.setup.form', accountController.setupMfaPage)
   );
   router.post(
     routes.setup_mfa,
-
     securityMiddleware.validateCsrfToken,
-    accountController.verifySetupMfa
+    asyncHandler('account.mfa.setup.verify', accountController.verifySetupMfa)
   );
 
   // WebAuthn/Passkeys management
   router.get(
     routes.passkeys,
     localsMiddleware.setActivePage('passkeys'),
-
     securityMiddleware.validateCsrfToken,
-    accountController.passkeysPage
+    asyncHandler('account.passkeys.list', accountController.passkeysPage)
   );
   router.get(
     routes.setup_webauthn,
-
     securityMiddleware.validateCsrfToken,
-    accountController.setupWebAuthnPage
+    asyncHandler('account.passkeys.setup', accountController.setupWebAuthnPage)
   );
 
   router.post(
     routes.switch_account,
-
     securityMiddleware.validateCsrfToken,
-    accountController.switchAccount
+    asyncHandler('account.switch', accountController.switchAccount)
   );
   router.post(
     routes.add_account,
-
     securityMiddleware.validateCsrfToken,
-    accountController.addAccount
+    asyncHandler('account.add', accountController.addAccount)
   );
   router.delete(
     routes.remove_account,
-
     securityMiddleware.validateCsrfToken,
-    accountController.removeAccount
+    asyncHandler('account.remove', accountController.removeAccount)
   );
   router.get(
     routes.account_switcher_data,
-    accountController.getAccountSwitcherData
+    asyncHandler(
+      'account.switcher_data',
+      accountController.getAccountSwitcherData
+    )
   );
 
   router.post(
     routes.revoke_app,
-
     securityMiddleware.validateCsrfToken,
-    accountController.revokeApp
+    asyncHandler('account.apps.revoke', accountController.revokeApp)
   );
   router.post(
     routes.revoke_all_apps,
-
     securityMiddleware.validateCsrfToken,
-    accountController.revokeAllApps
+    asyncHandler('account.apps.revoke_all', accountController.revokeAllApps)
   );
 
   router.post(
     routes.logout_session,
-
     securityMiddleware.validateCsrfToken,
-    accountController.logoutSession
+    asyncHandler('account.sessions.logout_one', accountController.logoutSession)
   );
   router.post(
     routes.logout_all_other_sessions,
-
     securityMiddleware.validateCsrfToken,
-    accountController.logoutAllOtherSessions
+    asyncHandler(
+      'account.sessions.logout_all',
+      accountController.logoutAllOtherSessions
+    )
   );
 
   router.get(
     '/social/:provider/link',
     securityMiddleware.validateCsrfToken,
-    accountController.linkSocialAccount
+    asyncHandler('account.social.link', accountController.linkSocialAccount)
   );
   router.post(
     '/social/:provider/unlink',
     securityMiddleware.validateCsrfToken,
-    accountController.unlinkSocialAccount
+    asyncHandler('account.social.unlink', accountController.unlinkSocialAccount)
   );
 
   router.post(
     routes.resend_email_verification,
     securityMiddleware.validateCsrfToken,
-    accountController.resendEmailVerification
+    asyncHandler(
+      'account.email.resend_verification',
+      accountController.resendEmailVerification
+    )
   );
 
   router.post(
     routes.enable_recovery,
     securityMiddleware.validateCsrfToken,
-    accountController.enableRecovery
+    asyncHandler('account.recovery.enable', accountController.enableRecovery)
   );
   router.post(
     routes.disable_recovery,
     securityMiddleware.validateCsrfToken,
-    accountController.disableRecovery
+    asyncHandler('account.recovery.disable', accountController.disableRecovery)
   );
   router.get(
     routes.recovery_codes,
     securityMiddleware.validateCsrfToken,
-    accountController.showRecoveryCodes
+    asyncHandler(
+      'account.recovery.codes.show',
+      accountController.showRecoveryCodes
+    )
   );
   router.get(
     routes.verify_recovery_email,
     securityMiddleware.validateCsrfToken,
-    accountController.verifyRecoveryEmail
+    asyncHandler(
+      'account.recovery.email.verify',
+      accountController.verifyRecoveryEmail
+    )
   );
   router.post(
     routes.regenerate_backup_codes,
     securityMiddleware.validateCsrfToken,
-    accountController.regenerateBackupCodes
+    asyncHandler(
+      'account.recovery.codes.regenerate',
+      accountController.regenerateBackupCodes
+    )
   );
   router.get(
     routes.recovery_setup,
     securityMiddleware.validateCsrfToken,
-    accountController.showRecoverySetup
+    asyncHandler(
+      'account.recovery.setup.show',
+      accountController.showRecoverySetup
+    )
   );
 
   // Security questions setup
   router.get(
     routes.security_questions_setup,
     securityMiddleware.validateCsrfToken,
-    accountController.showSecurityQuestionsSetup
+    asyncHandler(
+      'account.recovery.security_questions.show',
+      accountController.showSecurityQuestionsSetup
+    )
   );
   router.post(
     routes.security_questions_setup,
     securityMiddleware.validateCsrfToken,
-    accountController.saveSecurityQuestions
+    asyncHandler(
+      'account.recovery.security_questions.save',
+      accountController.saveSecurityQuestions
+    )
   );
 
-  // Notification preferences management
   router.post(
     routes.update_notification_preferences,
     securityMiddleware.validateCsrfToken,
-    accountController.updateNotificationPreferences
+    asyncHandler(
+      'account.notifications.update_preferences',
+      accountController.updateNotificationPreferences
+    )
   );
 
   return router;

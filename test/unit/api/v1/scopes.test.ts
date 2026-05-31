@@ -10,9 +10,7 @@ import {
 } from '../../../../src/api/v1/scopes.js';
 
 describe('api/v1/scopes', () => {
-  // -----------------------------------------------------------------------
   // SCOPES constant
-  // -----------------------------------------------------------------------
   describe('SCOPES', () => {
     it('should contain all standard client scopes', () => {
       expect(SCOPES.CLIENTS_READ).toBe('parako:clients:read');
@@ -83,9 +81,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // hasScope
-  // -----------------------------------------------------------------------
   describe('hasScope', () => {
     it('should return true when the required scope is present', () => {
       const granted = 'parako:clients:read parako:users:read parako:stats:read';
@@ -116,9 +112,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // hasAnyScope
-  // -----------------------------------------------------------------------
   describe('hasAnyScope', () => {
     const granted = 'parako:clients:read parako:users:write parako:stats:read';
 
@@ -150,9 +144,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // classifyScope
-  // -----------------------------------------------------------------------
   describe('classifyScope', () => {
     it('should classify :read scopes as read', () => {
       expect(classifyScope('parako:clients:read')).toBe('read');
@@ -207,9 +199,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // SCOPE_TTL_MAP
-  // -----------------------------------------------------------------------
   describe('SCOPE_TTL_MAP', () => {
     it('should map read to 3600 seconds (1 hour)', () => {
       expect(SCOPE_TTL_MAP.read).toBe(3600);
@@ -228,9 +218,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // isPlatformOnlyScope
-  // -----------------------------------------------------------------------
   describe('isPlatformOnlyScope', () => {
     it('should return true for all platform-only scopes', () => {
       expect(isPlatformOnlyScope('parako:tenants:read')).toBe(true);
@@ -262,9 +250,7 @@ describe('api/v1/scopes', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // PLATFORM_ONLY_SCOPES set
-  // -----------------------------------------------------------------------
   describe('PLATFORM_ONLY_SCOPES', () => {
     it('should contain exactly 7 platform-only scopes', () => {
       expect(PLATFORM_ONLY_SCOPES.size).toBe(7);

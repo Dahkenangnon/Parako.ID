@@ -51,7 +51,7 @@ function buildBootstrapConfig(
           ? {
               path: provider.getConfigValue(
                 'storage.sqlite.path',
-                './data/parako.db'
+                './runtime/data/parako.db'
               ),
             }
           : undefined,

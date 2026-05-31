@@ -13,8 +13,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { OidcManager } from '../../../src/oidc/index.js';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockProvider(name = 'default') {
   const callbackHandler = vi.fn().mockResolvedValue(undefined);
   return {
@@ -74,8 +72,6 @@ function createMockReq(
     baseUrl: '',
   } as any;
 }
-
-// ─── Test Suite ──────────────────────────────────────────────────────────────
 
 describe('OidcManager – Dynamic Callback Dispatch', () => {
   let mockProvider: ReturnType<typeof createMockProvider>;
@@ -155,8 +151,6 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       | ((req: Request, res: Response, next: NextFunction) => Promise<void>)
       | undefined;
   }
-
-  // ─── Single-tenant mode ──────────────────────────────────────────────
 
   describe('single-tenant mode (multi_tenancy.enabled = false)', () => {
     it('mounts dynamic middleware (no static path prefix)', async () => {
@@ -271,8 +265,6 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       expect(newProvider._callbackHandler).toHaveBeenCalled();
     });
   });
-
-  // ─── Multi-tenant mode ───────────────────────────────────────────────
 
   describe('multi-tenant mode (multi_tenancy.enabled = true)', () => {
     it('mounts dynamic dispatcher without static path prefix', async () => {

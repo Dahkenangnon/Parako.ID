@@ -7,25 +7,19 @@ import {
 } from '../../../../../src/api/v1/middleware/jwt-auth.middleware.js';
 import { ERROR_TYPES } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Test constants
-// ---------------------------------------------------------------------------
 
 const TEST_ISSUER = 'https://test.parako.id/oidc/v1';
 const PLATFORM_ISSUER = 'https://test.parako.id/_platforms';
 const EXPECTED_AUDIENCE = 'urn:parako:api:v1';
 const TEST_TENANT = 'test-tenant';
 
-// ---------------------------------------------------------------------------
 // Test key material (generated once per test suite, shared across tests)
-// ---------------------------------------------------------------------------
 
 let rsaPrivateKey: jose.CryptoKey;
 let rsaPublicJWK: jose.JWK;
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockResponse() {
   const res: Record<string, unknown> = {
@@ -94,9 +88,7 @@ async function signToken(
   return builder.sign(privateKey);
 }
 
-// ---------------------------------------------------------------------------
 // Suite setup
-// ---------------------------------------------------------------------------
 
 beforeEach(async () => {
   // Generate a fresh RSA keypair for each test run if not yet created.
@@ -113,14 +105,10 @@ beforeEach(async () => {
   clearJwksCache();
 });
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/middleware/jwt-auth', () => {
-  // -----------------------------------------------------------------------
   // 1. Valid JWT
-  // -----------------------------------------------------------------------
   describe('valid token', () => {
     it('should set req.apiAuth with correct fields and call next()', async () => {
       const deps = createDeps();
@@ -152,9 +140,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 2. Missing Authorization header
-  // -----------------------------------------------------------------------
   describe('missing Authorization header', () => {
     it('should return 401 with unauthorized error', async () => {
       const deps = createDeps();
@@ -177,9 +163,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 3. Malformed Authorization header
-  // -----------------------------------------------------------------------
   describe('malformed Authorization header', () => {
     it('should return 401 when no Bearer prefix', async () => {
       const deps = createDeps();
@@ -216,9 +200,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 4. Expired token
-  // -----------------------------------------------------------------------
   describe('expired token', () => {
     it('should return 401 with token-expired error', async () => {
       const deps = createDeps();
@@ -253,9 +235,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 5. Wrong audience
-  // -----------------------------------------------------------------------
   describe('wrong audience', () => {
     it('should return 401 with token-invalid error', async () => {
       const deps = createDeps();
@@ -284,9 +264,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 6. Wrong issuer
-  // -----------------------------------------------------------------------
   describe('wrong issuer', () => {
     it('should return 401 with token-invalid error', async () => {
       const deps = createDeps();
@@ -315,9 +293,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 7. HS256 algorithm rejection
-  // -----------------------------------------------------------------------
   describe('HS256 algorithm', () => {
     it('should return 401 — not in algorithm allowlist', async () => {
       const deps = createDeps();
@@ -356,9 +332,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 8. "none" algorithm rejection
-  // -----------------------------------------------------------------------
   describe('none algorithm', () => {
     it('should return 401 — unsigned tokens are rejected', async () => {
       const deps = createDeps();
@@ -398,9 +372,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 9. Platform scope with non-platform issuer
-  // -----------------------------------------------------------------------
   describe('platform scope with non-platform issuer', () => {
     it('should return 403 with forbidden error', async () => {
       const deps = createDeps();
@@ -430,9 +402,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 10. Platform scope with platform issuer
-  // -----------------------------------------------------------------------
   describe('platform scope with platform issuer', () => {
     it('should succeed when issuer contains _platforms', async () => {
       const deps = createDeps({
@@ -467,9 +437,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 11. JWKS cache hit
-  // -----------------------------------------------------------------------
   describe('JWKS cache', () => {
     it('should call getPublicJWKS only once for multiple requests', async () => {
       const deps = createDeps();
@@ -503,9 +471,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 12. Cache invalidation via clearJwksCache
-  // -----------------------------------------------------------------------
   describe('cache invalidation', () => {
     it('should force JWKS reload after clearJwksCache()', async () => {
       const deps = createDeps();
@@ -539,9 +505,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // Edge cases
-  // -----------------------------------------------------------------------
   describe('edge cases', () => {
     it('should handle keyStore.getPublicJWKS failure gracefully', async () => {
       const deps = createDeps({
@@ -638,9 +602,7 @@ describe('api/v1/middleware/jwt-auth', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // JWT auth — WWW-Authenticate header (RFC 6750)
-  // -----------------------------------------------------------------------
   describe('WWW-Authenticate header (RFC 6750)', () => {
     it('should include WWW-Authenticate: Bearer on 401 for missing token', async () => {
       const deps = createDeps();

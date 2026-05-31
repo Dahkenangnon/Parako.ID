@@ -28,8 +28,6 @@ vi.mock('../../../../src/multi-tenancy/tenant-context.js', () => ({
 // Import after mocks
 import { AdminSessionsController } from '../../../../src/controllers/admin/session.controller.js';
 
-// ── Test Helpers ──
-
 function createMockDeps() {
   const logger = {
     info: vi.fn(),
@@ -200,8 +198,6 @@ function createMockExpressSession(overrides: Record<string, any> = {}): any {
   };
 }
 
-// ── Tests ──
-
 describe('AdminSessionsController', () => {
   let deps: ReturnType<typeof createMockDeps>;
   let controller: AdminSessionsController;
@@ -307,18 +303,14 @@ describe('AdminSessionsController', () => {
       );
     });
 
-    it('should redirect to /admin on error', async () => {
+    it('propagates errors to the global error handler', async () => {
       const req = createMockReq();
       const res = createMockRes();
 
-      deps.oidcSession.countSessions.mockRejectedValue(new Error('DB error'));
+      const dbError = new Error('DB error');
+      deps.oidcSession.countSessions.mockRejectedValue(dbError);
 
-      await controller.list(req, res);
-
-      expect(deps.flashChain.error).toHaveBeenCalledWith(
-        'Failed to load user sessions'
-      );
-      expect(res.redirect).toHaveBeenCalledWith('/admin');
+      await expect(controller.list(req, res)).rejects.toBe(dbError);
     });
   });
 

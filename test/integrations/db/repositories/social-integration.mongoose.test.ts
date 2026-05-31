@@ -4,8 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createSocialIntegrationModel } from '../../../../src/models/social-integration.model.js';
 import { MongooseSocialIntegrationRepository } from '../../../../src/db/repositories/mongoose/social-integration.repository.js';
 
-// ─── Shared state ─────────────────────────────────────────────────────────────
-
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseSocialIntegrationRepository;
 let counter = 0;
@@ -24,8 +22,6 @@ const makeIntegration = (overrides: Record<string, unknown> = {}) => {
     ...overrides,
   };
 };
-
-// ─── Setup / teardown ─────────────────────────────────────────────────────────
 
 beforeAll(async () => {
   try {
@@ -52,8 +48,6 @@ beforeEach(async ctx => {
   }
   await mongoose.connection.collection('socialintegrations').deleteMany({});
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('MongooseSocialIntegrationRepository', () => {
   describe('create + findById', () => {

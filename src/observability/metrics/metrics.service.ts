@@ -12,7 +12,6 @@ const HTTP_DURATION_BUCKETS = [
   0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ];
 
-// ── Label allowlists (cardinality safety) ──
 // Unknown values are collapsed to 'other' to prevent cardinality explosion
 // from user-controlled or malicious inputs.
 
@@ -135,8 +134,6 @@ export class MetricsService implements IMetricsService {
       });
     }
 
-    // ── Counters ──
-
     this.tokenIssuedCounter = new client.Counter({
       name: `${this.prefix}token_issued_total`,
       help: 'Total tokens issued via OIDC grant endpoints',
@@ -179,8 +176,6 @@ export class MetricsService implements IMetricsService {
       registers: [this.registry],
     });
 
-    // ── Histograms ──
-
     this.httpDurationHistogram = new client.Histogram({
       name: `${this.prefix}http_request_duration_seconds`,
       help: 'HTTP request latency distribution in seconds',
@@ -188,8 +183,6 @@ export class MetricsService implements IMetricsService {
       buckets: HTTP_DURATION_BUCKETS,
       registers: [this.registry],
     });
-
-    // ── Gauges ──
 
     this.infoGauge = new client.Gauge({
       name: `${this.prefix}info`,
@@ -215,8 +208,6 @@ export class MetricsService implements IMetricsService {
   isEnabled(): boolean {
     return this.enabled;
   }
-
-  // ── OIDC Token Metrics ──
 
   recordTokenIssued(grantType: string, tenant?: string): void {
     if (!this.enabled) return;
@@ -250,8 +241,6 @@ export class MetricsService implements IMetricsService {
       });
     }
   }
-
-  // ── Authentication Metrics ──
 
   recordLoginAttempt(
     result: 'success' | 'failure' | 'error',
@@ -291,8 +280,6 @@ export class MetricsService implements IMetricsService {
     }
   }
 
-  // ── HTTP Metrics ──
-
   recordRequestDuration(
     method: string,
     route: string,
@@ -317,8 +304,6 @@ export class MetricsService implements IMetricsService {
       });
     }
   }
-
-  // ── Infrastructure Metrics ──
 
   recordJwksRotation(
     phase: string,
@@ -357,8 +342,6 @@ export class MetricsService implements IMetricsService {
       });
     }
   }
-
-  // ── Endpoint ──
 
   async getMetrics(): Promise<string> {
     if (!this.enabled) return '';

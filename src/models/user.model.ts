@@ -36,7 +36,6 @@ export const createUserModel = (
   // Grouped schema fields according to the IUser interface
   const userSchema = new Schema<IUser, UserModel, IUserMethods>(
     {
-      // --- Business fields (OpenID Standard Claims) ---
       family_name: {
         type: String,
         required: false,
@@ -147,7 +146,6 @@ export const createUserModel = (
         },
       ],
 
-      // --- Custom identifier fields ---
       // Note: uniqueness enforced via compound indexes with tenant_id below
       custom_identifier_1: {
         type: String,
@@ -171,7 +169,6 @@ export const createUserModel = (
           v == null || v.trim() === '' ? undefined : v.trim(),
       },
 
-      // --- Technical fields (internal only) ---
       phone_number_verified: {
         type: Boolean,
         default: false,
@@ -199,7 +196,6 @@ export const createUserModel = (
         required: false,
       },
 
-      // --- Multi-factor authentication configuration (multi-method support) ---
       mfa: {
         enabled: { type: Boolean, default: false },
         methods: {
@@ -229,7 +225,6 @@ export const createUserModel = (
         },
       },
 
-      // --- Account recovery configuration ---
       recovery: {
         enabled: { type: Boolean, default: false },
         methods: {
@@ -284,7 +279,6 @@ export const createUserModel = (
         last_recovered_at: { type: Date, required: false },
       },
 
-      // --- Authentication and account management fields ---
       username: {
         type: String,
         required: true,

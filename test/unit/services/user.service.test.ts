@@ -14,8 +14,6 @@ import type { IUser } from '../../../src/types/user.js';
 import type { IUserRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
 import type { CustomIdentifierFieldConfig } from '../../../src/di/interfaces/user/user-custom-identifier-service.interface.js';
 
-// ── Minimal stubs ─────────────────────────────────────────────────────────────
-
 const mockLogger = {
   info: vi.fn(),
   warn: vi.fn(),
@@ -74,8 +72,6 @@ const mockPasswordUtils = {
   minKeylen: 32,
 } as any;
 
-// ── Mock IUserRepository (DB layer) ──────────────────────────────────────────
-
 function makeMockRepo(): IUserRepository {
   return {
     findById: vi.fn(),
@@ -104,8 +100,6 @@ function makeMockRepo(): IUserRepository {
   };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function makeUser(overrides: Partial<IUser> = {}): IUser {
   return {
     _id: 'user-123',
@@ -129,7 +123,6 @@ function makeService(userRepo: IUserRepository): UserService {
   );
 }
 
-// ── Custom-identifier mock factory ────────────────────────────────────────────
 function makeCustomIdentifierConfigManager(
   fields: CustomIdentifierFieldConfig[],
   enabled = true
@@ -190,8 +183,6 @@ function makeFieldConfig(
   };
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('UserService — IUserRepository delegation', () => {
   let repo: IUserRepository;
   let service: UserService;
@@ -201,8 +192,6 @@ describe('UserService — IUserRepository delegation', () => {
     repo = makeMockRepo();
     service = makeService(repo);
   });
-
-  // ── findByEmail ─────────────────────────────────────────────────────────────
 
   describe('findByEmail', () => {
     it('delegates to repo.findOne with account_enabled filter', async () => {
@@ -227,8 +216,6 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  // ── findById ────────────────────────────────────────────────────────────────
-
   describe('findById (service method)', () => {
     it('delegates to repo.findById', async () => {
       const user = makeUser();
@@ -240,8 +227,6 @@ describe('UserService — IUserRepository delegation', () => {
       expect(result).toEqual(user);
     });
   });
-
-  // ── findOne (IBaseService) ──────────────────────────────────────────────────
 
   describe('findOne (IBaseService contract)', () => {
     it('delegates to repo.findById when filter is a string', async () => {
@@ -267,8 +252,6 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  // ── countDocuments (IBaseService) ──────────────────────────────────────────
-
   describe('countDocuments (IBaseService contract)', () => {
     it('delegates to repo.count', async () => {
       vi.mocked(repo.count).mockResolvedValue(42);
@@ -289,8 +272,6 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  // ── updateById (IBaseService) ───────────────────────────────────────────────
-
   describe('updateById (IBaseService contract)', () => {
     it('delegates to repo.update', async () => {
       const updated = makeUser({ account_enabled: false });
@@ -306,8 +287,6 @@ describe('UserService — IUserRepository delegation', () => {
       expect(result).toEqual(updated);
     });
   });
-
-  // ── findWithPagination (IBaseService) ──────────────────────────────────────
 
   describe('findWithPagination (IBaseService contract)', () => {
     it('delegates to repo.findMany and reshapes result', async () => {
@@ -336,8 +315,6 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  // ── createOne (IBaseService) ────────────────────────────────────────────────
-
   describe('createOne (IBaseService contract)', () => {
     it('delegates to repo.create', async () => {
       const newUser = makeUser();
@@ -352,8 +329,6 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 });
-
-// ── Custom identifier slot-aware methods ─────────────────────────────────────
 
 describe('UserService — Custom Identifiers', () => {
   let repo: IUserRepository;

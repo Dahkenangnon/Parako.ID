@@ -20,8 +20,6 @@ import type {
 } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
 
-// ─── Name computation (mirrors Mongoose pre-save hook) ────────────────────────
-
 function computeName(
   givenName: string | null | undefined,
   familyName: string | null | undefined,
@@ -36,8 +34,6 @@ function computeName(
   // Fall back to whatever is stored, then custom_identifier_1
   return storedName?.trim() || customIdentifier1?.trim() || undefined;
 }
-
-// ─── Include clause used on every user read ───────────────────────────────────
 
 const USER_INCLUDE = {
   mfa: true,
@@ -56,8 +52,6 @@ const USER_INCLUDE = {
 } as const;
 
 type UserFull = Prisma.UserGetPayload<{ include: typeof USER_INCLUDE }>;
-
-// ─── Mapping helper ───────────────────────────────────────────────────────────
 
 function toIUser(row: UserFull): IUser {
   const hasMfaData =
@@ -240,8 +234,6 @@ function toIUser(row: UserFull): IUser {
   };
 }
 
-// ─── Repository ───────────────────────────────────────────────────────────────
-
 @injectable()
 export class PrismaUserRepository
   extends AbstractPrismaRepository
@@ -250,8 +242,6 @@ export class PrismaUserRepository
   constructor(prisma: PrismaClient) {
     super(prisma);
   }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   private async findFull(
     where: Prisma.UserWhereUniqueInput
@@ -272,8 +262,6 @@ export class PrismaUserRepository
     });
     return row ? toIUser(row) : null;
   }
-
-  // ── IBaseRepository ────────────────────────────────────────────────────────
 
   async findById(id: string): Promise<IUser | null> {
     return this.findFull({ id });
@@ -538,8 +526,6 @@ export class PrismaUserRepository
       where: filter as Prisma.UserWhereInput,
     });
   }
-
-  // ── IUserRepository extras ────────────────────────────────────────────────
 
   async findByEmail(email: string): Promise<IUser | null> {
     return this.findFirstFull({ email });

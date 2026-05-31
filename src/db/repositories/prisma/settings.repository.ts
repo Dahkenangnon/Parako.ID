@@ -9,8 +9,6 @@ import type {
 import type { QueryOptions } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
 
-// ─── DB row type ──────────────────────────────────────────────────────────────
-
 interface SettingsRow {
   id: string;
   key: string;
@@ -40,8 +38,6 @@ function toISettings(row: SettingsRow): ISettings {
   } as ISettings;
 }
 
-// ─── Field mapping (domain → Prisma column) ──────────────────────────────────
-
 const FIELD_MAP: Record<string, string> = {
   is_active: 'is_active',
   schema_version: 'schema_version',
@@ -57,8 +53,6 @@ function toPrismaFilter(
   }
   return mapped;
 }
-
-// ─── Repository ───────────────────────────────────────────────────────────────
 
 @injectable()
 export class PrismaSettingsRepository
@@ -131,8 +125,6 @@ export class PrismaSettingsRepository
       where: filter ? toPrismaFilter(filter) : undefined,
     });
   }
-
-  // ── ISettingsRepository ────────────────────────────────────────────────────
 
   async findActive(key: string): Promise<ISettings | null> {
     const row = await this.prisma.settings.findFirst({

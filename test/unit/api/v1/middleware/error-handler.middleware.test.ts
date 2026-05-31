@@ -9,9 +9,7 @@ import {
   internal as internalError,
 } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockResponse() {
   const res: Record<string, unknown> = {
@@ -42,16 +40,12 @@ function createDeps(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/middleware/error-handler', () => {
   const next = vi.fn();
 
-  // -----------------------------------------------------------------------
   // 1. ApiError — serialises with correct status, type, Content-Type
-  // -----------------------------------------------------------------------
   describe('ApiError', () => {
     it('should serialise to JSON with correct status, type, and Content-Type', () => {
       const deps = createDeps();
@@ -78,9 +72,7 @@ describe('api/v1/middleware/error-handler', () => {
       );
     });
 
-    // -------------------------------------------------------------------
     // 2. Sets instance to req.path when not already set
-    // -------------------------------------------------------------------
     it('should set instance to req.path when not already set', () => {
       const deps = createDeps();
       const handler = createApiErrorHandler(deps);
@@ -95,9 +87,7 @@ describe('api/v1/middleware/error-handler', () => {
       expect(body.instance).toBe('/api/v1/users/123');
     });
 
-    // -------------------------------------------------------------------
     // 3. Preserves existing instance
-    // -------------------------------------------------------------------
     it('should preserve existing instance when already set', () => {
       const deps = createDeps();
       const handler = createApiErrorHandler(deps);
@@ -112,9 +102,7 @@ describe('api/v1/middleware/error-handler', () => {
       expect(body.instance).toBe('/custom/instance');
     });
 
-    // -------------------------------------------------------------------
     // 4. 5xx errors call logger.error
-    // -------------------------------------------------------------------
     it('should call logger.error for 5xx errors', () => {
       const deps = createDeps();
       const handler = createApiErrorHandler(deps);
@@ -132,9 +120,7 @@ describe('api/v1/middleware/error-handler', () => {
       expect(deps.logger.warn).not.toHaveBeenCalled();
     });
 
-    // -------------------------------------------------------------------
     // 5. 4xx errors call logger.warn (not error)
-    // -------------------------------------------------------------------
     it('should call logger.warn for 4xx errors', () => {
       const deps = createDeps();
       const handler = createApiErrorHandler(deps);
@@ -158,9 +144,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 6. Zod-like error — 422 with validation type and errors array
-  // -----------------------------------------------------------------------
   describe('Zod validation error', () => {
     it('should return 422 with validation type and errors array', () => {
       const deps = createDeps();
@@ -198,9 +182,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 7. Mongoose duplicate key error (code 11000) — 409 conflict
-  // -----------------------------------------------------------------------
   describe('Mongoose duplicate key error', () => {
     it('should return 409 conflict for code 11000', () => {
       const deps = createDeps();
@@ -229,9 +211,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 8. Mongoose CastError — 404 not-found
-  // -----------------------------------------------------------------------
   describe('Mongoose CastError', () => {
     it('should return 404 not-found for CastError', () => {
       const deps = createDeps();
@@ -263,9 +243,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 9. Generic Error — 500 internal, no stack trace
-  // -----------------------------------------------------------------------
   describe('generic Error', () => {
     it('should return 500 internal with no stack trace in response', () => {
       const deps = createDeps();
@@ -306,9 +284,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 10. Non-Error thrown (string) — 500 internal
-  // -----------------------------------------------------------------------
   describe('non-Error thrown value', () => {
     it('should return 500 internal when a string is thrown', () => {
       const deps = createDeps();
@@ -339,9 +315,7 @@ describe('api/v1/middleware/error-handler', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 11. Development mode debug info
-  // -----------------------------------------------------------------------
   describe('development mode debug info', () => {
     it('should include debug.message and debug.stack when isDevelopment=true', () => {
       const deps = createDeps({ isDevelopment: true });

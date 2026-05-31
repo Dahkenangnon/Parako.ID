@@ -11,8 +11,6 @@ export interface IMetricsService {
   /** Whether metrics collection is currently enabled */
   isEnabled(): boolean;
 
-  // ── OIDC Token Metrics ──
-
   /** Record a successful token issuance via grant endpoint */
   recordTokenIssued(grantType: string, tenant?: string): void;
 
@@ -22,8 +20,6 @@ export interface IMetricsService {
     grantType?: string,
     tenant?: string
   ): void;
-
-  // ── Authentication Metrics ──
 
   /** Record a password-based login attempt */
   recordLoginAttempt(
@@ -39,8 +35,6 @@ export interface IMetricsService {
     tenant?: string
   ): void;
 
-  // ── HTTP Metrics ──
-
   /** Record HTTP request duration (seconds) */
   recordRequestDuration(
     method: string,
@@ -49,8 +43,6 @@ export interface IMetricsService {
     durationSeconds: number,
     tenant?: string
   ): void;
-
-  // ── Infrastructure Metrics ──
 
   /** Record a JWKS rotation lifecycle event */
   recordJwksRotation(
@@ -65,8 +57,6 @@ export interface IMetricsService {
     result: 'started' | 'ended' | 'error',
     tenant?: string
   ): void;
-
-  // ── Endpoint ──
 
   /** Return Prometheus text-format metrics output */
   getMetrics(): Promise<string>;

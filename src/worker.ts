@@ -57,7 +57,6 @@ async function bootstrap(): Promise<void> {
     nodeVersion: process.version,
   });
 
-  // ── 1. Load configuration ──────────────────────────────────────────────
   const bootstrapConfig = await configManager.getBootstrapConfig();
 
   databaseConnectionManager.initializeWithBootstrapConfig(bootstrapConfig);
@@ -78,7 +77,6 @@ async function bootstrap(): Promise<void> {
 
   const config = configManager.getConfig();
 
-  // ── Pre-flight: verify Redis is configured AND reachable ──────────────
   // BullMQ requires Redis. If Redis is not available, the worker cannot
   // function — exit early with a clear message instead of crashing later.
   const redisCheck = await checkRedisAvailability(bootstrapConfig.redis);
@@ -99,7 +97,6 @@ async function bootstrap(): Promise<void> {
     database: redisConfig.database,
   };
 
-  // ── 2. Initialize key store and activity service ──────────────────────
   const keyStore = container.get<IKeyStore>(TYPES.KeyStore);
   await keyStore.initialize();
 
@@ -107,7 +104,6 @@ async function bootstrap(): Promise<void> {
     TYPES.ActivityService
   );
 
-  // ── 3. Create Redis publisher for cross-process notifications ─────────
   const redisPrefix = config.deployment?.redis_prefix || 'parako';
   redisPublisher = new Redis({
     host: redisConfig.host,
@@ -119,11 +115,9 @@ async function bootstrap(): Promise<void> {
   });
   await redisPublisher.connect();
 
-  // ── 4. Create queue and worker managers ────────────────────────────────
   queueManager = new QueueManager(logger);
   workerManager = new WorkerManager(logger);
 
-  // ── 5. Create queue and worker ─────────────────────────────────────────
   // Redis reachability already verified above — queue will never be null here.
   const backgroundQueue = (await createBackgroundTaskQueue(redisOpts))!;
   const backgroundWorker = createBackgroundTaskWorker(redisOpts);
@@ -131,7 +125,6 @@ async function bootstrap(): Promise<void> {
   queueManager.registerQueue('background-tasks', backgroundQueue);
   workerManager.registerWorker('background-tasks', backgroundWorker);
 
-  // ── 6. Register task handlers ──────────────────────────────────────────
   const publishJwksEvent = async (phase: 'rotated' | 'promoted') => {
     try {
       // Unified channel format: {prefix}:{tenantId}:jwks:{phase}
@@ -259,7 +252,6 @@ async function bootstrap(): Promise<void> {
     handlers: ['jwks-rotation', 'data-import', 'password-breach-check'],
   });
 
-  // ── 7. Register scheduled jobs (config-driven) ─────────────────────────
   const rotationIntervalDays =
     config.security?.key_store?.rotation_interval_days ?? 90;
 
@@ -272,7 +264,6 @@ async function bootstrap(): Promise<void> {
     rotationIntervalDays,
   });
 
-  // ── 8. Log startup summary ─────────────────────────────────────────────
   const stats = await queueManager.getStats();
   logger.info('Worker process ready', {
     component: 'worker',

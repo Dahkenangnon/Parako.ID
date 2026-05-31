@@ -80,8 +80,6 @@ afterAll(async () => {
 });
 
 describe('Multi-Tenancy Integration', () => {
-  // ─── Full Lifecycle ──────────────────────────────────────────────────────────
-
   describe('Full lifecycle: create, read, update, delete across tenants', () => {
     let UserModel: mongoose.Model<any>;
 
@@ -203,8 +201,6 @@ describe('Multi-Tenancy Integration', () => {
     });
   });
 
-  // ─── Concurrent Tenants ──────────────────────────────────────────────────────
-
   describe('Concurrent tenant operations', () => {
     let ConcModel: mongoose.Model<any>;
 
@@ -275,8 +271,6 @@ describe('Multi-Tenancy Integration', () => {
     });
   });
 
-  // ─── Default Tenant ──────────────────────────────────────────────────────────
-
   describe('Default tenant behavior', () => {
     let DefModel: mongoose.Model<any>;
 
@@ -329,8 +323,6 @@ describe('Multi-Tenancy Integration', () => {
     });
   });
 
-  // ─── Cross-Tenant Count ──────────────────────────────────────────────────────
-
   describe('Cross-tenant count isolation', () => {
     let CountModel: mongoose.Model<any>;
 
@@ -380,8 +372,6 @@ describe('Multi-Tenancy Integration', () => {
     });
   });
 
-  // ─── Tenant Model Opt-Out ────────────────────────────────────────────────────
-
   describe('Tenant model opt-out', () => {
     it('unscoped model does NOT get tenant_id field', () => {
       const TenantModel = createUnscopedModel('IntTenantRegistry');
@@ -411,8 +401,6 @@ describe('Multi-Tenancy Integration', () => {
       ]);
     });
   });
-
-  // ─── Existing tenant_id Field (JwksKey pattern) ──────────────────────────────
 
   describe('Models with existing tenant_id (JwksKey pattern)', () => {
     let KeyModel: mongoose.Model<any>;
@@ -445,8 +433,6 @@ describe('Multi-Tenancy Integration', () => {
       expect(globexKeys[0].tenant_id).toBe('globex');
     });
   });
-
-  // ─── AsyncLocalStorage Propagation ───────────────────────────────────────────
 
   describe('AsyncLocalStorage propagation across async boundaries', () => {
     let AsyncModel: mongoose.Model<any>;

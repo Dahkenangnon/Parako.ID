@@ -4,9 +4,10 @@ import { injectable, inject } from 'inversify';
 import { TYPES } from '../../../di/types.js';
 import type { IViewResolver } from '../../../di/interfaces/view-resolver.interface.js';
 import type { IOIDCErrorHandler } from '../../../di/interfaces/oidc-error-handler.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
 import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
+import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 
 /** Known OIDC error types for validation */
 const KNOWN_ERROR_TYPES = [
@@ -37,8 +38,18 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
     @inject(TYPES.ActivityService)
     private readonly activityService: IActivityService,
     @inject(TYPES.ClientDeviceInfoManager)
-    private readonly clientDeviceInfoManager: IClientDeviceInfoManager
+    private readonly clientDeviceInfoManager: IClientDeviceInfoManager,
+    @inject(TYPES.SessionManager)
+    private readonly sessionManager: ISessionManager
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   /**
    * Render error page for OIDC errors
@@ -49,21 +60,16 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
     res: Response,
     _next: NextFunction
   ): Promise<void> => {
-    const deviceInfos =
-      this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
-
     try {
-      this.activityService.failed('oidc.error', 'OIDC provider error', null, {
-        ip_address: req.ip,
-        user_agent: deviceInfos?.user_agent,
-        device_infos: deviceInfos as ClientDeviceInfos,
-        actor: {
-          actor_type: 'anonymous',
-        },
-        target: {
-          target_type: 'system',
-        },
-      });
+      activityLoggerFor(this.activityLoggerDeps, req).failed(
+        'oidc.error',
+        null,
+        'OIDC provider error',
+        {
+          actor: { actor_type: 'anonymous' },
+          target: { target_type: 'system' },
+        }
+      );
     } catch {
       // No logger available in this handler, so we silently ignore logging errors
     }

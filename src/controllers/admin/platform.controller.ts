@@ -16,7 +16,7 @@ import {
   ReservedSlugError,
   NotFoundError,
 } from '../../errors/platform.errors.js';
-import { parsePositiveInt } from '../../utils/query-parse.js';
+import { parsePositiveInt } from '../../validators/listing-query.js';
 
 /** Slug format: lowercase alphanumeric, hyphens, underscores, 1-63 chars. */
 const TENANT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;

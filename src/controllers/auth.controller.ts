@@ -26,6 +26,7 @@ import { TYPES } from '../di/types.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import { SmsService } from '../services/sms.service.js';
 import { validateIdentifier } from '../utils/custom-identifier-validation.js';
+import { activityLoggerFor } from '../utils/activity-logger.factory.js';
 import type { ClearOIDCUserDataResult } from '../oidc/interfaces/interface.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type {
@@ -70,6 +71,14 @@ export class AuthController implements IAuthController {
     private readonly webauthnService: IWebAuthnService,
     @inject(TYPES.OIDCUtils) private readonly oidcUtils: IOIDCUtils
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activity,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   private getAppTitle() {
     return this.config().application.title;
@@ -183,25 +192,19 @@ export class AuthController implements IAuthController {
     try {
       const { email, phone, login, password, remember_me } = req.body;
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
       // Support both old separate fields and new unified 'login' field
       const identifier = email || phone || login;
       const loginIdentifier = identifier || 'unknown';
 
-      this.activity.info('login_attempt', 'Login attempt', null, {
-        ip_address: deviceInfos.ip,
-        user_agent: deviceInfos.user_agent,
-        device_infos: deviceInfos,
-        actor: {
-          username: loginIdentifier,
-          actor_type: 'anonymous',
-        },
-        target: {
-          target_type: 'none',
-        },
-      });
+      activityLoggerFor(this.activityLoggerDeps, req).info(
+        'login_attempt',
+        null,
+        'Login attempt',
+        {
+          actor: { username: loginIdentifier, actor_type: 'anonymous' },
+          target: { target_type: 'none' },
+        }
+      );
 
       let user;
       const configuredLoginMethods =
@@ -249,21 +252,13 @@ export class AuthController implements IAuthController {
           );
         }
       } else {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'login_failed',
-          'Login failed: No identifier provided',
           null,
+          'Login failed: No identifier provided',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              username: loginIdentifier,
-              actor_type: 'anonymous',
-            },
-            target: {
-              target_type: 'none',
-            },
+            actor: { username: loginIdentifier, actor_type: 'anonymous' },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -276,21 +271,13 @@ export class AuthController implements IAuthController {
 
       if (!user) {
         res.locals.loginFailed = true;
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'login_failed',
-          'Login failed: Invalid credentials',
           null,
+          'Login failed: Invalid credentials',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              username: loginIdentifier,
-              actor_type: 'anonymous',
-            },
-            target: {
-              target_type: 'none',
-            },
+            actor: { username: loginIdentifier, actor_type: 'anonymous' },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -302,15 +289,15 @@ export class AuthController implements IAuthController {
       }
 
       if (this.mfaUtils.isMfaEnabled(user)) {
-        this.activity.info('mfa_required', 'MFA required for user', user, {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: user,
-          target: {
-            target_type: 'none',
-          },
-        });
+        activityLoggerFor(this.activityLoggerDeps, req).info(
+          'mfa_required',
+          user,
+          'MFA required for user',
+          {
+            actor: user,
+            target: { target_type: 'none' },
+          }
+        );
 
         const continueUrl =
           (req.query.continue as string) || (req.body.continue as string);
@@ -438,34 +425,24 @@ export class AuthController implements IAuthController {
               ? 'Maximum number of accounts per session reached.'
               : 'This account is already signed in.';
 
-          this.activity.warning(
+          activityLoggerFor(this.activityLoggerDeps, req).warning(
             'account_add_failed',
-            `Failed to add account - ${addResult.reason}`,
             user,
+            `Failed to add account - ${addResult.reason}`,
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: user,
-              target: {
-                target_type: 'session',
-              },
+              target: { target_type: 'session' },
             }
           );
           this.sessionManager.flash(req).info(reason);
         } else {
-          this.activity.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'account_added',
-            'Account added to session',
             user,
+            'Account added to session',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: user,
-              target: {
-                target_type: 'session',
-              },
+              target: { target_type: 'session' },
             }
           );
         }
@@ -516,34 +493,24 @@ export class AuthController implements IAuthController {
                 ? 'Maximum number of accounts per session reached.'
                 : 'This account is already signed in.';
 
-            this.activity.warning(
+            activityLoggerFor(this.activityLoggerDeps, req).warning(
               'account_add_failed',
-              `Failed to add account from OIDC flow - ${addResult.reason}`,
               user,
+              `Failed to add account from OIDC flow - ${addResult.reason}`,
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
                 actor: user,
-                target: {
-                  target_type: 'session',
-                },
+                target: { target_type: 'session' },
               }
             );
             this.sessionManager.flash(req).info(reason);
           } else {
-            this.activity.success(
+            activityLoggerFor(this.activityLoggerDeps, req).success(
               'account_added',
-              'Account added from OIDC flow',
               user,
+              'Account added from OIDC flow',
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
                 actor: user,
-                target: {
-                  target_type: 'session',
-                },
+                target: { target_type: 'session' },
               }
             );
             this.sessionManager
@@ -570,18 +537,13 @@ export class AuthController implements IAuthController {
           // getLoginIntent(req, true);
           this.redirectAuthority.getIntent(req, 'login', true);
 
-          this.activity.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'login_success',
-            'User logged in successfully with redirect',
             user,
+            'User logged in successfully with redirect',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: user,
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
             }
           );
 
@@ -697,18 +659,13 @@ export class AuthController implements IAuthController {
             });
           }
 
-          this.activity.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'login_success',
-            'User logged in successfully',
             user,
+            'User logged in successfully',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: user,
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
             }
           );
 
@@ -818,8 +775,6 @@ export class AuthController implements IAuthController {
     res: Response
   ): Promise<void> => {
     const { fullname, email, phone, password } = req.body;
-    const deviceInfos =
-      this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
     const contactChannels = this.config().security.authentication.signup
       .contact_channels || {
@@ -894,21 +849,16 @@ export class AuthController implements IAuthController {
           )
           .join(' or ');
 
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'registration_failed',
-          `Registration failed: Missing required credentials (${requiredCreds})`,
           null,
+          `Registration failed: Missing required credentials (${requiredCreds})`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: email || phone || 'unknown',
               actor_type: 'anonymous',
             },
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -927,21 +877,16 @@ export class AuthController implements IAuthController {
 
       const passwordValidation = this.userService.validatePassword(password);
       if (!passwordValidation.isValid) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'registration_failed',
-          `Registration failed: Password requirements not met - ${passwordValidation.messages.join(', ')}`,
           null,
+          `Registration failed: Password requirements not met - ${passwordValidation.messages.join(', ')}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: email || phone || 'unknown',
               actor_type: 'anonymous',
             },
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -983,21 +928,16 @@ export class AuthController implements IAuthController {
       }
 
       if (contactChannelErrors.length > 0) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'registration_failed',
-          `Registration failed: ${contactChannelErrors.join(', ')}`,
           null,
+          `Registration failed: ${contactChannelErrors.join(', ')}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: email || phone || 'unknown',
               actor_type: 'anonymous',
             },
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -1113,18 +1053,13 @@ export class AuthController implements IAuthController {
 
       const user = await this.authService.registerUser(userData);
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'registration_success',
-        'User registered successfully',
         user,
+        'User registered successfully',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -1396,8 +1331,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { token, password, 'confirm-password': confirmPassword } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       if (!token) {
         this.sessionManager.flash(req).error('Invalid or missing reset token.');
@@ -1440,18 +1373,13 @@ export class AuthController implements IAuthController {
         id: user._id,
       });
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'password_reset_success',
-        'Password reset successfully',
         user,
+        'Password reset successfully',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -1860,8 +1788,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { code } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       const pendingUser =
         this.sessionManager.get<PendingMfaUser>(req, 'pendingMfaUser') ||
@@ -1922,21 +1848,13 @@ export class AuthController implements IAuthController {
       }
 
       if (!verified) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'mfa_verification_failed',
-          'MFA verification failed',
           null,
+          'MFA verification failed',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              username: pendingUser.username,
-              actor_type: 'user',
-            },
-            target: {
-              target_type: 'none',
-            },
+            actor: { username: pendingUser.username, actor_type: 'user' },
+            target: { target_type: 'none' },
           }
         );
         this.sessionManager
@@ -1967,21 +1885,13 @@ export class AuthController implements IAuthController {
         null;
       const provider = pendingUser.provider;
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'mfa_verification_success',
-        `MFA verification successful${isSocialLogin ? ` via ${provider}` : ''}`,
         null,
+        `MFA verification successful${isSocialLogin ? ` via ${provider}` : ''}`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            username: pendingUser.username,
-            actor_type: 'user',
-          },
-          target: {
-            target_type: 'none',
-          },
+          actor: { username: pendingUser.username, actor_type: 'user' },
+          target: { target_type: 'none' },
         }
       );
 
@@ -2138,17 +2048,11 @@ export class AuthController implements IAuthController {
 
       this.logger.info('MFA code resent', { username: pendingUser.username });
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.info(
+      activityLoggerFor(this.activityLoggerDeps, req).info(
         'mfa_code_resent',
-        'User requested MFA code resend',
         null,
+        'User requested MFA code resend',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: pendingUser.username,
             email: pendingUser.email,
@@ -2158,9 +2062,7 @@ export class AuthController implements IAuthController {
             family_name: pendingUser.family_name,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -3351,14 +3253,11 @@ export class AuthController implements IAuthController {
 
       const lockoutStatus = this.recoveryUtils.checkRecoveryLockout(user);
       if (lockoutStatus.locked) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'recovery_attempt_blocked',
-          'Recovery attempt blocked due to lockout',
           user,
+          'Recovery attempt blocked due to lockout',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: user,
             target: { target_type: 'none' },
             metadata: {
@@ -3391,18 +3290,13 @@ export class AuthController implements IAuthController {
           },
         });
 
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'recovery_attempt_failed',
-          'Failed backup code recovery attempt',
           user,
+          'Failed backup code recovery attempt',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
             metadata: {
               method: 'backup_codes',
               error: verificationResult.error || 'Invalid backup code',
@@ -3413,14 +3307,11 @@ export class AuthController implements IAuthController {
         );
 
         if (failedAttemptResult.locked) {
-          this.activity.warning(
+          activityLoggerFor(this.activityLoggerDeps, req).warning(
             'recovery_lockout_triggered',
-            'User locked out due to too many failed recovery attempts',
             user,
+            'User locked out due to too many failed recovery attempts',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: user,
               target: { target_type: 'none' },
               metadata: {
@@ -3485,18 +3376,13 @@ export class AuthController implements IAuthController {
         },
       });
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'account_recovery_successful',
-        'User successfully recovered account using backup code',
         user,
+        'User successfully recovered account using backup code',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -3609,8 +3495,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { email } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
       const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
         req,
         'recoveryAttempt'
@@ -3649,18 +3533,13 @@ export class AuthController implements IAuthController {
         user.recovery.secondary_email.email.toLowerCase() !==
         email.toLowerCase()
       ) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'recovery_attempt_failed',
-          'Failed secondary email recovery attempt - email mismatch',
           user,
+          'Failed secondary email recovery attempt - email mismatch',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
             metadata: {
               method: 'secondary_email',
               error:
@@ -3680,18 +3559,13 @@ export class AuthController implements IAuthController {
       }
 
       if (!user.recovery.secondary_email.verified) {
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'recovery_attempt_failed',
-          'Failed secondary email recovery attempt - email not verified',
           user,
+          'Failed secondary email recovery attempt - email not verified',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
             metadata: {
               method: 'secondary_email',
               error: 'Secondary email is not verified',
@@ -3825,18 +3699,13 @@ export class AuthController implements IAuthController {
           verification.userId
         );
         if (expiredUser) {
-          this.activity.failed(
+          activityLoggerFor(this.activityLoggerDeps, req).failed(
             'recovery_attempt_failed',
-            'Recovery verification code expired',
             expiredUser,
+            'Recovery verification code expired',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: expiredUser,
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
               metadata: {
                 method: 'secondary_email_verification',
                 error: 'Verification code expired',
@@ -3859,14 +3728,11 @@ export class AuthController implements IAuthController {
         const lockoutStatus =
           this.recoveryUtils.checkRecoveryLockout(userForLockout);
         if (lockoutStatus.locked) {
-          this.activity.failed(
+          activityLoggerFor(this.activityLoggerDeps, req).failed(
             'recovery_attempt_blocked',
-            'Recovery attempt blocked due to lockout',
             userForLockout,
+            'Recovery attempt blocked due to lockout',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: userForLockout,
               target: { target_type: 'none' },
               metadata: {
@@ -3897,18 +3763,13 @@ export class AuthController implements IAuthController {
             },
           });
 
-          this.activity.failed(
+          activityLoggerFor(this.activityLoggerDeps, req).failed(
             'recovery_attempt_failed',
-            'Invalid recovery verification code',
             userForLockout,
+            'Invalid recovery verification code',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: userForLockout,
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
               metadata: {
                 method: 'secondary_email_verification',
                 error: 'Invalid verification code',
@@ -3919,14 +3780,11 @@ export class AuthController implements IAuthController {
           );
 
           if (failedAttemptResult.locked) {
-            this.activity.warning(
+            activityLoggerFor(this.activityLoggerDeps, req).warning(
               'recovery_lockout_triggered',
-              'User locked out due to too many failed recovery attempts',
               userForLockout,
+              'User locked out due to too many failed recovery attempts',
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
                 actor: userForLockout,
                 target: { target_type: 'none' },
                 metadata: {
@@ -3985,18 +3843,13 @@ export class AuthController implements IAuthController {
         });
       }
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'account_recovery_successful',
-        'User successfully recovered account using secondary email',
         user,
+        'User successfully recovered account using secondary email',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -4093,8 +3946,6 @@ export class AuthController implements IAuthController {
    */
   public logout = async (req: Request, res: Response): Promise<void> => {
     const confirmed = req.method === 'POST' || req.query.confirmed === 'true';
-    const deviceInfos =
-      this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
     const logoutType = req.query.type || req.body?.type || 'single'; // 'single' or 'all'
     const accountId = req.query.account_id || req.body?.account_id; // For single account logout
@@ -4206,35 +4057,26 @@ export class AuthController implements IAuthController {
           }
 
           if (allUsers) {
+            const logger = activityLoggerFor(this.activityLoggerDeps, req);
             if (allUsers.active) {
-              this.activity.info(
+              logger.info(
                 'logout_all',
-                'User logged out from all accounts',
                 allUsers.active,
+                'User logged out from all accounts',
                 {
-                  ip_address: deviceInfos.ip,
-                  user_agent: deviceInfos.user_agent,
-                  device_infos: deviceInfos,
                   actor: allUsers.active,
-                  target: {
-                    target_type: 'session',
-                  },
+                  target: { target_type: 'session' },
                 }
               );
             }
             allUsers.others.forEach((user: any) => {
-              this.activity.info(
+              logger.info(
                 'logout_all',
-                'User logged out from all accounts',
                 user,
+                'User logged out from all accounts',
                 {
-                  ip_address: deviceInfos.ip,
-                  user_agent: deviceInfos.user_agent,
-                  device_infos: deviceInfos,
                   actor: user,
-                  target: {
-                    target_type: 'session',
-                  },
+                  target: { target_type: 'session' },
                 }
               );
             });
@@ -4291,21 +4133,13 @@ export class AuthController implements IAuthController {
             // This is the only account - destroy entire session
             const username = removedAccount?.name || accountId;
 
-            this.activity.info(
+            activityLoggerFor(this.activityLoggerDeps, req).info(
               'logout_single',
-              'User logged out from only account',
               null,
+              'User logged out from only account',
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
-                actor: {
-                  username,
-                  actor_type: 'user',
-                },
-                target: {
-                  target_type: 'session',
-                },
+                actor: { username, actor_type: 'user' },
+                target: { target_type: 'session' },
               }
             );
 
@@ -4700,8 +4534,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const provider = req.params.provider as SocialProvider;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       const oidcContext = this.sessionManager.get<OIDCSocialContext>(
         req,
@@ -4856,21 +4688,13 @@ export class AuthController implements IAuthController {
       }
 
       if (this.mfaUtils.isMfaEnabled(result.user)) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.info(
+        activityLoggerFor(this.activityLoggerDeps, req).info(
           'social_mfa_required',
-          `MFA required for social login user via ${provider}`,
           result.user,
+          `MFA required for social login user via ${provider}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: result.user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
 
@@ -5006,18 +4830,13 @@ export class AuthController implements IAuthController {
               : 'This account is already signed in.';
           this.sessionManager.flash(req).info(reason);
         } else {
-          this.activity.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'social_account_added',
-            `Social account (${provider}) added to session`,
             result.user,
+            `Social account (${provider}) added to session`,
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: result.user,
-              target: {
-                target_type: 'session',
-              },
+              target: { target_type: 'session' },
             }
           );
         }
@@ -5059,18 +4878,13 @@ export class AuthController implements IAuthController {
               : 'This account is already signed in.';
           this.sessionManager.flash(req).info(reason);
         } else {
-          this.activity.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'social_account_added_from_oidc',
-            `Social account (${provider}) added from OIDC flow`,
             result.user,
+            `Social account (${provider}) added from OIDC flow`,
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: result.user,
-              target: {
-                target_type: 'session',
-              },
+              target: { target_type: 'session' },
             }
           );
         }
@@ -5096,18 +4910,13 @@ export class AuthController implements IAuthController {
         this.redirectAuthority.getIntent(req, 'social_login', true);
         this.redirectAuthority.getIntent(req, 'social_register', true);
 
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'social_login_success',
-          `User logged in with ${provider}`,
           result.user,
+          `User logged in with ${provider}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: result.user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
 
@@ -5147,18 +4956,13 @@ export class AuthController implements IAuthController {
           currentActiveLoggedUser: newUserAccount,
         });
 
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'social_login_success',
-          `User logged in with ${provider}`,
           result.user,
+          `User logged in with ${provider}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: result.user,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
 
@@ -5192,8 +4996,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> {
     try {
       const socialConfig = this.getSocialBehaviorConfig();
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       this.logger.info(`Handling social registration for ${provider}`, {
         provider,
@@ -5395,18 +5197,13 @@ export class AuthController implements IAuthController {
         currentActiveLoggedUser: newUserAccount,
       });
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'social_registration_success',
-        `User registered with ${provider}`,
         newUser,
+        `User registered with ${provider}`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: newUser,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -5528,8 +5325,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { password, confirmPassword } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
       const { provider } = req.query;
       const socialPasswordData = this.sessionManager.get<SocialPasswordSetup>(
         req,
@@ -5628,18 +5423,13 @@ export class AuthController implements IAuthController {
         currentActiveLoggedUser: newUserAccount,
       });
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'social_registration_completed',
-        `User completed social registration with ${provider} and set password`,
         user,
+        `User completed social registration with ${provider} and set password`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 

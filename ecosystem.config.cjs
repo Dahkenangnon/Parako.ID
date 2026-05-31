@@ -55,8 +55,8 @@ const config = {
       max_memory_restart: process.env.PM2_MAX_MEMORY || '400M',
 
       // Logging
-      error_file: './logs/pm2_error.log',
-      output_file: './logs/pm2_output.log',
+      error_file: './runtime/logs/pm2_error.log',
+      output_file: './runtime/logs/pm2_output.log',
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
 
@@ -96,8 +96,8 @@ const config = {
       restart_delay: 5000,
       max_memory_restart: process.env.PM2_WORKER_MAX_MEMORY || '512M',
 
-      error_file: './logs/pm2_worker_error.log',
-      output_file: './logs/pm2_worker_output.log',
+      error_file: './runtime/logs/pm2_worker_error.log',
+      output_file: './runtime/logs/pm2_worker_output.log',
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
 

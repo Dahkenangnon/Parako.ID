@@ -509,7 +509,6 @@ export function convertDeploymentFormData(data: any): any {
 
   converted = convertBooleanFields(converted, booleanFields);
 
-  // ── deployment.server CORS + trust-proxy migration ──────────────────────
   //
   // The admin form posts CORS origins as a comma-separated string and
   // trust-proxy hops as a numeric string. The schema is `string[]` and

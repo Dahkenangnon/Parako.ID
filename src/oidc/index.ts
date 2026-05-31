@@ -94,7 +94,31 @@ export class OidcManager implements IOidcManager {
     // 3. ETag and Cache-Control for JWKS and discovery responses.
     provider.use(createOidcCacheMiddleware(this.configManager));
 
-    // 4. Event listeners (logging, metrics)
+    // 4. Fall through to Express for unmatched OIDC sub-paths so the
+    //    app-wide 404 view (error/404.njk) renders instead of Koa's
+    //    plain-text "Not Found".
+    //
+    //    Koa initialises `res.statusCode = 404` in `handleRequest`
+    //    (koa/lib/application.js) BEFORE any middleware runs, so an
+    //    unmatched route surfaces as `ctx.status === 404` with a null
+    //    body. Every OIDC handler — success and error paths — sets
+    //    `ctx.body` (oidc-provider's error_handler.js sets status and
+    //    body together), so `body == null && status === 404` uniquely
+    //    identifies the "no route matched" case.
+    //
+    //    `ctx.respond = false` is Koa's documented escape hatch
+    //    (https://koajs.com/#response) for delegating to traditional
+    //    fn(req, res, next) middleware. The underlying `res` stays
+    //    untouched, so the Express bridge sees `res.headersSent ===
+    //    false` and forwards the request to `next()`.
+    provider.use(async (ctx, next) => {
+      await next();
+      if (ctx.body == null && ctx.status === 404) {
+        ctx.respond = false;
+      }
+    });
+
+    // 5. Event listeners (logging, metrics)
     await this.oidcListener.setupListeners(provider);
   }
 
@@ -159,7 +183,6 @@ export class OidcManager implements IOidcManager {
     this.oidRoutes.registerRoutes(app);
 
     if (isMultiTenant && this.tenantProviderRegistry) {
-      // ── Multi-tenant: dynamic dispatcher ──────────────────────────
       // This avoids circular DI: OidcManager provides the configurator,
       // TenantProviderRegistry calls it when creating providers.
       if (this.tenantProviderRegistry.setProviderConfigurator) {
@@ -201,6 +224,16 @@ export class OidcManager implements IOidcManager {
 
           req.url = original.url;
           req.baseUrl = original.baseUrl;
+
+          // Unmatched OIDC sub-path: the post-middleware in
+          // `configureProvider` set `ctx.respond = false`, so the
+          // underlying res is untouched. Forwarding to `next()` lets
+          // the app-wide catch-all 404 (src/app.ts) render
+          // `error/404.njk`, instead of the unstyled `Not Found`
+          // body Koa would otherwise emit.
+          if (!res.headersSent) {
+            return next();
+          }
         } catch (error) {
           // (e.g., localhost in dev mode without x-tenant-id header).
           if (
@@ -217,7 +250,6 @@ export class OidcManager implements IOidcManager {
         }
       });
     } else {
-      // ── Single-tenant: dynamic mount ──────────────────────────────
       const provider = await this.providerService.initProvider();
       await this.ensureProviderConfigured(provider);
 
@@ -248,6 +280,13 @@ export class OidcManager implements IOidcManager {
 
           req.url = original.url;
           req.baseUrl = original.baseUrl;
+
+          // See multi-tenant branch above — `ctx.respond = false`
+          // post-middleware leaves `res` untouched for unmatched
+          // OIDC sub-paths so Express's catch-all 404 view renders.
+          if (!res.headersSent) {
+            return next();
+          }
         } catch (error) {
           next(error);
         }

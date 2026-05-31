@@ -29,8 +29,6 @@ export default function Interaction(
 
   const basePolicy = basePolicyFactory();
 
-  // ---------- SELECT_ACCOUNT PROMPT -------------
-
   const promptSelectAccount = new Prompt({
     name: 'select_account',
     requestable: true, // This prompt can be requested by clients
@@ -89,7 +87,6 @@ export default function Interaction(
       }
     )
   );
-  // ---------- MFA PROMPT -------------
 
   const promptMfa = new Prompt({
     name: 'mfa',

@@ -1,6 +1,5 @@
 import { type Request, type Response } from 'express';
 import { injectable, inject } from 'inversify';
-import { validationResult } from 'express-validator';
 import { randomUUID } from 'node:crypto';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IUserService } from '../../di/interfaces/user-service.interface.js';
@@ -16,19 +15,19 @@ import { TYPES } from '../../di/types.js';
 import { type IUser } from '../../types/user.js';
 import { validateIdentifier } from '../../utils/custom-identifier-validation.js';
 import {
+  ADMIN_USER_SORT_FIELDS,
   parsePositiveInt,
-  parseEnum,
   escapeRegExp,
-} from '../../utils/query-parse.js';
-import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
+  extractListingQuery,
+} from '../../validators/listing-query.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
+import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
-const ADMIN_USER_LIST_SORT_FIELDS = [
-  'created_at',
-  'updated_at',
-  'username',
-  'email',
-  'last_login_at',
-] as const;
+interface UserActivityTarget {
+  username: string;
+  email?: string;
+  full_name?: string;
+}
 
 /**
  * Admin Users Controller
@@ -59,113 +58,137 @@ export class AdminUsersController implements IAdminUsersController {
     private readonly pubsub: IRedisPubSubService
   ) {}
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
+  private logUserActivity(
+    req: Request,
+    type: string,
+    description: string,
+    user: IUser,
+    target: UserActivityTarget
+  ): void {
+    activityLoggerFor(this.activityLoggerDeps, req, {
+      defaultActorType: 'admin',
+    }).success(type, user, description, {
+      target: {
+        target_type: 'user',
+        ...target,
+      },
+    });
+  }
+
+  private publishUserInvalidation(
+    username: string,
+    action: string,
+    step: string
+  ): void {
+    if (!this.pubsub?.isConnected()) return;
+    this.pubsub
+      .publish(`${this.redisPrefix}:user:invalidated`, {
+        originId: this.originId,
+        username,
+        action,
+      })
+      .catch((err: unknown) => {
+        this.logger.warn('Pubsub broadcast of user invalidation failed', {
+          step,
+          username,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
   /**
    * List all users with pagination, search, and filtering
    * GET /admin/users
    */
   public list = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const page = parsePositiveInt(req.query.page, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const limit = parsePositiveInt(req.query.limit, {
-        default: 20,
-        min: 1,
-        max: 100,
-      });
-      const search = ((req.query.search as string) || '').trim().slice(0, 200);
-      const role = ((req.query.role as string) || '').trim();
-      const status = ((req.query.status as string) || '').trim();
-      const sortBy = parseEnum(
-        req.query.sortBy,
-        ADMIN_USER_LIST_SORT_FIELDS,
-        'created_at'
-      );
-      const sortOrder = parseEnum(
-        req.query.sortOrder,
-        SORT_ORDER_VALUES,
-        'desc'
-      );
+    const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
+      req.query,
+      ADMIN_USER_SORT_FIELDS,
+      { sortBy: 'created_at' }
+    );
+    const role = ((req.query.role as string) || '').trim();
+    const status = ((req.query.status as string) || '').trim();
 
-      const filter: any = {};
+    const filter: any = {};
 
-      // OWASP ReDoS: escape user-controlled input before $regex.
-      if (search) {
-        const safeSearch = new RegExp(escapeRegExp(search), 'i');
-        filter.$or = [
-          { username: { $regex: safeSearch } },
-          { email: { $regex: safeSearch } },
-          { name: { $regex: safeSearch } },
-          { given_name: { $regex: safeSearch } },
-          { family_name: { $regex: safeSearch } },
-        ];
-      }
-
-      if (role && role !== 'all') {
-        filter.roles = { $in: [role] };
-      }
-
-      if (status && status !== 'all') {
-        switch (status) {
-          case 'active':
-            filter.account_enabled = true;
-            filter.account_is_anonymized = false;
-            break;
-          case 'disabled':
-            filter.account_enabled = false;
-            break;
-          case 'anonymized':
-            filter.account_is_anonymized = true;
-            break;
-        }
-      }
-
-      const sort: any = {};
-      sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
-
-      const result = await this.userService.findWithPagination(filter, {
-        page,
-        limit,
-        sort,
-      });
-
-      const stats = await this.userService.getUserStatistics();
-
-      res.render('admin/users/index', {
-        title: 'User Management',
-        users: result.results,
-        pagination: {
-          page: result.page,
-          limit: result.limit,
-          totalPages: result.totalPages,
-          totalResults: result.totalResults,
-          hasNextPage: result.page < result.totalPages,
-          hasPrevPage: result.page > 1,
-          nextPage: result.page + 1,
-          prevPage: result.page - 1,
-        },
-        filters: {
-          search: search || '',
-          role: role || 'all',
-          status: status || 'all',
-          sortBy,
-          sortOrder,
-        },
-        roles: [
-          'all',
-          ...this.configManager.getConfig().security.authentication.roles
-            .available,
-        ],
-        stats,
-        customIdentifierFields: this.userService.getCustomIdentifierFields(),
-      });
-    } catch (error) {
-      this.logger.error(error as Error, { context: 'users_listing_failed' });
-      this.sessionManager.flash(req).error('Failed to load users');
-      res.redirect('/admin');
+    // OWASP ReDoS: escape user-controlled input before $regex.
+    if (search) {
+      const safeSearch = new RegExp(escapeRegExp(search), 'i');
+      filter.$or = [
+        { username: { $regex: safeSearch } },
+        { email: { $regex: safeSearch } },
+        { name: { $regex: safeSearch } },
+        { given_name: { $regex: safeSearch } },
+        { family_name: { $regex: safeSearch } },
+      ];
     }
+
+    if (role && role !== 'all') {
+      filter.roles = { $in: [role] };
+    }
+
+    if (status && status !== 'all') {
+      switch (status) {
+        case 'active':
+          filter.account_enabled = true;
+          filter.account_is_anonymized = false;
+          break;
+        case 'disabled':
+          filter.account_enabled = false;
+          break;
+        case 'anonymized':
+          filter.account_is_anonymized = true;
+          break;
+      }
+    }
+
+    const sort: any = {};
+    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    const result = await this.userService.findWithPagination(filter, {
+      page,
+      limit,
+      sort,
+    });
+
+    const stats = await this.userService.getUserStatistics();
+
+    res.render('admin/users/index', {
+      title: 'User Management',
+      users: result.results,
+      pagination: {
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+        totalResults: result.totalResults,
+        hasNextPage: result.page < result.totalPages,
+        hasPrevPage: result.page > 1,
+        nextPage: result.page + 1,
+        prevPage: result.page - 1,
+      },
+      filters: {
+        search,
+        role: role || 'all',
+        status: status || 'all',
+        sortBy,
+        sortOrder,
+      },
+      roles: [
+        'all',
+        ...this.configManager.getConfig().security.authentication.roles
+          .available,
+      ],
+      stats,
+      customIdentifierFields: this.userService.getCustomIdentifierFields(),
+    });
   };
 
   /**
@@ -173,65 +196,58 @@ export class AdminUsersController implements IAdminUsersController {
    * GET /admin/users/:id
    */
   public show = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
+    const { id } = req.params;
 
-      if (!id) {
-        this.sessionManager.flash(req).error('User ID is required');
-        res.redirect('/admin/users');
-        return;
-      }
-
-      const user = await this.userService.findById(id);
-      if (!user) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect('/admin/users');
-        return;
-      }
-
-      const activities = await this.activityService.getUserActivities(id, {
-        limit: 5,
-        page: 1,
-      });
-
-      res.render('admin/users/show', {
-        title: `User details`,
-        user,
-        activities: activities.results,
-        customIdentifierFields: this.userService.getCustomIdentifierFields(),
-      });
-    } catch (error) {
-      this.logger.error('Error showing user', {
-        error: (error as Error).message,
-      });
-      this.sessionManager.flash(req).error('Error loading user');
-      res.redirect('/admin/users');
+    if (!id) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'User ID is required',
+        '/admin/users'
+      );
     }
+
+    const user = await this.userService.findById(id);
+    if (!user) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'User not found',
+        '/admin/users'
+      );
+    }
+
+    const activities = await this.activityService.getUserActivities(id, {
+      limit: 5,
+      page: 1,
+    });
+
+    res.render('admin/users/show', {
+      title: 'User details',
+      user,
+      activities: activities.results,
+      customIdentifierFields: this.userService.getCustomIdentifierFields(),
+    });
   };
 
   /**
    * Show create user form
    * GET /admin/users/new
    */
-  public create = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const roles =
-        this.configManager.getConfig().security.authentication.roles.available;
-      const customIdentifierFields =
-        this.userService.getCustomIdentifierFields();
+  public create = async (_req: Request, res: Response): Promise<void> => {
+    const roles =
+      this.configManager.getConfig().security.authentication.roles.available;
+    const customIdentifierFields = this.userService.getCustomIdentifierFields();
 
-      res.render('admin/users/create', {
-        title: 'Create New User',
-        roles,
-        customIdentifierFields,
-      });
-    } catch (error) {
-      this.logger.error('Error showing create user form', {
-        error: (error as Error).message,
-      });
-      this.sessionManager.flash(req).error('Error loading create user form');
-      res.redirect('/admin/users');
-    }
+    res.render('admin/users/create', {
+      title: 'Create New User',
+      roles,
+      customIdentifierFields,
+    });
   };
 
   /**
@@ -239,191 +255,110 @@ export class AdminUsersController implements IAdminUsersController {
    * POST /admin/users
    */
   public store = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        this.sessionManager.flash(req).error(
-          errors
-            .array()
-            .map(err => err.msg)
-            .join(', ')
-        );
-        res.redirect('/admin/users/new');
-        return;
-      }
+    const {
+      email,
+      given_name,
+      family_name,
+      gender,
+      birthdate,
+      roles: userRoles,
+      password,
+      account_enabled = true,
+    } = req.body;
 
-      const {
-        email,
-        given_name,
-        family_name,
-        middle_name,
-        nickname,
-        gender,
-        birthdate,
-        phone_number,
-        profile,
-        website,
-        picture,
-        country,
-        region,
-        city,
-        postal_code,
-        street_address,
-        locale,
-        zoneinfo,
-        roles: userRoles,
-        password,
-        account_enabled = true,
-      } = req.body;
+    const existingUser = await this.userService.findOne({ email });
 
-      const existingUser = await this.userService.findOne({ email });
-
-      if (existingUser) {
-        this.sessionManager.flash(req).error('Email already exists');
-        res.redirect('/admin/users/new');
-        return;
-      }
-
-      const hashedPassword = await this.passwordUtils.hashPassword(password);
-
-      const userData: Partial<IUser> = {
-        email,
-        given_name,
-        family_name,
-        password: hashedPassword,
-        password_hash_algo: 'argon2id',
-        password_updated_at: new Date(),
-        roles: Array.isArray(userRoles)
-          ? userRoles.map((r: string) => r.trim())
-          : [(userRoles || 'user').trim()],
-        account_enabled: account_enabled === 'true',
-        email_verified: true, // Admin created users are pre-verified
-        auth_provider: 'local',
-      };
-
-      if (middle_name && middle_name.trim()) {
-        userData.middle_name = middle_name.trim();
-      }
-      if (nickname && nickname.trim()) {
-        userData.nickname = nickname.trim();
-      }
-      if (gender && ['M', 'F'].includes(gender)) {
-        userData.gender = gender;
-      }
-      if (birthdate) {
-        userData.birthdate = new Date(birthdate);
-      }
-      if (phone_number && phone_number.trim()) {
-        userData.phone_number = phone_number.trim();
-      }
-      if (profile && profile.trim()) {
-        userData.profile = profile.trim();
-      }
-      if (website && website.trim()) {
-        userData.website = website.trim();
-      }
-      if (picture && picture.trim()) {
-        userData.picture = picture.trim();
-      }
-      if (country && country.trim()) {
-        userData.country = country.trim();
-      }
-      if (region && region.trim()) {
-        userData.region = region.trim();
-      }
-      if (city && city.trim()) {
-        userData.city = city.trim();
-      }
-      if (postal_code && postal_code.trim()) {
-        userData.postal_code = postal_code.trim();
-      }
-      if (street_address && street_address.trim()) {
-        userData.street_address = street_address.trim();
-      }
-      if (locale && locale.trim()) {
-        userData.locale = locale.trim();
-      }
-      if (zoneinfo && zoneinfo.trim()) {
-        userData.zoneinfo = zoneinfo.trim();
-      }
-
-      const ciFields = this.userService.getCustomIdentifierFields();
-      for (const field of ciFields) {
-        const rawValue = req.body[`custom_identifier_${field.slot}`];
-        if (rawValue && rawValue.trim()) {
-          const trimmed = rawValue.trim();
-          const normalized = field.case_sensitive
-            ? trimmed
-            : trimmed.toLowerCase();
-
-          if (!validateIdentifier(normalized, field)) {
-            this.sessionManager
-              .flash(req)
-              .error(`Invalid ${field.name || 'identifier'} format`);
-            res.redirect('/admin/users/new');
-            return;
-          }
-
-          const isAvailable =
-            await this.userService.isCustomIdentifierAvailable(
-              field.slot as 1 | 2 | 3,
-              normalized
-            );
-          if (!isAvailable) {
-            this.sessionManager
-              .flash(req)
-              .error(
-                `This ${field.name || 'identifier'} is already in use by another user`
-              );
-            res.redirect('/admin/users/new');
-            return;
-          }
-
-          const slotKey = `custom_identifier_${field.slot}` as
-            | 'custom_identifier_1'
-            | 'custom_identifier_2'
-            | 'custom_identifier_3';
-          userData[slotKey] = normalized;
-        }
-      }
-
-      const newUser =
-        await this.userService.createUserWithGeneratedUsername(userData);
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activityService.success(
-        'user_created_by_admin',
-        'Admin created new user',
-        newUser,
-        {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'user',
-            username: newUser.username,
-            email: newUser.email,
-            full_name: newUser.name,
-          },
-        }
+    if (existingUser) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Email already exists',
+        '/admin/users/new'
       );
-
-      this.sessionManager
-        .flash(req)
-        .success(`User ${newUser.username} created successfully`);
-      res.redirect(`/admin/users/${newUser._id}`);
-    } catch (error) {
-      this.logger.error(error as Error, { context: 'user_creation_failed' });
-      this.sessionManager.flash(req).error('Failed to create user');
-      res.redirect('/admin/users/new');
     }
+
+    const hashedPassword = await this.passwordUtils.hashPassword(password);
+
+    const userData: Partial<IUser> = {
+      email,
+      given_name,
+      family_name,
+      password: hashedPassword,
+      password_hash_algo: 'argon2id',
+      password_updated_at: new Date(),
+      roles: Array.isArray(userRoles)
+        ? userRoles.map((r: string) => r.trim())
+        : [(userRoles || 'user').trim()],
+      account_enabled: account_enabled === 'true',
+      email_verified: true, // Admin created users are pre-verified
+      auth_provider: 'local',
+    };
+
+    const optionalTrimmed: Array<keyof IUser> = [
+      'middle_name',
+      'nickname',
+      'phone_number',
+      'profile',
+      'website',
+      'picture',
+      'country',
+      'region',
+      'city',
+      'postal_code',
+      'street_address',
+      'locale',
+      'zoneinfo',
+    ];
+    for (const key of optionalTrimmed) {
+      const value = (req.body as Record<string, unknown>)[key as string];
+      if (typeof value === 'string' && value.trim()) {
+        (userData as Record<string, unknown>)[key as string] = value.trim();
+      }
+    }
+    if (gender && ['M', 'F'].includes(gender)) {
+      userData.gender = gender;
+    }
+    if (birthdate) {
+      userData.birthdate = new Date(birthdate);
+    }
+
+    const ciError = await this.applyCustomIdentifiers(req, userData, undefined);
+    if (ciError) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        ciError,
+        '/admin/users/new'
+      );
+    }
+
+    const newUser =
+      await this.userService.createUserWithGeneratedUsername(userData);
+
+    this.logUserActivity(
+      req,
+      'user_created_by_admin',
+      'Admin created new user',
+      newUser,
+      {
+        username: newUser.username,
+        email: newUser.email,
+        full_name: newUser.name,
+      }
+    );
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `User ${newUser.username} created successfully`,
+      `/admin/users/${newUser._id}`
+    );
   };
 
   /**
@@ -431,35 +366,30 @@ export class AdminUsersController implements IAdminUsersController {
    * GET /admin/users/:id/edit
    */
   public edit = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const user = await this.userService.findOne(id);
+    const { id } = req.params;
+    const user = await this.userService.findOne(id);
 
-      if (!user) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect('/admin/users');
-        return;
-      }
-
-      const roles =
-        this.configManager.getConfig().security.authentication.roles.available;
-      const customIdentifierFields =
-        this.userService.getCustomIdentifierFields();
-
-      res.render('admin/users/edit', {
-        title: `Edit User`,
-        user,
-        roles,
-        customIdentifierFields,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'edit_user_form_loading_failed',
-        userId: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to load edit user form');
-      res.redirect('/admin/users');
+    if (!user) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'User not found',
+        '/admin/users'
+      );
     }
+
+    const roles =
+      this.configManager.getConfig().security.authentication.roles.available;
+    const customIdentifierFields = this.userService.getCustomIdentifierFields();
+
+    res.render('admin/users/edit', {
+      title: 'Edit User',
+      user,
+      roles,
+      customIdentifierFields,
+    });
   };
 
   /**
@@ -467,253 +397,157 @@ export class AdminUsersController implements IAdminUsersController {
    * PUT /admin/users/:id
    */
   public update = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        this.sessionManager.flash(req).error(
-          errors
-            .array()
-            .map(err => err.msg)
-            .join(', ')
-        );
-        res.redirect(`/admin/users/${req.params.id}/edit`);
-        return;
-      }
+    const { id } = req.params;
+    const {
+      email,
+      given_name,
+      family_name,
+      gender,
+      birthdate,
+      roles: userRoles,
+      account_enabled,
+      new_password,
+      password_force_reset,
+    } = req.body;
 
-      const { id } = req.params;
-      const {
-        email,
-        given_name,
-        family_name,
-        middle_name,
-        nickname,
-        gender,
-        birthdate,
-        phone_number,
-        profile,
-        website,
-        picture,
-        country,
-        region,
-        city,
-        postal_code,
-        street_address,
-        locale,
-        zoneinfo,
-        roles: userRoles,
-        account_enabled,
-        new_password,
-        password_force_reset,
-      } = req.body;
-
-      const user = await this.userService.findOne(id);
-      if (!user) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect('/admin/users');
-        return;
-      }
-
-      const updateData: Partial<IUser> = {
-        email,
-        given_name,
-        family_name,
-        roles: Array.isArray(userRoles)
-          ? userRoles.map((r: string) => r.trim())
-          : [(userRoles || 'user').trim()],
-        account_enabled: account_enabled === 'true',
-      };
-
-      if (middle_name !== undefined) {
-        updateData.middle_name = middle_name.trim() || undefined;
-      }
-      if (nickname !== undefined) {
-        updateData.nickname = nickname.trim() || undefined;
-      }
-      if (gender !== undefined) {
-        updateData.gender =
-          gender && ['M', 'F'].includes(gender) ? gender : undefined;
-      }
-      if (birthdate !== undefined) {
-        updateData.birthdate = birthdate ? new Date(birthdate) : undefined;
-      }
-      if (phone_number !== undefined) {
-        updateData.phone_number = phone_number.trim() || undefined;
-      }
-      if (profile !== undefined) {
-        updateData.profile = profile.trim() || undefined;
-      }
-      if (website !== undefined) {
-        updateData.website = website.trim() || undefined;
-      }
-      if (picture !== undefined) {
-        updateData.picture = picture.trim() || undefined;
-      }
-      if (country !== undefined) {
-        updateData.country = country.trim() || undefined;
-      }
-      if (region !== undefined) {
-        updateData.region = region.trim() || undefined;
-      }
-      if (city !== undefined) {
-        updateData.city = city.trim() || undefined;
-      }
-      if (postal_code !== undefined) {
-        updateData.postal_code = postal_code.trim() || undefined;
-      }
-      if (street_address !== undefined) {
-        updateData.street_address = street_address.trim() || undefined;
-      }
-      if (locale !== undefined) {
-        updateData.locale = locale.trim() || undefined;
-      }
-      if (zoneinfo !== undefined) {
-        updateData.zoneinfo = zoneinfo.trim() || undefined;
-      }
-
-      if (password_force_reset !== undefined) {
-        updateData.password_force_reset = password_force_reset === 'true';
-      }
-
-      if (updateData.password_force_reset && this.pubsub?.isConnected()) {
-        this.pubsub
-          .publish(`${this.redisPrefix}:user:invalidated`, {
-            originId: this.originId,
-            username: user.username,
-            action: 'force_password_reset',
-          })
-          .catch((err: unknown) => {
-            this.logger.warn('Pubsub broadcast of user invalidation failed', {
-              step: 'admin-user-force-password-reset-broadcast',
-              username: user.username,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          });
-      }
-
-      if (new_password && new_password.trim()) {
-        updateData.password =
-          await this.passwordUtils.hashPassword(new_password);
-        updateData.password_hash_algo = 'argon2id';
-        updateData.password_updated_at = new Date();
-        updateData.password_force_reset = false;
-      }
-
-      const ciFields = this.userService.getCustomIdentifierFields();
-      for (const field of ciFields) {
-        const slotKey = `custom_identifier_${field.slot}` as
-          | 'custom_identifier_1'
-          | 'custom_identifier_2'
-          | 'custom_identifier_3';
-        const rawValue = req.body[slotKey];
-        if (rawValue !== undefined) {
-          if (rawValue && rawValue.trim()) {
-            const trimmed = rawValue.trim();
-            const normalized = field.case_sensitive
-              ? trimmed
-              : trimmed.toLowerCase();
-
-            if (!validateIdentifier(normalized, field)) {
-              this.sessionManager
-                .flash(req)
-                .error(`Invalid ${field.name || 'identifier'} format`);
-              res.redirect(`/admin/users/${id}/edit`);
-              return;
-            }
-
-            const isAvailable =
-              await this.userService.isCustomIdentifierAvailable(
-                field.slot as 1 | 2 | 3,
-                normalized,
-                id
-              );
-            if (!isAvailable) {
-              this.sessionManager
-                .flash(req)
-                .error(
-                  `This ${field.name || 'identifier'} is already in use by another user`
-                );
-              res.redirect(`/admin/users/${id}/edit`);
-              return;
-            }
-
-            (updateData as any)[slotKey] = normalized;
-          } else {
-            // If empty string, remove the custom identifier
-            (updateData as any)[slotKey] = undefined;
-          }
-        }
-      }
-
-      let updatedUser;
-      try {
-        // Try using updateWithAssignment instead of updateById for better nested object handling
-        updatedUser = await this.userService.updateWithAssignment(
-          id,
-          updateData
-        );
-
-        if (!updatedUser) {
-          this.sessionManager.flash(req).error('Failed to update user');
-          res.redirect(`/admin/users/${id}/edit`);
-          return;
-        }
-      } catch (updateError) {
-        this.logger.error('Error updating user', {
-          error:
-            updateError instanceof Error
-              ? updateError.message
-              : 'Unknown error',
-          userId: id,
-        });
-        this.sessionManager
-          .flash(req)
-          .error(
-            `Failed to update user: ${updateError instanceof Error ? updateError.message : 'Unknown error'}`
-          );
-        res.redirect(`/admin/users/${id}/edit`);
-        return;
-      }
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activityService.success(
-        'user_updated_by_admin',
-        'Admin updated user',
-        updatedUser,
-        {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'user',
-            username: updatedUser.username,
-            email: updatedUser.email,
-            full_name: updatedUser.name,
-          },
-        }
+    const user = await this.userService.findOne(id);
+    if (!user) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'User not found',
+        '/admin/users'
       );
-
-      this.sessionManager.flash(req).success('User updated successfully');
-      res.redirect(`/admin/users/${id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'user_update_failed',
-        userId: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to update user');
-      res.redirect(`/admin/users/${req.params.id}/edit`);
     }
+
+    const updateData: Partial<IUser> = {
+      email,
+      given_name,
+      family_name,
+      roles: Array.isArray(userRoles)
+        ? userRoles.map((r: string) => r.trim())
+        : [(userRoles || 'user').trim()],
+      account_enabled: account_enabled === 'true',
+    };
+
+    const optionalUpdates: Array<keyof IUser> = [
+      'middle_name',
+      'nickname',
+      'phone_number',
+      'profile',
+      'website',
+      'picture',
+      'country',
+      'region',
+      'city',
+      'postal_code',
+      'street_address',
+      'locale',
+      'zoneinfo',
+    ];
+    const bodyRecord = req.body as Record<string, unknown>;
+    for (const key of optionalUpdates) {
+      const value = bodyRecord[key as string];
+      if (value !== undefined) {
+        (updateData as Record<string, unknown>)[key as string] =
+          typeof value === 'string' && value.trim() ? value.trim() : undefined;
+      }
+    }
+    if (gender !== undefined) {
+      updateData.gender =
+        gender && ['M', 'F'].includes(gender) ? gender : undefined;
+    }
+    if (birthdate !== undefined) {
+      updateData.birthdate = birthdate ? new Date(birthdate) : undefined;
+    }
+
+    if (password_force_reset !== undefined) {
+      updateData.password_force_reset = password_force_reset === 'true';
+    }
+
+    if (updateData.password_force_reset) {
+      this.publishUserInvalidation(
+        user.username,
+        'force_password_reset',
+        'admin-user-force-password-reset-broadcast'
+      );
+    }
+
+    if (new_password && new_password.trim()) {
+      updateData.password = await this.passwordUtils.hashPassword(new_password);
+      updateData.password_hash_algo = 'argon2id';
+      updateData.password_updated_at = new Date();
+      updateData.password_force_reset = false;
+    }
+
+    const ciError = await this.applyCustomIdentifiers(req, updateData, id);
+    if (ciError) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        ciError,
+        `/admin/users/${id}/edit`
+      );
+    }
+
+    let updatedUser;
+    try {
+      updatedUser = await this.userService.updateWithAssignment(id, updateData);
+    } catch (updateError) {
+      this.logger.error(updateError as Error, {
+        context: 'user_update_failed',
+        userId: id,
+      });
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        `Failed to update user: ${updateError instanceof Error ? updateError.message : 'Unknown error'}`,
+        `/admin/users/${id}/edit`
+      );
+    }
+
+    if (!updatedUser) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Failed to update user',
+        `/admin/users/${id}/edit`
+      );
+    }
+
+    this.logUserActivity(
+      req,
+      'user_updated_by_admin',
+      'Admin updated user',
+      updatedUser,
+      {
+        username: updatedUser.username,
+        email: updatedUser.email,
+        full_name: updatedUser.name,
+      }
+    );
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      'User updated successfully',
+      `/admin/users/${id}`
+    );
   };
 
   /**
-   * Enable user account
-   * POST /admin/users/:id/enable
+   * Enable user account.
+   * POST /admin/users/:id/enable — JSON endpoint consumed by admin UI.
    */
   public enable = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -741,28 +575,15 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
-      const currentUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activityService.success(
+      this.logUserActivity(
+        req,
         'user_enabled_by_admin',
         'Admin enabled user',
         updatedUser,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'user',
-            username: updatedUser.username,
-            email: updatedUser.email,
-            full_name: updatedUser.name,
-          },
+          username: updatedUser.username,
+          email: updatedUser.email,
+          full_name: updatedUser.name,
         }
       );
 
@@ -777,8 +598,8 @@ export class AdminUsersController implements IAdminUsersController {
   };
 
   /**
-   * Disable user account
-   * POST /admin/users/:id/disable
+   * Disable user account.
+   * POST /admin/users/:id/disable — JSON endpoint consumed by admin UI.
    */
   public disable = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -806,7 +627,6 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
-      // Immediately revoke all sessions for the disabled user
       let revokedSessionsCount = 0;
       try {
         const oidcResult =
@@ -829,50 +649,27 @@ export class AdminUsersController implements IAdminUsersController {
         }
       } catch (sessionError) {
         this.logger.error(sessionError as Error, {
-          context: 'Failed to revoke sessions for disabled user',
+          context: 'session_revocation_for_disabled_user_failed',
           username: updatedUser.username,
         });
-        // Continue even if session revocation fails - user is still disabled
+        // Session revocation failure does not block the user-disable result.
       }
 
-      if (this.pubsub?.isConnected()) {
-        this.pubsub
-          .publish(`${this.redisPrefix}:user:invalidated`, {
-            originId: this.originId,
-            username: updatedUser.username,
-            action: 'disabled',
-          })
-          .catch((err: unknown) => {
-            this.logger.warn('Pubsub broadcast of user disable failed', {
-              step: 'admin-user-disable-broadcast',
-              username: updatedUser.username,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          });
-      }
+      this.publishUserInvalidation(
+        updatedUser.username,
+        'disabled',
+        'admin-user-disable-broadcast'
+      );
 
-      const currentUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activityService.success(
+      this.logUserActivity(
+        req,
         'user_disabled_by_admin',
         'Admin disabled user',
         updatedUser,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'user',
-            username: updatedUser.username,
-            email: updatedUser.email,
-            full_name: updatedUser.name,
-          },
+          username: updatedUser.username,
+          email: updatedUser.email,
+          full_name: updatedUser.name,
         }
       );
 
@@ -887,8 +684,8 @@ export class AdminUsersController implements IAdminUsersController {
   };
 
   /**
-   * Delete user (soft delete/anonymize)
-   * DELETE /admin/users/:id
+   * Delete user (soft delete/anonymize).
+   * DELETE /admin/users/:id — JSON endpoint consumed by admin UI.
    */
   public destroy = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -913,7 +710,7 @@ export class AdminUsersController implements IAdminUsersController {
         middle_name: 'Anonymized',
         gender: 'M',
         birthdate: new Date('1970-01-01'),
-        email: `anon-${Date.now()}_${user.email}`, // We keep old email for reference
+        email: `anon-${Date.now()}_${user.email}`,
         phone_number: 'Anonymized',
         profile: 'Anonymized',
         website: 'Anonymized',
@@ -941,44 +738,21 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
-      if (this.pubsub?.isConnected()) {
-        this.pubsub
-          .publish(`${this.redisPrefix}:user:invalidated`, {
-            originId: this.originId,
-            username: user.username,
-            action: 'deleted',
-          })
-          .catch((err: unknown) => {
-            this.logger.warn('Pubsub broadcast of user deletion failed', {
-              step: 'admin-user-delete-broadcast',
-              username: user.username,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          });
-      }
+      this.publishUserInvalidation(
+        user.username,
+        'deleted',
+        'admin-user-delete-broadcast'
+      );
 
-      const currentUser = this.sessionManager.getActiveUser(req);
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activityService.success(
+      this.logUserActivity(
+        req,
         'user_anonymized_by_admin',
         'Admin anonymized user',
         anonymizedUser,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'user',
-            username: user.username,
-            email: user.email,
-            full_name: user.name,
-          },
+          username: user.username,
+          email: user.email,
+          full_name: user.name,
         }
       );
 
@@ -999,91 +773,139 @@ export class AdminUsersController implements IAdminUsersController {
    * GET /admin/users/:id/activities
    */
   public activities = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const page = parsePositiveInt(req.query.page, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const limit = parsePositiveInt(req.query.limit, {
-        default: 50,
-        min: 1,
-        max: 100,
-      });
-      const type = req.query.type as string;
+    const { id } = req.params;
+    const page = parsePositiveInt(req.query.page, {
+      default: 1,
+      min: 1,
+      max: 10_000,
+    });
+    const limit = parsePositiveInt(req.query.limit, {
+      default: 50,
+      min: 1,
+      max: 100,
+    });
+    const type = req.query.type as string;
 
-      const user = await this.userService.findOne(id);
-      if (!user) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect('/admin/users');
-        return;
-      }
-
-      // Build filter for activities — use ActivityFilter key, not legacy field
-      const filter: any = { 'actor.user_id': id };
-      if (type && type !== 'all') {
-        filter.type = type;
-      }
-
-      const activities = await this.activityService.queryActivities(filter, {
-        page,
-        limit,
-        sort: { timestamp: -1 },
-      });
-
-      const activityTypes = await this.activityService.getUserActivityTypes(
-        user.username
+    const user = await this.userService.findOne(id);
+    if (!user) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'User not found',
+        '/admin/users'
       );
-
-      const processedActivities = activities.results.map((activity: any) => {
-        if (
-          activity.device_infos &&
-          typeof activity.device_infos === 'object'
-        ) {
-          activity.device_infos = {
-            ...activity.device_infos,
-            browser: activity.device_infos.browser || {},
-            os: activity.device_infos.os || {},
-            device: activity.device_infos.device || {},
-            screen: activity.device_infos.screen || {},
-            geo_location: activity.device_infos.geo_location || {},
-          };
-        }
-
-        if (activity.timestamp && typeof activity.timestamp === 'string') {
-          activity.timestamp = new Date(activity.timestamp);
-        }
-
-        return activity;
-      });
-
-      res.render('admin/users/activities', {
-        title: `${user.name || user.username} - Activities`,
-        user,
-        activities: processedActivities,
-        pagination: {
-          page: activities.page,
-          limit: activities.limit,
-          totalPages: activities.totalPages,
-          totalResults: activities.totalResults,
-          hasNextPage: activities.page < activities.totalPages,
-          hasPrevPage: activities.page > 1,
-          nextPage: activities.page + 1,
-          prevPage: activities.page - 1,
-        },
-        filters: {
-          type: type || 'all',
-        },
-        activityTypes: ['all', ...activityTypes],
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'user_activities_loading_failed',
-        userId: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to load user activities');
-      res.redirect(`/admin/users/${req.params.id}`);
     }
+
+    const filter: any = { 'actor.user_id': id };
+    if (type && type !== 'all') {
+      filter.type = type;
+    }
+
+    const activities = await this.activityService.queryActivities(filter, {
+      page,
+      limit,
+      sort: { timestamp: -1 },
+    });
+
+    const activityTypes = await this.activityService.getUserActivityTypes(
+      user.username
+    );
+
+    const processedActivities = activities.results.map((activity: any) => {
+      if (activity.device_infos && typeof activity.device_infos === 'object') {
+        activity.device_infos = {
+          ...activity.device_infos,
+          browser: activity.device_infos.browser || {},
+          os: activity.device_infos.os || {},
+          device: activity.device_infos.device || {},
+          screen: activity.device_infos.screen || {},
+          geo_location: activity.device_infos.geo_location || {},
+        };
+      }
+
+      if (activity.timestamp && typeof activity.timestamp === 'string') {
+        activity.timestamp = new Date(activity.timestamp);
+      }
+
+      return activity;
+    });
+
+    res.render('admin/users/activities', {
+      title: `${user.name || user.username} - Activities`,
+      user,
+      activities: processedActivities,
+      pagination: {
+        page: activities.page,
+        limit: activities.limit,
+        totalPages: activities.totalPages,
+        totalResults: activities.totalResults,
+        hasNextPage: activities.page < activities.totalPages,
+        hasPrevPage: activities.page > 1,
+        nextPage: activities.page + 1,
+        prevPage: activities.page - 1,
+      },
+      filters: {
+        type: type || 'all',
+      },
+      activityTypes: ['all', ...activityTypes],
+    });
   };
+
+  /**
+   * Validate and apply custom-identifier slot values from the form body to
+   * `target`. Returns an error message if any field is invalid or already
+   * taken; otherwise `null`. Pass `excludeUserId` on update so the user
+   * being edited does not collide with their own existing value.
+   */
+  private async applyCustomIdentifiers(
+    req: Request,
+    target: Partial<IUser>,
+    excludeUserId: string | undefined
+  ): Promise<string | null> {
+    const ciFields = this.userService.getCustomIdentifierFields();
+    const bodyRecord = req.body as Record<string, unknown>;
+
+    for (const field of ciFields) {
+      const slotKey = `custom_identifier_${field.slot}` as
+        | 'custom_identifier_1'
+        | 'custom_identifier_2'
+        | 'custom_identifier_3';
+      const rawValue = bodyRecord[slotKey];
+
+      // Create: only set when a value is provided; Update: also clear when
+      // the form sends an empty string.
+      if (excludeUserId === undefined && rawValue === undefined) continue;
+      if (
+        rawValue !== undefined &&
+        (typeof rawValue !== 'string' || !rawValue.trim())
+      ) {
+        if (excludeUserId !== undefined) {
+          (target as Record<string, unknown>)[slotKey] = undefined;
+        }
+        continue;
+      }
+
+      const trimmed = (rawValue as string).trim();
+      const normalized = field.case_sensitive ? trimmed : trimmed.toLowerCase();
+
+      if (!validateIdentifier(normalized, field)) {
+        return `Invalid ${field.name || 'identifier'} format`;
+      }
+
+      const isAvailable = await this.userService.isCustomIdentifierAvailable(
+        field.slot as 1 | 2 | 3,
+        normalized,
+        excludeUserId
+      );
+      if (!isAvailable) {
+        return `This ${field.name || 'identifier'} is already in use by another user`;
+      }
+
+      (target as Record<string, unknown>)[slotKey] = normalized;
+    }
+
+    return null;
+  }
 }

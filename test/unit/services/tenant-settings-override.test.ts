@@ -38,8 +38,6 @@ vi.mock('../../../src/utils/encryption.js', () => ({
   ensureDecrypted: vi.fn((v: string) => v.replace('encrypted:', '')),
 }));
 
-// ── Stubs ────────────────────────────────────────────────────────────────────
-
 function makeMockRepo(): ITenantSettingsOverrideRepository {
   return {
     findActive: vi.fn().mockResolvedValue(null),
@@ -185,14 +183,10 @@ function makeOverrideDoc(
   } as ITenantSettingsOverride;
 }
 
-// ── Tests ────────────────────────────────────────────────────────────────────
-
 describe('TenantSettingsOverrideService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-
-  // ── loadOverrides ───────────────────────────────────────────────────────
 
   describe('loadOverrides()', () => {
     it('returns null when no active doc exists', async () => {
@@ -248,8 +242,6 @@ describe('TenantSettingsOverrideService', () => {
       });
     });
   });
-
-  // ── saveOverrides ─────────────────────────────────────────────────────────
 
   describe('saveOverrides()', () => {
     it('passes valid whitelisted fields to repository', async () => {
@@ -530,8 +522,6 @@ describe('TenantSettingsOverrideService', () => {
     });
   });
 
-  // ── stripDisallowedFields ─────────────────────────────────────────────────
-
   describe('stripDisallowedFields()', () => {
     it('strips security.secrets.jwt_secret from incoming overrides', () => {
       const { service } = makeService();
@@ -700,8 +690,6 @@ describe('TenantSettingsOverrideService', () => {
       });
     });
   });
-
-  // ── enforceConstraints ────────────────────────────────────────────────────
 
   describe('enforceConstraints()', () => {
     it('clamps session.idle_timeout_minutes to ceiling', () => {
@@ -1055,8 +1043,6 @@ describe('TenantSettingsOverrideService', () => {
       expect(violations).toHaveLength(1);
     });
   });
-
-  // ── deleteSection ─────────────────────────────────────────────────────────
 
   describe('deleteSection()', () => {
     it('returns success when no active override doc exists', async () => {

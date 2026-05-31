@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { body, param, validationResult } from 'express-validator';
 import { injectable, inject } from 'inversify';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IWebAuthnService } from '../di/interfaces/webauthn-service.interface.js';
@@ -15,6 +14,7 @@ import type {
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IClientDeviceInfoManager } from '../di/interfaces/client-device-info-manager.interface.js';
 import type { PendingMfaUser } from '../types/session-data.js';
+import { activityLoggerFor } from '../utils/activity-logger.factory.js';
 
 // Challenge storage key in session
 const WEBAUTHN_CHALLENGE_KEY = 'webauthn_challenge';
@@ -42,30 +42,13 @@ export class WebAuthnController implements IWebAuthnController {
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
 
-  /**
-   * Validation rules for registration verify
-   */
-  public readonly registrationVerifyValidation = [
-    body('credential').isObject().withMessage('Credential is required'),
-    body('friendly_name')
-      .optional()
-      .trim()
-      .isLength({ min: 1, max: 100 })
-      .withMessage('Friendly name must be between 1 and 100 characters'),
-  ];
-
-  /**
-   * Validation rules for credential rename
-   */
-  public readonly renameCredentialValidation = [
-    param('credentialId').notEmpty().withMessage('Credential ID is required'),
-    body('friendlyName')
-      .trim()
-      .notEmpty()
-      .withMessage('Friendly name is required')
-      .isLength({ min: 1, max: 100 })
-      .withMessage('Friendly name must be between 1 and 100 characters'),
-  ];
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   /**
    * Get origin for WebAuthn operations
@@ -237,15 +220,6 @@ export class WebAuthnController implements IWebAuthnController {
         return;
       }
 
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          ok: false,
-          error: errors.array()[0].msg,
-        });
-        return;
-      }
-
       const user = this.getAuthenticatedUser(req);
       if (!user) {
         res.status(401).json({
@@ -282,13 +256,11 @@ export class WebAuthnController implements IWebAuthnController {
           error: result.error,
         });
 
-        this.activityService.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'webauthn_registration_failed',
-          `WebAuthn registration failed for user ${user.username}: ${result.error || 'Unknown error'}`,
           { username: user.username },
+          `WebAuthn registration failed for user ${user.username}: ${result.error || 'Unknown error'}`,
           {
-            ip_address: req.ip || 'unknown',
-            user_agent: req.headers['user-agent'] || 'unknown',
             target: { target_type: 'user', entity_id: user.username },
           }
         );
@@ -317,13 +289,11 @@ export class WebAuthnController implements IWebAuthnController {
         result.credential
       );
 
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'webauthn_registered',
-        `Passkey "${result.credential.friendly_name}" registered for user ${user.username}`,
         { username: user.username },
+        `Passkey "${result.credential.friendly_name}" registered for user ${user.username}`,
         {
-          ip_address: req.ip || 'unknown',
-          user_agent: req.headers['user-agent'] || 'unknown',
           target: { target_type: 'user', entity_id: user.username },
         }
       );
@@ -430,13 +400,11 @@ export class WebAuthnController implements IWebAuthnController {
         return;
       }
 
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'webauthn_removed',
-        `Passkey removed for user ${user.username}`,
         { username: user.username },
+        `Passkey removed for user ${user.username}`,
         {
-          ip_address: req.ip || 'unknown',
-          user_agent: req.headers['user-agent'] || 'unknown',
           target: { target_type: 'user', entity_id: user.username },
         }
       );
@@ -470,15 +438,6 @@ export class WebAuthnController implements IWebAuthnController {
     res: Response
   ): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          ok: false,
-          error: errors.array()[0].msg,
-        });
-        return;
-      }
-
       const user = this.getAuthenticatedUser(req);
       if (!user) {
         res.status(401).json({
@@ -695,29 +654,21 @@ export class WebAuthnController implements IWebAuthnController {
       }
 
       if (!result.verified) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
         this.logger.warn('WebAuthn MFA verification failed', {
           username: pendingUser.username,
           error: result.error,
         });
 
-        this.activityService.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'mfa_webauthn_verification_failed',
-          'WebAuthn MFA verification failed',
           null,
+          'WebAuthn MFA verification failed',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: pendingUser.username,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
 
@@ -727,10 +678,6 @@ export class WebAuthnController implements IWebAuthnController {
         });
         return;
       }
-
-      // MFA verification successful - complete the login
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       const newUserAccount = {
         id: pendingUser.id,
@@ -752,21 +699,16 @@ export class WebAuthnController implements IWebAuthnController {
         this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser') !==
         null;
 
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'mfa_webauthn_verification_success',
-        `WebAuthn MFA verification successful${isSocialLogin ? ' via social login' : ''}`,
         null,
+        `WebAuthn MFA verification successful${isSocialLogin ? ' via social login' : ''}`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: pendingUser.username,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 

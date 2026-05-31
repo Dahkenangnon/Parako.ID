@@ -12,8 +12,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { OIDCAdapterBridge } from '../../../src/oidc/adapter/index.js';
 import { PrismaOidcStoreAdapter } from '../../../src/oidc/adapter/prisma/index.js';
 
-// ── Minimal mocks ─────────────────────────────────────────────────────────────
-
 const mockLogger = {
   info: () => {},
   warn: () => {},
@@ -54,8 +52,6 @@ function makeBootstrapProvider(adapter: 'sqlite' | 'postgresql') {
 
 const mockPrisma = {} as any; // no methods needed for factory creation
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 /**
  * Instantiate OIDCAdapterBridge directly (bypass DI) with the given config.
  * All MongoDB/Redis services are no-op mocks — only the Prisma path is tested.
@@ -68,8 +64,6 @@ function makeBridge(adapter: 'sqlite' | 'postgresql') {
     mockPrisma
   );
 }
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('OIDCAdapterBridge — Prisma adapter wiring', () => {
   describe('adapter = sqlite', () => {

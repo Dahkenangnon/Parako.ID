@@ -223,8 +223,6 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
     }
   }
 
-  // ─── Private ─────────────────────────────────────────────────────────────
-
   private async createProvider(tenantId: string): Promise<Provider> {
     let tenant = await this.tenantRepo.findBySlug(tenantId);
     if (!tenant) {

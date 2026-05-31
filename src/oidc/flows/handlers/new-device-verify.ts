@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Provider from 'oidc-provider';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IAuthService } from '../../../di/interfaces/auth-service.interface.js';
@@ -12,6 +13,11 @@ import type { INotificationService } from '../../../di/interfaces/notification-s
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 import type { SessionUserAccount } from '../../../utils/session.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
+import {
+  oidcNewDeviceVerifyBodySchema,
+  oidcUidParamsSchema,
+} from '../../../validators/oidc/handlers.js';
 
 /**
  * Pending new device verification data stored in session
@@ -76,6 +82,14 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * GET /interaction/:uid/new-device-verify handler
    * Renders the new device verification form
@@ -87,7 +101,7 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     provider: Provider
   ): Promise<void> => {
     try {
-      const { uid } = req.params;
+      const { uid } = oidcUidParamsSchema.parse(req.params);
       const pendingVerification =
         this.sessionManager.get<PendingNewDeviceVerification>(
           req,
@@ -113,6 +127,17 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
         csrfToken: this.sessionManager.get(req, 'csrfToken'),
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn('New device verification GET received invalid input', {
+          issues: err.issues,
+        });
+        res.status(400).render(this.viewResolver.views.auth.oidc.error, {
+          errorType: 'InvalidRequest',
+          errorMessage:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'New device verification GET error',
       });
@@ -131,8 +156,10 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     provider: Provider
   ): Promise<void> => {
     try {
-      const { uid } = req.params;
-      const { code, trust_this_device } = req.body;
+      const { uid } = oidcUidParamsSchema.parse(req.params);
+      const { code, trust_this_device } = oidcNewDeviceVerifyBodySchema.parse(
+        req.body
+      );
       const pendingVerification =
         this.sessionManager.get<PendingNewDeviceVerification>(
           req,
@@ -186,8 +213,7 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
       const trustDurationDays =
         config.security.protection.device_matching.trust_duration_days || 30;
 
-      const shouldTrustDevice =
-        trust_this_device === 'true' || trust_this_device === true;
+      const shouldTrustDevice = trust_this_device === 'true';
       const deviceTrust = shouldTrustDevice
         ? {
             trusted: true,
@@ -199,25 +225,21 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
           }
         : undefined;
 
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'new_device_verified',
-        shouldTrustDevice
-          ? `New device verified and trusted for ${trustDurationDays} days`
-          : 'New device verified successfully',
         {
           id: pendingVerification.userId,
           username: pendingVerification.username,
         },
+        shouldTrustDevice
+          ? `New device verified and trusted for ${trustDurationDays} days`
+          : 'New device verified successfully',
         {
-          ip_address: req.ip,
-          user_agent: req.headers['user-agent'],
           actor: {
             username: pendingVerification.username,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'session',
-          },
+          target: { target_type: 'session' },
           device_infos: {
             fingerprint: clientDetails.fingerprint,
             browser: clientDetails.browser,
@@ -275,6 +297,20 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
         mergeWithLastSubmission: false,
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn(
+          'New device verification POST received invalid input',
+          {
+            issues: err.issues,
+          }
+        );
+        res.status(400).render(this.viewResolver.views.auth.oidc.error, {
+          errorType: 'InvalidRequest',
+          errorMessage:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'New device verification POST error',
       });

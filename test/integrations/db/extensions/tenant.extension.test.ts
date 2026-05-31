@@ -33,8 +33,6 @@ import {
   DEFAULT_TENANT_ID,
 } from '../../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Test DB Setup ───────────────────────────────────────────────────────────
-
 const TEST_DB = join(tmpdir(), `parako-tenant-ext-${Date.now()}.db`);
 const PRISMA_BIN = resolve(process.cwd(), 'node_modules', '.bin', 'prisma');
 
@@ -77,8 +75,6 @@ beforeEach(async () => {
   await basePrisma.tenantSettingsOverride.deleteMany({});
   await basePrisma.jwksKey.deleteMany({});
 });
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('Prisma Tenant Extension', () => {
   describe('module exports', () => {

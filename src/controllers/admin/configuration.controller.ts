@@ -8,8 +8,10 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IActivityService } from '../../di/interfaces/activity-service.interface.js';
 import type { IEmailService } from '../../di/interfaces/email-service.interface.js';
 import type { IUploadMiddleware } from '../../di/interfaces/upload-middleware.interface.js';
+import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import type { IPlatformAdminService } from '../../services/platform-admin.service.js';
 import { TYPES } from '../../di/types.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import { deriveTenantIssuerUrl } from '../../multi-tenancy/tenant-issuer.js';
 import { ensureDecrypted } from '../../utils/encryption.js';
@@ -83,11 +85,19 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     @inject(TYPES.ActivityService) private activityService: IActivityService,
     @inject(TYPES.EmailService) private emailService: IEmailService,
     @inject(TYPES.UploadMiddleware) private uploadMiddleware: IUploadMiddleware,
+    @inject(TYPES.ClientDeviceInfoManager)
+    private readonly clientDeviceInfoManager: IClientDeviceInfoManager,
     @inject(TYPES.PlatformAdminService)
     private readonly platformAdminService: IPlatformAdminService
   ) {}
 
-  // ── Overview ────────────────────────────────────────────────────────────────
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   overview = async (_req: Request, res: Response): Promise<void> => {
     let tenantId: string;
@@ -122,8 +132,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       activePage: 'configuration',
     });
   };
-
-  // ── Section (GET) ───────────────────────────────────────────────────────────
 
   section = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
@@ -225,8 +233,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     res.render(template, renderData);
   };
 
-  // ── Update Section (POST) ──────────────────────────────────────────────────
-
   updateSection = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
 
@@ -311,15 +317,13 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       this.configManager.invalidateTenantConfig(tenantId);
 
       // Audit trail — config updates are security-sensitive operations
-      const userData = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'update_config',
+        this.sessionManager.getActiveUser(req),
         `Updated ${section} configuration`,
-        userData,
         {
-          ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-          user_agent: req.get('user-agent') || 'unknown',
-          actor: { ...userData, actor_type: 'admin' },
           target: {
             target_type: 'config',
             entity_data: { action: 'update_section', section, tenantId },
@@ -346,8 +350,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     res.redirect(`/admin/configuration/${section}`);
   };
 
-  // ── Reset Section (POST) ───────────────────────────────────────────────────
-
   resetSection = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
 
@@ -368,15 +370,13 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       await this.overrideService.deleteSection(tenantId, section);
       this.configManager.invalidateTenantConfig(tenantId);
 
-      const userData = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'update_config',
+        this.sessionManager.getActiveUser(req),
         `Reset ${section} configuration to defaults`,
-        userData,
         {
-          ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-          user_agent: req.get('user-agent') || 'unknown',
-          actor: { ...userData, actor_type: 'admin' },
           target: {
             target_type: 'config',
             entity_data: { action: 'reset_section', section, tenantId },
@@ -402,8 +402,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
     res.redirect(`/admin/configuration/${section}`);
   };
-
-  // ── Branding: Logo Upload/Remove Methods ───────────────────────────────────
 
   uploadLogo = async (req: Request, res: Response): Promise<void> => {
     await this._handleLogoUpload(req, res, 'logo', 'company logo');
@@ -445,8 +443,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     await this._handleLogoRemove(req, res, 'favicon', 'favicon');
   };
 
-  // ── Branding: Reset Colors/Fonts ───────────────────────────────────────────
-
   resetColors = async (req: Request, res: Response): Promise<void> => {
     await this._handleBrandingSubfieldReset(req, res, 'colors', 'theme colors');
   };
@@ -455,28 +451,23 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     await this._handleBrandingSubfieldReset(req, res, 'fonts', 'fonts');
   };
 
-  // ── Integrations: Test Email ───────────────────────────────────────────────
-
   testEmail = async (req: Request, res: Response): Promise<void> => {
     const userData = this.sessionManager.getActiveUser(req);
     const requestedBy = userData?.email || 'unknown';
     const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
+    const activity = activityLoggerFor(this.activityLoggerDeps, req, {
+      defaultActorType: 'admin',
+    });
 
     try {
       const { email } = req.body;
 
       if (!email) {
-        this.activityService.failed(
+        activity.failed(
           'test_email',
-          'Test email failed: Email address is required',
           userData,
-          {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: { ...userData, actor_type: 'admin' },
-            target: { target_type: 'config' },
-          }
+          'Test email failed: Email address is required',
+          { target: { target_type: 'config' } }
         );
         res
           .status(400)
@@ -485,16 +476,11 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       }
 
       if (email.length > 254) {
-        this.activityService.failed(
+        activity.failed(
           'test_email',
-          'Test email failed: Email address too long',
           userData,
-          {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: { ...userData, actor_type: 'admin' },
-            target: { target_type: 'config' },
-          }
+          'Test email failed: Email address too long',
+          { target: { target_type: 'config' } }
         );
         res
           .status(400)
@@ -505,16 +491,11 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       const emailRegex =
         /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
       if (!emailRegex.test(email)) {
-        this.activityService.failed(
+        activity.failed(
           'test_email',
-          'Test email failed: Invalid email format',
           userData,
-          {
-            ip_address: requestIp,
-            user_agent: userAgent,
-            actor: { ...userData, actor_type: 'admin' },
-            target: { target_type: 'config' },
-          }
+          'Test email failed: Invalid email format',
+          { target: { target_type: 'config' } }
         );
         res
           .status(400)
@@ -540,20 +521,12 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
       await this.emailService.sendEmail(email, subject, text, html);
 
-      this.activityService.success(
-        'test_email',
-        'Test email sent successfully',
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: { ...userData, actor_type: 'admin' },
-          target: {
-            target_type: 'config',
-            entity_data: { recipientEmail: email },
-          },
-        }
-      );
+      activity.success('test_email', userData, 'Test email sent successfully', {
+        target: {
+          target_type: 'config',
+          entity_data: { recipientEmail: email },
+        },
+      });
 
       res.json({ success: true, message: 'Test email sent successfully' });
     } catch (error) {
@@ -563,10 +536,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         ip: requestIp,
       });
 
-      this.activityService.failed('test_email', 'Test email failed', userData, {
-        ip_address: requestIp,
-        user_agent: userAgent,
-        actor: { ...userData, actor_type: 'admin' },
+      activity.failed('test_email', userData, 'Test email failed', {
         target: { target_type: 'config' },
       });
 
@@ -575,8 +545,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         .json({ success: false, error: 'Failed to send test email' });
     }
   };
-
-  // ── Integrations: Reveal Secret ────────────────────────────────────────────
 
   revealSecret = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -618,20 +586,14 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         : '';
       const actualValue = encryptedValue ? ensureDecrypted(encryptedValue) : '';
 
-      this.activityService.warning(
-        'reveal_secret',
-        'Admin revealed tenant secret field',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('user-agent'),
-          actor: { ...userData, actor_type: 'admin' },
-          target: {
-            target_type: 'config',
-            entity_data: { fieldPath, tenantId },
-          },
-        }
-      );
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).warning('reveal_secret', null, 'Admin revealed tenant secret field', {
+        target: {
+          target_type: 'config',
+          entity_data: { fieldPath, tenantId },
+        },
+      });
 
       this.logger.warn('Tenant secret field revealed', {
         action: 'reveal_secret',
@@ -654,8 +616,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     }
   };
 
-  // ── Private Helpers ────────────────────────────────────────────────────────
-
   /**
    * Generic logo/image upload handler for tenant branding overrides.
    */
@@ -667,8 +627,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   ): Promise<void> {
     try {
       const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
 
       let tenantId: string;
       try {
@@ -714,24 +672,18 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       );
       this.configManager.invalidateTenantConfig(tenantId);
 
-      this.activityService.success(
-        'update_config',
-        `Uploaded ${displayName}`,
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: { ...userData, actor_type: 'admin' },
-          target: {
-            target_type: 'config',
-            entity_data: {
-              action: `upload_${fieldName}`,
-              filename: file.filename,
-              tenantId,
-            },
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success('update_config', userData, `Uploaded ${displayName}`, {
+        target: {
+          target_type: 'config',
+          entity_data: {
+            action: `upload_${fieldName}`,
+            filename: file.filename,
+            tenantId,
           },
-        }
-      );
+        },
+      });
 
       const resolvedUrl = this.uploadMiddleware.getFileUrl(storageKey);
       res.json({
@@ -758,8 +710,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   ): Promise<void> {
     try {
       const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
 
       let tenantId: string;
       try {
@@ -796,20 +746,14 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       );
       this.configManager.invalidateTenantConfig(tenantId);
 
-      this.activityService.success(
-        'update_config',
-        `Removed ${displayName}`,
-        userData,
-        {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: { ...userData, actor_type: 'admin' },
-          target: {
-            target_type: 'config',
-            entity_data: { action: `remove_${fieldName}`, tenantId },
-          },
-        }
-      );
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success('update_config', userData, `Removed ${displayName}`, {
+        target: {
+          target_type: 'config',
+          entity_data: { action: `remove_${fieldName}`, tenantId },
+        },
+      });
 
       res.json({
         success: true,
@@ -835,8 +779,6 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   ): Promise<void> {
     try {
       const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-      const userAgent = req.get('user-agent') || 'unknown';
 
       let tenantId: string;
       try {
@@ -875,14 +817,13 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       }
       this.configManager.invalidateTenantConfig(tenantId);
 
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'update_config',
-        `Reset ${displayName} to defaults`,
         userData,
+        `Reset ${displayName} to defaults`,
         {
-          ip_address: requestIp,
-          user_agent: userAgent,
-          actor: { ...userData, actor_type: 'admin' },
           target: {
             target_type: 'config',
             entity_data: { action: `reset_${subField}`, tenantId },

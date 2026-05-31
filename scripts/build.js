@@ -41,15 +41,11 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
-// ---------------------------------------------------------------------------
 // CLI flags
-// ---------------------------------------------------------------------------
 
 const STRICT = process.argv.includes('--strict');
 
-// ---------------------------------------------------------------------------
 // Environment check
-// ---------------------------------------------------------------------------
 
 if (process.env.NODE_ENV !== 'production') {
   console.error(
@@ -59,9 +55,7 @@ if (process.env.NODE_ENV !== 'production') {
   process.exit(1);
 }
 
-// ---------------------------------------------------------------------------
 // Logging
-// ---------------------------------------------------------------------------
 
 const green = s => `\x1b[32m${s}\x1b[0m`;
 const dim = s => `\x1b[2m${s}\x1b[0m`;
@@ -92,9 +86,7 @@ function bin(tool, args) {
   execFileSync(join(BIN, tool), args, { cwd: ROOT, stdio: 'pipe' });
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function countFiles(dir, ext) {
   try {
@@ -211,9 +203,7 @@ async function typecheckAsync() {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Build Steps
-// ---------------------------------------------------------------------------
 
 async function main() {
   const totalStart = performance.now();

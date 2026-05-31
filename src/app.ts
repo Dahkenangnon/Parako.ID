@@ -34,6 +34,7 @@ import { HARDENING } from './config/hardening-defaults.js';
 import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
 import { createPrecompressedStaticMiddleware } from './middlewares/precompressed-static.middleware.js';
 import { isShuttingDown } from './utils/shutdown.js';
+import { createHtmlErrorHandler } from './middlewares/html-error-handler.middleware.js';
 
 /**
  * Paths under which responses are served from the static public/ directory
@@ -127,10 +128,8 @@ export class Application implements IApplication {
       this.setupRoutes();
       await this.oidc();
       this.setupErrorHandling();
-
       this._isInitialized = true;
       this.logger.info('Application initialized successfully');
-
       return this.app;
     } catch (error) {
       this.logger.error(error as Error, { step: 'initialization' });
@@ -710,25 +709,14 @@ export class Application implements IApplication {
       });
     });
 
-    // HTML 500 handler — for non-API routes
+    // HTML error handler — maps GuardError to the matching error/4xx view,
+    // renders error/500 (or 503 during shutdown) for unknown errors.
     this.app.use(
-      (
-        err: Error,
-        req: express.Request,
-        res: express.Response,
-        _next: express.NextFunction
-      ) => {
-        this.logger.error(err, {
-          url: req.originalUrl,
-          method: req.method,
-          ip: req.ip,
-        });
-
-        res.status(500).render(this.viewResolver.views.errors.server_error, {
-          title: res.locals.app?.title || 'Error',
-          t: res.locals.t || ((key: string) => key),
-        });
-      }
+      createHtmlErrorHandler({
+        logger: this.logger,
+        viewResolver: this.viewResolver,
+        sessionManager: this.sessionManager,
+      })
     );
   }
 

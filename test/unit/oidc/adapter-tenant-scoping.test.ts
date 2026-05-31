@@ -32,8 +32,6 @@ import {
   DEFAULT_TENANT_ID,
 } from '../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Shared Mocks ──────────────────────────────────────────────────────────────
-
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),
@@ -43,8 +41,6 @@ function createMockLogger(): ILogger {
     child: vi.fn().mockReturnThis(),
   } as unknown as ILogger;
 }
-
-// ─── MongoDB Adapter Tests ──────────────────────────────────────────────────────
 
 describe('MongoDB OIDC Adapter — tenant scoping', () => {
   let adapter: any;
@@ -236,8 +232,6 @@ describe('MongoDB OIDC Adapter — tenant scoping', () => {
   });
 });
 
-// ─── Redis Adapter Tests ────────────────────────────────────────────────────────
-
 describe('Redis OIDC Adapter — tenant scoping', () => {
   let adapter: any;
   let mockRedis: any;
@@ -387,8 +381,6 @@ describe('Redis OIDC Adapter — tenant scoping', () => {
     });
   });
 });
-
-// ─── Prisma Adapter Tests ───────────────────────────────────────────────────────
 
 describe('Prisma OIDC Adapter — tenant scoping', () => {
   let adapter: any;

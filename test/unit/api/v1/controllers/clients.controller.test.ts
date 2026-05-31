@@ -5,9 +5,7 @@ import { ClientsController } from '../../../../../src/api/v1/controllers/clients
 import type { ClientsControllerDeps } from '../../../../../src/api/v1/controllers/clients.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): ClientsControllerDeps {
   return {
@@ -56,9 +54,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleClient = {
   _id: '507f1f77bcf86cd799439011',
@@ -70,9 +66,7 @@ const sampleClient = {
   active: true,
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/ClientsController', () => {
   let deps: ClientsControllerDeps;
@@ -83,9 +77,7 @@ describe('api/v1/controllers/ClientsController', () => {
     controller = new ClientsController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return a paginated list of clients with secrets stripped', async () => {
       const clients = [
@@ -204,9 +196,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // create
-  // -----------------------------------------------------------------------
   describe('create()', () => {
     it('should create a client and return 201 WITH the secret', async () => {
       const created = { ...sampleClient };
@@ -272,9 +262,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a client without the secret', async () => {
       vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
@@ -336,9 +324,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // update
-  // -----------------------------------------------------------------------
   describe('update()', () => {
     it('should validate body, update, and return the client without secret', async () => {
       const updated = { ...sampleClient, client_name: 'Updated Client' };
@@ -384,9 +370,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // patch
-  // -----------------------------------------------------------------------
   describe('patch()', () => {
     it('should accept a partial body and return the updated client', async () => {
       const patched = { ...sampleClient, description: 'New description' };
@@ -456,9 +440,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // destroy
-  // -----------------------------------------------------------------------
   describe('destroy()', () => {
     it('should delete the client and return 204', async () => {
       vi.mocked(deps.oidcAdapter.client.deleteClient).mockResolvedValue(true);
@@ -511,9 +493,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // activate
-  // -----------------------------------------------------------------------
   describe('activate()', () => {
     it('should activate the client and return it without secret', async () => {
       const activated = { ...sampleClient, active: true };
@@ -554,9 +534,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // deactivate
-  // -----------------------------------------------------------------------
   describe('deactivate()', () => {
     it('should deactivate the client and return it without secret', async () => {
       const deactivated = { ...sampleClient, active: false };
@@ -599,9 +577,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // regenerateSecret
-  // -----------------------------------------------------------------------
   describe('regenerateSecret()', () => {
     it('should regenerate the secret and return the client WITH the new secret', async () => {
       const regenerated = {
@@ -670,9 +646,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // stats
-  // -----------------------------------------------------------------------
   describe('stats()', () => {
     it('should return statistics for the client', async () => {
       vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
@@ -724,9 +698,7 @@ describe('api/v1/controllers/ClientsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // DB abstraction
-  // -----------------------------------------------------------------------
   describe('DB abstraction', () => {
     describe('stripClientSecret', () => {
       it('should strip client_secret from plain object (no toJSON)', async () => {

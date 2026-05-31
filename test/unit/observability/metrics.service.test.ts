@@ -12,8 +12,6 @@ import {
   sanitizeLabel,
 } from '../../../src/observability/metrics/metrics.service.js';
 
-// ── Helpers ──
-
 function createMockConfig(overrides: Record<string, any> = {}) {
   return {
     getConfig: vi.fn().mockReturnValue({
@@ -50,8 +48,6 @@ function createService(configOverrides: Record<string, any> = {}) {
     logger,
   };
 }
-
-// ── Tests ──
 
 describe('MetricsService', () => {
   beforeEach(() => {

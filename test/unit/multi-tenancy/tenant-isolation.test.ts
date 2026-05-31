@@ -12,8 +12,6 @@ import { getTenantTempDir } from '../../../src/middlewares/upload.middleware.js'
 import { getTenantChannel } from '../../../src/services/redis-pubsub.service.js';
 
 describe('Tenant Isolation — Infrastructure', () => {
-  // ─── Rate Limiter ──────────────────────────────────────────────────────────
-
   describe('Rate limiter Redis key includes tenant_id', () => {
     it('keyGenerator includes tenant_id in the key', () => {
       const keyGen = createTenantAwareKeyGenerator('login');
@@ -53,8 +51,6 @@ describe('Tenant Isolation — Infrastructure', () => {
       expect(prefix).toBe('parako:acme:rl:login:');
     });
   });
-
-  // ─── Upload Middleware ─────────────────────────────────────────────────────
 
   describe('Upload middleware tenant-scoped paths', () => {
     it('avatar destination includes tenant_id from context', () => {
@@ -109,8 +105,6 @@ describe('Tenant Isolation — Infrastructure', () => {
       expect(dir).not.toContain('!');
     });
   });
-
-  // ─── PubSub ────────────────────────────────────────────────────────────────
 
   describe('PubSub tenant-scoped channels', () => {
     it('getTenantChannel() builds channel with prefix and tenant_id', () => {

@@ -26,8 +26,6 @@ import type { ISessionManager } from '../../../src/di/interfaces/session-manager
 import type { ITenantRepository } from '../../../src/db/repositories/interfaces/tenant.repository.js';
 import type { ITenant } from '../../../src/types/tenant.js';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),
@@ -149,8 +147,6 @@ function createMockRes(): Response {
   } as unknown as Response;
   return res;
 }
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('TenantContextMiddleware', () => {
   let logger: ILogger;

@@ -45,8 +45,6 @@ export class UserService implements IUserService {
     @inject(TYPES.UserRepository) private readonly userRepo: IUserRepository
   ) {}
 
-  // ── Private helpers ──────────────────────────────────────────────────────────
-
   private validateTotpCode(code: string): string {
     const validation = this.mfaUtils.validateTotpCodeFormat(code);
     if (!validation.valid) {
@@ -54,8 +52,6 @@ export class UserService implements IUserService {
     }
     return validation.sanitized!;
   }
-
-  // ── IBaseService implementation (via repository) ──────────────────────────────
 
   public async createOne(
     data: Partial<IUser>,
@@ -183,8 +179,6 @@ export class UserService implements IUserService {
   public async aggregate(_pipeline: unknown[]): Promise<unknown[]> {
     throw new Error('aggregate is not supported by the repository abstraction');
   }
-
-  // ── IUserRepository (di/interfaces) — query methods ──────────────────────────
 
   public async findByEmail(email: string): Promise<IUser | undefined> {
     try {
@@ -423,8 +417,6 @@ export class UserService implements IUserService {
       return null;
     }
   }
-
-  // ── Business operations ───────────────────────────────────────────────────────
 
   public async updateUserLastLoginDate(
     id: string,
@@ -1343,8 +1335,6 @@ export class UserService implements IUserService {
     };
   }
 
-  // ── IUserStatisticsService ────────────────────────────────────────────────────
-
   public async countTotalUsers(): Promise<number> {
     try {
       return await this.userRepo.count({});
@@ -1467,8 +1457,6 @@ export class UserService implements IUserService {
       };
     }
   }
-
-  // ── IUserCustomIdentifierService ─────────────────────────────────────────────
 
   public getCustomIdentifierFields(): import('../di/interfaces/user/user-custom-identifier-service.interface.js').CustomIdentifierFieldConfig[] {
     const config = this.configManager.getConfig();
@@ -1652,8 +1640,6 @@ export class UserService implements IUserService {
     }
   }
 
-  // ── IUserCredentialsService ───────────────────────────────────────────────────
-
   public async isPasswordMatch(
     password: string,
     hashedPassword: string
@@ -1698,8 +1684,6 @@ export class UserService implements IUserService {
       return { valid: false };
     }
   }
-
-  // ── IUserLifecycleService ─────────────────────────────────────────────────────
 
   public async softDelete(userId: string): Promise<IUser> {
     try {

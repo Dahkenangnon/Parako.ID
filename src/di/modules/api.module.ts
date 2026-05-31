@@ -95,7 +95,6 @@ export const apiModule: ContainerModule = new ContainerModule(
 
         const getTenantId = () => tenantContext.getTenantId();
 
-        // --- Middleware ---
         const jwtAuth = createJwtAuthMiddleware({
           keyStore,
           configManager,
@@ -112,7 +111,6 @@ export const apiModule: ContainerModule = new ContainerModule(
           configManager.getConfig().deployment.environment === 'development';
         const errorHandler = createApiErrorHandler({ logger, isDevelopment });
 
-        // --- Controllers ---
         // Pass the oidcAdapter bridge itself — NOT its sub-properties.
         // The bridge getters (.client, .session, .grant) throw if called
         // before initialize(), which hasn't run yet at DI resolution time.
@@ -167,7 +165,6 @@ export const apiModule: ContainerModule = new ContainerModule(
           logger,
         });
 
-        // --- Build router ---
         return createApiV1Router({
           jwtAuth,
           auditLogger,

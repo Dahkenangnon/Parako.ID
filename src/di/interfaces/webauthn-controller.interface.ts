@@ -1,4 +1,4 @@
-import type { Request, Response, RequestHandler } from 'express';
+import type { Request, Response } from 'express';
 
 /**
  * Interface for WebAuthn Controller
@@ -26,11 +26,6 @@ export interface IWebAuthnController {
   getRegistrationOptions(req: Request, res: Response): Promise<void>;
 
   /**
-   * Validation middleware for registration verify
-   */
-  registrationVerifyValidation: RequestHandler[];
-
-  /**
    * Verify registration and store new passkey
    * POST /api/webauthn/register/verify
    */
@@ -47,11 +42,6 @@ export interface IWebAuthnController {
    * DELETE /api/webauthn/credentials/:credentialId
    */
   removeCredential(req: Request, res: Response): Promise<void>;
-
-  /**
-   * Validation middleware for rename credential
-   */
-  renameCredentialValidation: RequestHandler[];
 
   /**
    * Rename a passkey

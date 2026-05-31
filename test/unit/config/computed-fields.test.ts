@@ -16,8 +16,6 @@ import {
 } from '../../../src/multi-tenancy/tenant-context.js';
 import { applyComputedDefaults } from '../../../src/config/computed-fields.js';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 function makeBaseConfig(overrides: Record<string, unknown> = {}) {
   return {
     deployment: {
@@ -52,8 +50,6 @@ function makeBaseConfig(overrides: Record<string, unknown> = {}) {
     },
   };
 }
-
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('applyComputedDefaults — OIDC issuer derivation', () => {
   beforeEach(() => {

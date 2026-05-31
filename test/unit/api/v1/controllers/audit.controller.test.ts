@@ -5,9 +5,7 @@ import { AuditController } from '../../../../../src/api/v1/controllers/audit.con
 import type { AuditControllerDeps } from '../../../../../src/api/v1/controllers/audit.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): AuditControllerDeps {
   return {
@@ -62,9 +60,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Sample data
-// ---------------------------------------------------------------------------
 
 const sampleActivity = {
   _id: '507f1f77bcf86cd799439011',
@@ -87,9 +83,7 @@ const sampleActivity2 = {
   ip_address: '10.0.0.1',
 };
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/AuditController', () => {
   let deps: AuditControllerDeps;
@@ -100,9 +94,7 @@ describe('api/v1/controllers/AuditController', () => {
     controller = new AuditController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // list
-  // -----------------------------------------------------------------------
   describe('list()', () => {
     it('should return a paginated list of audit entries', async () => {
       vi.mocked(deps.activityService.queryActivities).mockResolvedValue({
@@ -290,9 +282,7 @@ describe('api/v1/controllers/AuditController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // get
-  // -----------------------------------------------------------------------
   describe('get()', () => {
     it('should return a single audit entry by ID', async () => {
       vi.mocked(deps.activityService.findOne).mockResolvedValue({
@@ -348,9 +338,7 @@ describe('api/v1/controllers/AuditController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // types
-  // -----------------------------------------------------------------------
   describe('types()', () => {
     it('should return all distinct activity types', async () => {
       const activityTypes = ['login', 'logout', 'password_change', 'mfa_setup'];
@@ -399,9 +387,7 @@ describe('api/v1/controllers/AuditController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // stats
-  // -----------------------------------------------------------------------
   describe('stats()', () => {
     it('should return aggregate activity statistics', async () => {
       const activityStats = {
@@ -442,9 +428,7 @@ describe('api/v1/controllers/AuditController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // DB abstraction
-  // -----------------------------------------------------------------------
   describe('DB abstraction', () => {
     describe('date range filtering', () => {
       it('should pass timestampRange with from/to (not $gte/$lte)', async () => {

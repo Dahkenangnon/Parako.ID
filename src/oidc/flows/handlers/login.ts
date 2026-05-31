@@ -13,7 +13,7 @@ import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js'
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 import type { INotificationService } from '../../../di/interfaces/notification-service.interface.js';
 import type { IGeolocationService } from '../../../di/interfaces/geolocation-service.interface.js';
 import type { IIPReputationService } from '../../../di/interfaces/ip-reputation-service.interface.js';
@@ -49,6 +49,14 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
     @inject(TYPES.MetricsService)
     private readonly metricsService: IMetricsService
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   /**
    * POST /interaction/:uid/login handler
@@ -517,19 +525,14 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
         }
 
         try {
-          this.activityService.success(
+          activityLoggerFor(this.activityLoggerDeps, req).success(
             'oidc.login.success',
-            'User logged in using OIDC',
             user,
+            'User logged in using OIDC',
             {
-              ip_address: req.ip,
-              user_agent: req.headers['user-agent'] as string,
               client_id: params.client_id as string,
-              device_infos: deviceInfos as ClientDeviceInfos,
               actor: user,
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
             }
           );
         } catch (error) {

@@ -10,8 +10,6 @@ import { SocialIntegrationService } from '../../../src/services/social-integrati
 import type { ISocialIntegration } from '../../../src/types/social-integration.js';
 import type { ISocialIntegrationRepository } from '../../../src/db/repositories/interfaces/social-integration.repository.js';
 
-// ── Stubs ─────────────────────────────────────────────────────────────────────
-
 const mockLogger = {
   info: vi.fn(),
   warn: vi.fn(),
@@ -29,8 +27,6 @@ const mockUserService = {
   findById: vi.fn(),
 } as any;
 
-// ── Mock ISocialIntegrationRepository ─────────────────────────────────────────
-
 function makeMockRepo(): ISocialIntegrationRepository {
   return {
     findById: vi.fn(),
@@ -46,8 +42,6 @@ function makeMockRepo(): ISocialIntegrationRepository {
     deleteByUserId: vi.fn(),
   } as unknown as ISocialIntegrationRepository;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeIntegration(
   overrides: Partial<ISocialIntegration> = {}
@@ -73,8 +67,6 @@ function makeService(
   return new SocialIntegrationService(mockLogger, repo as any, mockUserService);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('SocialIntegrationService — ISocialIntegrationRepository delegation', () => {
   let repo: ISocialIntegrationRepository;
   let service: SocialIntegrationService;
@@ -84,8 +76,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     repo = makeMockRepo();
     service = makeService(repo);
   });
-
-  // ── findById ──────────────────────────────────────────────────────────────
 
   describe('findById', () => {
     it('delegates to repo.findById', async () => {
@@ -106,8 +96,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
       expect(result).toBeNull();
     });
   });
-
-  // ── findByUserAndMethod ───────────────────────────────────────────────────
 
   describe('findByUserAndMethod', () => {
     it('delegates to repo.findOne with user_id and method filter', async () => {
@@ -131,8 +119,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     });
   });
 
-  // ── findByProviderSub ─────────────────────────────────────────────────────
-
   describe('findByProviderSub', () => {
     it('delegates to repo.findOne with provider_sub and method', async () => {
       const integration = makeIntegration();
@@ -153,8 +139,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     });
   });
 
-  // ── findByUser ────────────────────────────────────────────────────────────
-
   describe('findByUser', () => {
     it('delegates to repo.findMany with user_id and is_active filter', async () => {
       const integrations = [makeIntegration()];
@@ -169,8 +153,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
       expect(result).toEqual(integrations);
     });
   });
-
-  // ── createIntegration ─────────────────────────────────────────────────────
 
   describe('createIntegration', () => {
     it('delegates to repo.create after validating no existing integration', async () => {
@@ -206,8 +188,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     });
   });
 
-  // ── markAsUsed ────────────────────────────────────────────────────────────
-
   describe('markAsUsed', () => {
     it('delegates to repo.findById then repo.update with last_used', async () => {
       const integration = makeIntegration();
@@ -233,8 +213,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
       );
     });
   });
-
-  // ── activate / deactivate ─────────────────────────────────────────────────
 
   describe('activate', () => {
     it('delegates to repo.update with is_active: true', async () => {
@@ -264,8 +242,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     });
   });
 
-  // ── deactivateSocialIntegrations ──────────────────────────────────────────
-
   describe('deactivateSocialIntegrations', () => {
     it('finds active integrations then updates each to is_active: false', async () => {
       const integrations = [
@@ -285,8 +261,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
     });
   });
 
-  // ── getSocialIntegrationCount ─────────────────────────────────────────────
-
   describe('getSocialIntegrationCount', () => {
     it('delegates to repo.count with user_id and is_active filter', async () => {
       vi.mocked(repo.count).mockResolvedValue(3);
@@ -299,8 +273,6 @@ describe('SocialIntegrationService — ISocialIntegrationRepository delegation',
       expect(result).toBe(3);
     });
   });
-
-  // ── getIntegrationStatistics ──────────────────────────────────────────────
 
   describe('getIntegrationStatistics', () => {
     it('delegates count calls to repo', async () => {

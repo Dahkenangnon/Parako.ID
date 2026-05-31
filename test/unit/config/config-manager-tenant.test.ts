@@ -30,8 +30,6 @@ import type { ITenantSettingsOverrideService } from '../../../src/di/interfaces/
 import type { ILogger } from '../../../src/di/interfaces/logger.interface.js';
 import type { RuntimeConfig } from '../../../src/config/types.js';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 /** Minimal RuntimeConfig with multi_tenancy enabled */
 function createDefaultCache(
   overrides: Partial<{ multiTenancyEnabled: boolean }> = {}
@@ -175,8 +173,6 @@ function createConfigManager(
 
   return { configManager, overrideService, settingsService, logger };
 }
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ConfigManager – per-tenant config (3-layer merge)', () => {
   afterEach(() => {

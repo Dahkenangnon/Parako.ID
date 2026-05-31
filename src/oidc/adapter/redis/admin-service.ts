@@ -39,8 +39,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     super(model, client, logger, keyPrefix);
   }
 
-  // ─── Session methods ────────────────────────────────────────────────────────
-
   async findByAccountId(accountId: string): Promise<any[]> {
     try {
       if (!accountId) return [];
@@ -526,8 +524,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       throw error;
     }
   }
-
-  // ─── Grant methods ──────────────────────────────────────────────────────────
 
   async findGrantsByAccountId(accountId: string): Promise<any[]> {
     try {
@@ -1126,8 +1122,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     }
   }
 
-  // ─── Shared: deleteByAccountId (dispatches on model name) ──────────────────
-
   async deleteByAccountId(
     accountId: string
   ): Promise<{ deletedCount: number }> {
@@ -1183,8 +1177,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       throw error;
     }
   }
-
-  // ─── Client CRUD (IAdapterClientService) ────────────────────────────────────
 
   /**
    * Create a new OIDC client in Redis.
@@ -1372,8 +1364,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     return generateClientSecret();
   }
 
-  // ─── Shared: getDistinctValues ──────────────────────────────────────────────
-
   async getDistinctValues(field: string, filters: any = {}): Promise<any[]> {
     try {
       const pattern = buildRedisKey(this.keyPrefix, 'oidc', this.name, '*');
@@ -1417,8 +1407,6 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       throw error;
     }
   }
-
-  // ─── Private helpers ────────────────────────────────────────────────────────
 
   private matchesFilters(data: any, filters: any): boolean {
     for (const [key, value] of Object.entries(filters)) {

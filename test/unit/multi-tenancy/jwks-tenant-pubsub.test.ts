@@ -10,8 +10,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { AdminJwksController } from '../../../src/controllers/admin/jwks.controller.js';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockPubSub() {
   return {
     subscribe: vi.fn(),
@@ -92,8 +90,6 @@ function createMockLogger() {
     debug: vi.fn(),
   };
 }
-
-// ─── Test Suite ──────────────────────────────────────────────────────────────
 
 describe('JWKS Tenant-Scoped PubSub (Task 4.4)', () => {
   describe('AdminJwksController.publishJwksEvent()', () => {

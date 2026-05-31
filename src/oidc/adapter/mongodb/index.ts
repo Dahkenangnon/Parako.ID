@@ -387,8 +387,6 @@ export default class OIDCMongoAdapter
   }
 }
 
-// ── Connection helper ─────────────────────────────────────────────────────────
-
 /**
  * Establish a MongoDB connection and return the Db instance.
  * This replaces the old static `OIDCMongoAdapter.connect()`.
@@ -415,8 +413,6 @@ export async function connectMongoDB(
 
   throw new Error('No valid MongoDB connection provided');
 }
-
-// ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
  * Factory for node-oidc-provider's `adapter` option.

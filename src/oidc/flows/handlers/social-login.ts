@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
@@ -7,6 +8,10 @@ import type { IOIDCSocialLoginHandler } from '../../../di/interfaces/oidc-social
 import { type SocialProvider } from '../../../types/social-integration.js';
 import type { ISocialLoginManager } from '../../../di/interfaces/social-login-manager.interface.js';
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
+import {
+  oidcSocialLoginQuerySchema,
+  oidcSocialProviderParamsSchema,
+} from '../../../validators/oidc/handlers.js';
 
 /**
  * OIDC Social Login Handler
@@ -37,8 +42,11 @@ export class OIDCSocialLoginHandler implements IOIDCSocialLoginHandler {
     _next: NextFunction
   ): Promise<void> => {
     try {
-      const provider = req.params.provider as SocialProvider;
-      const { uid, client_id, prompt, acr_values, ...otherParams } = req.query;
+      const { provider } = oidcSocialProviderParamsSchema.parse(req.params) as {
+        provider: SocialProvider;
+      };
+      const { uid, client_id, prompt, acr_values, ...otherParams } =
+        oidcSocialLoginQuerySchema.parse(req.query);
 
       if (!uid || !client_id) {
         this.logger.warn('OIDC social login missing required parameters', {
@@ -93,6 +101,17 @@ export class OIDCSocialLoginHandler implements IOIDCSocialLoginHandler {
 
       res.redirect(authUrl);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        this.logger.warn('OIDC social login received invalid input', {
+          issues: error.issues,
+        });
+        return res.status(400).render('auth/oidc/error.njk', {
+          title: 'Invalid Request',
+          error:
+            'The request could not be processed. Please return to the previous page and try again.',
+          redirectUrl: '/auth/login',
+        });
+      }
       this.logger.error(error as Error, {
         context: 'oidc_social_login_initiation_failed',
         provider: req.params.provider,

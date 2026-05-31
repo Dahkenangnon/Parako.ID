@@ -14,8 +14,6 @@ import {
   DEFAULT_TENANT_ID,
 } from '../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockProvider(name = 'default') {
   return {
     _name: name,
@@ -73,8 +71,6 @@ function createSpyApp() {
     routes,
   };
 }
-
-// ─── Test Suite ──────────────────────────────────────────────────────────────
 
 describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
   let mockProvider: ReturnType<typeof createMockProvider>;
@@ -210,8 +206,6 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
     routesManager.registerRoutes(spyApp as any);
   });
 
-  // ─── Signature ───────────────────────────────────────────────────────
-
   describe('registerRoutes() signature', () => {
     it('accepts only app parameter (no provider)', () => {
       // Routes are now on the internal Router, not the app.
@@ -226,8 +220,6 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       expect(routesManager.registerRoutes.length).toBe(1);
     });
   });
-
-  // ─── Route Registration ──────────────────────────────────────────────
 
   describe('routes are registered', () => {
     it('registers all expected routes on the internal Router', () => {
@@ -271,8 +263,6 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       expect(useCalls.length).toBeGreaterThanOrEqual(2);
     });
   });
-
-  // ─── Per-Request Provider Resolution ─────────────────────────────────
 
   describe('per-request provider resolution', () => {
     const mockReq = { params: { uid: 'test-uid' } } as unknown as Request;
@@ -368,8 +358,6 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
     });
   });
 
-  // ─── Social routes (no provider) ────────────────────────────────────
-
   describe('social routes do NOT use provider', () => {
     it('GET /social/:provider does not call getProviderForTenant', async () => {
       mockProviderService.getProviderForTenant.mockClear();
@@ -395,8 +383,6 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       expect(mockSocialLogin.handle.mock.calls[0].length).toBe(3);
     });
   });
-
-  // ─── Multi-tenant context ───────────────────────────────────────────
 
   describe('multi-tenant context', () => {
     it('reads tenant from AsyncLocalStorage', async () => {

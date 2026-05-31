@@ -26,10 +26,8 @@ export async function bootstrapMasterTenant(
 ): Promise<void> {
   const tenantRepo = container.get<ITenantRepository>(TYPES.TenantRepository);
 
-  // ── 1. Seed _platforms tenant record ──────────────────────────────────────
   await seedMasterTenantRecord(tenantRepo, logger);
 
-  // ── 2. Seed bootstrap admin user (if env vars provided) ──────────────────
   const mtConfig = bootstrapConfig.multiTenancy;
   const email = mtConfig?.bootstrap_admin_email;
   const password = mtConfig?.bootstrap_admin_password;

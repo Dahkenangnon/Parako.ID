@@ -10,7 +10,7 @@ import type { IOIDCSelectAccountHandler } from '../../../di/interfaces/oidc-sele
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 
 /**
  * OIDC Select Account Handler
@@ -35,6 +35,14 @@ export class OIDCSelectAccountHandler implements IOIDCSelectAccountHandler {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * POST /interaction/:uid/select_account handler
    * Processes account selection for select_account prompt
@@ -48,9 +56,6 @@ export class OIDCSelectAccountHandler implements IOIDCSelectAccountHandler {
     try {
       const interactionDetails = await provider.interactionDetails(req, res);
       const { uid, prompt, params } = interactionDetails;
-
-      const deviceInfos =
-        this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
 
       if (prompt.name !== 'select_account') {
         this.logger.error('Expected select_account prompt but got', {
@@ -157,23 +162,18 @@ export class OIDCSelectAccountHandler implements IOIDCSelectAccountHandler {
       });
 
       try {
-        this.activityService.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'oidc.select_account',
-          'User selected account for OIDC login',
           null,
+          'User selected account for OIDC login',
           {
-            ip_address: req.ip,
-            user_agent: req.headers['user-agent'] as string,
             client_id: params.client_id as string,
-            device_infos: deviceInfos as ClientDeviceInfos,
             actor: {
               id: selectedAccount.id,
               username: selectedAccount.username,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
       } catch (error) {

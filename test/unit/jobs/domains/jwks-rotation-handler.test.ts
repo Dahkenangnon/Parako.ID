@@ -140,8 +140,6 @@ describe('JWKS rotation handler', () => {
     );
   });
 
-  // ── Delayed promotion via scheduleDelayedPromotion ──
-
   it('should schedule delayed promotion when promotionDelayMs > 0 and scheduleDelayedPromotion provided', async () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
@@ -209,8 +207,6 @@ describe('JWKS rotation handler', () => {
     expect(mockKeyStore.retireExpiredKeys).toHaveBeenCalled();
     expect(result).toEqual({ rotated: true });
   });
-
-  // ── Promotion-only phase (triggered by delayed BullMQ job) ──
 
   it('should run promotion-only phase when data.phase is "promote"', async () => {
     const mockKeyStore = createMockKeyStore();

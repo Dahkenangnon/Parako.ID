@@ -20,6 +20,7 @@ import type { ILocalsMiddleware } from '../di/interfaces/locals-middleware.inter
 import type { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js';
 import type { IConfigValidationMiddleware } from '../di/interfaces/config-validation-middleware.interface.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
+import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { accountRoutes } from './accounts.js';
 import { adminRoutes } from './admin.js';
 import { authRoutes } from './auth.js';
@@ -93,7 +94,8 @@ export class MainRoutesManager implements IMainRoutesManager {
     private readonly platformAdminController: PlatformAdminController,
     @inject(TYPES.ApiV1RoutesManager)
     @optional()
-    private readonly apiV1Router: Router
+    private readonly apiV1Router: Router,
+    @inject(TYPES.Logger) private readonly logger: ILogger
   ) {}
 
   /**
@@ -166,7 +168,8 @@ export class MainRoutesManager implements IMainRoutesManager {
       this.uIMiddleware,
       this.authController,
       this.tier1CompletionService,
-      this.sessionManager
+      this.sessionManager,
+      this.logger
     );
 
     const accountRouter = accountRoutes(
@@ -180,7 +183,8 @@ export class MainRoutesManager implements IMainRoutesManager {
 
     const webauthnRouter = webauthnRoutes(
       this.securityMiddleware,
-      this.webauthnController
+      this.webauthnController,
+      this.logger
     );
 
     const adminRouter = adminRoutes(
@@ -199,6 +203,7 @@ export class MainRoutesManager implements IMainRoutesManager {
       this.localsMiddleware,
       this.configValidationMiddleware,
       this.sessionManager,
+      this.logger,
       this.platformAdminController ?? undefined
     );
 

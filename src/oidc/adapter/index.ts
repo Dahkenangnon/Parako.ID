@@ -150,8 +150,6 @@ export class OIDCAdapterBridge {
     }
   }
 
-  // ── Backend initializers ──────────────────────────────────────────────────
-
   private async initializeMongoDB(): Promise<void> {
     const config = this.configManager.getConfig();
     const mongoConfig = config.oidc_storage.oidc_adapter.mongodb;
@@ -272,8 +270,6 @@ export class OIDCAdapterBridge {
     );
     this.logger.info('Prisma OIDC adapter initialized');
   }
-
-  // ── Public getters ────────────────────────────────────────────────────────
 
   /**
    * Get the adapter factory. All three backends now expose the same

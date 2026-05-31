@@ -266,7 +266,6 @@ export function applyComputedDefaults(config: any): any {
   // STEP 2: Always compute derived fields
   // These are recalculated on every config load/update from base values
 
-  // ─── Tenant-aware base URL derivation ────────────────────────────────
   // When running inside a tenant context (non-default), derive URLs from
   // the tenant's subdomain or custom domain instead of the platform URL.
   // Priority: 1. explicit oidc.issuer_url  2. tenant_domain  3. subdomain

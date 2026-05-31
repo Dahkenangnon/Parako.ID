@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Provider, { Grant } from 'oidc-provider';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
@@ -8,7 +9,9 @@ import type { IViewResolver } from '../../../di/interfaces/view-resolver.interfa
 import type { IOIDCConsentHandler } from '../../../di/interfaces/oidc-consent-handler.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
+import { oidcUidParamsSchema } from '../../../validators/oidc/handlers.js';
 
 /**
  * OIDC Consent Handler
@@ -23,8 +26,18 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
     @inject(TYPES.ViewResolver) private readonly viewResolver: IViewResolver,
     @inject(TYPES.OIDCUtils) private readonly oidcUtils: IOIDCUtils,
     @inject(TYPES.ClientDeviceInfoManager)
-    private readonly clientDeviceInfoManager: IClientDeviceInfoManager
+    private readonly clientDeviceInfoManager: IClientDeviceInfoManager,
+    @inject(TYPES.SessionManager)
+    private readonly sessionManager: ISessionManager
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   /**
    * POST /interaction/:uid/confirm handler
@@ -37,6 +50,7 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
     provider: Provider
   ): Promise<void> => {
     try {
+      const routeParams = oidcUidParamsSchema.parse(req.params);
       const interactionDetails = await provider.interactionDetails(req, res);
       const {
         prompt: { name, details },
@@ -44,11 +58,8 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
         session,
       } = interactionDetails;
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
-
       this.logger.debug('Processing consent confirmation', {
-        uid: req.params.uid,
+        uid: routeParams.uid,
         clientId: params.client_id,
         promptName: name,
         hasSession: !!session,
@@ -120,19 +131,13 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
       await this.oidcUtils.syncSessionAfterConsent(req, accountId);
 
       try {
-        this.activityService.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'oidc.confirm',
-          'User consented to OIDC grant',
           null,
+          'User consented to OIDC grant',
           {
-            ip_address: req.ip,
-            user_agent: req.headers['user-agent'] as string,
             client_id: params.client_id as string,
-            device_infos: deviceInfos as ClientDeviceInfos,
-            actor: {
-              username: accountId,
-              actor_type: 'user',
-            },
+            actor: { username: accountId, actor_type: 'user' },
             target: {
               target_type: 'client',
               entity_id: params.client_id as string,
@@ -153,11 +158,22 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
       );
 
       this.logger.info('Consent interaction completed successfully', {
-        uid: req.params.uid,
+        uid: routeParams.uid,
         clientId: params.client_id,
         grantId,
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn('OIDC consent received invalid input', {
+          issues: err.issues,
+        });
+        res.status(400).render(this.viewResolver.views.auth.oidc.error, {
+          errorType: 'InvalidRequest',
+          errorMessage:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'Error in consent handler',
       });

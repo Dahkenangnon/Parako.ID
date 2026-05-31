@@ -10,8 +10,6 @@ import { SettingsService } from '../../../src/services/settings.service.js';
 import type { ISettings } from '../../../src/models/settings/types.js';
 import type { ISettingsRepository } from '../../../src/db/repositories/interfaces/settings.repository.js';
 
-// ── Stubs ─────────────────────────────────────────────────────────────────────
-
 function makeMockRepo(): ISettingsRepository {
   return {
     findById: vi.fn(),
@@ -28,8 +26,6 @@ function makeMockRepo(): ISettingsRepository {
     getLatestVersion: vi.fn(),
   } as unknown as ISettingsRepository;
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeSettings(overrides: Partial<ISettings> = {}): ISettings {
   return {
@@ -58,8 +54,6 @@ function makeService(repo: ISettingsRepository): SettingsService {
   return new SettingsService(makeMockLogger() as any, repo as any);
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('SettingsService — ISettingsRepository delegation', () => {
   let repo: ISettingsRepository;
   let service: SettingsService;
@@ -69,8 +63,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
     repo = makeMockRepo();
     service = makeService(repo);
   });
-
-  // ── getMainConfiguration ────────────────────────────────────────────────────
 
   describe('getMainConfiguration', () => {
     it('delegates to repo.findActive', async () => {
@@ -92,8 +84,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
     });
   });
 
-  // ── hasMainConfiguration ─────────────────────────────────────────────────────
-
   describe('hasMainConfiguration', () => {
     it('delegates to repo.findActive and returns true when found', async () => {
       vi.mocked(repo.findActive).mockResolvedValue(makeSettings());
@@ -112,8 +102,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       expect(result).toBe(false);
     });
   });
-
-  // ── saveMainConfiguration ────────────────────────────────────────────────────
 
   describe('saveMainConfiguration', () => {
     it('delegates to repo.save with encrypted config', async () => {
@@ -149,8 +137,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
     });
   });
 
-  // ── getConfigurationHistory ───────────────────────────────────────────────────
-
   describe('getConfigurationHistory', () => {
     it('delegates to repo.findHistory', async () => {
       const history = [makeSettings({ _version: 1 }), makeSettings()];
@@ -171,8 +157,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
     });
   });
 
-  // ── getConfigurationStatistics ────────────────────────────────────────────────
-
   describe('getConfigurationStatistics', () => {
     it('delegates count calls to repo', async () => {
       vi.mocked(repo.count).mockResolvedValue(5);
@@ -188,8 +172,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
     });
   });
 
-  // ── getConfigurationByKey ─────────────────────────────────────────────────────
-
   describe('getConfigurationByKey', () => {
     it('delegates to repo.findActive', async () => {
       const settings = makeSettings({ key: 'some_key' });
@@ -201,8 +183,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       expect(result).toEqual(settings);
     });
   });
-
-  // ── getAllActiveConfigurations ─────────────────────────────────────────────────
 
   describe('getAllActiveConfigurations', () => {
     it('delegates to repo.findMany with is_active filter', async () => {

@@ -1,10 +1,9 @@
 /**
  * Verifies the defense-in-depth query helpers used by admin controllers.
  *
- * The route-layer validators in src/middlewares/validation.middleware.ts
- * already coerce + bound-check inputs, but controllers re-validate via
- * parsePositiveInt / parseEnum / escapeRegExp so a middleware bypass does
- * not produce an exploitable hole.
+ * The route layer parses and coerces inputs via Zod, but controllers
+ * re-validate via parsePositiveInt / parseEnum / escapeRegExp so a
+ * middleware bypass does not produce an exploitable hole.
  *
  * References:
  *   - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/parseInt
@@ -16,7 +15,7 @@ import {
   parsePositiveInt,
   parseEnum,
   escapeRegExp,
-} from '../../../src/utils/query-parse.js';
+} from '../../../src/validators/listing-query.js';
 
 describe('parsePositiveInt', () => {
   it('returns the default when the value is missing', () => {

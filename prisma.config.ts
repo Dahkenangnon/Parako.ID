@@ -10,6 +10,6 @@ export default defineConfig({
     path: 'prisma/migrations/sqlite',
   },
   datasource: {
-    url: process.env['DATABASE_URL'] ?? 'file:./data/parako.db',
+    url: process.env['DATABASE_URL'] ?? 'file:./runtime/data/parako.db',
   },
 });

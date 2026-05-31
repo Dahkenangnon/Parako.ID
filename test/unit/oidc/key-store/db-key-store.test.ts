@@ -433,8 +433,6 @@ describe('DBKeyStore', () => {
     expect(insertedKeys[0].tenant_id).toBe('tenant-a');
   });
 
-  // ── Two-phase rotation tests ──
-
   it('should generate unpromoted keys during rotate (Phase 1)', async () => {
     const model = createMockJwksKeyModel();
     const store = new DBKeyStore(

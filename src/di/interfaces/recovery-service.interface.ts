@@ -94,8 +94,6 @@ export interface RecoveryDeviceInfo {
  * and UserService (user updates) to provide a unified recovery API.
  */
 export interface IRecoveryService {
-  // ===== Recovery Flow =====
-
   /**
    * Initiate a recovery attempt for a user
    * @param identifier - User identifier (email, phone, or username)
@@ -156,8 +154,6 @@ export interface IRecoveryService {
     deviceInfo: RecoveryDeviceInfo
   ): Promise<RecoveryCompletionResult>;
 
-  // ===== Recovery Status =====
-
   /**
    * Get available recovery methods for a user
    * @param userId - User ID
@@ -180,8 +176,6 @@ export interface IRecoveryService {
    */
   isInCooldownPeriod(userId: string): Promise<boolean>;
 
-  // ===== Recovery Logging =====
-
   /**
    * Log a recovery attempt
    * @param userId - User ID
@@ -197,8 +191,6 @@ export interface IRecoveryService {
     deviceInfo: RecoveryDeviceInfo,
     metadata?: Record<string, any>
   ): Promise<void>;
-
-  // ===== Recovery Configuration =====
 
   /**
    * Generate new backup codes for a user
@@ -228,8 +220,6 @@ export interface IRecoveryService {
     userId: string,
     method: RecoveryMethod
   ): Promise<{ success: boolean; error?: string }>;
-
-  // ===== Recovery Notifications =====
 
   /**
    * Send recovery notification to user's primary email

@@ -38,8 +38,6 @@ export default class OIDCRedisAdapter
     this.keyPrefix = keyPrefix;
   }
 
-  // ── Key helpers ─────────────────────────────────────────────────────────────
-
   /**
    * Generate Redis key for this adapter instance.
    * Unified format: {keyPrefix}:{tenantId}:oidc:{Model}:{id}
@@ -59,8 +57,6 @@ export default class OIDCRedisAdapter
   protected uidKeyFor(uid: string): string {
     return buildRedisKey(this.keyPrefix, 'oidc', 'uid', uid);
   }
-
-  // ── OIDC adapter methods ────────────────────────────────────────────────────
 
   /**
    * Update or Create an instance of an oidc-provider model.
@@ -259,8 +255,6 @@ export default class OIDCRedisAdapter
     }
   }
 
-  // ── Monitoring methods ──────────────────────────────────────────────────────
-
   /**
    * Count all keys matching the pattern for this collection.
    */
@@ -411,8 +405,6 @@ export default class OIDCRedisAdapter
   }
 }
 
-// ── Connection helper ─────────────────────────────────────────────────────────
-
 /**
  * Establish a Redis connection and return the client.
  * This replaces the old static `OIDCRedisAdapter.connect()`.
@@ -439,8 +431,6 @@ export async function connectRedis(
   await redisClient.ping();
   return redisClient;
 }
-
-// ── Factory ───────────────────────────────────────────────────────────────────
 
 /**
  * Factory for node-oidc-provider's `adapter` option.

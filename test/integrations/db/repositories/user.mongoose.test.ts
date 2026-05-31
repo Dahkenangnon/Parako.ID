@@ -4,8 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createUserModel } from '../../../../src/models/user.model.js';
 import { MongooseUserRepository } from '../../../../src/db/repositories/mongoose/user.repository.js';
 
-// ─── Minimal mocks ────────────────────────────────────────────────────────────
-
 const mockLogger = {
   info: () => {},
   error: () => {},
@@ -28,8 +26,6 @@ const mockConfigManager = {
 } as any;
 
 const mockPasswordUtils = {} as any;
-
-// ─── Shared state ─────────────────────────────────────────────────────────────
 
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseUserRepository;
@@ -67,8 +63,6 @@ const makeUser = (overrides: Partial<Record<string, any>> = {}) => ({
   ...overrides,
 });
 
-// ─── Setup / teardown ─────────────────────────────────────────────────────────
-
 beforeAll(async () => {
   try {
     mongod = await MongoMemoryServer.create();
@@ -98,8 +92,6 @@ beforeEach(async ctx => {
   }
   await mongoose.connection.collection('users').deleteMany({});
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('MongooseUserRepository', () => {
   describe('create + findById', () => {

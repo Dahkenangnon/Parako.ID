@@ -760,8 +760,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  // ===== Private Helpers =====
-
   /**
    * Find user by various identifiers
    */

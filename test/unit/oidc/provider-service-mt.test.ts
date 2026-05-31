@@ -22,8 +22,6 @@ import {
   DEFAULT_TENANT_ID,
 } from '../../../src/multi-tenancy/tenant-context.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),
@@ -145,8 +143,6 @@ function createMockMetrics(): IMetricsService {
     getContentType: vi.fn().mockReturnValue('text/plain'),
   };
 }
-
-// ─── ProviderService Tests ──────────────────────────────────────────────────
 
 describe('ProviderService — getProviderForTenant()', () => {
   let logger: ILogger;
@@ -275,8 +271,6 @@ describe('ProviderService — getProviderForTenant()', () => {
     expect(service.setProvider).toBeDefined();
   });
 });
-
-// ─── OIDCListenerService — Tenant Context ───────────────────────────────────
 
 describe('OIDCListenerService — tenant in log metadata', () => {
   let logger: ILogger;

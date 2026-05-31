@@ -77,7 +77,6 @@ export class StatsController {
     try {
       const stats: Record<string, unknown> = {};
 
-      // --- Users ---
       try {
         if (this.userService.count) {
           stats.users = { total: await this.userService.count() };
@@ -89,7 +88,6 @@ export class StatsController {
         stats.users = { error: 'Failed to retrieve user statistics' };
       }
 
-      // --- Clients ---
       try {
         const clientCount = await this.oidcAdapter.client.countClients();
         const clientStats = await this.oidcAdapter.client.getClientStatistics();
@@ -99,7 +97,6 @@ export class StatsController {
         stats.clients = { error: 'Failed to retrieve client statistics' };
       }
 
-      // --- Sessions ---
       try {
         if (this.oidcAdapter.session.getSessionStatistics) {
           stats.sessions =
@@ -112,7 +109,6 @@ export class StatsController {
         stats.sessions = { error: 'Failed to retrieve session statistics' };
       }
 
-      // --- Grants ---
       try {
         if (this.oidcAdapter.grant.getGrantStatistics) {
           stats.grants = await this.oidcAdapter.grant.getGrantStatistics();
@@ -124,7 +120,6 @@ export class StatsController {
         stats.grants = { error: 'Failed to retrieve grant statistics' };
       }
 
-      // --- Activity ---
       try {
         stats.activity = await this.activityService.getActivityStats();
       } catch (err) {
@@ -153,7 +148,6 @@ export class StatsController {
     try {
       const checks: Record<string, { status: string; message?: string }> = {};
 
-      // --- Database connectivity (via user count query) ---
       try {
         if (this.userService.count) {
           await this.userService.count();
@@ -175,7 +169,6 @@ export class StatsController {
         };
       }
 
-      // --- OIDC adapter connectivity ---
       try {
         await this.oidcAdapter.client.countClients();
         checks.oidc = { status: 'healthy' };
@@ -187,7 +180,6 @@ export class StatsController {
         };
       }
 
-      // --- Configuration loaded ---
       try {
         const config = this.configManager.getConfig();
         checks.config = config
@@ -201,7 +193,6 @@ export class StatsController {
         };
       }
 
-      // --- Overall status ---
       const allHealthy = Object.values(checks).every(
         c => c.status === 'healthy'
       );

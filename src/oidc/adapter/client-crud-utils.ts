@@ -15,8 +15,6 @@ import type {
 import { CLIENT_DEFAULTS } from './client.interface.js';
 import { ensureEncrypted, ensureDecrypted } from '../../utils/encryption.js';
 
-// ─── ID / Secret generation ────────────────────────────────────────────────
-
 /**
  * Generate a unique client ID (UUID v4).
  */
@@ -30,8 +28,6 @@ export function generateClientId(): string {
 export function generateClientSecret(): string {
   return randomBytes(32).toString('hex');
 }
-
-// ─── Payload sanitization ─────────────────────────────────────────────────
 
 /**
  * Strip empty strings, null, and undefined values from an OIDC client payload.
@@ -52,8 +48,6 @@ export function sanitizeClientPayload<T extends Record<string, unknown>>(
   }
   return result;
 }
-
-// ─── Defaults ──────────────────────────────────────────────────────────────
 
 /**
  * Apply defaults and generate missing identifiers for a new client.
@@ -78,8 +72,6 @@ export function applyClientDefaults(
     updated_at: data.updated_at || now,
   }) as OidcClientData;
 }
-
-// ─── Validation ────────────────────────────────────────────────────────────
 
 const VALID_APP_TYPES = new Set(['web', 'native', 'spa']);
 const VALID_AUTH_METHODS = new Set([
@@ -166,8 +158,6 @@ export function validateClientData(
   return { isValid: errors.length === 0, errors };
 }
 
-// ─── Secret encryption ──────────────────────────────────────────────────────
-
 /**
  * Encrypt the client_secret field (if present) for storage at rest.
  * Already-encrypted values are passed through unchanged.
@@ -199,8 +189,6 @@ export function decryptClientSecret(
   }
   return clientData;
 }
-
-// ─── Filtering ─────────────────────────────────────────────────────────────
 
 /**
  * Apply ClientFilters to an array of clients (in-memory).
@@ -248,8 +236,6 @@ export function clientMatchesSearch(
     (client.description?.toLowerCase().includes(lower) ?? false)
   );
 }
-
-// ─── Statistics ─────────────────────────────────────────────────────────────
 
 /**
  * Compute client statistics from an array of clients.

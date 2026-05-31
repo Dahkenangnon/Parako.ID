@@ -7,9 +7,7 @@ import {
   type ApiV1Dependencies,
 } from '../../../../../src/api/v1/routes/index.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 /** Minimal stub controller — every method is a no-op that calls next(). */
 function stubController<T>(methods: (keyof T)[]): T {
@@ -99,9 +97,7 @@ function createDeps(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/routes — 404 catch-all', () => {
   it('should return 404 with Problem Detail JSON for unmatched GET path', async () => {

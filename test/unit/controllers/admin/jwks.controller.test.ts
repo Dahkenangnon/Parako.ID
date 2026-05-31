@@ -18,8 +18,6 @@ vi.mock('../../../../src/multi-tenancy/tenant-context.js', () => ({
 // Import after mocks
 import { AdminJwksController } from '../../../../src/controllers/admin/jwks.controller.js';
 
-// ── Test Helpers ──
-
 function createMockKey(overrides: Partial<StoredKey> = {}): StoredKey {
   return {
     kid: 'test-kid-123',
@@ -151,8 +149,6 @@ function createMockRes(): Response {
   return res;
 }
 
-// ── Tests ──
-
 describe('AdminJwksController', () => {
   let deps: ReturnType<typeof createMockDeps>;
   let controller: AdminJwksController;
@@ -242,18 +238,14 @@ describe('AdminJwksController', () => {
       expect(renderedKeys[1].kid).toBe('old');
     });
 
-    it('should flash error and redirect on failure', async () => {
-      deps.keyStore.listKeys.mockRejectedValue(new Error('DB error'));
+    it('propagates errors to the global error handler', async () => {
+      const dbError = new Error('DB error');
+      deps.keyStore.listKeys.mockRejectedValue(dbError);
 
       const req = createMockReq();
       const res = createMockRes();
 
-      await controller.list(req, res);
-
-      expect(deps.flashChain.error).toHaveBeenCalledWith(
-        'Failed to load JWKS keys'
-      );
-      expect(res.redirect).toHaveBeenCalledWith('/admin');
+      await expect(controller.list(req, res)).rejects.toBe(dbError);
     });
   });
 
@@ -277,7 +269,7 @@ describe('AdminJwksController', () => {
       );
     });
 
-    it('should flash error and redirect when key not found', async () => {
+    it('flashes "Key not found" and redirects when the key is missing', async () => {
       deps.keyStore.listKeys.mockResolvedValue([]);
 
       const req = createMockReq({ params: { kid: 'nonexistent' } });
@@ -289,18 +281,14 @@ describe('AdminJwksController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/admin/jwks');
     });
 
-    it('should flash error and redirect on failure', async () => {
-      deps.keyStore.listKeys.mockRejectedValue(new Error('DB error'));
+    it('propagates errors to the global error handler', async () => {
+      const dbError = new Error('DB error');
+      deps.keyStore.listKeys.mockRejectedValue(dbError);
 
       const req = createMockReq({ params: { kid: 'any' } });
       const res = createMockRes();
 
-      await controller.show(req, res);
-
-      expect(deps.flashChain.error).toHaveBeenCalledWith(
-        'Failed to load key details'
-      );
-      expect(res.redirect).toHaveBeenCalledWith('/admin/jwks');
+      await expect(controller.show(req, res)).rejects.toBe(dbError);
     });
   });
 

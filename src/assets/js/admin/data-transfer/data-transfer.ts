@@ -92,8 +92,6 @@ interface ImportResult {
   let parsedRows: ParsedRow[] = [];
   let columnMatches: ColumnMatch[] = [];
 
-  // ── Element refs ───────────────────────────────────────────────────────
-
   const fileInput = document.getElementById(
     'import-file-input'
   ) as HTMLInputElement | null;
@@ -131,8 +129,6 @@ interface ImportResult {
   const importPanel = document.getElementById('import-panel');
   const exportPanel = document.getElementById('export-panel');
 
-  // ── Helpers ────────────────────────────────────────────────────────────
-
   function getCsrfToken(): string {
     const meta = document.querySelector('meta[name="csrf-token"]');
     return meta?.getAttribute('content') || '';
@@ -155,8 +151,6 @@ interface ImportResult {
     return el;
   }
 
-  // ── Tab Navigation ─────────────────────────────────────────────────────
-
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
@@ -173,8 +167,6 @@ interface ImportResult {
       if (exportPanel) exportPanel.classList.toggle('hidden', tab !== 'export');
     });
   });
-
-  // ── File Selection ─────────────────────────────────────────────────────
 
   fileInput?.addEventListener('change', async () => {
     const file = fileInput.files?.[0];
@@ -212,8 +204,6 @@ interface ImportResult {
       parseJsonFile(text);
     }
   });
-
-  // ── CSV Parsing ────────────────────────────────────────────────────────
 
   function parseCsvFile(text: string): void {
     const result = Papa.parse(text, {
@@ -268,8 +258,6 @@ interface ImportResult {
     return matches;
   }
 
-  // ── JSON Parsing ───────────────────────────────────────────────────────
-
   function parseJsonFile(text: string): void {
     let data: unknown;
     try {
@@ -293,8 +281,6 @@ interface ImportResult {
     columnMatches = [];
     showPreview(Object.keys(parsedRows[0] || {}));
   }
-
-  // ── Preview Rendering ──────────────────────────────────────────────────
 
   function showParseError(message: string): void {
     const dialog = (window as unknown as WindowWithApis).dialog;
@@ -493,19 +479,13 @@ interface ImportResult {
     if (fileInput) fileInput.value = '';
   }
 
-  // ── Cancel Preview ─────────────────────────────────────────────────────
-
   cancelPreviewBtn?.addEventListener('click', () => {
     resetPreview();
   });
 
-  // ── New Import ─────────────────────────────────────────────────────────
-
   newImportBtn?.addEventListener('click', () => {
     resetPreview();
   });
-
-  // ── Confirm Import ─────────────────────────────────────────────────────
 
   confirmImportBtn?.addEventListener('click', async () => {
     if (parsedRows.length === 0) return;
@@ -701,8 +681,6 @@ interface ImportResult {
     }, 3000);
   }
 
-  // ── Progress UI ────────────────────────────────────────────────────────
-
   function showProgress(): void {
     progressArea?.classList.remove('hidden');
     updateProgress(0);
@@ -721,8 +699,6 @@ interface ImportResult {
         clamped >= 100 ? 'Finalizing...' : `Processing... ${clamped}%`;
     }
   }
-
-  // ── Result Display ─────────────────────────────────────────────────────
 
   function showResult(result: ImportResult): void {
     if (!resultArea || !resultSummary) return;
@@ -837,8 +813,6 @@ interface ImportResult {
       resultArea.classList.remove('hidden');
     }
   }
-
-  // ── Export with Secrets Confirmation ────────────────────────────────────
 
   const exportForm = exportBtn?.closest('form');
   exportForm?.addEventListener('submit', async e => {

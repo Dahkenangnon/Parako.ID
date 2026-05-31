@@ -193,7 +193,6 @@ export function parsePaginationParams(query: Record<string, unknown>): {
   cursor?: string;
   includeCount: boolean;
 } {
-  // --- limit ---
   let limit = 25;
   if (query.limit !== undefined && query.limit !== null && query.limit !== '') {
     const parsed = Number(query.limit);
@@ -202,13 +201,11 @@ export function parsePaginationParams(query: Record<string, unknown>): {
     }
   }
 
-  // --- cursor (after) ---
   let cursor: string | undefined;
   if (typeof query.after === 'string' && query.after.length > 0) {
     cursor = query.after;
   }
 
-  // --- include_count ---
   let includeCount = false;
   const raw = query.include_count;
   if (raw === true || raw === 'true' || raw === '1') {

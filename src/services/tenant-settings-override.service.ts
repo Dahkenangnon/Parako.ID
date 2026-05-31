@@ -8,8 +8,6 @@ import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { ensureEncrypted } from '../utils/encryption.js';
 import { getNestedValue, setNestedValue } from '../utils/nested-value.js';
 
-// ── Field-Level Whitelist ───────────────────────────────────────────────────
-
 /**
  * Exhaustive set of dot-paths that tenants may override.
  * Any path not in this set is stripped by stripDisallowedFields().
@@ -18,13 +16,11 @@ import { getNestedValue, setNestedValue } from '../utils/nested-value.js';
  * Includes free-override, floor-constrained, and ceiling-constrained fields.
  */
 export const ALLOWED_TENANT_FIELDS = new Set<string>([
-  // ── application ───────────────────────────────────────────────────────────
   'application.title',
   'application.description',
   'application.locales.default',
   'application.locales.available',
 
-  // ── branding (excluding ui.customization.*) ───────────────────────────────
   'branding.companyName',
   'branding.logo',
   'branding.logoDark',
@@ -103,7 +99,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'branding.colors.dark.sidebarBorder',
   'branding.colors.dark.sidebarRing',
 
-  // ── security.authentication ───────────────────────────────────────────────
   'security.authentication.multi_factor.enabled',
   'security.authentication.multi_factor.totp.enabled',
   'security.authentication.multi_factor.totp.issuer_name',
@@ -148,7 +143,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'security.authentication.custom_identifiers',
   'security.authentication.recovery',
 
-  // ── security.protection ───────────────────────────────────────────────────
   'security.protection.rate_limiting.enabled',
   'security.protection.rate_limiting.requests_per_minute',
   'security.protection.rate_limiting.window_minutes',
@@ -159,7 +153,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'security.protection.device_matching.impossible_travel_max_speed_kmh',
   'security.protection.device_matching.trust_duration_days',
 
-  // ── features ──────────────────────────────────────────────────────────────
   'features.social_providers.enabled',
   'features.social_providers.behavior',
   'features.social_providers.google.client_id',
@@ -173,7 +166,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'features.social_providers.facebook.client_id',
   'features.social_providers.facebook.client_secret',
 
-  // ── oidc ──────────────────────────────────────────────────────────────────
   'oidc.discovery.claims_locales_supported',
   'oidc.discovery.ui_locales_supported',
   'oidc.discovery.display_values_supported',
@@ -191,7 +183,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'oidc.token_ttl.refresh_token',
   'oidc.token_ttl.session',
 
-  // ── integrations ──────────────────────────────────────────────────────────
   'integrations.email.smtp_host',
   'integrations.email.smtp_port',
   'integrations.email.smtp_username',
@@ -203,7 +194,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'integrations.urls.terms_of_service',
   'integrations.urls.contact',
 
-  // ── notifications ─────────────────────────────────────────────────────────
   'notifications.channels.email.enabled',
   'notifications.channels.sms.enabled',
   'notifications.channels.sms.provider',
@@ -232,8 +222,6 @@ const ALLOWED_OVERRIDE_SECTIONS = new Set([
   'notifications',
 ]);
 
-// ── Sensitive Fields (encryption) ───────────────────────────────────────────
-
 /**
  * Sensitive fields that must be encrypted before storage.
  * Dot-path notation relative to the override document root.
@@ -248,8 +236,6 @@ export const TENANT_SENSITIVE_FIELDS = [
   'features.social_providers.linkedin.client_secret',
   'features.social_providers.facebook.client_secret',
 ];
-
-// ── Floor/Ceiling Constraints ───────────────────────────────────────────────
 
 /**
  * Boolean floor constraints: if platform=true, tenant cannot set false.
@@ -347,16 +333,12 @@ const USER_VERIFICATION_ORDER: readonly string[] = [
 /** Absolute minimum password length per NIST SP 800-63B */
 const NIST_MIN_PASSWORD_LENGTH = 8;
 
-// ── Constraint Violation ────────────────────────────────────────────────────
-
 export interface ConstraintViolation {
   field: string;
   original: unknown;
   adjusted: unknown;
   reason: string;
 }
-
-// ── Service ─────────────────────────────────────────────────────────────────
 
 @injectable()
 export class TenantSettingsOverrideService implements ITenantSettingsOverrideService {
@@ -365,8 +347,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
     private readonly repo: ITenantSettingsOverrideRepository,
     @inject(TYPES.Logger) private readonly logger: ILogger
   ) {}
-
-  // ── Load ──────────────────────────────────────────────────────────────────
 
   async loadOverrides(
     tenantId: string
@@ -385,8 +365,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       return Object.keys(overrides).length > 0 ? overrides : null;
     });
   }
-
-  // ── Save ──────────────────────────────────────────────────────────────────
 
   async saveOverrides(
     tenantId: string,
@@ -479,8 +457,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
     });
   }
 
-  // ── Delete Section ────────────────────────────────────────────────────────
-
   async deleteSection(
     tenantId: string,
     section: string,
@@ -528,8 +504,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       return { reset: true as const, section };
     });
   }
-
-  // ── Strip Disallowed Fields ───────────────────────────────────────────────
 
   /**
    * Recursively walk incoming override object, building dot-paths.
@@ -580,8 +554,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
     return result;
   }
 
-  // ── Floor/Ceiling Constraint Enforcement ──────────────────────────────────
-
   /**
    * Enforce floor and ceiling constraints on tenant override values.
    * Compares against platform global config.
@@ -612,7 +584,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       return { result, violations };
     }
 
-    // ── Floor constraints ─────────────────────────────────────────────────
     for (const [field, type] of FLOOR_CONSTRAINTS) {
       const tenantValue = getNestedValue(result, field);
       if (tenantValue === undefined || tenantValue === null) continue;
@@ -646,7 +617,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       }
     }
 
-    // ── Absolute NIST minimum for password length ─────────────────────────
     const pwLenPath =
       'security.authentication.login.password_policy.min_length';
     const pwLen = getNestedValue(result, pwLenPath);
@@ -663,7 +633,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       }
     }
 
-    // ── Ceiling constraints ───────────────────────────────────────────────
     for (const field of CEILING_CONSTRAINTS) {
       const tenantValue = getNestedValue(result, field);
       if (tenantValue === undefined || tenantValue === null) continue;
@@ -703,7 +672,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       }
     }
 
-    // ── Special: webauthn.user_verification ordered enum ──────────────────
     const uvPath =
       'security.authentication.multi_factor.webauthn.user_verification';
     const tenantUV = getNestedValue(result, uvPath);
@@ -729,8 +697,6 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
 
     return { result, violations };
   }
-
-  // ── Private Helpers ───────────────────────────────────────────────────────
 
   /**
    * Recursively strip empty string values from override objects.

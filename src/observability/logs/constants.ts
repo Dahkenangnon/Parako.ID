@@ -20,7 +20,7 @@ export function getEnvironmentDefaults(environment: string) {
             pretty_print: true,
             file_logging: {
               enabled: false,
-              directory: 'logs',
+              directory: 'runtime/logs',
             },
             http_logging: {
               enabled: true,
@@ -95,7 +95,7 @@ export function getEnvironmentDefaults(environment: string) {
             pretty_print: false,
             file_logging: {
               enabled: false,
-              directory: 'logs',
+              directory: 'runtime/logs',
               max_size: '10m',
               max_files: 5,
             },
@@ -169,7 +169,7 @@ export function getEnvironmentDefaults(environment: string) {
             pretty_print: false,
             file_logging: {
               enabled: false,
-              directory: 'logs',
+              directory: 'runtime/logs',
               max_size: '10m',
               max_files: 3,
             },
@@ -241,7 +241,7 @@ export function getEnvironmentDefaults(environment: string) {
             pretty_print: false,
             file_logging: {
               enabled: false,
-              directory: 'logs',
+              directory: 'runtime/logs',
             },
             http_logging: {
               enabled: true,

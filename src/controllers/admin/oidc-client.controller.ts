@@ -9,15 +9,7 @@ import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-servi
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import { TYPES } from '../../di/types.js';
-import { parsePositiveInt, parseEnum } from '../../utils/query-parse.js';
-import { SORT_ORDER_VALUES } from '../../middlewares/validation.middleware.js';
-
-const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
-  'created_at',
-  'updated_at',
-  'client_name',
-  'application_type',
-] as const;
+import { extractListingQuery } from '../../validators/listing-query.js';
 import {
   APP_TYPE_PRESETS,
   GRANT_TYPES,
@@ -39,6 +31,20 @@ import type {
 } from '../../oidc/adapter/client.interface.js';
 import { validateClientData } from '../../oidc/adapter/client-crud-utils.js';
 import { tenantContext } from '../../multi-tenancy/tenant-context.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
+import { flashAndRedirect } from '../../utils/flash-redirect.js';
+
+const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
+  'created_at',
+  'updated_at',
+  'client_name',
+  'application_type',
+] as const;
+
+interface ClientActivityTarget {
+  entity_id: string;
+  entity_name: string;
+}
 
 /**
  * Admin OIDC Client Controller
@@ -67,6 +73,30 @@ export class AdminOidcClientController {
     @inject(TYPES.ClientDeviceInfoManager)
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
+  private logClientActivity(
+    req: Request,
+    type: string,
+    description: string,
+    target: ClientActivityTarget
+  ): void {
+    activityLoggerFor(this.activityLoggerDeps, req, {
+      defaultActorType: 'admin',
+    }).success(type, null, description, {
+      target: {
+        target_type: 'client',
+        ...target,
+      },
+    });
+  }
 
   /**
    * Broadcast client cache invalidation to other instances via Redis pub/sub.
@@ -137,121 +167,90 @@ export class AdminOidcClientController {
    * GET /admin/oidc-clients
    */
   public list = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const page = parsePositiveInt(req.query.page, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const limit = parsePositiveInt(req.query.limit, {
-        default: 20,
-        min: 1,
-        max: 100,
-      });
-      const search = (
-        Array.isArray(req.query.search)
-          ? req.query.search[0]
-          : (req.query.search as string) || ''
-      )
-        .toString()
-        .slice(0, 200);
-      const applicationType = (
-        Array.isArray(req.query.application_type)
-          ? req.query.application_type[0]
-          : (req.query.application_type as string) || ''
-      ).toString();
-      const status = (
-        Array.isArray(req.query.status)
-          ? req.query.status[0]
-          : (req.query.status as string) || ''
-      ).toString();
-      const sortBy = parseEnum(
-        req.query.sortBy,
-        ADMIN_OIDC_CLIENT_SORT_FIELDS,
-        'created_at'
-      );
-      const sortOrder = parseEnum(
-        req.query.sortOrder,
-        SORT_ORDER_VALUES,
-        'desc'
-      );
+    const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
+      req.query,
+      ADMIN_OIDC_CLIENT_SORT_FIELDS,
+      { sortBy: 'created_at' }
+    );
+    const applicationType = (
+      Array.isArray(req.query.application_type)
+        ? req.query.application_type[0]
+        : (req.query.application_type as string) || ''
+    ).toString();
+    const status = (
+      Array.isArray(req.query.status)
+        ? req.query.status[0]
+        : (req.query.status as string) || ''
+    ).toString();
 
-      const filters: ClientFilters = {};
+    const filters: ClientFilters = {};
+    if (applicationType) {
+      filters.application_type =
+        applicationType as ClientFilters['application_type'];
+    }
+    if (status) {
+      filters.active = status === 'active';
+    }
+
+    let clients: OidcClientData[];
+    if (search) {
+      clients = await this.oidcAdapter.client.searchClients(search);
+
       if (applicationType) {
-        filters.application_type =
-          applicationType as ClientFilters['application_type'];
+        clients = clients.filter(c => c.application_type === applicationType);
       }
       if (status) {
-        filters.active = status === 'active';
+        const isActive = status === 'active';
+        clients = clients.filter(c => c.active === isActive);
       }
-
-      // Load clients: search first if provided, otherwise use filters
-      let clients: OidcClientData[];
-      if (search && typeof search === 'string') {
-        clients = await this.oidcAdapter.client.searchClients(search);
-
-        if (applicationType) {
-          clients = clients.filter(c => c.application_type === applicationType);
-        }
-        if (status) {
-          const isActive = status === 'active';
-          clients = clients.filter(c => c.active === isActive);
-        }
-      } else {
-        clients = await this.oidcAdapter.client.findAllClients(filters);
-      }
-
-      clients.sort((a: OidcClientData, b: OidcClientData) => {
-        const aValue = (a as any)[sortBy] || '';
-        const bValue = (b as any)[sortBy] || '';
-
-        if (sortOrder === 'asc') {
-          return aValue > bValue ? 1 : -1;
-        } else {
-          return aValue < bValue ? 1 : -1;
-        }
-      });
-
-      const totalItems = clients.length;
-      const totalPages = Math.ceil(totalItems / limit);
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedClients = clients.slice(startIndex, endIndex);
-
-      const stats = await this.oidcAdapter.client.getClientStatistics();
-
-      res.render('admin/oidc-clients/index', {
-        title: 'OIDC Clients',
-        clients: paginatedClients,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalItems,
-          itemsPerPage: limit,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
-        filters: {
-          search,
-          applicationType,
-          status,
-        },
-        appTypePresets: APP_TYPE_PRESETS,
-        sortOptions: {
-          sortBy,
-          sortOrder,
-        },
-        stats,
-        staticClientsNote:
-          !this.configManager.getConfig().features?.multi_tenancy?.enabled,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_clients_list_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load OIDC clients');
-      res.redirect('/admin');
+    } else {
+      clients = await this.oidcAdapter.client.findAllClients(filters);
     }
+
+    clients.sort((a: OidcClientData, b: OidcClientData) => {
+      const aValue = (a as any)[sortBy] || '';
+      const bValue = (b as any)[sortBy] || '';
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    const totalItems = clients.length;
+    const totalPages = Math.ceil(totalItems / limit);
+    const startIndex = (page - 1) * limit;
+    const endIndex = startIndex + limit;
+    const paginatedClients = clients.slice(startIndex, endIndex);
+
+    const stats = await this.oidcAdapter.client.getClientStatistics();
+
+    res.render('admin/oidc-clients/index', {
+      title: 'OIDC Clients',
+      clients: paginatedClients,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalItems,
+        itemsPerPage: limit,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+      filters: {
+        search,
+        applicationType,
+        status,
+      },
+      appTypePresets: APP_TYPE_PRESETS,
+      sortOptions: {
+        sortBy,
+        sortOrder,
+      },
+      stats,
+      staticClientsNote:
+        !this.configManager.getConfig().features?.multi_tenancy?.enabled,
+    });
   };
 
   /**
@@ -259,69 +258,55 @@ export class AdminOidcClientController {
    * GET /admin/oidc-clients/:id
    */
   public show = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const client = await this.oidcAdapter.client.findClientById(id);
+    const { id } = req.params;
+    const client = await this.oidcAdapter.client.findClientById(id);
 
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      // Strip client_secret from template data — secrets must not appear in HTML.
-      // Admins reveal the secret via the /reveal-secret/:id API endpoint.
-      const { client_secret: _stripped, ...safeClient } = client;
-
-      res.render('admin/oidc-clients/show', {
-        title: 'Client details',
-        client: safeClient,
-        hasSecret: !!_stripped,
-        appTypePresets: APP_TYPE_PRESETS,
-        grantTypes: GRANT_TYPES,
-        responseTypes: RESPONSE_TYPES,
-        authMethods: AUTH_METHODS,
-        signingAlgorithms: SIGNING_ALGORITHMS,
-        subjectTypes: SUBJECT_TYPES,
-        scopeDefinitions: this.getScopeDefinitions(),
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_show_failed',
-        id: req.params.id,
-      });
-      this.sessionManager
-        .flash(req)
-        .error('Failed to load OIDC client details');
-      res.redirect('/admin/oidc-clients');
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
+      );
     }
+
+    // Strip client_secret from template data — secrets must not appear in HTML.
+    // Admins reveal the secret via the /reveal-secret/:id API endpoint.
+    const { client_secret: _stripped, ...safeClient } = client;
+
+    res.render('admin/oidc-clients/show', {
+      title: 'Client details',
+      client: safeClient,
+      hasSecret: !!_stripped,
+      appTypePresets: APP_TYPE_PRESETS,
+      grantTypes: GRANT_TYPES,
+      responseTypes: RESPONSE_TYPES,
+      authMethods: AUTH_METHODS,
+      signingAlgorithms: SIGNING_ALGORITHMS,
+      subjectTypes: SUBJECT_TYPES,
+      scopeDefinitions: this.getScopeDefinitions(),
+    });
   };
 
   /**
    * Show create OIDC client form
    * GET /admin/oidc-clients/create
    */
-  public create = async (req: Request, res: Response): Promise<void> => {
-    try {
-      res.render('admin/oidc-clients/create', {
-        title: 'Create OIDC Client',
-        appTypePresets: APP_TYPE_PRESETS,
-        grantTypes: GRANT_TYPES,
-        responseTypes: RESPONSE_TYPES,
-        authMethods: AUTH_METHODS,
-        signingAlgorithms: SIGNING_ALGORITHMS,
-        subjectTypes: SUBJECT_TYPES,
-        scopeDefinitions: this.getScopeDefinitions(),
-        managementApiResourceUri: MANAGEMENT_API_RESOURCE_URI,
-        client: {},
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_create_form_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load create form');
-      res.redirect('/admin/oidc-clients');
-    }
+  public create = async (_req: Request, res: Response): Promise<void> => {
+    res.render('admin/oidc-clients/create', {
+      title: 'Create OIDC Client',
+      appTypePresets: APP_TYPE_PRESETS,
+      grantTypes: GRANT_TYPES,
+      responseTypes: RESPONSE_TYPES,
+      authMethods: AUTH_METHODS,
+      signingAlgorithms: SIGNING_ALGORITHMS,
+      subjectTypes: SUBJECT_TYPES,
+      scopeDefinitions: this.getScopeDefinitions(),
+      managementApiResourceUri: MANAGEMENT_API_RESOURCE_URI,
+      client: {},
+    });
   };
 
   /**
@@ -329,65 +314,51 @@ export class AdminOidcClientController {
    * POST /admin/oidc-clients
    */
   public store = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const clientData = this.processFormData(req.body);
-      this.stripPlatformOnlyScopes(clientData);
+    const clientData = this.processFormData(req.body);
+    this.stripPlatformOnlyScopes(clientData);
 
-      // Auto-set allowedResources for Management API preset
-      if (
-        clientData.preset === 'api_management' &&
-        (!clientData.allowedResources ||
-          clientData.allowedResources.length === 0)
-      ) {
-        clientData.allowedResources = [MANAGEMENT_API_RESOURCE_URI];
-      }
-
-      const validation = validateClientData(clientData);
-      if (!validation.isValid) {
-        this.sessionManager
-          .flash(req)
-          .error(`Validation failed: ${validation.errors.join(', ')}`);
-        return res.redirect('/admin/oidc-clients/create');
-      }
-
-      const client = await this.oidcAdapter.client.createClient(clientData);
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_created',
-        'Admin created OIDC client',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: client.client_name,
-          },
-        }
-      );
-
-      this.invalidateClientCache(client.client_id, 'created');
-
-      this.sessionManager
-        .flash(req)
-        .success(`OIDC client "${client.client_name}" created successfully`);
-      res.redirect(`/admin/oidc-clients/view/${client.client_id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_store_failed',
-        body: req.body,
-      });
-      this.sessionManager.flash(req).error('Failed to create OIDC client');
-      res.redirect('/admin/oidc-clients/create');
+    // Auto-set allowedResources for Management API preset
+    if (
+      clientData.preset === 'api_management' &&
+      (!clientData.allowedResources || clientData.allowedResources.length === 0)
+    ) {
+      clientData.allowedResources = [MANAGEMENT_API_RESOURCE_URI];
     }
+
+    const validation = validateClientData(clientData);
+    if (!validation.isValid) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        `Validation failed: ${validation.errors.join(', ')}`,
+        '/admin/oidc-clients/create'
+      );
+    }
+
+    const client = await this.oidcAdapter.client.createClient(clientData);
+
+    this.logClientActivity(
+      req,
+      'oidc_client_created',
+      'Admin created OIDC client',
+      {
+        entity_id: client.client_id,
+        entity_name: client.client_name,
+      }
+    );
+
+    this.invalidateClientCache(client.client_id, 'created');
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `OIDC client "${client.client_name}" created successfully`,
+      `/admin/oidc-clients/view/${client.client_id}`
+    );
   };
 
   /**
@@ -395,36 +366,32 @@ export class AdminOidcClientController {
    * GET /admin/oidc-clients/:id/edit
    */
   public edit = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const client = await this.oidcAdapter.client.findClientById(id);
+    const { id } = req.params;
+    const client = await this.oidcAdapter.client.findClientById(id);
 
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      res.render('admin/oidc-clients/edit', {
-        title: 'Edit Client',
-        client,
-        appTypePresets: APP_TYPE_PRESETS,
-        grantTypes: GRANT_TYPES,
-        responseTypes: RESPONSE_TYPES,
-        authMethods: AUTH_METHODS,
-        signingAlgorithms: SIGNING_ALGORITHMS,
-        subjectTypes: SUBJECT_TYPES,
-        scopeDefinitions: this.getScopeDefinitions(),
-        managementApiResourceUri: MANAGEMENT_API_RESOURCE_URI,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_edit_form_failed',
-        id: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to load edit form');
-      res.redirect('/admin/oidc-clients');
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
+      );
     }
+
+    res.render('admin/oidc-clients/edit', {
+      title: 'Edit Client',
+      client,
+      appTypePresets: APP_TYPE_PRESETS,
+      grantTypes: GRANT_TYPES,
+      responseTypes: RESPONSE_TYPES,
+      authMethods: AUTH_METHODS,
+      signingAlgorithms: SIGNING_ALGORITHMS,
+      subjectTypes: SUBJECT_TYPES,
+      scopeDefinitions: this.getScopeDefinitions(),
+      managementApiResourceUri: MANAGEMENT_API_RESOURCE_URI,
+    });
   };
 
   /**
@@ -432,68 +399,59 @@ export class AdminOidcClientController {
    * PUT /admin/oidc-clients/:id
    */
   public update = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const clientData = this.processFormData(req.body);
-      this.stripPlatformOnlyScopes(clientData);
+    const { id } = req.params;
+    const clientData = this.processFormData(req.body);
+    this.stripPlatformOnlyScopes(clientData);
 
-      // Immutable fields — preset and application_type cannot change after creation
-      delete clientData.preset;
-      delete clientData.application_type;
+    // Immutable fields — preset and application_type cannot change after creation
+    delete clientData.preset;
+    delete clientData.application_type;
 
-      const validation = validateClientData(clientData);
-      if (!validation.isValid) {
-        this.sessionManager
-          .flash(req)
-          .error(`Validation failed: ${validation.errors.join(', ')}`);
-        return res.redirect(`/admin/oidc-clients/${id}/edit`);
-      }
-
-      const client = await this.oidcAdapter.client.updateClient(id, clientData);
-
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_updated',
-        'Admin updated OIDC client',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: client.client_name,
-          },
-        }
+    const validation = validateClientData(clientData);
+    if (!validation.isValid) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        `Validation failed: ${validation.errors.join(', ')}`,
+        `/admin/oidc-clients/${id}/edit`
       );
-
-      this.invalidateClientCache(client.client_id, 'updated');
-
-      this.sessionManager
-        .flash(req)
-        .success(`OIDC client "${client.client_name}" updated successfully`);
-      res.redirect(`/admin/oidc-clients/view/${client.client_id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_update_failed',
-        id: req.params.id,
-        body: req.body,
-      });
-      this.sessionManager.flash(req).error('Failed to update OIDC client');
-      res.redirect(`/admin/oidc-clients/${req.params.id}/edit`);
     }
+
+    const client = await this.oidcAdapter.client.updateClient(id, clientData);
+
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
+      );
+    }
+
+    this.logClientActivity(
+      req,
+      'oidc_client_updated',
+      'Admin updated OIDC client',
+      {
+        entity_id: client.client_id,
+        entity_name: client.client_name,
+      }
+    );
+
+    this.invalidateClientCache(client.client_id, 'updated');
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `OIDC client "${client.client_name}" updated successfully`,
+      `/admin/oidc-clients/view/${client.client_id}`
+    );
   };
 
   /**
@@ -501,52 +459,40 @@ export class AdminOidcClientController {
    * POST /admin/oidc-clients/:id/activate
    */
   public activate = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const client = await this.oidcAdapter.client.activateClient(id);
+    const { id } = req.params;
+    const client = await this.oidcAdapter.client.activateClient(id);
 
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_activated',
-        'Admin activated OIDC client',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: client.client_name,
-          },
-        }
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
       );
-
-      this.invalidateClientCache(client.client_id, 'updated');
-
-      this.sessionManager
-        .flash(req)
-        .success(`OIDC client "${client.client_name}" activated successfully`);
-      res.redirect(`/admin/oidc-clients/view/${client.client_id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_activate_failed',
-        id: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to activate OIDC client');
-      res.redirect('/admin/oidc-clients');
     }
+
+    this.logClientActivity(
+      req,
+      'oidc_client_activated',
+      'Admin activated OIDC client',
+      {
+        entity_id: client.client_id,
+        entity_name: client.client_name,
+      }
+    );
+
+    this.invalidateClientCache(client.client_id, 'updated');
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `OIDC client "${client.client_name}" activated successfully`,
+      `/admin/oidc-clients/view/${client.client_id}`
+    );
   };
 
   /**
@@ -554,54 +500,40 @@ export class AdminOidcClientController {
    * POST /admin/oidc-clients/:id/deactivate
    */
   public deactivate = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const client = await this.oidcAdapter.client.deactivateClient(id);
+    const { id } = req.params;
+    const client = await this.oidcAdapter.client.deactivateClient(id);
 
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_deactivated',
-        'Admin deactivated OIDC client',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: client.client_name,
-          },
-        }
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
       );
-
-      this.invalidateClientCache(client.client_id, 'updated');
-
-      this.sessionManager
-        .flash(req)
-        .success(
-          `OIDC client "${client.client_name}" deactivated successfully`
-        );
-      res.redirect(`/admin/oidc-clients/view/${client.client_id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_deactivate_failed',
-        id: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to deactivate OIDC client');
-      res.redirect('/admin/oidc-clients');
     }
+
+    this.logClientActivity(
+      req,
+      'oidc_client_deactivated',
+      'Admin deactivated OIDC client',
+      {
+        entity_id: client.client_id,
+        entity_name: client.client_name,
+      }
+    );
+
+    this.invalidateClientCache(client.client_id, 'updated');
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `OIDC client "${client.client_name}" deactivated successfully`,
+      `/admin/oidc-clients/view/${client.client_id}`
+    );
   };
 
   /**
@@ -612,56 +544,42 @@ export class AdminOidcClientController {
     req: Request,
     res: Response
   ): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const result = await this.oidcAdapter.client.regenerateClientSecret(id);
+    const { id } = req.params;
+    const result = await this.oidcAdapter.client.regenerateClientSecret(id);
 
-      if (!result) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      const { client } = result;
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_secret_regenerated',
-        'Admin regenerated client secret',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: client.client_name,
-          },
-        }
+    if (!result) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
       );
-
-      this.invalidateClientCache(client.client_id, 'updated');
-
-      this.sessionManager
-        .flash(req)
-        .success(`Client secret regenerated for "${client.client_name}"`);
-      res.redirect(`/admin/oidc-clients/view/${client.client_id}`);
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_regenerate_secret_failed',
-        id: req.params.id,
-      });
-      this.sessionManager
-        .flash(req)
-        .error('Failed to regenerate client secret');
-      res.redirect('/admin/oidc-clients');
     }
+
+    const { client } = result;
+
+    this.logClientActivity(
+      req,
+      'oidc_client_secret_regenerated',
+      'Admin regenerated client secret',
+      {
+        entity_id: client.client_id,
+        entity_name: client.client_name,
+      }
+    );
+
+    this.invalidateClientCache(client.client_id, 'updated');
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `Client secret regenerated for "${client.client_name}"`,
+      `/admin/oidc-clients/view/${client.client_id}`
+    );
   };
 
   /**
@@ -669,69 +587,63 @@ export class AdminOidcClientController {
    * DELETE /admin/oidc-clients/:id
    */
   public destroy = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { id } = req.params;
-      const client = await this.oidcAdapter.client.findClientById(id);
+    const { id } = req.params;
+    const client = await this.oidcAdapter.client.findClientById(id);
 
-      if (!client) {
-        this.sessionManager.flash(req).error('OIDC client not found');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      const clientName = client.client_name || 'Unknown Client';
-
-      const deleted = await this.oidcAdapter.client.deleteClient(id);
-
-      if (!deleted) {
-        this.sessionManager.flash(req).error('Failed to delete OIDC client');
-        res.redirect('/admin/oidc-clients');
-        return;
-      }
-
-      this.invalidateClientCache(client.client_id, 'deleted');
-
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
-        'oidc_client_deleted',
-        'Admin deleted OIDC client',
-        null,
-        {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
-          target: {
-            target_type: 'client',
-            entity_id: client.client_id,
-            entity_name: clientName,
-          },
-        }
+    if (!client) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
       );
-
-      this.sessionManager
-        .flash(req)
-        .success(`OIDC client "${clientName}" deleted successfully`);
-      res.redirect('/admin/oidc-clients');
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'oidc_client_destroy_failed',
-        id: req.params.id,
-      });
-      this.sessionManager.flash(req).error('Failed to delete OIDC client');
-      res.redirect('/admin/oidc-clients');
     }
+
+    const clientName = client.client_name || 'Unknown Client';
+
+    const deleted = await this.oidcAdapter.client.deleteClient(id);
+
+    if (!deleted) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Failed to delete OIDC client',
+        '/admin/oidc-clients'
+      );
+    }
+
+    this.invalidateClientCache(client.client_id, 'deleted');
+
+    this.logClientActivity(
+      req,
+      'oidc_client_deleted',
+      'Admin deleted OIDC client',
+      {
+        entity_id: client.client_id,
+        entity_name: clientName,
+      }
+    );
+
+    return flashAndRedirect(
+      { sessionManager: this.sessionManager },
+      req,
+      res,
+      'success',
+      `OIDC client "${clientName}" deleted successfully`,
+      '/admin/oidc-clients'
+    );
   };
 
   /**
-   * Get client statistics
-   * GET /admin/oidc-clients/statistics
+   * Get client statistics.
+   * GET /admin/oidc-clients/statistics — JSON endpoint kept with inline
+   * error handling so the response stays JSON for callers that expect it.
    */
-  public statistics = async (req: Request, res: Response): Promise<void> => {
+  public statistics = async (_req: Request, res: Response): Promise<void> => {
     try {
       const stats = await this.oidcAdapter.client.getClientStatistics();
       res.json(stats);
@@ -744,8 +656,8 @@ export class AdminOidcClientController {
   };
 
   /**
-   * Search OIDC clients
-   * GET /admin/oidc-clients/search
+   * Search OIDC clients.
+   * GET /admin/oidc-clients/search — JSON endpoint.
    */
   public search = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -778,8 +690,9 @@ export class AdminOidcClientController {
   };
 
   /**
-   * Reveal client secret via API (on-demand, not embedded in HTML)
-   * POST /admin/oidc-clients/:id/reveal-secret
+   * Reveal client secret via API (on-demand, not embedded in HTML).
+   * POST /admin/oidc-clients/:id/reveal-secret — JSON endpoint consumed
+   * by the browser admin UI as `{ client_secret: string }`.
    */
   public revealSecret = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -791,20 +704,13 @@ export class AdminOidcClientController {
         return;
       }
 
-      const currentUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'oidc_client_secret_viewed',
-        'Admin viewed client secret',
         null,
+        'Admin viewed client secret',
         {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          actor: {
-            ...currentUser,
-            actor_type: 'admin',
-          },
           target: {
             target_type: 'client',
             entity_id: client.client_id,

@@ -21,7 +21,7 @@ export const BootstrapConfigSchema = z
       mongodb: z.object({ uri: z.string().min(1) }).optional(),
       sqlite: z
         .object({
-          path: z.string().default('./data/parako.db'),
+          path: z.string().default('./runtime/data/parako.db'),
         })
         .optional(),
       postgresql: z

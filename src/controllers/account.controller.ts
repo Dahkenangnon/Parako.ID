@@ -19,6 +19,7 @@ import type { IAccountController } from '../di/interfaces/account-controller.int
 import { TYPES } from '../di/types.js';
 import { SessionUserAccount } from '../utils/session.js';
 import { validateIdentifier } from '../utils/custom-identifier-validation.js';
+import { activityLoggerFor } from '../utils/activity-logger.factory.js';
 import type {
   ProfileUpdateData,
   PasswordChangeData,
@@ -81,6 +82,14 @@ export class AccountsController implements IAccountController {
     @inject(TYPES.WebAuthnService)
     private readonly webauthnService: IWebAuthnService
   ) {}
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activity,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
 
   private getAppTitle() {
     return this.configManager.getConfig().application.title;
@@ -551,17 +560,11 @@ export class AccountsController implements IAccountController {
         notificationPreferences
       );
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'notification_preferences_updated',
-        'User updated notification preferences',
         null,
+        'User updated notification preferences',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
@@ -569,9 +572,7 @@ export class AccountsController implements IAccountController {
           },
           target: {
             target_type: 'user',
-            entity_data: {
-              changes: notificationPreferences,
-            },
+            entity_data: { changes: notificationPreferences },
           },
         }
       );
@@ -722,21 +723,13 @@ export class AccountsController implements IAccountController {
         profileData
       );
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'profile_updated',
-        'User updated their profile',
         updatedUser,
+        'User updated their profile',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: updatedUser,
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -940,25 +933,18 @@ export class AccountsController implements IAccountController {
 
       await this.userService.changePassword(userData.id, passwordData);
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.success(
+      const activity = activityLoggerFor(this.activityLoggerDeps, req);
+      activity.success(
         'password_changed',
-        'User changed their password',
         null,
+        'User changed their password',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -978,14 +964,11 @@ export class AccountsController implements IAccountController {
               username: userData.username,
               revokedCount,
             });
-            this.activity.info(
+            activity.info(
               'sessions_revoked_password_change',
-              `Revoked ${revokedCount} other sessions after password change`,
               null,
+              `Revoked ${revokedCount} other sessions after password change`,
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
                 actor: {
                   username: userData.username,
                   email: userData.email,
@@ -1075,25 +1058,17 @@ export class AccountsController implements IAccountController {
 
       await this.userService.removeAvatar(userData.id);
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'avatar_removed',
-        'User removed their avatar',
         null,
+        'User removed their avatar',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'none',
-          },
+          target: { target_type: 'none' },
         }
       );
 
@@ -1183,22 +1158,17 @@ export class AccountsController implements IAccountController {
           }
         );
 
-        this.activity.info(
+        activityLoggerFor(this.activityLoggerDeps, req).info(
           'email_mfa_setup_initiated',
-          'User initiated email MFA setup',
           null,
+          'User initiated email MFA setup',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'config',
-            },
+            target: { target_type: 'config' },
           }
         );
 
@@ -1210,25 +1180,17 @@ export class AccountsController implements IAccountController {
       const secret = this.mfaUtils.generateTotpSecret();
       await this.userService.initiateMfaTotpSetup(userData.username, secret);
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.info(
+      activityLoggerFor(this.activityLoggerDeps, req).info(
         'mfa_setup_initiated',
-        'User initiated TOTP MFA setup',
         null,
+        'User initiated TOTP MFA setup',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 
@@ -1286,25 +1248,18 @@ export class AccountsController implements IAccountController {
       const deviceInfos =
         this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'mfa_disabled',
-        `User disabled ${method || 'all'} MFA`,
         null,
+        `User disabled ${method || 'all'} MFA`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'config',
-          },
-          metadata: {
-            method: method || 'all',
-          },
+          target: { target_type: 'config' },
+          metadata: { method: method || 'all' },
         }
       );
 
@@ -1480,22 +1435,17 @@ export class AccountsController implements IAccountController {
         const deviceInfos =
           this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'mfa_verified_enabled',
-          'User verified and enabled email MFA',
           null,
+          'User verified and enabled email MFA',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'config',
-            },
+            target: { target_type: 'config' },
           }
         );
 
@@ -1584,22 +1534,17 @@ export class AccountsController implements IAccountController {
       const deviceInfos =
         this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'mfa_verified_enabled',
-        'User verified and enabled TOTP MFA',
         null,
+        'User verified and enabled TOTP MFA',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 
@@ -2228,9 +2173,6 @@ export class AccountsController implements IAccountController {
       const switchResult = this.sessionManager.switchUser(req, accountId);
 
       if (!switchResult.success) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
         if (switchResult.reason === 'reauth_required') {
           this.sessionManager
             .flash(req)
@@ -2239,18 +2181,12 @@ export class AccountsController implements IAccountController {
           return res.redirect(`${loginUrl}?switch_to=${accountId}`);
         }
 
-        this.activity.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'account_switch_failed',
-          'Failed to switch to account',
           null,
+          'Failed to switch to account',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
-            actor: {
-              username: 'unknown',
-              actor_type: 'user',
-            },
+            actor: { username: 'unknown', actor_type: 'user' },
             target: {
               target_type: 'session',
               entity_id: accountId,
@@ -2269,25 +2205,17 @@ export class AccountsController implements IAccountController {
 
       const activeUser = this.sessionManager.getActiveUser(req);
       if (activeUser) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'account_switched',
-          'User switched to account',
           null,
+          'User switched to account',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: activeUser.username,
               email: activeUser.email,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'session',
-            },
+            target: { target_type: 'session' },
           }
         );
 
@@ -2495,18 +2423,12 @@ export class AccountsController implements IAccountController {
       }
 
       if (revokedCount > 0) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'app_access_revoked',
-          'User revoked access to application',
           null,
+          'User revoked access to application',
           {
             client_id: clientId,
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
@@ -2605,17 +2527,11 @@ export class AccountsController implements IAccountController {
       }
 
       if (revokedCount > 0) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'all_apps_access_revoked',
-          `User revoked access to all applications (${revokedCount} grants)`,
           null,
+          `User revoked access to all applications (${revokedCount} grants)`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
@@ -2623,9 +2539,7 @@ export class AccountsController implements IAccountController {
             },
             target: {
               target_type: 'grant',
-              entity_data: {
-                revokedCount,
-              },
+              entity_data: { revokedCount },
             },
           }
         );
@@ -2684,17 +2598,11 @@ export class AccountsController implements IAccountController {
       }
 
       if (revoked) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'session_logout',
-          'User logged out from a session',
           null,
+          'User logged out from a session',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
@@ -2784,17 +2692,11 @@ export class AccountsController implements IAccountController {
       const revokedCount = oidcRevokedCount + expressRevokedCount;
 
       if (revokedCount > 0) {
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'all_sessions_logout',
-          `User logged out from all other sessions (${revokedCount} sessions)`,
           null,
+          `User logged out from all other sessions (${revokedCount} sessions)`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
@@ -2802,9 +2704,7 @@ export class AccountsController implements IAccountController {
             },
             target: {
               target_type: 'session',
-              entity_data: {
-                revokedCount,
-              },
+              entity_data: { revokedCount },
             },
           }
         );
@@ -3028,17 +2928,11 @@ export class AccountsController implements IAccountController {
 
       await this.socialLoginManager.unlinkFromUser(provider, activeUser.id);
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.info(
+      activityLoggerFor(this.activityLoggerDeps, req).info(
         'social_account_unlinked',
-        `User unlinked ${provider} account`,
         null,
+        `User unlinked ${provider} account`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: activeUser.username,
             email: activeUser.email,
@@ -3199,22 +3093,17 @@ export class AccountsController implements IAccountController {
             const deviceInfos =
               this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-            this.activity.info(
+            activityLoggerFor(this.activityLoggerDeps, req).info(
               'recovery_email_verification_sent',
-              'User initiated secondary email verification during recovery setup',
               null,
+              'User initiated secondary email verification during recovery setup',
               {
-                ip_address: deviceInfos.ip,
-                user_agent: deviceInfos.user_agent,
-                device_infos: deviceInfos,
                 actor: {
                   username: userData.username,
                   email: userData.email,
                   actor_type: 'user',
                 },
-                target: {
-                  target_type: 'config',
-                },
+                target: { target_type: 'config' },
               }
             );
 
@@ -3259,25 +3148,17 @@ export class AccountsController implements IAccountController {
           recovery: recoveryConfig,
         });
 
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'recovery_setup_completed',
-          `User completed recovery setup with backup codes${email ? ' and secondary email' : ''}`,
           null,
+          `User completed recovery setup with backup codes${email ? ' and secondary email' : ''}`,
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'config',
-            },
+            target: { target_type: 'config' },
           }
         );
 
@@ -3361,25 +3242,17 @@ export class AccountsController implements IAccountController {
           },
         });
 
-        const deviceInfos =
-          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-        this.activity.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'recovery_enabled',
-          'User enabled account recovery with backup codes',
           null,
+          'User enabled account recovery with backup codes',
           {
-            ip_address: deviceInfos.ip,
-            user_agent: deviceInfos.user_agent,
-            device_infos: deviceInfos,
             actor: {
               username: userData.username,
               email: userData.email,
               actor_type: 'user',
             },
-            target: {
-              target_type: 'config',
-            },
+            target: { target_type: 'config' },
           }
         );
 
@@ -3478,22 +3351,17 @@ export class AccountsController implements IAccountController {
           const deviceInfos =
             this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-          this.activity.info(
+          activityLoggerFor(this.activityLoggerDeps, req).info(
             'recovery_email_verification_sent',
-            'User initiated secondary email verification',
             null,
+            'User initiated secondary email verification',
             {
-              ip_address: deviceInfos.ip,
-              user_agent: deviceInfos.user_agent,
-              device_infos: deviceInfos,
               actor: {
                 username: userData.username,
                 email: userData.email,
                 actor_type: 'user',
               },
-              target: {
-                target_type: 'config',
-              },
+              target: { target_type: 'config' },
             }
           );
 
@@ -3650,17 +3518,11 @@ export class AccountsController implements IAccountController {
       };
       const methodName = methodNameMap[method as RecoveryMethod] || method;
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'recovery_method_disabled',
-        `User disabled ${methodName} recovery method`,
         null,
+        `User disabled ${methodName} recovery method`,
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
@@ -3815,22 +3677,17 @@ export class AccountsController implements IAccountController {
       const deviceInfos =
         this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'recovery_email_verified',
-        'User verified their recovery email',
         null,
+        'User verified their recovery email',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: user.username,
             email: user.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 
@@ -3927,22 +3784,17 @@ export class AccountsController implements IAccountController {
       const deviceInfos =
         this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
-      this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'backup_codes_regenerated',
-        'User regenerated their backup codes',
         null,
+        'User regenerated their backup codes',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: {
             username: userData.username,
             email: userData.email,
             actor_type: 'user',
           },
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 
@@ -4036,21 +3888,13 @@ export class AccountsController implements IAccountController {
         email: user.email,
       });
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-
-      this.activity.info(
+      activityLoggerFor(this.activityLoggerDeps, req).info(
         'email_verification_resent',
-        'User requested email verification resend',
         user,
+        'User requested email verification resend',
         {
-          ip_address: deviceInfos.ip,
-          user_agent: deviceInfos.user_agent,
-          device_infos: deviceInfos,
           actor: user,
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 
@@ -4317,17 +4161,13 @@ export class AccountsController implements IAccountController {
         },
       });
 
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
-      await this.activity.success(
+      activityLoggerFor(this.activityLoggerDeps, req).success(
         'security_questions_setup',
+        currentUser,
         'Security questions configured successfully',
-        deviceInfos,
         {
           actor: currentUser,
-          target: {
-            target_type: 'config',
-          },
+          target: { target_type: 'config' },
         }
       );
 

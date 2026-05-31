@@ -41,8 +41,6 @@ vi.mock('../../../../src/utils/encryption.js', () => ({
   ensureDecrypted: vi.fn((v: string) => v.replace('encrypted:', '')),
 }));
 
-// ── Stubs ────────────────────────────────────────────────────────────────────
-
 function makeMocks() {
   const configManager: IConfigManager = {
     getConfig: vi.fn().mockReturnValue({
@@ -285,6 +283,20 @@ function makeMocks() {
     updateTenantStatus: vi.fn(),
   } as unknown as IPlatformAdminService;
 
+  const clientDeviceInfoManager = {
+    getClientInfoFromRequest: vi.fn().mockReturnValue({
+      username: undefined,
+      ip: '127.0.0.1',
+      user_agent: 'test-user-agent',
+      browser: { name: 'TestBrowser', version: '1.0' },
+      os: { name: 'TestOS', version: '1.0' },
+      device: { type: 'desktop' },
+      language: 'en',
+      timezone_guess: 'UTC',
+      fingerprint: 'test-fp',
+    }),
+  } as any;
+
   return {
     configManager,
     overrideService,
@@ -293,6 +305,7 @@ function makeMocks() {
     activityService,
     emailService,
     uploadMiddleware,
+    clientDeviceInfoManager,
     platformAdminService,
     flashManager,
   };
@@ -308,6 +321,7 @@ function makeController(mocks?: ReturnType<typeof makeMocks>) {
     m.activityService,
     m.emailService,
     m.uploadMiddleware,
+    m.clientDeviceInfoManager,
     m.platformAdminService
   );
   return { controller, ...m };
@@ -334,8 +348,6 @@ function makeRes(): any {
   };
   return res;
 }
-
-// ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('AdminConfigurationController', () => {
   let tenantContextModule: any;
@@ -1193,7 +1205,6 @@ describe('AdminConfigurationController', () => {
     });
   });
 
-  // ── Bug 1: Light logo upload in updateSection ────────────────────────────
   describe('updateSection() branding with file upload', () => {
     it('saves storage key when file is uploaded with branding form', async () => {
       const mocks = makeMocks();
@@ -1271,7 +1282,6 @@ describe('AdminConfigurationController', () => {
     });
   });
 
-  // ── Bug 2: Favicon uses wrong URL/delete methods ────────────────────────
   describe('favicon upload/remove uses correct methods', () => {
     it('uploadFavicon uses storeFile with favicons category', async () => {
       const mocks = makeMocks();
@@ -1341,7 +1351,6 @@ describe('AdminConfigurationController', () => {
     });
   });
 
-  // ── Bug 3: Reset colors/fonts with empty branding ──────────────────────
   describe('resetColors/resetFonts handles empty branding', () => {
     it('resetColors uses deleteSection when branding has only colors', async () => {
       const mocks = makeMocks();

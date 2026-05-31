@@ -34,9 +34,7 @@ import {
   type TenantsControllerDeps,
 } from '../../../../src/api/v1/controllers/tenants.controller.js';
 
-// ---------------------------------------------------------------------------
 // Shared helpers
-// ---------------------------------------------------------------------------
 
 function createMockRequest(overrides: Partial<Request> = {}): Request {
   return {
@@ -66,9 +64,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Test fixtures
-// ---------------------------------------------------------------------------
 
 // MongoDB-shaped fixtures (have _id, may have toJSON)
 const mongoUsers = [
@@ -114,9 +110,7 @@ const prismaActivities = [
   { id: 'pact4', type: 'login', timestamp: new Date('2026-01-04') },
 ];
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('API v1 — DB abstraction contract', () => {
   // Helper to decode cursor from response.
@@ -128,9 +122,7 @@ describe('API v1 — DB abstraction contract', () => {
     return decodeCursor(cursor);
   }
 
-  // -------------------------------------------------------------------------
   // MongoDB-shaped data
-  // -------------------------------------------------------------------------
 
   describe('with MongoDB-shaped data (_id, no id field)', () => {
     it('users: list cursor uses "id" key even with _id-only data', async () => {
@@ -247,9 +239,7 @@ describe('API v1 — DB abstraction contract', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // Prisma-shaped data
-  // -------------------------------------------------------------------------
 
   describe('with Prisma-shaped data (id, plain objects)', () => {
     it('users: list cursor uses "id" key with Prisma data', async () => {
@@ -371,9 +361,7 @@ describe('API v1 — DB abstraction contract', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
   // Filter objects are DB-agnostic
-  // -------------------------------------------------------------------------
 
   describe('filter objects passed to services are DB-agnostic', () => {
     it('audit: date range uses timestampRange, not $gte/$lte', async () => {

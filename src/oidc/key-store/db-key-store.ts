@@ -219,8 +219,6 @@ export class DBKeyStore implements IKeyStore {
     return ageDays >= intervalDays;
   }
 
-  // ─── Private helpers ───────────────────────────────────────────────────
-
   /**
    * Sort key documents by promotion group, then by creation date (newest first).
    * node-oidc-provider picks the FIRST matching key for signing, so

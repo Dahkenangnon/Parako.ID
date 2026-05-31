@@ -87,7 +87,6 @@ export interface ScopeDefinition {
 
 /** All Management API scopes with labels and descriptions for admin UI. */
 export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
-  // --- Clients ---
   {
     value: SCOPES.CLIENTS_READ,
     label: 'Read Clients',
@@ -110,7 +109,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Users ---
   {
     value: SCOPES.USERS_READ,
     label: 'Read Users',
@@ -133,7 +131,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Sessions ---
   {
     value: SCOPES.SESSIONS_READ,
     label: 'Read Sessions',
@@ -149,7 +146,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Grants ---
   {
     value: SCOPES.GRANTS_READ,
     label: 'Read Grants',
@@ -165,7 +161,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- JWKS ---
   {
     value: SCOPES.JWKS_READ,
     label: 'Read JWKS',
@@ -181,7 +176,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Audit ---
   {
     value: SCOPES.AUDIT_READ,
     label: 'Read Audit Log',
@@ -197,7 +191,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Statistics ---
   {
     value: SCOPES.STATS_READ,
     label: 'Read Statistics',
@@ -206,7 +199,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'read',
   },
 
-  // --- Registration Tokens ---
   {
     value: SCOPES.REGISTRATION_TOKENS_READ,
     label: 'Read Registration Tokens',
@@ -229,7 +221,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Platform-only: Tenants ---
   {
     value: SCOPES.TENANTS_READ,
     label: 'Read Tenants',
@@ -252,7 +243,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'destructive',
   },
 
-  // --- Platform-only: Cross-tenant ---
   {
     value: SCOPES.CROSS_TENANT_READ,
     label: 'Cross-Tenant Read',
@@ -269,7 +259,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'write',
   },
 
-  // --- Platform-only: Settings ---
   {
     value: SCOPES.SETTINGS_READ,
     label: 'Read Settings',
@@ -285,7 +274,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'write',
   },
 
-  // --- Config ---
   {
     value: SCOPES.CONFIG_READ,
     label: 'Read Configuration',
@@ -301,7 +289,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'write',
   },
 
-  // --- Social ---
   {
     value: SCOPES.SOCIAL_READ,
     label: 'Read Social Integrations',
@@ -317,7 +304,6 @@ export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
     classification: 'write',
   },
 
-  // --- Webhooks ---
   {
     value: SCOPES.WEBHOOKS_MANAGE,
     label: 'Manage Webhooks',

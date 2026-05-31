@@ -404,8 +404,6 @@ export function createGlobalLimiter(config: {
  * Unified key format: {basePrefix}:{tenantId}:rl:{name}:{ip}
  */
 
-// ── Tenant-aware utilities ──────────────────────────────────────────────────
-
 /**
  * Create a tenant-aware key generator for rate limiting.
  * Unified format: {basePrefix}:{tenantId}:rl:{name}:{ip}

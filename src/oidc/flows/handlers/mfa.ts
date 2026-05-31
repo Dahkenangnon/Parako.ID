@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Provider from 'oidc-provider';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IUserService } from '../../../di/interfaces/user-service.interface.js';
@@ -13,7 +14,11 @@ import type { ISessionManager } from '../../../di/interfaces/session-manager.int
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
 import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
+import {
+  oidcMfaBodySchema,
+  oidcUidParamsSchema,
+} from '../../../validators/oidc/handlers.js';
 
 /**
  * OIDC MFA Handler
@@ -41,6 +46,14 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * POST /interaction/:uid/mfa handler
    * Handles MFA verification for OIDC interactions
@@ -52,12 +65,10 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
     provider: Provider
   ): Promise<void> => {
     try {
-      const { uid } = req.params;
+      const { uid } = oidcUidParamsSchema.parse(req.params);
+      const body = oidcMfaBodySchema.parse(req.body);
       const interactionDetails = await provider.interactionDetails(req, res);
       const { session, params } = interactionDetails;
-
-      const deviceInfos =
-        this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
 
       if (!session?.accountId) {
         this.logger.error('MFA route without valid session');
@@ -85,7 +96,7 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
           });
           verified = false;
         } else {
-          const requestedMethod = req.body.method as string | undefined;
+          const requestedMethod = body.method;
           mfaMethod =
             requestedMethod || this.mfaUtils.getPreferredMethod(userDoc);
 
@@ -122,22 +133,17 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
 
       if (!verified) {
         try {
-          this.activityService.failed(
+          activityLoggerFor(this.activityLoggerDeps, req).failed(
             'oidc.mfa.verification',
-            'Invalid or expired MFA code',
             null,
+            'Invalid or expired MFA code',
             {
-              ip_address: req.ip,
-              user_agent: req.headers['user-agent'] as string,
               client_id: params.client_id as string,
-              device_infos: deviceInfos as ClientDeviceInfos,
               actor: {
                 username: session.accountId,
                 actor_type: 'user',
               },
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
             }
           );
         } catch (error) {
@@ -156,19 +162,14 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
         : [...existingAmr, 'otp'];
 
       try {
-        this.activityService.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'oidc.mfa.verification',
-          'MFA verification successful',
           userDoc!,
+          'MFA verification successful',
           {
-            ip_address: req.ip,
-            user_agent: req.headers['user-agent'] as string,
             client_id: params.client_id as string,
-            device_infos: deviceInfos as ClientDeviceInfos,
             actor: userDoc!,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
           }
         );
       } catch (error) {
@@ -196,6 +197,17 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
         accountId: session.accountId,
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn('OIDC MFA handler received invalid input', {
+          issues: err.issues,
+        });
+        res.status(400).render(this.viewResolver.views.auth.oidc.error, {
+          errorType: 'InvalidRequest',
+          errorMessage:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'Error in MFA handler',
       });

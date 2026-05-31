@@ -19,8 +19,6 @@ import {
 } from '../../../../src/oidc/adapter/client-crud-utils.js';
 import type { OidcClientData } from '../../../../src/oidc/adapter/client.interface.js';
 
-// ─── generateClientId ───────────────────────────────────────────────────────
-
 describe('generateClientId', () => {
   it('returns a UUID v4 string', () => {
     const id = generateClientId();
@@ -34,8 +32,6 @@ describe('generateClientId', () => {
     expect(ids.size).toBe(50);
   });
 });
-
-// ─── generateClientSecret ───────────────────────────────────────────────────
 
 describe('generateClientSecret', () => {
   it('returns a 64-character hex string', () => {
@@ -51,8 +47,6 @@ describe('generateClientSecret', () => {
     expect(secrets.size).toBe(50);
   });
 });
-
-// ─── sanitizeClientPayload ──────────────────────────────────────────────────
 
 describe('sanitizeClientPayload', () => {
   it('strips empty strings', () => {
@@ -89,8 +83,6 @@ describe('sanitizeClientPayload', () => {
     expect(input.b).toBe(''); // original unchanged
   });
 });
-
-// ─── applyClientDefaults ────────────────────────────────────────────────────
 
 describe('applyClientDefaults', () => {
   it('applies defaults for minimal input', () => {
@@ -151,8 +143,6 @@ describe('applyClientDefaults', () => {
     expect('policy_uri' in result).toBe(false);
   });
 });
-
-// ─── validateClientData ─────────────────────────────────────────────────────
 
 describe('validateClientData', () => {
   it('passes for valid data', () => {
@@ -238,8 +228,6 @@ describe('validateClientData', () => {
   });
 });
 
-// ─── validateClientData – redirect URI security ─────────────────────────────
-
 describe('validateClientData - redirect URI security', () => {
   it('rejects javascript: protocol in redirect_uris', () => {
     const result = validateClientData({
@@ -319,8 +307,6 @@ describe('validateClientData - redirect URI security', () => {
   });
 });
 
-// ─── filterClients ──────────────────────────────────────────────────────────
-
 describe('filterClients', () => {
   const clients: OidcClientData[] = [
     {
@@ -383,8 +369,6 @@ describe('filterClients', () => {
   });
 });
 
-// ─── clientMatchesSearch ────────────────────────────────────────────────────
-
 describe('clientMatchesSearch', () => {
   const client: OidcClientData = {
     client_id: 'my-web-app',
@@ -413,8 +397,6 @@ describe('clientMatchesSearch', () => {
     expect(clientMatchesSearch(client, 'nonexistent')).toBe(false);
   });
 });
-
-// ─── computeClientStatistics ────────────────────────────────────────────────
 
 describe('computeClientStatistics', () => {
   const clients: OidcClientData[] = [
@@ -459,8 +441,6 @@ describe('computeClientStatistics', () => {
     expect(stats.inactive).toBe(0);
   });
 });
-
-// ─── encryptClientSecret / decryptClientSecret ──────────────────────────────
 
 describe('encryptClientSecret / decryptClientSecret', () => {
   const testKey = randomBytes(32).toString('hex');

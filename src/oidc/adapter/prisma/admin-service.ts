@@ -49,8 +49,6 @@ export class PrismaOidcAdminService {
     private readonly model: string
   ) {}
 
-  // ── internals ────────────────────────────────────────────────────────────────
-
   private parsePayload(row: OidcStoreRow): any {
     const payload =
       typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
@@ -102,8 +100,6 @@ export class PrismaOidcAdminService {
 
     return where;
   }
-
-  // ── Session methods (used by session.controller, auth.controller, account.controller) ──
 
   async findByAccountId(accountId: string): Promise<any[]> {
     if (!accountId) return [];
@@ -264,8 +260,6 @@ export class PrismaOidcAdminService {
     return { deletedCount: count };
   }
 
-  // ── Grant methods (grant.controller, auth.controller, account.controller) ────
-
   async findGrantsByAccountId(accountId: string): Promise<any[]> {
     if (!accountId) return [];
     const rows = await this.prisma.oidcStore.findMany({
@@ -396,15 +390,11 @@ export class PrismaOidcAdminService {
     return this.deleteSessionsByAccountId(accountId);
   }
 
-  // ── Token / interaction methods (auth.controller) ─────────────────────────
-
   async deleteByAccountId(accountId: string): Promise<void> {
     await this.prisma.oidcStore.deleteMany({
       where: { model: this.model, account_id: accountId },
     });
   }
-
-  // ── Client CRUD (IAdapterClientService) ───────────────────────────────────
 
   /**
    * Create a new OIDC client in the oidc_store table.

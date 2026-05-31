@@ -13,8 +13,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TenantProviderRegistry } from '../../../src/multi-tenancy/tenant-provider-registry.js';
 import type { ProviderConfigurator } from '../../../src/di/interfaces/tenant-provider-registry.interface.js';
 
-// ─── Mocks ───────────────────────────────────────────────────────────────────
-
 function createMockLogger() {
   return {
     info: vi.fn(),
@@ -112,8 +110,6 @@ function createMockOidcConfig() {
   };
 }
 
-// ─── Test Suite ──────────────────────────────────────────────────────────────
-
 describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () => {
   let logger: ReturnType<typeof createMockLogger>;
   let configManager: ReturnType<typeof createMockConfigManager>;
@@ -151,8 +147,6 @@ describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () 
   afterEach(() => {
     registry.shutdown();
   });
-
-  // ─── Configurator ────────────────────────────────────────────────────
 
   describe('setProviderConfigurator()', () => {
     it('stores the configurator function', () => {
@@ -214,8 +208,6 @@ describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () 
     });
   });
 
-  // ─── reloadProviderJWKS ──────────────────────────────────────────────
-
   describe('reloadProviderJWKS()', () => {
     it('calls keyStore.getJWKS for the correct tenant on reload', async () => {
       await registry.getProvider('acme');
@@ -258,8 +250,6 @@ describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () 
       );
     });
   });
-
-  // ─── JWKS PubSub Subscriptions ───────────────────────────────────────
 
   describe('JWKS PubSub per-tenant', () => {
     it('subscribes to tenant JWKS channels on provider creation', async () => {

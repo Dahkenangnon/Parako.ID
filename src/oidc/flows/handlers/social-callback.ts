@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
@@ -13,11 +14,12 @@ import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-dev
 import type { IGeolocationService } from '../../../di/interfaces/geolocation-service.interface.js';
 import type { IIPReputationService } from '../../../di/interfaces/ip-reputation-service.interface.js';
 import type { IAuthService } from '../../../di/interfaces/auth-service.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import { oidcSocialProviderParamsSchema } from '../../../validators/oidc/handlers.js';
 import { type SocialProvider } from '../../../types/social-integration.js';
 import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IMetricsService } from '../../../di/interfaces/metrics-service.interface.js';
 import type { OIDCSocialContext } from '../../../types/session-data.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 
 /**
  * OIDC Social Callback Handler
@@ -53,6 +55,14 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * GET /oidc/social/:provider/callback handler
    * Handles social login callback for OIDC flow
@@ -63,7 +73,9 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
     _next: NextFunction
   ): Promise<void> => {
     try {
-      const provider = req.params.provider as SocialProvider;
+      const { provider } = oidcSocialProviderParamsSchema.parse(req.params) as {
+        provider: SocialProvider;
+      };
 
       const oidcContext = this.sessionManager.get<OIDCSocialContext>(
         req,
@@ -115,19 +127,12 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
         });
         this.metricsService.recordFederationLogin(provider, 'failure');
 
-        const failedDeviceInfos =
-          this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
-        this.activityService.failed(
+        activityLoggerFor(this.activityLoggerDeps, req).failed(
           'oidc_social_login_failed',
-          `Social login with ${provider} failed`,
           null,
+          `Social login with ${provider} failed`,
           {
-            ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-            user_agent: req.get('User-Agent') || 'unknown',
-            device_infos: failedDeviceInfos as ClientDeviceInfos,
-            actor: {
-              actor_type: 'anonymous',
-            },
+            actor: { actor_type: 'anonymous' },
             target: {
               target_type: 'none',
               entity_data: {
@@ -415,15 +420,14 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
           ).getTime() <
           60000;
 
+      const activity = activityLoggerFor(this.activityLoggerDeps, req);
+
       if (isNewLink) {
-        this.activityService.success(
+        activity.success(
           'social_provider_linked',
-          `User linked ${provider} account`,
           result.user,
+          `User linked ${provider} account`,
           {
-            ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-            user_agent: req.get('User-Agent') || 'unknown',
-            device_infos: deviceInfos as ClientDeviceInfos,
             actor: result.user,
             target: {
               target_type: 'config',
@@ -438,14 +442,11 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
         );
       }
 
-      this.activityService.success(
+      activity.success(
         'oidc_social_login_success',
-        'User logged in with social provider via OIDC',
         result.user,
+        'User logged in with social provider via OIDC',
         {
-          ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-          user_agent: req.get('User-Agent') || 'unknown',
-          device_infos: deviceInfos as ClientDeviceInfos,
           actor: result.user,
           target: {
             target_type: 'none',
@@ -471,6 +472,17 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
       // The OIDC flow will detect the authenticated user and handle MFA/consent/etc.
       return res.redirect(`${this.oidcPath}/interaction/${oidcContext.uid}`);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        this.logger.warn('OIDC social callback received invalid input', {
+          issues: error.issues,
+        });
+        return res.status(400).render('auth/oidc/error.njk', {
+          title: 'Invalid Request',
+          error:
+            'The request could not be processed. Please return to the previous page and try again.',
+          redirectUrl: '/auth/login',
+        });
+      }
       this.logger.error(error as Error, {
         context: 'oidc_social_callback_failed',
         provider: req.params.provider,

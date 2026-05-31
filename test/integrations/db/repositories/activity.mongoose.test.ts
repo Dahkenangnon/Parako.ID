@@ -4,8 +4,6 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createActivityModel } from '../../../../src/models/activity.model.js';
 import { MongooseActivityRepository } from '../../../../src/db/repositories/mongoose/activity.repository.js';
 
-// ─── Shared state ─────────────────────────────────────────────────────────────
-
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseActivityRepository;
 let mongoAvailable = true;
@@ -18,8 +16,6 @@ const makeActivity = (overrides: Record<string, unknown> = {}) => ({
   timestamp: new Date(),
   ...overrides,
 });
-
-// ─── Setup / teardown ─────────────────────────────────────────────────────────
 
 beforeAll(async () => {
   try {
@@ -46,8 +42,6 @@ beforeEach(async ctx => {
   }
   await mongoose.connection.collection('activities').deleteMany({});
 });
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('MongooseActivityRepository', () => {
   describe('create + findById', () => {

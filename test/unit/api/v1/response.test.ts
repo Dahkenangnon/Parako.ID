@@ -18,9 +18,7 @@ function createMockResponse() {
 }
 
 describe('api/v1/response', () => {
-  // -----------------------------------------------------------------------
   // apiSuccess
-  // -----------------------------------------------------------------------
   describe('apiSuccess()', () => {
     it('should call res.status(200).json({ data }) by default', () => {
       const res = createMockResponse();
@@ -43,9 +41,7 @@ describe('api/v1/response', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // apiCreated
-  // -----------------------------------------------------------------------
   describe('apiCreated()', () => {
     it('should call res.status(201).json({ data })', () => {
       const res = createMockResponse();
@@ -58,9 +54,7 @@ describe('api/v1/response', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // apiList
-  // -----------------------------------------------------------------------
   describe('apiList()', () => {
     it('should call res.status(200).json({ data, pagination })', () => {
       const res = createMockResponse();
@@ -126,9 +120,7 @@ describe('api/v1/response', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // apiNoContent
-  // -----------------------------------------------------------------------
   describe('apiNoContent()', () => {
     it('should call res.status(204).end()', () => {
       const res = createMockResponse();

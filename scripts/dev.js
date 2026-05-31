@@ -11,9 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const WITH_WORKER = process.argv.includes('--with-worker');
 
-// ---------------------------------------------------------------------------
 // Logging
-// ---------------------------------------------------------------------------
 
 const green = s => `\x1b[32m${s}\x1b[0m`;
 const cyan = s => `\x1b[36m${s}\x1b[0m`;
@@ -39,9 +37,7 @@ function log(msg, tag) {
   console.log(`  ${timestamp()} ${prefix}${msg}`);
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 const BIN = join(ROOT, 'node_modules', '.bin');
 
@@ -79,9 +75,7 @@ function copyDirSync(src, dest) {
   cpSync(src, dest, { recursive: true, force: true });
 }
 
-// ---------------------------------------------------------------------------
 // Initial Build (same as production, but without minification)
-// ---------------------------------------------------------------------------
 
 async function initialBuild() {
   const start = performance.now();
@@ -129,9 +123,7 @@ async function initialBuild() {
   );
 }
 
-// ---------------------------------------------------------------------------
 // Process Management
-// ---------------------------------------------------------------------------
 
 const children = [];
 
@@ -209,9 +201,7 @@ function cleanup() {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
-// ---------------------------------------------------------------------------
 // Asset Watcher (single chokidar instance)
-// ---------------------------------------------------------------------------
 
 function startAssetWatcher() {
   const viewsDir = join(ROOT, 'src/views');
@@ -305,9 +295,7 @@ function startAssetWatcher() {
   return watcher;
 }
 
-// ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
 
 async function main() {
   try {

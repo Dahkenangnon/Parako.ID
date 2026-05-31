@@ -19,8 +19,6 @@ import type { IPasswordUtils } from '../../../src/di/interfaces/password-utils.i
 import type { BootstrapConfig } from '../../../src/config/schemas/bootstrap-schema.js';
 import { bootstrapMasterTenant } from '../../../src/multi-tenancy/master-tenant-bootstrap.js';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function createMockLogger(): ILogger {
   return {
     info: vi.fn(),
@@ -117,8 +115,6 @@ function createContainer(
   }
   return container;
 }
-
-// ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('bootstrapMasterTenant', () => {
   let logger: ILogger;

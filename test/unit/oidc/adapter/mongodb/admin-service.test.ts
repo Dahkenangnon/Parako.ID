@@ -71,8 +71,6 @@ function makeMockColl() {
   };
 }
 
-// ─── Session model ─────────────────────────────────────────────────────────
-
 describe('MongodbOidcAdminService — Session model', () => {
   let service: MongodbOidcAdminService;
   let mockColl: ReturnType<typeof makeMockColl>;
@@ -123,8 +121,6 @@ describe('MongodbOidcAdminService — Session model', () => {
   });
 });
 
-// ─── Grant model ───────────────────────────────────────────────────────────
-
 describe('MongodbOidcAdminService — Grant model', () => {
   let service: MongodbOidcAdminService;
   let mockColl: ReturnType<typeof makeMockColl>;
@@ -162,8 +158,6 @@ describe('MongodbOidcAdminService — Grant model', () => {
   });
 });
 
-// ─── AccessToken / RefreshToken / Interaction (deleteByAccountId) ──────────
-
 describe.each([
   ['AccessToken', 'payload.accountId'],
   ['RefreshToken', 'payload.accountId'],
@@ -190,8 +184,6 @@ describe.each([
     });
   }
 );
-
-// ─── Client CRUD (IAdapterClientService) ──────────────────────────────────
 
 describe('MongodbOidcAdminService — Client CRUD', () => {
   let service: MongodbOidcAdminService;

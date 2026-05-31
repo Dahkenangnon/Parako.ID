@@ -13,14 +13,13 @@ import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-servi
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import { TYPES } from '../../di/types.js';
 import {
-  parsePositiveInt,
-  parseEnum,
-  escapeRegExp,
-} from '../../utils/query-parse.js';
-import {
   ADMIN_SESSION_SORT_FIELDS,
-  SORT_ORDER_VALUES,
-} from '../../middlewares/validation.middleware.js';
+  parsePositiveInt,
+  escapeRegExp,
+  extractListingQuery,
+} from '../../validators/listing-query.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
+import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
 /**
  * Admin Sessions Controller
@@ -51,182 +50,165 @@ export class AdminSessionsController implements IAdminSessionsController {
     private readonly configManager: IConfigManager
   ) {}
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
+  private broadcastRevocation(
+    payload: Record<string, unknown>,
+    step: string
+  ): void {
+    if (!this.pubsub?.isConnected()) return;
+    this.pubsub
+      .publish(`${this.redisPrefix}:session:revoked`, {
+        originId: this.originId,
+        ...payload,
+      })
+      .catch((err: unknown) => {
+        this.logger.warn('Pubsub broadcast of session revocation failed', {
+          step,
+          ...payload,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }
+
   /**
    * Display all user sessions with pagination, search, and filtering
    * GET /admin/sessions
    */
   public list = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const page = parsePositiveInt(req.query.page, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const limit = parsePositiveInt(req.query.limit, {
-        default: 20,
-        min: 1,
-        max: 100,
-      });
-      const search = ((req.query.search as string) || '').trim();
-      const username = ((req.query.username as string) || '')
-        .trim()
-        .slice(0, 100);
-      const status = ((req.query.status as string) || 'all').trim();
-      const sortBy = parseEnum(
-        req.query.sortBy,
-        ADMIN_SESSION_SORT_FIELDS,
-        'loginTime'
-      );
-      const sortOrder = parseEnum(
-        req.query.sortOrder,
-        SORT_ORDER_VALUES,
-        'desc'
-      );
+    const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
+      req.query,
+      ADMIN_SESSION_SORT_FIELDS,
+      { sortBy: 'loginTime' }
+    );
+    const username = ((req.query.username as string) || '')
+      .trim()
+      .slice(0, 100);
+    const status = ((req.query.status as string) || 'all').trim();
 
-      // Express sessions pagination (separate from OIDC)
-      const expressPage = parsePositiveInt(req.query.expressPage, {
-        default: 1,
-        min: 1,
-        max: 10_000,
-      });
-      const expressLimit = parsePositiveInt(req.query.expressLimit, {
-        default: 20,
-        min: 1,
-        max: 100,
-      });
+    const expressPage = parsePositiveInt(req.query.expressPage, {
+      default: 1,
+      min: 1,
+      max: 10_000,
+    });
+    const expressLimit = parsePositiveInt(req.query.expressLimit, {
+      default: 20,
+      min: 1,
+      max: 100,
+    });
 
-      const filters: any = {
-        'payload.kind': 'Session',
+    const filters: any = {
+      'payload.kind': 'Session',
+    };
+
+    // Anchored prefix match with the username escaped to neutralise the
+    // canonical ReDoS attack patterns (e.g. `(a+)+$`). The length cap above
+    // bounds parser work even if the escape were ever bypassed.
+    // https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
+    if (username) {
+      filters['payload.accountId'] = {
+        $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
       };
-
-      // Anchored prefix match with the username escaped to neutralise the
-      // canonical ReDoS attack patterns (e.g. `(a+)+$`). The length cap above
-      // bounds parser work even if the escape were ever bypassed.
-      // Reference: https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
-      if (username) {
-        filters['payload.accountId'] = {
-          $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
-        };
-      }
-
-      if (status === 'active') {
-        const now = Math.floor(Date.now() / 1000);
-        filters['payload.exp'] = { $gt: now };
-      } else if (status === 'expired') {
-        const now = Math.floor(Date.now() / 1000);
-        filters['payload.exp'] = { $lte: now };
-      }
-
-      const totalSessions =
-        await this.oidcAdapter.session.countSessions(filters);
-      const totalPages = Math.ceil(totalSessions / limit);
-      const skip = (page - 1) * limit;
-
-      const sort: any = {};
-      if (sortBy === 'loginTime') {
-        sort['payload.loginTs'] = sortOrder === 'desc' ? -1 : 1;
-      } else if (sortBy === 'username') {
-        sort['payload.accountId'] = sortOrder === 'desc' ? -1 : 1;
-      } else if (sortBy === 'expiresAt') {
-        sort['payload.exp'] = sortOrder === 'desc' ? -1 : 1;
-      } else {
-        sort['payload.loginTs'] = -1; // Default sort
-      }
-
-      const sessions =
-        await this.oidcAdapter.session.findSessionsWithPagination(
-          filters,
-          sortBy,
-          sortOrder === 'desc' ? -1 : 1,
-          skip,
-          limit
-        );
-
-      let filteredSessions: any[] = [];
-      if (sessions && sessions.length > 0) {
-        const processedSessions = await Promise.all(
-          sessions.map(async session => {
-            const processed = await this.oidcUtils.processSessionData(session);
-            processed.sessionType = 'oidc';
-            return processed;
-          })
-        );
-
-        filteredSessions = processedSessions;
-        if (search) {
-          const searchLower = search.toLowerCase();
-          filteredSessions = processedSessions.filter(
-            session =>
-              session.userInfo.username.toLowerCase().includes(searchLower) ||
-              session.userInfo.full_name.toLowerCase().includes(searchLower) ||
-              session.userInfo.email.toLowerCase().includes(searchLower) ||
-              session.device.toLowerCase().includes(searchLower) ||
-              session.ip.toLowerCase().includes(searchLower)
-          );
-        }
-      }
-
-      const expressSkip = (expressPage - 1) * expressLimit;
-      const [rawExpressSessions, totalExpressSessions] = await Promise.all([
-        this.sessionManager.findAllExpressSessions({
-          limit: expressLimit,
-          offset: expressSkip,
-          search: search || username || undefined,
-        }),
-        this.sessionManager.countAllExpressSessions(),
-      ]);
-
-      const expressSessions =
-        await this.processExpressSessions(rawExpressSessions);
-
-      const expressTotalPages = Math.ceil(totalExpressSessions / expressLimit);
-
-      const hasNext = page < totalPages;
-      const hasPrev = page > 1;
-
-      res.render('admin/sessions/index', {
-        title: 'User Sessions',
-        sessions: filteredSessions,
-        pagination: {
-          page,
-          limit,
-          totalPages,
-          totalSessions,
-          hasNext,
-          hasPrev,
-          startIndex: filteredSessions.length > 0 ? (page - 1) * limit + 1 : 0,
-          endIndex:
-            filteredSessions.length > 0
-              ? Math.min(page * limit, totalSessions)
-              : 0,
-        },
-        expressSessions,
-        expressPagination: {
-          page: expressPage,
-          limit: expressLimit,
-          totalPages: expressTotalPages,
-          totalSessions: totalExpressSessions,
-          hasNext: expressPage < expressTotalPages,
-          hasPrev: expressPage > 1,
-          startIndex:
-            expressSessions.length > 0
-              ? (expressPage - 1) * expressLimit + 1
-              : 0,
-          endIndex:
-            expressSessions.length > 0
-              ? Math.min(expressPage * expressLimit, totalExpressSessions)
-              : 0,
-        },
-        filters: { search, username, status, sortBy, sortOrder },
-        userTheme: res.locals.userTheme || 'light',
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'admin_sessions_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load user sessions');
-      res.redirect('/admin');
     }
+
+    if (status === 'active') {
+      const now = Math.floor(Date.now() / 1000);
+      filters['payload.exp'] = { $gt: now };
+    } else if (status === 'expired') {
+      const now = Math.floor(Date.now() / 1000);
+      filters['payload.exp'] = { $lte: now };
+    }
+
+    const totalSessions = await this.oidcAdapter.session.countSessions(filters);
+    const totalPages = Math.ceil(totalSessions / limit);
+    const skip = (page - 1) * limit;
+
+    const sessions = await this.oidcAdapter.session.findSessionsWithPagination(
+      filters,
+      sortBy,
+      sortOrder === 'desc' ? -1 : 1,
+      skip,
+      limit
+    );
+
+    let filteredSessions: any[] = [];
+    if (sessions && sessions.length > 0) {
+      const processedSessions = await Promise.all(
+        sessions.map(async session => {
+          const processed = await this.oidcUtils.processSessionData(session);
+          processed.sessionType = 'oidc';
+          return processed;
+        })
+      );
+
+      filteredSessions = processedSessions;
+      if (search) {
+        const searchLower = search.toLowerCase();
+        filteredSessions = processedSessions.filter(
+          session =>
+            session.userInfo.username.toLowerCase().includes(searchLower) ||
+            session.userInfo.full_name.toLowerCase().includes(searchLower) ||
+            session.userInfo.email.toLowerCase().includes(searchLower) ||
+            session.device.toLowerCase().includes(searchLower) ||
+            session.ip.toLowerCase().includes(searchLower)
+        );
+      }
+    }
+
+    const expressSkip = (expressPage - 1) * expressLimit;
+    const [rawExpressSessions, totalExpressSessions] = await Promise.all([
+      this.sessionManager.findAllExpressSessions({
+        limit: expressLimit,
+        offset: expressSkip,
+        search: search || username || undefined,
+      }),
+      this.sessionManager.countAllExpressSessions(),
+    ]);
+
+    const expressSessions =
+      await this.processExpressSessions(rawExpressSessions);
+
+    const expressTotalPages = Math.ceil(totalExpressSessions / expressLimit);
+
+    res.render('admin/sessions/index', {
+      title: 'User Sessions',
+      sessions: filteredSessions,
+      pagination: {
+        page,
+        limit,
+        totalPages,
+        totalSessions,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+        startIndex: filteredSessions.length > 0 ? (page - 1) * limit + 1 : 0,
+        endIndex:
+          filteredSessions.length > 0
+            ? Math.min(page * limit, totalSessions)
+            : 0,
+      },
+      expressSessions,
+      expressPagination: {
+        page: expressPage,
+        limit: expressLimit,
+        totalPages: expressTotalPages,
+        totalSessions: totalExpressSessions,
+        hasNext: expressPage < expressTotalPages,
+        hasPrev: expressPage > 1,
+        startIndex:
+          expressSessions.length > 0 ? (expressPage - 1) * expressLimit + 1 : 0,
+        endIndex:
+          expressSessions.length > 0
+            ? Math.min(expressPage * expressLimit, totalExpressSessions)
+            : 0,
+      },
+      filters: { search, username, status, sortBy, sortOrder },
+    });
   };
 
   /**
@@ -234,79 +216,81 @@ export class AdminSessionsController implements IAdminSessionsController {
    * GET /admin/sessions/:id
    */
   public show = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const sessionId = req.params.id;
-      const sessionType = (req.query.type as string) || 'oidc';
+    const sessionId = req.params.id;
+    const sessionType = (req.query.type as string) || 'oidc';
 
-      if (sessionType === 'express') {
-        const allExpressSessions =
-          await this.sessionManager.findAllExpressSessions({ limit: 1000 });
-        const expressSession = allExpressSessions.find(
-          s => s._id === sessionId
+    if (sessionType === 'express') {
+      const allExpressSessions =
+        await this.sessionManager.findAllExpressSessions({ limit: 1000 });
+      const expressSession = allExpressSessions.find(s => s._id === sessionId);
+
+      if (!expressSession) {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Session not found',
+          '/admin/sessions'
         );
-
-        if (!expressSession) {
-          this.sessionManager.flash(req).error('Session not found');
-          res.redirect('/admin/sessions');
-          return;
-        }
-
-        const processed = await this.processExpressSessions([expressSession]);
-        const sessionDetails = processed[0];
-        if (!sessionDetails) {
-          this.sessionManager.flash(req).error('Session not found');
-          res.redirect('/admin/sessions');
-          return;
-        }
-
-        sessionDetails.authorizations = {};
-        sessionDetails.created_at = expressSession.session?.authTime
-          ? new Date(expressSession.session.authTime)
-          : new Date();
-        sessionDetails.updated_at = expressSession.session?.lastActivity
-          ? new Date(expressSession.session.lastActivity)
-          : sessionDetails.created_at;
-
-        res.render('admin/sessions/show', {
-          title: 'Session details',
-          session: sessionDetails,
-          userTheme: res.locals.userTheme || 'light',
-        });
-        return;
       }
 
-      // Default: OIDC session
-      const session = await this.oidcAdapter.session.findSessionById(sessionId);
-
-      if (!session) {
-        this.sessionManager.flash(req).error('Session not found');
-        res.redirect('/admin/sessions');
-        return;
+      const processed = await this.processExpressSessions([expressSession]);
+      const sessionDetails = processed[0];
+      if (!sessionDetails) {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Session not found',
+          '/admin/sessions'
+        );
       }
 
-      const sessionDetails = await this.oidcUtils.processSessionData(session);
-      sessionDetails.sessionType = 'oidc';
-
-      sessionDetails.authorizations = session.payload.authorizations || {};
-      sessionDetails.created_at = session.created_at
-        ? new Date(session.created_at)
+      sessionDetails.authorizations = {};
+      sessionDetails.created_at = expressSession.session?.authTime
+        ? new Date(expressSession.session.authTime)
         : new Date();
-      sessionDetails.updated_at = session.updated_at
-        ? new Date(session.updated_at)
-        : new Date();
+      sessionDetails.updated_at = expressSession.session?.lastActivity
+        ? new Date(expressSession.session.lastActivity)
+        : sessionDetails.created_at;
 
       res.render('admin/sessions/show', {
-        title: `Session details`,
+        title: 'Session details',
         session: sessionDetails,
-        userTheme: res.locals.userTheme || 'light',
       });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'session_details_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load session details');
-      res.redirect('/admin/sessions');
+      return;
     }
+
+    const session = await this.oidcAdapter.session.findSessionById(sessionId);
+
+    if (!session) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Session not found',
+        '/admin/sessions'
+      );
+    }
+
+    const sessionDetails = await this.oidcUtils.processSessionData(session);
+    sessionDetails.sessionType = 'oidc';
+
+    sessionDetails.authorizations = session.payload.authorizations || {};
+    sessionDetails.created_at = session.created_at
+      ? new Date(session.created_at)
+      : new Date();
+    sessionDetails.updated_at = session.updated_at
+      ? new Date(session.updated_at)
+      : new Date();
+
+    res.render('admin/sessions/show', {
+      title: 'Session details',
+      session: sessionDetails,
+    });
   };
 
   /**
@@ -314,133 +298,76 @@ export class AdminSessionsController implements IAdminSessionsController {
    * POST /admin/sessions/:id/revoke
    */
   public revokeSession = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const sessionId = req.params.id;
-      const sessionType = (req.body.sessionType as string) || 'oidc';
+    const sessionId = req.params.id;
+    const sessionType = (req.body.sessionType as string) || 'oidc';
+    const activity = activityLoggerFor(this.activityLoggerDeps, req, {
+      defaultActorType: 'admin',
+    });
 
-      if (sessionType === 'express') {
-        const allExpressSessions =
-          await this.sessionManager.findAllExpressSessions({ limit: 1000 });
-        const expressSession = allExpressSessions.find(
-          s => s._id === sessionId
+    if (sessionType === 'express') {
+      const allExpressSessions =
+        await this.sessionManager.findAllExpressSessions({ limit: 1000 });
+      const expressSession = allExpressSessions.find(s => s._id === sessionId);
+      const targetUsername = expressSession?.session?.accountId || 'unknown';
+
+      const revoked = await this.sessionManager.revokeExpressSession(sessionId);
+
+      if (revoked) {
+        activity.success(
+          'admin_session_revoked',
+          null,
+          `Admin revoked Express session for user ${targetUsername}`,
+          {
+            target: {
+              target_type: 'session',
+              entity_id: sessionId,
+              entity_name: targetUsername,
+            },
+          }
         );
-        const targetUsername = expressSession?.session?.accountId || 'unknown';
 
-        const revoked =
-          await this.sessionManager.revokeExpressSession(sessionId);
+        this.broadcastRevocation(
+          { username: targetUsername, sessionId },
+          'admin-session-revoke-broadcast'
+        );
 
-        if (revoked) {
-          const adminUser = this.sessionManager.getActiveUser(req);
-          this.activityService.success(
-            'admin_session_revoked',
-            `Admin revoked Express session for user ${targetUsername}`,
-            null,
-            {
-              ip_address: req.ip,
-              user_agent: req.get('User-Agent'),
-              actor: adminUser
-                ? { ...adminUser, actor_type: 'admin' }
-                : undefined,
-              target: {
-                target_type: 'session',
-                entity_id: sessionId,
-                entity_name: targetUsername,
-              },
-              device_infos:
-                this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-            }
-          );
-
-          if (this.pubsub?.isConnected()) {
-            this.pubsub
-              .publish(`${this.redisPrefix}:session:revoked`, {
-                originId: this.originId,
-                username: targetUsername,
-                sessionId,
-              })
-              .catch((err: unknown) => {
-                this.logger.warn(
-                  'Pubsub broadcast of session revocation failed',
-                  {
-                    step: 'admin-session-revoke-broadcast',
-                    sessionId,
-                    err: err instanceof Error ? err.message : String(err),
-                  }
-                );
-              });
-          }
-
-          this.sessionManager
-            .flash(req)
-            .success('Session revoked successfully');
-        } else {
-          this.sessionManager
-            .flash(req)
-            .error('Session not found or already expired');
-        }
+        this.sessionManager.flash(req).success('Session revoked successfully');
       } else {
-        // OIDC session revocation (existing logic)
-        const session =
-          await this.oidcAdapter.session.findSessionById(sessionId);
-        const targetUsername = session?.payload?.accountId || 'unknown';
-
-        const revoked = await this.oidcAdapter.session.revokeSession(sessionId);
-
-        if (revoked) {
-          const adminUser = this.sessionManager.getActiveUser(req);
-          this.activityService.success(
-            'admin_session_revoked',
-            `Admin revoked session for user ${targetUsername}`,
-            null,
-            {
-              ip_address: req.ip,
-              user_agent: req.get('User-Agent'),
-              actor: adminUser
-                ? { ...adminUser, actor_type: 'admin' }
-                : undefined,
-              target: {
-                target_type: 'session',
-                entity_id: sessionId,
-                entity_name: targetUsername,
-              },
-              device_infos:
-                this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-            }
-          );
-
-          if (this.pubsub?.isConnected()) {
-            this.pubsub
-              .publish(`${this.redisPrefix}:session:revoked`, {
-                originId: this.originId,
-                username: targetUsername,
-                sessionId,
-              })
-              .catch((err: unknown) => {
-                this.logger.warn(
-                  'Pubsub broadcast of session revocation failed',
-                  {
-                    step: 'admin-session-revoke-broadcast',
-                    sessionId,
-                    err: err instanceof Error ? err.message : String(err),
-                  }
-                );
-              });
-          }
-
-          this.sessionManager
-            .flash(req)
-            .success('Session revoked successfully');
-        } else {
-          this.sessionManager
-            .flash(req)
-            .error('Session not found or already expired');
-        }
+        this.sessionManager
+          .flash(req)
+          .error('Session not found or already expired');
       }
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'session_revocation_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to revoke session');
+    } else {
+      const session = await this.oidcAdapter.session.findSessionById(sessionId);
+      const targetUsername = session?.payload?.accountId || 'unknown';
+
+      const revoked = await this.oidcAdapter.session.revokeSession(sessionId);
+
+      if (revoked) {
+        activity.success(
+          'admin_session_revoked',
+          null,
+          `Admin revoked session for user ${targetUsername}`,
+          {
+            target: {
+              target_type: 'session',
+              entity_id: sessionId,
+              entity_name: targetUsername,
+            },
+          }
+        );
+
+        this.broadcastRevocation(
+          { username: targetUsername, sessionId },
+          'admin-session-revoke-broadcast'
+        );
+
+        this.sessionManager.flash(req).success('Session revoked successfully');
+      } else {
+        this.sessionManager
+          .flash(req)
+          .error('Session not found or already expired');
+      }
     }
 
     res.redirect('/admin/sessions');
@@ -454,98 +381,70 @@ export class AdminSessionsController implements IAdminSessionsController {
     req: Request,
     res: Response
   ): Promise<void> => {
-    try {
-      const username = req.params.username;
+    const username = req.params.username;
 
-      const userSessions =
-        await this.oidcAdapter.session.findByAccountId(username);
+    const userSessions =
+      await this.oidcAdapter.session.findByAccountId(username);
 
-      let oidcRevokedCount = 0;
-      for (const session of userSessions) {
-        const sessionId = session.payload.jti;
-        if (sessionId) {
-          const revoked =
-            await this.oidcAdapter.session.revokeSession(sessionId);
-          if (revoked) oidcRevokedCount++;
-        }
+    let oidcRevokedCount = 0;
+    for (const session of userSessions) {
+      const sessionId = session.payload.jti;
+      if (sessionId) {
+        const revoked = await this.oidcAdapter.session.revokeSession(sessionId);
+        if (revoked) oidcRevokedCount++;
       }
+    }
 
-      // Also revoke Express sessions for the same user
-      const expressRevokedCount =
-        await this.sessionManager.revokeAllSessionsForUser(username);
+    const expressRevokedCount =
+      await this.sessionManager.revokeAllSessionsForUser(username);
 
-      const totalRevoked = oidcRevokedCount + expressRevokedCount;
+    const totalRevoked = oidcRevokedCount + expressRevokedCount;
 
-      if (totalRevoked > 0) {
-        const adminUser = this.sessionManager.getActiveUser(req);
-        this.activityService.success(
-          'admin_sessions_bulk_revoked',
-          `Admin revoked all sessions for user ${username}`,
-          null,
-          {
-            ip_address: req.ip,
-            user_agent: req.get('User-Agent'),
-            actor: adminUser
-              ? { ...adminUser, actor_type: 'admin' }
-              : undefined,
-            target: {
-              target_type: 'session',
-              entity_name: username,
-              entity_data: {
-                oidcRevokedCount,
-                expressRevokedCount,
-                totalRevoked,
-              },
+    if (totalRevoked > 0) {
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
+        'admin_sessions_bulk_revoked',
+        null,
+        `Admin revoked all sessions for user ${username}`,
+        {
+          target: {
+            target_type: 'session',
+            entity_name: username,
+            entity_data: {
+              oidcRevokedCount,
+              expressRevokedCount,
+              totalRevoked,
             },
-            device_infos:
-              this.clientDeviceInfoManager.getClientInfoFromRequest(req),
-          }
-        );
-
-        if (this.pubsub?.isConnected()) {
-          this.pubsub
-            .publish(`${this.redisPrefix}:session:revoked`, {
-              originId: this.originId,
-              username,
-              action: 'revoke_all',
-            })
-            .catch((err: unknown) => {
-              this.logger.warn(
-                'Pubsub broadcast of revoke-all session event failed',
-                {
-                  step: 'admin-session-revoke-all-broadcast',
-                  username,
-                  err: err instanceof Error ? err.message : String(err),
-                }
-              );
-            });
+          },
         }
+      );
 
-        this.sessionManager
-          .flash(req)
-          .success(
-            `Successfully revoked ${totalRevoked} session(s) for user ${username}`
-          );
-      } else {
-        this.sessionManager
-          .flash(req)
-          .info('No active sessions found for this user');
-      }
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'user_sessions_revocation_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to revoke user sessions');
+      this.broadcastRevocation(
+        { username, action: 'revoke_all' },
+        'admin-session-revoke-all-broadcast'
+      );
+
+      this.sessionManager
+        .flash(req)
+        .success(
+          `Successfully revoked ${totalRevoked} session(s) for user ${username}`
+        );
+    } else {
+      this.sessionManager
+        .flash(req)
+        .info('No active sessions found for this user');
     }
 
     res.redirect('/admin/sessions');
   };
 
   /**
-   * Get session statistics
-   * GET /admin/sessions/stats
+   * Get session statistics.
+   * GET /admin/sessions/stats — JSON endpoint, kept with inline error
+   * handling so the response stays JSON for callers that expect it.
    */
-  public getStats = async (req: Request, res: Response): Promise<void> => {
+  public getStats = async (_req: Request, res: Response): Promise<void> => {
     try {
       const sessionStats =
         await this.oidcAdapter.session.getSessionStatistics();

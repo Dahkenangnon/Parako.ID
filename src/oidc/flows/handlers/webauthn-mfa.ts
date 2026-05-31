@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Provider from 'oidc-provider';
 import { injectable, inject } from 'inversify';
+import { z } from 'zod';
 import { TYPES } from '../../../di/types.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { IUserService } from '../../../di/interfaces/user-service.interface.js';
@@ -12,8 +13,12 @@ import type { ISessionManager } from '../../../di/interfaces/session-manager.int
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
 import type { IWebAuthnService } from '../../../di/interfaces/webauthn-service.interface.js';
 import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
-import type { ClientDeviceInfos } from '../../../utils/client-info.js';
+import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
+import {
+  oidcUidParamsSchema,
+  oidcWebauthnMfaVerifyBodySchema,
+} from '../../../validators/oidc/handlers.js';
 
 // Challenge storage key in session for OIDC WebAuthn MFA
 const WEBAUTHN_OIDC_CHALLENGE_KEY = 'webauthn_oidc_mfa_challenge';
@@ -50,6 +55,14 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
     @inject(TYPES.MfaUtils) private readonly mfaUtils: IMfaUtils
   ) {
     this.oidcPath = this.configManager.getConfig().oidc.path;
+  }
+
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
   }
 
   /**
@@ -136,7 +149,7 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
     provider: Provider
   ): Promise<void> => {
     try {
-      const { uid } = req.params;
+      const { uid } = oidcUidParamsSchema.parse(req.params);
       const interactionDetails = await provider.interactionDetails(req, res);
       const { session, params } = interactionDetails;
 
@@ -211,6 +224,17 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
         options,
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn('WebAuthn OIDC MFA options received invalid input', {
+          issues: err.issues,
+        });
+        res.status(400).json({
+          ok: false,
+          error:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'Error generating WebAuthn OIDC MFA options',
       });
@@ -229,12 +253,9 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
     provider: Provider
   ): Promise<void> => {
     try {
-      const { uid } = req.params;
+      const { uid } = oidcUidParamsSchema.parse(req.params);
       const interactionDetails = await provider.interactionDetails(req, res);
       const { session, params } = interactionDetails;
-
-      const deviceInfos =
-        this.clientDeviceInfoManager.extractDeviceInfoFromRequest(req);
 
       if (!session?.accountId) {
         this.logger.error('WebAuthn verify route without valid session');
@@ -258,14 +279,9 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
         return;
       }
 
-      const credential = req.body.credential as AuthenticationResponseJSON;
-      if (!credential) {
-        res.status(400).json({
-          ok: false,
-          error: 'Credential is required',
-        });
-        return;
-      }
+      const parsedBody = oidcWebauthnMfaVerifyBodySchema.parse(req.body);
+      const credential =
+        parsedBody.credential as unknown as AuthenticationResponseJSON;
 
       const storedCredentials = await this.webauthnService.getCredentials(
         session.accountId
@@ -327,22 +343,17 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
         });
 
         try {
-          this.activityService.failed(
+          activityLoggerFor(this.activityLoggerDeps, req).failed(
             'oidc.mfa.webauthn.verification',
-            'WebAuthn MFA verification failed',
             null,
+            'WebAuthn MFA verification failed',
             {
-              ip_address: req.ip,
-              user_agent: req.headers['user-agent'] as string,
               client_id: params.client_id as string,
-              device_infos: deviceInfos as ClientDeviceInfos,
               actor: {
                 username: session.accountId,
                 actor_type: 'user',
               },
-              target: {
-                target_type: 'none',
-              },
+              target: { target_type: 'none' },
             }
           );
         } catch (error) {
@@ -361,19 +372,14 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
       const userDoc = await this.userService.findByUsername(session.accountId);
 
       try {
-        this.activityService.success(
+        activityLoggerFor(this.activityLoggerDeps, req).success(
           'oidc.mfa.webauthn.verification',
-          'WebAuthn MFA verification successful',
           userDoc,
+          'WebAuthn MFA verification successful',
           {
-            ip_address: req.ip,
-            user_agent: req.headers['user-agent'] as string,
             client_id: params.client_id as string,
-            device_infos: deviceInfos as ClientDeviceInfos,
             actor: userDoc,
-            target: {
-              target_type: 'none',
-            },
+            target: { target_type: 'none' },
             metadata: {
               credentialId: result.credentialId,
             },
@@ -410,6 +416,17 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
         credentialId: result.credentialId,
       });
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        this.logger.warn('WebAuthn OIDC MFA verify received invalid input', {
+          issues: err.issues,
+        });
+        res.status(400).json({
+          ok: false,
+          error:
+            'The request could not be processed. Please return to the previous page and try again.',
+        });
+        return;
+      }
       this.logger.error(err as Error, {
         context: 'Error in WebAuthn OIDC MFA verify handler',
       });

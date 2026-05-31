@@ -1,20 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import {
-  validationResult,
-  ValidationChain,
-  Result,
-  ValidationError,
-} from 'express-validator';
 import { injectable, inject } from 'inversify';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IViewResolver } from '../di/interfaces/view-resolver.interface.js';
-import type {
-  ISecurityMiddleware,
-  ValidationOptions,
-  FormattedError,
-} from '../di/interfaces/security-middleware.interface.js';
+import type { ISecurityMiddleware } from '../di/interfaces/security-middleware.interface.js';
 import { TYPES } from '../di/types.js';
 import {
   tenantContext,
@@ -239,65 +229,6 @@ export class SecurityMiddleware implements ISecurityMiddleware {
   };
 
   /**
-   * Main validation middleware function
-   */
-  public validate = (
-    validations: ValidationChain[],
-    options: ValidationOptions = {}
-  ) => {
-    return async (
-      req: Request,
-      res: Response,
-      next: NextFunction
-    ): Promise<void> => {
-      await Promise.all(validations.map(validation => validation.run(req)));
-
-      const errors: Result<ValidationError> = validationResult(req);
-      if (errors.isEmpty()) {
-        return next();
-      }
-
-      const formattedErrors: FormattedError[] = errors.array().map(err => ({
-        field: err.type === 'field' ? err.path : 'unknown',
-        message: err.msg,
-      }));
-
-      const defaultOptions: ValidationOptions = {
-        isWebForm: false,
-        renderPage: null,
-        renderData: {},
-        errorField: 'validationErrors',
-      };
-
-      const finalOptions: ValidationOptions = { ...defaultOptions, ...options };
-
-      if (finalOptions.isWebForm && finalOptions.renderPage) {
-        (req as any)[finalOptions.errorField!] = formattedErrors;
-
-        const errorMap: Record<string, string> = {};
-        formattedErrors.forEach(err => {
-          errorMap[err.field] = err.message;
-        });
-
-        return res.status(400).render(finalOptions.renderPage, {
-          ...finalOptions.renderData,
-          errors: errorMap,
-          formData: req.body,
-          title:
-            (finalOptions.renderData?.title as string) ||
-            'Form Validation Error',
-        });
-      }
-
-      res.status(400).json({
-        status: 'error',
-        message: 'Validation failed',
-        errors: formattedErrors,
-      });
-    };
-  };
-
-  /**
    * Middleware to generate CSRF token and set it in res.locals for views
    */
   public generateCsrfToken = (
@@ -338,24 +269,16 @@ export class SecurityMiddleware implements ISecurityMiddleware {
 
   /**
    * Sets up all security middleware in one call
-   * Combines authentication, validation, and CSRF protection
+   * Combines authentication and CSRF protection.
    */
   public setupAllSecurity = (
     authLevel: 'none' | 'user' | 'admin' = 'none',
-    validations: ValidationChain[] = [],
-    validationOptions: ValidationOptions = {},
     enableCsrf: boolean = true
   ) => {
     return [
       ...(authLevel === 'user' ? [this.requireAuth] : []),
       ...(authLevel === 'admin' ? [this.requireAdmin] : []),
-
-      // CSRF protection
       ...(enableCsrf ? [this.generateCsrfToken] : []),
-
-      ...(validations.length > 0
-        ? [this.validate(validations, validationOptions)]
-        : []),
     ];
   };
 }

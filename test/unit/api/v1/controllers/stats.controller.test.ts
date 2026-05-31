@@ -4,9 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { StatsController } from '../../../../../src/api/v1/controllers/stats.controller.js';
 import type { StatsControllerDeps } from '../../../../../src/api/v1/controllers/stats.controller.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockDeps(): StatsControllerDeps {
   return {
@@ -70,9 +68,7 @@ function createMockNext(): NextFunction {
   return vi.fn() as unknown as NextFunction;
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/controllers/StatsController', () => {
   let deps: StatsControllerDeps;
@@ -83,9 +79,7 @@ describe('api/v1/controllers/StatsController', () => {
     controller = new StatsController(deps);
   });
 
-  // -----------------------------------------------------------------------
   // overview
-  // -----------------------------------------------------------------------
   describe('overview()', () => {
     it('should aggregate stats from all services', async () => {
       vi.mocked(deps.userService.count!).mockResolvedValue(150);
@@ -208,9 +202,7 @@ describe('api/v1/controllers/StatsController', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // health
-  // -----------------------------------------------------------------------
   describe('health()', () => {
     it('should return healthy status when all checks pass', async () => {
       vi.mocked(deps.userService.count!).mockResolvedValue(100);

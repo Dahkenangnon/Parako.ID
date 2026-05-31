@@ -45,8 +45,6 @@ const logger: ILogger = {
 const mockClient = {} as Redis;
 const testPrefix = 'parako';
 
-// ─── Session model ─────────────────────────────────────────────────────────
-
 describe('RedisOidcAdminService — Session model', () => {
   let service: RedisOidcAdminService;
 
@@ -81,8 +79,6 @@ describe('RedisOidcAdminService — Session model', () => {
   });
 });
 
-// ─── Grant model ───────────────────────────────────────────────────────────
-
 describe('RedisOidcAdminService — Grant model', () => {
   let service: RedisOidcAdminService;
 
@@ -107,8 +103,6 @@ describe('RedisOidcAdminService — Grant model', () => {
   });
 });
 
-// ─── AccessToken / RefreshToken / Interaction (deleteByAccountId) ──────────
-
 describe.each(['AccessToken', 'RefreshToken', 'Interaction'] as const)(
   'RedisOidcAdminService — %s model deleteByAccountId',
   model => {
@@ -130,8 +124,6 @@ describe.each(['AccessToken', 'RefreshToken', 'Interaction'] as const)(
     });
   }
 );
-
-// ─── Client CRUD ────────────────────────────────────────────────────────────
 
 describe('RedisOidcAdminService — Client CRUD', () => {
   let service: RedisOidcAdminService;

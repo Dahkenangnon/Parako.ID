@@ -9,9 +9,7 @@ import {
 import { ApiError } from '../../../../src/api/v1/errors.js';
 
 describe('api/v1/pagination', () => {
-  // -----------------------------------------------------------------------
   // encodeCursor / decodeCursor
-  // -----------------------------------------------------------------------
   describe('encodeCursor()', () => {
     it('should create a base64url string that can be decoded back', () => {
       const fields = { _id: 'abc123' };
@@ -156,9 +154,7 @@ describe('api/v1/pagination', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // buildCursorQuery
-  // -----------------------------------------------------------------------
   describe('buildCursorQuery()', () => {
     it('should return empty object when no cursor is provided', () => {
       const result = buildCursorQuery();
@@ -215,9 +211,7 @@ describe('api/v1/pagination', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // buildCursorResponse
-  // -----------------------------------------------------------------------
   describe('buildCursorResponse()', () => {
     it('should return has_more=false and next_cursor=null when docs <= limit', () => {
       const docs = [{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }];
@@ -305,9 +299,7 @@ describe('api/v1/pagination', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // buildCursorResponse — DB-agnostic id field
-  // -----------------------------------------------------------------------
   describe('buildCursorResponse — DB-agnostic id field', () => {
     it('should default cursorField to "id" (not "_id")', () => {
       const docs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
@@ -359,9 +351,7 @@ describe('api/v1/pagination', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // buildCursorQuery — DB-agnostic id field
-  // -----------------------------------------------------------------------
   describe('buildCursorQuery — DB-agnostic id field', () => {
     it('should default sortField to "id"', () => {
       const cursor = encodeCursor({ id: 'abc123' });
@@ -384,9 +374,7 @@ describe('api/v1/pagination', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // parsePaginationParams
-  // -----------------------------------------------------------------------
   describe('parsePaginationParams()', () => {
     it('should return defaults for empty query', () => {
       const result = parsePaginationParams({});

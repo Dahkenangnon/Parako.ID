@@ -18,8 +18,6 @@ import type {
 } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository, toOrderBy } from './base.repository.js';
 
-// ─── Mapping ──────────────────────────────────────────────────────────────────
-
 function toISocialIntegration(
   row: Prisma.SocialIntegrationGetPayload<object>
 ): ISocialIntegration {
@@ -41,8 +39,6 @@ function toISocialIntegration(
     updated_at: row.updated_at.toISOString(),
   };
 }
-
-// ─── Repository ───────────────────────────────────────────────────────────────
 
 @injectable()
 export class PrismaSocialIntegrationRepository

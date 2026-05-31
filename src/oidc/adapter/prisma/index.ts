@@ -23,15 +23,11 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     super(model, logger);
   }
 
-  // ── helpers ───────────────────────────────────────────────────────────────
-
   /** Filter clause that excludes records past their expires_at. */
   private get notExpired() {
     const now = new Date();
     return { OR: [{ expires_at: null }, { expires_at: { gt: now } }] };
   }
-
-  // ── upsert ───────────────────────────────────────────────────────────────
 
   async upsert(
     id: string,
@@ -81,8 +77,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
-  // ── find ─────────────────────────────────────────────────────────────────
-
   async find(id: string): Promise<OIDCPayload | undefined> {
     try {
       const tenant_id = tenantContext.getTenantId();
@@ -117,8 +111,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
-  // ── findByUserCode ────────────────────────────────────────────────────────
-
   async findByUserCode(userCode: string): Promise<OIDCPayload | undefined> {
     try {
       if (this.name !== 'DeviceCode') return undefined;
@@ -139,8 +131,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
-  // ── findByUid ─────────────────────────────────────────────────────────────
-
   async findByUid(uid: string): Promise<OIDCPayload | undefined> {
     try {
       if (this.name !== 'Session') return undefined;
@@ -156,8 +146,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
-  // ── consume ───────────────────────────────────────────────────────────────
-
   async consume(id: string): Promise<void> {
     try {
       const tenant_id = tenantContext.getTenantId();
@@ -171,8 +159,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
-  // ── destroy ───────────────────────────────────────────────────────────────
-
   async destroy(id: string): Promise<void> {
     try {
       const tenant_id = tenantContext.getTenantId();
@@ -184,8 +170,6 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
       throw error;
     }
   }
-
-  // ── revokeByGrantId ───────────────────────────────────────────────────────
 
   async revokeByGrantId(grantId: string): Promise<void> {
     try {

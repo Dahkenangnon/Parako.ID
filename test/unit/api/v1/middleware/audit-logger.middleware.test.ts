@@ -5,9 +5,7 @@ import {
   type AuditLoggerDependencies,
 } from '../../../../../src/api/v1/middleware/audit-logger.middleware.js';
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 function createMockReqRes() {
   let finishCallback: (() => void) | null = null;
@@ -51,9 +49,7 @@ function createDeps(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe('api/v1/middleware/audit-logger', () => {
   let deps: AuditLoggerDependencies;
@@ -62,9 +58,7 @@ describe('api/v1/middleware/audit-logger', () => {
     deps = createDeps();
   });
 
-  // -----------------------------------------------------------------------
   // 1. Calls next() immediately
-  // -----------------------------------------------------------------------
   it('should call next() immediately without waiting for finish', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res } = createMockReqRes();
@@ -78,9 +72,7 @@ describe('api/v1/middleware/audit-logger', () => {
     expect(deps.activityService.info).not.toHaveBeenCalled();
   });
 
-  // -----------------------------------------------------------------------
   // 2. Logs activity on response finish
-  // -----------------------------------------------------------------------
   it('should log activity to activityService on response finish', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
@@ -102,9 +94,7 @@ describe('api/v1/middleware/audit-logger', () => {
     );
   });
 
-  // -----------------------------------------------------------------------
   // 3. Activity includes method, path, status_code, duration_ms, client_id
-  // -----------------------------------------------------------------------
   it('should include method, path, status_code, duration_ms, and scope in metadata', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
@@ -130,9 +120,7 @@ describe('api/v1/middleware/audit-logger', () => {
     expect(metadata.duration_ms).toBeGreaterThanOrEqual(0);
   });
 
-  // -----------------------------------------------------------------------
   // 4. Handles missing req.apiAuth
-  // -----------------------------------------------------------------------
   it('should handle missing req.apiAuth — actor should be undefined', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
@@ -152,9 +140,7 @@ describe('api/v1/middleware/audit-logger', () => {
     expect(options.actor).toBeUndefined();
   });
 
-  // -----------------------------------------------------------------------
   // 5. Actor set correctly when auth is present
-  // -----------------------------------------------------------------------
   it('should set actor to { actor_type: "service", actor_id: clientId } when auth present', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
@@ -173,9 +159,7 @@ describe('api/v1/middleware/audit-logger', () => {
     });
   });
 
-  // -----------------------------------------------------------------------
   // 6. Logs debug message on finish
-  // -----------------------------------------------------------------------
   it('should log a debug message with request details on finish', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();

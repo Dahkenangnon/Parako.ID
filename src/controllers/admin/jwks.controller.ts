@@ -14,6 +14,8 @@ import type { IAdminJwksController } from '../../di/interfaces/admin-jwks-contro
 import { TYPES } from '../../di/types.js';
 import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import { buildRedisKey } from '../../multi-tenancy/redis-key.js';
+import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
+import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
 /**
  * Admin JWKS Controller
@@ -40,51 +42,49 @@ export class AdminJwksController implements IAdminJwksController {
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
 
+  private get activityLoggerDeps() {
+    return {
+      activityService: this.activityService,
+      sessionManager: this.sessionManager,
+      clientDeviceInfoManager: this.clientDeviceInfoManager,
+    };
+  }
+
   /**
    * Display all JWKS keys with status, stats, and config info
    * GET /admin/jwks
    */
-  public list = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const tenantId = tenantContext.getTenantId();
-      const keys = await this.keyStore.listKeys(tenantId);
-      const needsRotation = await this.keyStore.needsRotation(tenantId);
-      const config = this.configManager.getConfig();
-      const keyStoreConfig = config.security?.key_store || {};
+  public list = async (_req: Request, res: Response): Promise<void> => {
+    const tenantId = tenantContext.getTenantId();
+    const keys = await this.keyStore.listKeys(tenantId);
+    const needsRotation = await this.keyStore.needsRotation(tenantId);
+    const config = this.configManager.getConfig();
+    const keyStoreConfig = config.security?.key_store || {};
 
-      const stats = {
-        total: keys.length,
-        active: keys.filter((k: StoredKey) => k.status === 'active').length,
-        expiring: keys.filter((k: StoredKey) => k.status === 'expiring').length,
-        retired: keys.filter((k: StoredKey) => k.status === 'retired').length,
-      };
+    const stats = {
+      total: keys.length,
+      active: keys.filter((k: StoredKey) => k.status === 'active').length,
+      expiring: keys.filter((k: StoredKey) => k.status === 'expiring').length,
+      retired: keys.filter((k: StoredKey) => k.status === 'retired').length,
+    };
 
-      const sortedKeys = [...keys].sort(
-        (a: StoredKey, b: StoredKey) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+    const sortedKeys = [...keys].sort(
+      (a: StoredKey, b: StoredKey) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
-      res.render('admin/jwks/index', {
-        title: 'JWKS Key Management',
-        keys: sortedKeys,
-        stats,
-        needsRotation,
-        keyStoreConfig: {
-          type: keyStoreConfig.type || 'database',
-          algorithms: keyStoreConfig.algorithms || ['RS256'],
-          rotation_interval_days: keyStoreConfig.rotation_interval_days || 90,
-          overlap_window_seconds:
-            keyStoreConfig.overlap_window_seconds || 86400,
-        },
-        userTheme: res.locals.userTheme || 'light',
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'admin_jwks_list_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load JWKS keys');
-      res.redirect('/admin');
-    }
+    res.render('admin/jwks/index', {
+      title: 'JWKS Key Management',
+      keys: sortedKeys,
+      stats,
+      needsRotation,
+      keyStoreConfig: {
+        type: keyStoreConfig.type || 'database',
+        algorithms: keyStoreConfig.algorithms || ['RS256'],
+        rotation_interval_days: keyStoreConfig.rotation_interval_days || 90,
+        overlap_window_seconds: keyStoreConfig.overlap_window_seconds || 86400,
+      },
+    });
   };
 
   /**
@@ -92,31 +92,27 @@ export class AdminJwksController implements IAdminJwksController {
    * GET /admin/jwks/:kid
    */
   public show = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const tenantId = tenantContext.getTenantId();
-      const kid = req.params.kid;
-      const keys = await this.keyStore.listKeys(tenantId);
-      const key = keys.find((k: StoredKey) => k.kid === kid);
+    const tenantId = tenantContext.getTenantId();
+    const kid = req.params.kid;
+    const keys = await this.keyStore.listKeys(tenantId);
+    const key = keys.find((k: StoredKey) => k.kid === kid);
 
-      if (!key) {
-        this.sessionManager.flash(req).error('Key not found');
-        res.redirect('/admin/jwks');
-        return;
-      }
-
-      res.render('admin/jwks/show', {
-        title: `Key Details - ${kid}`,
-        key,
-        publicJwk: JSON.stringify(key.publicKey, null, 2),
-        userTheme: res.locals.userTheme || 'light',
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'admin_jwks_show_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load key details');
-      res.redirect('/admin/jwks');
+    if (!key) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Key not found',
+        '/admin/jwks'
+      );
     }
+
+    res.render('admin/jwks/show', {
+      title: `Key Details - ${kid}`,
+      key,
+      publicJwk: JSON.stringify(key.publicKey, null, 2),
+    });
   };
 
   /**
@@ -146,21 +142,17 @@ export class AdminJwksController implements IAdminJwksController {
       // Clean up old keys past overlap window
       await this.keyStore.retireExpiredKeys(tenantId);
 
-      const adminUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'jwks_rotated_by_admin',
-        'Admin manually rotated JWKS keys',
         null,
+        'Admin manually rotated JWKS keys',
         {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          actor: adminUser ? { ...adminUser, actor_type: 'admin' } : undefined,
           target: {
             target_type: 'system',
             entity_name: 'jwks',
           },
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
         }
       );
 
@@ -188,21 +180,17 @@ export class AdminJwksController implements IAdminJwksController {
       const tenantId = tenantContext.getTenantId();
       const retiredCount = await this.keyStore.retireExpiredKeys(tenantId);
 
-      const adminUser = this.sessionManager.getActiveUser(req);
-      this.activityService.success(
+      activityLoggerFor(this.activityLoggerDeps, req, {
+        defaultActorType: 'admin',
+      }).success(
         'jwks_expired_keys_retired_by_admin',
-        'Admin retired expired JWKS keys',
         null,
+        'Admin retired expired JWKS keys',
         {
-          ip_address: req.ip,
-          user_agent: req.get('User-Agent'),
-          actor: adminUser ? { ...adminUser, actor_type: 'admin' } : undefined,
           target: {
             target_type: 'system',
             entity_name: 'jwks',
           },
-          device_infos:
-            this.clientDeviceInfoManager.getClientInfoFromRequest(req),
         }
       );
 
@@ -226,8 +214,6 @@ export class AdminJwksController implements IAdminJwksController {
 
     res.redirect('/admin/jwks');
   };
-
-  // ─── Private helpers ───────────────────────────────────────────────────
 
   private publishJwksEvent(phase: 'rotated' | 'promoted'): void {
     if (!this.pubsub?.isConnected()) return;

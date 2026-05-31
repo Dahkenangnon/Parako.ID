@@ -14,8 +14,6 @@ import { getDefaultFullConfig } from '../../../../src/config/constants.js';
 
 const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
-// ─── Test DB Setup ───────────────────────────────────────────────────────────
-
 const TEST_DB = join(tmpdir(), `parako-settings-prisma-${Date.now()}.db`);
 const PRISMA_BIN = resolve(process.cwd(), 'node_modules', '.bin', 'prisma');
 
@@ -45,8 +43,6 @@ afterAll(async () => {
 beforeEach(async () => {
   await prisma.settings.deleteMany({});
 });
-
-// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('PrismaSettingsRepository', () => {
   describe('save + findActive', () => {
