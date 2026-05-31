@@ -446,7 +446,7 @@ install_production_dependencies() {
     cd "$PROJECT_ROOT/parako-id-release"
     
     if [[ "$DRY_RUN" == "true" ]]; then
-        log_info "Would run: pnpm install --prod --silent"
+        log_info "Would run: pnpm install --prod"
         return
     fi
 
@@ -455,7 +455,7 @@ install_production_dependencies() {
     # so --frozen-lockfile cannot be used here — the lockfile still
     # references the full source package.json's dependency graph. pnpm
     # falls back to lockfile-preferred resolution for production deps.
-    pnpm install --prod --silent || {
+    pnpm install --prod || {
         log_error "Production dependencies installation failed";
         exit 1;
     }
