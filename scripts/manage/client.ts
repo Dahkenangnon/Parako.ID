@@ -151,6 +151,13 @@ if (process.argv.length === 2) {
   try {
     program.parse();
   } catch (error: any) {
+    if (
+      error.code === 'commander.helpDisplayed' ||
+      error.code === 'commander.help' ||
+      error.code === 'commander.version'
+    ) {
+      process.exit(0);
+    }
     if (error.code === 'commander.unknownCommand') {
       console.error(`Unknown command: ${error.message}`);
       console.info('Run with --help to see available commands');
