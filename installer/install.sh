@@ -175,8 +175,6 @@ ANS_SUPERVISOR="systemd"
 SNIFFED_MONGO=""
 SNIFFED_POSTGRES=""
 SNIFFED_REDIS=""
-SNIFFED_NGINX=""
-SNIFFED_CERTBOT=""
 SNIFFED_INIT=""
 
 # Runtime state.
@@ -219,46 +217,6 @@ ui_init_colors() {
   C_BOLD=$'\033[1m'
   C_DIM=$'\033[2m'
   C_RESET=$'\033[0m'
-}
-
-# Step counter state.
-STEP_TOTAL=0
-STEP_INDEX=0
-STEP_START_TS=0
-
-step_init() {
-  STEP_TOTAL=$1
-  STEP_INDEX=0
-  STEP_START_TS=$(date +%s)
-}
-
-step_begin() {
-  STEP_INDEX=$((STEP_INDEX + 1))
-  local now elapsed mins secs label
-  now=$(date +%s)
-  elapsed=$((now - STEP_START_TS))
-  mins=$((elapsed / 60))
-  secs=$((elapsed % 60))
-  label=$1
-  printf '[%d/%d • %d:%02d] %s' "${STEP_INDEX}" "${STEP_TOTAL}" "${mins}" "${secs}" "${label}"
-  _log_disk INFO "step" "[${STEP_INDEX}/${STEP_TOTAL}] ${label}"
-}
-
-step_end_ok() {
-  local label=${1:-}
-  if [ -n "${label}" ]; then
-    printf ' %s [%sOK%s]\n' "${label}" "${C_GREEN}" "${C_RESET}"
-  else
-    printf ' [%sOK%s]\n' "${C_GREEN}" "${C_RESET}"
-  fi
-}
-
-step_end_warn() {
-  printf ' [%sWARN%s]\n' "${C_YELLOW}" "${C_RESET}"
-}
-
-step_end_fail() {
-  printf ' [%sFAIL%s]\n' "${C_RED}" "${C_RESET}"
 }
 
 # Section header. Plain text, no boxes.
@@ -336,44 +294,7 @@ log_err() {
   _log_disk ERROR main "$1"
 }
 
-log_debug() {
-  [ "${PARAKO_LOG_LEVEL:-info}" = "debug" ] || return 0
-  local msg
-  msg=$(printf '%s' "$1" | redact)
-  printf '%s[DEBUG]%s %s\n' "${C_DIM}" "${C_RESET}" "${msg}"
-  _log_disk DEBUG main "$1"
-}
-
 die() { log_err "$1"; exit "${2:-1}"; }
-
-# Spinner used during long-running ops; backgrounded.
-SPINNER_PID=""
-spinner_start() {
-  [ ! -t 1 ] && return 0
-  local msg=$1
-  printf '  %s ' "${msg}"
-  (
-    local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local i=0
-    while true; do
-      local ch="${frames:i:1}"
-      printf '\b%s' "${ch}"
-      i=$(( (i + 1) % 10 ))
-      sleep 0.1
-    done
-  ) &
-  SPINNER_PID=$!
-  disown "${SPINNER_PID}" 2>/dev/null || true
-}
-
-spinner_stop() {
-  if [ -n "${SPINNER_PID}" ]; then
-    kill "${SPINNER_PID}" 2>/dev/null || true
-    wait "${SPINNER_PID}" 2>/dev/null || true
-    SPINNER_PID=""
-    printf '\b \n'
-  fi
-}
 
 # Set up the log file. Called immediately after color init.
 log_init() {
@@ -603,7 +524,6 @@ Behaviour:
 Environment:
   INSTALL_DIR             Installation directory
   NO_COLOR                Disable colored output
-  PARAKO_LOG_LEVEL        info (default) or debug
   PARAKO_RELEASE_MIRROR   Fallback release manifest URL
   PARAKO_LOCK_FILE        Override installer lock file path
 
@@ -858,23 +778,20 @@ check_port_free() {
 }
 
 check_dns() {
-  local hosts="api.github.com github.com"
-  local h failed=""
-  for h in ${hosts}; do
-    if command -v getent >/dev/null 2>&1; then
-      getent hosts "${h}" >/dev/null 2>&1 || failed="${failed} ${h}"
-    elif command -v nslookup >/dev/null 2>&1; then
-      nslookup "${h}" >/dev/null 2>&1 || failed="${failed} ${h}"
-    else
-      # Last resort: bash /dev/tcp to port 443
-      (exec 3<>"/dev/tcp/${h}/443") 2>/dev/null || failed="${failed} ${h}"
-      exec 3<&- 3>&- 2>/dev/null || true
-    fi
-  done
-  if [ -z "${failed}" ]; then
-    _pf_ok "DNS" "${hosts// /, }"
+  local host="api.github.com"
+  local ok=0
+  if command -v getent >/dev/null 2>&1; then
+    getent hosts "${host}" >/dev/null 2>&1 && ok=1
+  elif command -v nslookup >/dev/null 2>&1; then
+    nslookup "${host}" >/dev/null 2>&1 && ok=1
   else
-    _pf_fail "DNS" "could not resolve:${failed}"
+    (exec 3<>"/dev/tcp/${host}/443") 2>/dev/null && ok=1
+    exec 3<&- 3>&- 2>/dev/null || true
+  fi
+  if [ "${ok}" -eq 1 ]; then
+    _pf_ok "DNS" "${host}"
+  else
+    _pf_fail "DNS" "could not resolve ${host}"
   fi
 }
 
@@ -930,28 +847,6 @@ check_urandom() {
     _pf_ok "/dev/urandom" "readable"
   else
     _pf_fail "/dev/urandom" "not readable"
-  fi
-}
-
-check_selinux() {
-  if command -v getenforce >/dev/null 2>&1; then
-    local m
-    m=$(getenforce 2>/dev/null || printf 'unknown')
-    _pf_ok "SELinux" "${m}"
-  else
-    print_label "SELinux" "not present"
-  fi
-}
-
-check_apparmor() {
-  if [ -d /sys/kernel/security/apparmor ] || command -v aa-status >/dev/null 2>&1; then
-    local s="enabled"
-    if command -v aa-status >/dev/null 2>&1 && ! aa-status --enabled 2>/dev/null; then
-      s="present but disabled"
-    fi
-    _pf_ok "AppArmor" "${s}"
-  else
-    print_label "AppArmor" "not present"
   fi
 }
 
@@ -1015,8 +910,6 @@ preflight() {
   check_os_release
   check_umask_sane
   check_urandom
-  check_selinux
-  check_apparmor
   check_sudo
   check_for_with_nginx
   check_for_with_tls
@@ -1062,15 +955,7 @@ sniff_environment() {
     SNIFFED_REDIS="localhost:6379"
     print_label "Redis" "${SNIFFED_REDIS}"
   fi
-  if command -v nginx >/dev/null 2>&1; then
-    SNIFFED_NGINX=$(nginx -v 2>&1 | sed 's|^nginx version: nginx/||')
-    print_label "nginx" "${SNIFFED_NGINX}"
-  fi
-  if command -v certbot >/dev/null 2>&1; then
-    SNIFFED_CERTBOT=$(certbot --version 2>&1 | head -n1 | awk '{print $2}')
-    print_label "certbot" "${SNIFFED_CERTBOT}"
-  fi
-  # PID 1 detection.
+  # PID 1 detection — feeds the supervisor default.
   if [ -r /proc/1/comm ]; then
     SNIFFED_INIT=$(cat /proc/1/comm 2>/dev/null)
     print_label "init system" "${SNIFFED_INIT} (pid 1)"
@@ -2033,7 +1918,6 @@ print_install_notes_panel() {
 print_log_panel() {
   print_header "Install log"
   printf '  %s\n' "${LOG_FILE}"
-  printf '  Set PARAKO_LOG_LEVEL=debug for verbose capture.\n'
 }
 
 print_assurances_panel() {
@@ -2125,10 +2009,7 @@ print_demo_card() {
     print_label "Admin email" "${DEMO_ADMIN_EMAIL}"
     print_label "Admin password" "${DEMO_ADMIN_PASSWORD} (one-time, shown only here)"
   fi
-  if [ -n "${DEMO_CLIENT_ID:-}" ]; then
-    print_label "Demo OIDC client_id" "${DEMO_CLIENT_ID}"
-    print_label "Redirect URI" "${DEMO_REDIRECT_URI:-http://localhost:3000/callback}"
-  fi
+  printf '\n  Register OIDC clients via %s/admin/oidc-clients after login.\n' "${url}"
   printf '\n  To tear this demo down:\n'
   if [ -n "${DEMO_PID:-}" ]; then
     printf '    kill %s\n' "${DEMO_PID}"
@@ -2897,14 +2778,13 @@ setup_tls() {
 # -----------------------------------------------------------------------------
 # Invariants:
 #   - Forced install dir under /tmp (ephemeral).
-#   - SQLite + foreground supervisor + auto-seeded admin + sample OIDC client.
+#   - SQLite + foreground supervisor + auto-seeded admin (via env vars read by
+#     master-tenant-bootstrap on first start).
 #   - Prints prominent DEMO MODE banner; never confused with production.
 # =============================================================================
 
 DEMO_ADMIN_EMAIL=""
 DEMO_ADMIN_PASSWORD=""
-DEMO_CLIENT_ID=""
-DEMO_REDIRECT_URI=""
 DEMO_PID=""
 
 demo_main() {
@@ -2918,7 +2798,6 @@ demo_main() {
   INSTALL_DIR="/tmp/parako-id-demo-$$"
   DEMO_ADMIN_EMAIL="demo@parako.id"
   DEMO_ADMIN_PASSWORD=$(_gen_hex32 | cut -c1-16)
-  DEMO_REDIRECT_URI="http://localhost:3000/callback"
 
   preflight
   sniff_environment
@@ -2947,15 +2826,16 @@ demo_main() {
   export PARAKO_BOOTSTRAP_ADMIN_PASSWORD="${DEMO_ADMIN_PASSWORD}"
 
   log_info "starting demo server in background"
-  (cd "${RESOLVED_INSTALL_DIR}" && nohup node dist/src/index.js \
-    > "${RESOLVED_INSTALL_DIR}/runtime/logs/demo.log" 2>&1 &)
+  mkdir -p "${RESOLVED_INSTALL_DIR}/runtime/logs"
+  # Run node directly (no subshell) so $! captures the node PID, not a subshell.
+  cd "${RESOLVED_INSTALL_DIR}"
+  nohup node dist/src/index.js \
+    > "${RESOLVED_INSTALL_DIR}/runtime/logs/demo.log" 2>&1 &
   DEMO_PID=$!
+  cd - >/dev/null
   sleep 2
 
   if health_check "${ANS_PORT}"; then
-    # OIDC clients are registered via the admin panel, not the CLI;
-    # the demo card points the user there after their first login.
-    DEMO_CLIENT_ID="(register via /admin/oidc-clients after first login)"
     print_demo_card
     if command -v xdg-open >/dev/null 2>&1; then
       xdg-open "http://localhost:${ANS_PORT}/auth/login" >/dev/null 2>&1 &

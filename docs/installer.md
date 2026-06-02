@@ -190,7 +190,7 @@ A release-manifest mirror can be configured via `PARAKO_RELEASE_MIRROR` for part
 curl -sSL https://get.parako.id | bash -s -- --demo
 ```
 
-Ephemeral install under `/tmp/parako-id-demo-${pid}` with SQLite, a foreground-supervised server, an auto-seeded admin (one-time password printed), and a pre-registered sample OIDC client. Opens your default browser to the login page. Tear down with the printed `kill ... && rm -rf ...` command.
+Ephemeral install under `/tmp/parako-id-demo-${pid}` with SQLite, a backgrounded node process, and an auto-seeded admin (one-time password printed). Opens your default browser to the login page. Register OIDC clients via `/admin/oidc-clients` after first login. Tear down with the printed `kill ... && rm -rf ...` command.
 
 A red `DEMO MODE — DO NOT USE IN PRODUCTION` banner is printed; never confused with a production install.
 
@@ -201,7 +201,7 @@ Every run writes a structured log to:
 - `/var/log/parako-install-${ts}.log` (root install)
 - `~/.local/state/parako/install-${ts}.log` (user install)
 
-Mode 0600. Sensitive values (URI credentials, secret/key/token/password identifiers) are auto-redacted on every line. Set `PARAKO_LOG_LEVEL=debug` for trace-level capture.
+Mode 0600. Sensitive values (URI credentials, secret/key/token/password identifiers) are auto-redacted on every line.
 
 ## Beginning ritual
 

@@ -28,7 +28,7 @@ Under these assumptions, the installer protects against:
 
 - A compromised release tarball published to GitHub Releases (cosign + Sigstore catches a tarball that wasn't built by the `release.yml` workflow on `main`).
 - An MITM attack on the tarball download path (TLS 1.2+ enforced; HTTP downloads refused).
-- A typosquatted mirror (the mirror URL is allowlisted or explicitly confirmed).
+- An MITM attack on the mirror download path (TLS 1.2+ enforced; non-HTTPS mirror URLs are refused).
 - A maintainer who tries to push a release outside CI (cosign-binding to `release.yml` means manually-built tarballs cannot pass verification).
 - A compromised release pipeline that bypasses cosign (the operator's `install.sh` would refuse the unsigned tarball; the escape hatch `--insecure-no-signature` requires explicit reason text logged to `INSTALL_NOTES.md`).
 

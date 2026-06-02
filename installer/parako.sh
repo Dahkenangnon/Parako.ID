@@ -305,7 +305,7 @@ cmd_config() {
       [ -z "${key}" ] || [ -z "${value}" ] && die "usage: parako config set <key> <value>"
       local tmp="${env_file}.tmp.$$"
       cp -a "${env_file}" "${env_file}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
-      awk -v k="${key}" -v v="${value}" -v BS='\\' '
+      awk -v k="${key}" -v v="${value}" '
         BEGIN { found = 0 }
         $0 ~ "^" k "=" { print k "=" v; found = 1; next }
         { print }
@@ -505,12 +505,13 @@ cmd_diag() {
   [ -f "${INSTALL_DIR}/runtime/INSTALL_NOTES.md" ] \
     && cp "${INSTALL_DIR}/runtime/INSTALL_NOTES.md" "${TMPDIR_PATH}/INSTALL_NOTES.md"
 
-  # Redact one more pass on the entire bundle.
-  find "${TMPDIR_PATH}" -type f -exec sh -c '
-    for f; do
-      tmp=$(mktemp); redact < "$f" > "$tmp" && mv "$tmp" "$f"
-    done
-  ' redact_main {} +
+  # Final redaction pass over the entire bundle — bash subshells inherit the
+  # redact() function via export -f, so the find loop can call it directly.
+  export -f redact 2>/dev/null || true
+  find "${TMPDIR_PATH}" -type f | while IFS= read -r f; do
+    tmp=$(mktemp -t parako-diag-redact-XXXX)
+    redact < "$f" > "$tmp" && mv "$tmp" "$f"
+  done
 
   tar -czf "${out}" -C "${TMPDIR_PATH}" .
   log_ok "diagnostic bundle at ${out}"
