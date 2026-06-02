@@ -66,13 +66,13 @@ cp .env.example runtime/.env
 
 ### Database Connection
 
-| Variable                     | Required when                | Default             | Description                                                                                    |
-| ---------------------------- | ---------------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
-| `STORAGE_MONGODB_URI`        | `STORAGE_ADAPTER=mongodb`    | —                   | MongoDB connection URI                                                                         |
-| `STORAGE_SQLITE_PATH`        | `STORAGE_ADAPTER=sqlite`     | `./data/parako.db`  | Path to SQLite database file                                                                   |
-| `STORAGE_POSTGRESQL_URL`     | `STORAGE_ADAPTER=postgresql` | —                   | PostgreSQL connection URL                                                                      |
-| `PG_SSL_REJECT_UNAUTHORIZED` | `STORAGE_ADAPTER=postgresql` | `true` (production) | Set to `false` for self-signed certificates                                                    |
-| `DATABASE_URL`               | _(Prisma CLI only)_          | —                   | Used by Prisma CLI commands (`db:push`, `db:migrate`). Not read by the application at runtime. |
+| Variable                     | Required when                | Default                    | Description                                                                                    |
+| ---------------------------- | ---------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `STORAGE_MONGODB_URI`        | `STORAGE_ADAPTER=mongodb`    | —                          | MongoDB connection URI                                                                         |
+| `STORAGE_SQLITE_PATH`        | `STORAGE_ADAPTER=sqlite`     | `./runtime/data/parako.db` | Path to SQLite database file                                                                   |
+| `STORAGE_POSTGRESQL_URL`     | `STORAGE_ADAPTER=postgresql` | —                          | PostgreSQL connection URL                                                                      |
+| `PG_SSL_REJECT_UNAUTHORIZED` | `STORAGE_ADAPTER=postgresql` | `true` (production)        | Set to `false` for self-signed certificates                                                    |
+| `DATABASE_URL`               | _(Prisma CLI only)_          | —                          | Used by Prisma CLI commands (`db:push`, `db:migrate`). Not read by the application at runtime. |
 
 ### Redis
 
@@ -150,72 +150,39 @@ These secrets are referenced in file configuration via `${VAR}` interpolation. W
 
 ## File Configuration (Development)
 
-For local development, you can manage the full configuration in a single file instead of the database. This is the default setup when you first clone the repository.
+For local development, manage the full configuration in a single file instead of the database. This is the default when you first clone the repository.
 
-**Requirements:** `USE_FILE_CONFIG=true` in `runtime/.env` AND `DEPLOYMENT_ENVIRONMENT=development`.
-
-Parako.ID searches for config files in this order:
-
-1. `runtime/parako.jsonc`
-2. `runtime/parako.json`
-
-A sample file is provided in the repository root:
+**Requirements:** `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` in `runtime/.env`.
 
 ```bash
 cp parako.sample.jsonc runtime/parako.jsonc
 ```
 
-### Partial Overrides
-
-You only need to provide the keys you want to override. Missing keys fall back to the defaults returned by `getDefaultFullConfig()`. For example, to only customize branding:
+Parako.ID searches `runtime/parako.jsonc` then `runtime/parako.json`. Provide only the keys you want to override — missing keys fall back to defaults. Reference env vars with `${VAR}` or `${VAR:-default}` syntax:
 
 ```jsonc
 {
-  "branding": {
-    "companyName": "My Company",
-    "logo": "/images/my-logo.svg",
-  },
-}
-```
-
-All other sections (security, features, oidc, etc.) use their defaults.
-
-### Secret Interpolation
-
-Reference environment variables in your config file with `${VAR}` syntax:
-
-```jsonc
-{
+  "branding": { "companyName": "My Company" },
   "security": {
     "secrets": {
       "jwt_secret": "${JWT_SECRET}",
       "cookie_secrets": ["${COOKIE_SECRET_1}", "${COOKIE_SECRET_2}"],
-      "hmac_secret": "${HMAC_SECRET}",
     },
   },
-}
-```
-
-Default values are supported with `${VAR:-default}` syntax:
-
-```jsonc
-{
   "features": {
     "social_providers": {
-      "google": {
-        "client_id": "${GOOGLE_CLIENT_ID:-your-google-client-id}",
-      },
+      "google": { "client_id": "${GOOGLE_CLIENT_ID:-placeholder}" },
     },
   },
 }
 ```
 
-### File Config Limitations
-
-- **Read-only at runtime** — changes require restarting the development server.
-- **Not supported in production** — even if `USE_FILE_CONFIG=true`, it is ignored when `DEPLOYMENT_ENVIRONMENT` is `staging` or `production`.
-- **No version history** — unlike database config, file config has no rollback capability.
-- **No admin panel editing** — the admin panel shows a warning banner when file config is active, and changes made there will not persist.
+| Limitation             | Behavior                                                           |
+| ---------------------- | ------------------------------------------------------------------ |
+| Read-only at runtime   | Changes require restarting the dev server                          |
+| Production-disabled    | Ignored when `DEPLOYMENT_ENVIRONMENT` is `staging` or `production` |
+| No version history     | No rollback capability                                             |
+| No admin panel editing | Admin panel shows a warning banner; changes do not persist         |
 
 ---
 
@@ -331,13 +298,7 @@ OIDC protocol configuration.
 
 ### `oidc_storage`
 
-**Computed from bootstrap — never persisted.** This section is built entirely from bootstrap environment variables (`STORAGE_ADAPTER`, `OIDC_STORAGE_ADAPTER`, `REDIS_*`, `STORAGE_MONGODB_URI`) at runtime. It cannot be set via file config or admin panel.
-
-| Field                                                           | Type   | Source                                      |
-| --------------------------------------------------------------- | ------ | ------------------------------------------- |
-| `oidc_adapter.type`                                             | enum   | `OIDC_STORAGE_ADAPTER` or `STORAGE_ADAPTER` |
-| `oidc_adapter.mongodb.uri` / `.database`                        | string | Extracted from `STORAGE_MONGODB_URI`        |
-| `oidc_adapter.redis.host` / `.port` / `.password` / `.database` | mixed  | From `REDIS_*` env vars                     |
+**Computed from bootstrap — never persisted.** Built from `STORAGE_ADAPTER`, `OIDC_STORAGE_ADAPTER`, `REDIS_*`, and `STORAGE_MONGODB_URI` at runtime. Cannot be set via file config or admin panel.
 
 ### `integrations`
 
@@ -352,9 +313,7 @@ External service connections.
 | `fingerprintjs`                                                                  | object | `{enabled: false}`               | Browser fingerprinting     |
 | `file_storage`                                                                   | object | `{provider: "local"}`            | File storage (local or S3) |
 
-> **`file_storage.upload_dir`** controls where local-storage uploads land on disk. The default `./runtime/uploads` keeps mutable data under `runtime/` (alongside `jwks/`, `config-backups/`, etc.) for clean Docker mounts and backups. Set an absolute path (e.g. `/var/lib/parako/uploads`) to point uploads at a dedicated volume without changing the source.
->
-> **nginx X-Accel-Redirect deployments:** the internal location `/_internal_uploads/` must `alias` the configured `upload_dir` (default `runtime/uploads/`). Earlier releases shipped uploads at `./uploads/`; existing deployments should move the directory and update the nginx alias when upgrading.
+> **Note:** `file_storage.upload_dir` defaults to `./runtime/uploads`, keeping mutable data under `runtime/` for clean Docker mounts and backups. Set an absolute path (e.g. `/var/lib/parako/uploads`) to use a dedicated volume. For nginx X-Accel-Redirect deployments, the internal location `/_internal_uploads/` must `alias` this directory.
 
 ### `notifications`
 
@@ -467,42 +426,25 @@ These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts
 | 10  | `features.multi_tenancy.provider_pool.idle_ttl_ms`         | `MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS`         |
 | 11  | `features.multi_tenancy.provider_pool.cleanup_interval_ms` | `MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS` |
 
-> **Notes:**
+> **Note:**
 >
-> - `deployment.url` (`DEPLOYMENT_URL`) is intentionally **not** bootstrap-only. If unset in `runtime/.env`, it falls back to the persisted `deployment.url` from the database or file config (default `http://localhost:9007`) — see the Core Settings table for the full precedence rules.
-> - `features.multi_tenancy.enabled` is not in `BOOTSTRAP_ONLY_FIELDS` either, but is effectively bootstrap-only at runtime — `createRuntimeConfig()` always overrides it from `bootstrapConfig.multiTenancy.enabled` regardless of the database value.
+> - `deployment.url` (`DEPLOYMENT_URL`) is **not** in `BOOTSTRAP_ONLY_FIELDS`. If unset in `runtime/.env`, it falls back to the persisted `deployment.url` from the database or file config (default `http://localhost:9007`) — see the Core Settings table for the full precedence rules.
+> - `features.multi_tenancy.enabled` is bootstrap-only at runtime: the bootstrap value always wins over the database value.
 
 ---
 
 ## Sensitive Fields and Encryption
 
-14 configuration field paths contain secrets that are encrypted at rest using `ENCRYPTION_KEY`:
+14 configuration field paths are encrypted at rest using `ENCRYPTION_KEY`:
 
-| #   | Field Path                                          |
-| --- | --------------------------------------------------- |
-| 1   | `security.secrets.jwt_secret`                       |
-| 2   | `security.secrets.cookie_secrets`                   |
-| 3   | `integrations.email.smtp_password`                  |
-| 4   | `integrations.ipinfo.api_token`                     |
-| 5   | `integrations.ipqualityscore.api_key`               |
-| 6   | `integrations.fingerprintjs.api_key`                |
-| 7   | `notifications.channels.sms.api_key`                |
-| 8   | `notifications.channels.sms.api_secret`             |
-| 9   | `features.social_providers.google.client_secret`    |
-| 10  | `features.social_providers.github.client_secret`    |
-| 11  | `features.social_providers.microsoft.client_secret` |
-| 12  | `features.social_providers.linkedin.client_secret`  |
-| 13  | `features.social_providers.facebook.client_secret`  |
-| 14  | `oidc.secrets.pairwise_salt`                        |
+| Category          | Fields                                                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| App secrets       | `security.secrets.jwt_secret`, `security.secrets.cookie_secrets`, `oidc.secrets.pairwise_salt`                    |
+| Email/SMS         | `integrations.email.smtp_password`, `notifications.channels.sms.api_key`, `notifications.channels.sms.api_secret` |
+| External services | `integrations.ipinfo.api_token`, `integrations.ipqualityscore.api_key`, `integrations.fingerprintjs.api_key`      |
+| Social providers  | `features.social_providers.{google,github,microsoft,linkedin,facebook}.client_secret`                             |
 
-**Behavior:**
-
-- **Encrypted on save** — `SettingsService.encryptSensitiveFields()` encrypts before writing to the database.
-- **Decrypted on load** — `SettingsService.decryptSensitiveFields()` decrypts when reading from the database.
-- **Masked in admin UI** — displayed as `•••••••` in settings forms.
-- **Reveal rate-limited** — 10 reveals per minute per user, activity-logged for audit.
-
-If `ENCRYPTION_KEY` is missing, the application refuses to save or load configuration. If the key is wrong (e.g., after rotation without re-encrypting), decryption fails and the application logs an error.
+Sensitive fields are encrypted on save, decrypted on load, masked as `•••••••` in the admin UI, and rate-limited to 10 reveals/minute/user (activity-logged for audit). If `ENCRYPTION_KEY` is missing, the application refuses to save or load configuration. If the key is wrong (e.g., after rotation without re-encrypting), decryption fails and an error is logged.
 
 ---
 
@@ -555,51 +497,24 @@ Each version stores:
 
 ## Change Propagation
 
-When configuration changes in the database, all running processes must be notified. Parako.ID uses a multi-layer strategy:
+When configuration changes in the database, all running processes are notified through a multi-layer strategy:
 
-### MongoDB Change Streams
+| Layer                      | Behavior                                                                                                                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MongoDB Change Streams** | When the MongoDB deployment is a replica set or sharded cluster, the `settings` collection is watched for real-time change detection (preferred method).                                                        |
+| **Polling fallback**       | Standalone MongoDB, SQLite, and PostgreSQL poll every **30 seconds**, comparing `updated_at` timestamps.                                                                                                        |
+| **Redis Pub/Sub**          | Updates publish an invalidation message on `{redis_prefix}:*:config:invalidated`. Subscribers clear in-memory caches and reload from the database, ensuring cross-process consistency in clustered deployments. |
+| **In-memory caching**      | Full `RuntimeConfig` is cached after load. Sections cache lazily with a **60-second TTL**. Tenant configs are cached per-tenant and invalidated on global change.                                               |
 
-If the MongoDB deployment supports Change Streams (replica set or sharded cluster), the `DatabaseConfigProvider` watches the `settings` collection for real-time change detection. This is the preferred method.
-
-### Polling Fallback
-
-If Change Streams are unavailable (standalone MongoDB, or when using SQLite/PostgreSQL), the provider polls the database every **30 seconds** to check for changes by comparing `updated_at` timestamps. This is the default for SQLite and PostgreSQL deployments.
-
-### Redis Pub/Sub
-
-When a configuration update occurs, `ConfigManager` publishes an invalidation message to:
-
-```
-{redis_prefix}:*:config:invalidated
-```
-
-All other processes subscribe to this pattern and react by:
-
-1. Clearing their in-memory config cache
-2. Clearing all tenant config caches
-3. Reloading config from the database
-
-This ensures cross-process consistency even in clustered deployments.
-
-### In-Memory Caching
-
-- **Full config cache** — the complete `RuntimeConfig` is cached in memory after load.
-- **Section cache** — individual sections are lazily cached with a **60-second TTL**.
-- **Tenant config cache** — per-tenant merged configs are cached and invalidated on global config change.
-- **Cache invalidation** — all caches are cleared when a change is detected (via Change Streams for MongoDB replica sets, polling for all other setups, or Redis Pub/Sub).
-
-### Propagation Flow
+### Propagation flow
 
 ```
 Admin saves config
-  → SettingsService encrypts + saves new version
-  → DatabaseConfigProvider detects change (Change Stream, or poll for SQLite/PG)
-  → ConfigManager rebuilds RuntimeConfig
-  → Section cache cleared
-  → Tenant config caches cleared
-  → Redis Pub/Sub publishes invalidation
-  → Other processes receive message
-  → Each process reloads config from database
+  → encrypt + persist new version
+  → change detected (Change Stream or poll)
+  → RuntimeConfig rebuilt, caches cleared
+  → Redis Pub/Sub broadcasts invalidation
+  → other processes reload from database
 ```
 
 ---
@@ -701,61 +616,25 @@ Store these values in your `runtime/.env` file. Never commit secrets to version 
 
 ## Troubleshooting
 
-### Multiple Active Configurations
-
-**Symptom:** Warning logs about multiple active configurations.
-
-**Cause:** Race condition or interrupted save left more than one active record in the `settings` table.
-
-**Fix:** Automatic — `validateAndFixActiveConfigs()` runs at startup and auto-heals by keeping the newest active config and deactivating older ones.
-
-### Encrypted Field Mismatch
-
-**Symptom:** Garbled or unreadable secrets in the admin panel, or decryption errors in logs.
-
-**Cause:** `ENCRYPTION_KEY` was changed or is different from the key used to encrypt the stored configuration.
-
-**Fix:** Restore the original `ENCRYPTION_KEY`. If lost, you must re-save all secrets through the admin panel with the new key.
-
-### File Config Not Loading
-
-**Symptom:** Application ignores your `runtime/parako.jsonc` file.
-
-**Checklist:**
-
-1. Verify `USE_FILE_CONFIG=true` in `runtime/.env`.
-2. Verify `DEPLOYMENT_ENVIRONMENT=development` in `runtime/.env`. File config is ignored in staging/production.
-3. Verify the config file exists under `runtime/` with a supported name (`runtime/parako.jsonc` or `runtime/parako.json`).
-
-### Bootstrap Fields in Admin Panel
-
-**Symptom:** Fields like port, database URI, or environment are read-only in the admin panel.
-
-**Expected behavior:** These are [bootstrap-only fields](#bootstrap-only-fields) that can only be changed in `runtime/.env`. This is by design for security.
-
-### Missing Secrets in Production
-
-**Symptom:** Fatal startup error: `[FATAL] JWT_SECRET is not set`.
-
-**Fix:** Set all required secret environment variables in `runtime/.env`. Auto-generation is disabled in production to prevent running with non-persistent secrets.
-
-### Config Changes Not Propagating
-
-**Symptom:** Configuration changes made in one process are not reflected in others.
-
-**Checklist:**
-
-1. **Redis** — verify Redis is connected for Pub/Sub invalidation.
-2. **Change detection** — Change Streams only work with MongoDB replica sets. SQLite, PostgreSQL, and standalone MongoDB use 30-second polling instead.
-3. **Caching** — section caches have a 60-second TTL. Wait or restart.
+| Symptom                                                  | Cause and fix                                                                                                                                                                                          |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Warning logs about multiple active configurations        | Race condition or interrupted save left more than one active record. **Auto-healed at startup** — the newest active config is kept, older ones deactivated.                                            |
+| Garbled secrets in admin panel, decryption errors        | `ENCRYPTION_KEY` changed or differs from the key used to encrypt. **Fix:** restore the original key. If lost, re-save all secrets through the admin panel.                                             |
+| Application ignores `runtime/parako.jsonc`               | Verify `USE_FILE_CONFIG=true` AND `DEPLOYMENT_ENVIRONMENT=development` in `runtime/.env`, and that the file exists under `runtime/`.                                                                   |
+| Port, DB URI, or environment is read-only in admin panel | Expected behavior — these are [bootstrap-only fields](#bootstrap-only-fields), changeable only in `runtime/.env`.                                                                                      |
+| Fatal startup: `[FATAL] JWT_SECRET is not set`           | Set all required secrets in `runtime/.env`. Auto-generation is disabled in production to prevent running with non-persistent secrets.                                                                  |
+| Config changes not propagating between processes         | Verify Redis is connected (Pub/Sub invalidation). Change Streams require MongoDB replica sets — SQLite, PostgreSQL, and standalone MongoDB use 30-second polling. Section caches have a 60-second TTL. |
 
 ---
 
-## Related Documentation
+## See also
 
-- [Admin Panel](admin-panel.md) — settings UI details
-- [Multi-Tenancy](multi-tenancy.md) — tenant architecture and override system
-- [Security](security.md) — security hardening guide
-- [Management API](api/overview.md) — configuration API endpoints
-- [Database](database.md) — storage setup and adapters
-- [Branding](branding.md) — theme and UI customization
+- [Installer](installer.md)
+- [Upgrades](upgrades.md)
+- [Security](security.md)
+- [Deployment](deployment.md)
+- [Database](database.md)
+- [Admin Panel](admin-panel.md)
+- [Multi-Tenancy](multi-tenancy.md)
+- [Management API](api/overview.md)
+- [Branding](branding.md)

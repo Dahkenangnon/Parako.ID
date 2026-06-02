@@ -384,6 +384,18 @@
             <span class="accent">Parako</span><span class="dim">.ID</span>
           </h1>
           <p class="tagline">Your auth server. Self-hosted. Free.</p>
+          <p
+            class="tagline"
+            style="
+              font-size: 0.85rem;
+              color: var(--text-muted);
+              max-width: 720px;
+              margin-top: 0.6rem;
+            "
+          >
+            The installer deploys Parako application files. You own the
+            database, supervisor, reverse proxy, TLS, secrets, and backups.
+          </p>
         </div>
 
         <!-- Terminal -->
@@ -400,13 +412,18 @@
               <span class="prompt">$</span>
               <span class="cmd-code" id="cmd1"
                 ><span class="kw">curl</span>
-                <span class="fl">-sSL</span>
+                <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
                 <span class="str">https://get.parako.id</span>
                 <span class="op">|</span> <span class="kw">bash</span></span
               >
               <button
                 class="copy-btn"
-                onclick="copy(this, 'curl -sSL https://get.parako.id | bash')"
+                onclick="
+                  copy(
+                    this,
+                    'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash'
+                  )
+                "
               >
                 Copy
               </button>
@@ -420,19 +437,19 @@
                   <span class="prompt">$</span>
                   <span class="cmd-code" id="cmd2"
                     ><span class="kw">curl</span>
-                    <span class="fl">-sSL</span>
+                    <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
                     <span class="str">https://get.parako.id</span>
                     <span class="op">|</span> <span class="kw">bash</span>
                     <span class="fl">-s</span> <span class="op">--</span>
                     <span class="fl">--version</span>
-                    <span class="str">0.2.0</span></span
+                    <span class="str">v0.2.0</span></span
                   >
                   <button
                     class="copy-btn"
                     onclick="
                       copy(
                         this,
-                        'curl -sSL https://get.parako.id | bash -s -- --version 0.2.0'
+                        'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash -s -- --version v0.2.0'
                       )
                     "
                   >
@@ -444,7 +461,8 @@
             <div class="cmd-row">
               <div style="flex: 1">
                 <div class="cmd-label">
-                  # upgrade in place (auto rollback on failure)
+                  # in-place app-files update (operator owns DB / service
+                  restart)
                 </div>
                 <div
                   style="display: flex; align-items: flex-start; gap: 0.6rem"
@@ -452,7 +470,7 @@
                   <span class="prompt">$</span>
                   <span class="cmd-code" id="cmd3"
                     ><span class="kw">curl</span>
-                    <span class="fl">-sSL</span>
+                    <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
                     <span class="str">https://get.parako.id</span>
                     <span class="op">|</span> <span class="kw">bash</span>
                     <span class="fl">-s</span> <span class="op">--</span>
@@ -463,7 +481,7 @@
                     onclick="
                       copy(
                         this,
-                        'curl -sSL https://get.parako.id | bash -s -- --update'
+                        'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash -s -- --update'
                       )
                     "
                   >

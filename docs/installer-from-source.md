@@ -1,6 +1,6 @@
 ---
 title: 'Install from source (git)'
-subtitle: 'The git-clone install path with honest drawbacks. Prefer the tarball installer for production.'
+subtitle: 'The git-clone install path and its trade-offs vs the tarball installer'
 category: 'DevOps'
 order: 4
 ---
@@ -9,9 +9,9 @@ This page documents how to install and update Parako.ID directly from a `git clo
 
 For production deployments on a standard VPS, the [tarball installer](installer.md) is strongly preferred. Read the drawbacks below before choosing the source path.
 
-## Honest drawbacks
+## Trade-offs vs the tarball installer
 
-1. **No automated rollback.** The tarball installer takes a filesystem snapshot before every update and auto-rolls back if the new version fails its health probe. The source path requires the operator to take their own snapshot and manually `git reset --hard` if something goes wrong.
+1. **No automated rollback.** Neither install path runs auto-rollback; the tarball installer's `parako rollback` re-aims the `current` symlink to the previous release (app files only — DB is not rolled back), while the source path requires the operator to `git reset --hard` and rebuild. Both paths require manual DB backup + restore around any schema-changing release.
 2. **Supply-chain risk on every update.** Each `pnpm install` reaches out to the configured registry. A compromised dependency ships straight to your IdP. The tarball installer ships pre-resolved `node_modules` whose tarball is itself cosign-signed in CI, eliminating this exposure at update time.
 3. **Requires a full build toolchain on the target.** `pnpm`, `tsc`, swc, esbuild must all be present on the server. The tarball installer ships pre-built `dist/` so the target only needs `node`.
 4. **No cosign signature verification.** The tarball installer verifies the release's Sigstore signature before extracting. The source path verifies nothing beyond the git working tree itself (which the operator must trust by other means — fingerprints, SCM signing, mirror integrity).
@@ -118,26 +118,24 @@ If the database migration was forward-only and the rollback restored older code 
 
 ## Adopting the `parako` operator binary on a source install
 
-Even though the source path doesn't install `parako` automatically, you can copy it manually so `parako status`, `parako doctor`, `parako logs`, and `parako diag` work:
+Even though the source path doesn't install `parako` automatically, you can copy it manually so `parako version`, `parako paths`, and `parako doctor` work:
 
 ```bash
 sudo install -m 0755 installer/parako.sh /usr/local/bin/parako
 
-# parako needs a .parako-state file beside the install
-cat > /opt/parako-id/.parako-state <<EOF
+# parako reads a small state file alongside the install. No secrets.
+sudo tee /opt/parako-id/.parako-state <<EOF
+# Parako.ID installer state — no secrets, safe to read.
 INSTALL_DIR=/opt/parako-id
 VERSION=$(jq -r .version package.json)
-SUPERVISOR=systemd
-SUPERVISOR_USER=$(id -un)
+PREVIOUS_VERSION=
 INSTALLED_AT=$(date -u +%Y%m%dT%H%M%SZ)
-DB=postgresql
-PORT=9007
-URL=https://auth.example.com
+INSTALLER_VERSION=source-install
 EOF
-sudo chmod 0600 /opt/parako-id/.parako-state
+sudo chmod 0644 /opt/parako-id/.parako-state
 ```
 
-After this, `parako status`, `parako doctor`, `parako logs -f`, `parako diag`, and `parako backup` all work. `parako update` and `parako rollback` will invoke the tarball installer — they're not safe to use on a source install (`install.sh --update` refuses to operate on a directory containing `.git/`).
+After this, `parako version`, `parako paths`, and `parako doctor` work. `parako update` and `parako rollback` would invoke the tarball installer — they are not safe to use on a source install (`install.sh --update` refuses to operate on a directory containing `.git/`). For source upgrades, follow the manual `git pull && pnpm install && pnpm build && (operator-run migration + restart)` runbook.
 
 ## When to switch to the tarball installer
 
@@ -156,5 +154,7 @@ Once verified, archive the old source clone.
 ## See also
 
 - [Installer](installer.md) — the recommended path
+- [Upgrades](upgrades.md) — manual `git pull` upgrade runbook
+- [CLI tools](cli-tools.md) — `pnpm` operator tools used in source installs
 - [Installer security](installer-security.md) — threat model
 - [Updates & maintenance](updates-and-maintenance.md) — broader operational guidance

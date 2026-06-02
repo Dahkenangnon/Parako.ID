@@ -78,25 +78,26 @@ The `_ops` tenant is a stateless infrastructure gateway — it has no session bi
 
 The `_platforms` tenant is the **master tenant** (similar to Keycloak's master realm). It is automatically created at first startup and operates as a fully functional tenant with its own OIDC provider, login page, admin panel, and session management. In addition to standard tenant capabilities, it mounts platform-level routes at `/platform/*` for cross-tenant management (listing tenants, creating tenants, viewing tenant users, updating tenant status). These platform routes are guarded by `PlatformTenantMiddleware` which requires `platform_admin` role.
 
-To create the initial admin user for `_platforms`, set the following environment variables before first startup.
+### Bootstrap admin
 
-**Production (recommended):** Use shell-scoped exports so credentials never touch disk:
+Create the initial administrator for the `_platforms` master tenant by setting two environment variables before first startup. The bootstrap path is gated by `multiTenancy.enabled` — it does not run in single-tenant deployments.
+
+**Production:** shell-scoped exports keep credentials off disk:
 
 ```bash
 export PARAKO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 export PARAKO_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
 pnpm start
-# Credentials exist only in this shell session — gone when it exits.
 ```
 
-**Development:** Setting them in `.env` is acceptable for convenience:
+**Development:** setting them in `.env` is acceptable:
 
 ```bash
 PARAKO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 PARAKO_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
 ```
 
-The bootstrap admin is temporary. Create a permanent admin account and remove the bootstrap credentials from your environment after first login. Parako.ID logs a warning on every startup while these variables remain set.
+The bootstrap admin is temporary. Create a permanent administrator and remove these variables after first login. Parako.ID logs a warning on every startup while they remain set.
 
 The `default` tenant is the implicit tenant for single-tenant deployments and the development fallback. It is hard-coded (not a database record) and represents the base configuration without overrides.
 
@@ -182,3 +183,11 @@ curl -X PUT https://your-parako.example.com/api/v1/tenants/acme/config/branding 
 Required scopes: `parako:tenants:read`, `parako:tenants:write`, `parako:tenants:delete`, `parako:cross-tenant:read`, `parako:cross-tenant:write`.
 
 See [API Endpoints](api/endpoints.md) for the full tenant API reference.
+
+## See also
+
+- [Configuration](configuration.md)
+- [Admin Panel](admin-panel.md)
+- [Deployment](deployment.md)
+- [Database](database.md)
+- [Social Login](social-login.md)

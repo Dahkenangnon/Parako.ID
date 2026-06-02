@@ -106,9 +106,9 @@ For deeper customization or to understand the full range of provider options, re
 | `tls_client_auth`             | Mutual TLS with CA-signed certificate   | Available (requires mTLS) |
 | `self_signed_tls_client_auth` | Mutual TLS with self-signed certificate | Available (requires mTLS) |
 
-## Related Documentation
+## See also
 
-- [OIDC Endpoints](../oidc-endpoints.md) -- endpoint paths, scopes, claims, and token TTLs
-- [OIDC Clients](../oidc-clients.md) -- client presets, registration, and configuration
-- [Authentication](../authentication.md) -- password policies, MFA, and multi-account sessions
-- [Security](../security.md) -- rate limiting, session binding, and encryption
+- [OIDC Endpoints](../oidc-endpoints.md) — endpoint paths, scopes, claims, and token TTLs
+- [OIDC Clients](../oidc-clients.md) — client presets, registration, and configuration
+- [Authentication](../authentication.md) — password policies, MFA, and multi-account sessions
+- [Security](../security.md) — rate limiting, session binding, and encryption

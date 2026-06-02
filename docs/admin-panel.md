@@ -20,7 +20,7 @@ The dashboard displays an overview of your Parako.ID instance:
 - **Quick access** — Shortcuts to create users, connect apps, open settings, and documentation
 - **User metrics** — Total, active, and admin user counts
 - **OIDC clients** — Registered application count
-- **Active sessions** — Currently online users and active grants
+- **Active sessions** — Online users and active grants
 - **Today's activity** — Login count for the current day
 
 The dashboard also links to the management sections below (Users, Applications, Sessions, Authorizations, Data, Activity).
@@ -130,3 +130,10 @@ Available only in multi-tenant mode with the `_platforms` tenant.
 > The `_platforms` tenant is protected and cannot be suspended or archived.
 
 See [Multi-Tenancy](multi-tenancy.md) for details on tenant management.
+
+## See also
+
+- [OIDC Clients](oidc-clients.md)
+- [Multi-Tenancy](multi-tenancy.md)
+- [Configuration](configuration.md)
+- [CLI Tools](cli-tools.md)

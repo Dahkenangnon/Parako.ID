@@ -343,3 +343,10 @@ When a user clicks a social login button (GitHub, Google, etc.), the flow diverg
 ### Customizing Interactions
 
 Interaction views are Nunjucks templates located in [`src/views/auth/`](../src/views/auth/). You can customize the login page, consent screen, and MFA prompts by editing these templates.
+
+## See also
+
+- [OIDC Endpoints](oidc-endpoints.md)
+- [Configuration](configuration.md)
+- [Security](security.md)
+- [Social Login](social-login.md)

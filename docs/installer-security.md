@@ -30,7 +30,7 @@ Under these assumptions, the installer protects against:
 - An MITM attack on the tarball download path (TLS 1.2+ enforced; HTTP downloads refused).
 - An MITM attack on the mirror download path (TLS 1.2+ enforced; non-HTTPS mirror URLs are refused).
 - A maintainer who tries to push a release outside CI (cosign-binding to `release.yml` means manually-built tarballs cannot pass verification).
-- A compromised release pipeline that bypasses cosign (the operator's `install.sh` would refuse the unsigned tarball; the escape hatch `--insecure-no-signature` requires explicit reason text logged to `INSTALL_NOTES.md`).
+- A compromised release pipeline that bypasses cosign (the operator's `install.sh` refuses the unsigned tarball; the escape hatch `--insecure-no-signature` requires explicit reason text logged to the structured install log).
 
 The installer does **not** protect against:
 
@@ -44,7 +44,7 @@ Each release of Parako.ID publishes the SHA256 of `install.sh` in the release no
 
 ```bash
 # Download without executing
-curl -sSL https://get.parako.id -o /tmp/install.sh
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/install.sh
 
 # Get the expected SHA256 from the release notes
 # (look for: "Installer SHA256: <value>" in the v0.2.0 release on GitHub)
@@ -117,7 +117,7 @@ Expected output: `Verified OK`.
 In the rare case where Sigstore is unreachable (network partition, Sigstore outage, regulated network), the installer offers an explicit escape:
 
 ```bash
-curl -sSL https://get.parako.id | sudo bash -s -- \
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash -s -- \
   --update --insecure-no-signature \
   --reason "Sigstore outage on 2026-06-15; verified SHA256 manually from release notes"
 ```
@@ -128,70 +128,52 @@ The escape requires:
 2. A non-empty `--reason "<text>"`
 3. In interactive mode, the operator typing `yes` in full when prompted
 
-The reason is logged verbatim to `INSTALL_NOTES.md` and to the structured install log. Use this only when you've manually verified the tarball SHA256 by another means.
+The reason is logged verbatim to the structured install log at `/var/log/parako-install-<ts>.log` (or `${XDG_STATE_HOME}/parako/parako-install-<ts>.log` for non-root installs). Use this escape only when you have manually verified the tarball SHA256 against the release notes.
 
 ## Sensitive-value redaction
 
-Three places persist data about the install:
-
-1. `INSTALL_NOTES.md` — every wizard answer + selected flags + version
-2. `/var/log/parako-install-${ts}.log` — JSON-lines structured log of every step
-3. `parako diag` archive — bug-report bundle
-
-All three pass every line through a redactor that masks:
+The installer writes a structured JSON-lines log at `/var/log/parako-install-${ts}.log` (or `${XDG_STATE_HOME}/parako/...` for non-root installs). Every line passes through a redactor that masks:
 
 - URI authentication (`scheme://user:pass@host` → `scheme://***@host`)
 - Any value following a key named `password`, `secret`, `token`, `credential`, `api_key`, `hmac_secret`, `jwt_secret`, `cookie_secret_N`, `encryption_key`, `pairwise_salt`
 
-You can safely share `INSTALL_NOTES.md` and the install log when reporting bugs.
+You can safely share the install log when reporting bugs.
 
 ## File permissions
 
-| File                                     | Mode | Owner            |
-| ---------------------------------------- | ---- | ---------------- |
-| `runtime/.env`                           | 0600 | `parako:parako`  |
-| `runtime/INSTALL_NOTES.md`               | 0600 | `parako:parako`  |
-| `runtime/jwks/jwks.json`                 | 0600 | `parako:parako`  |
-| `runtime/data/parako.db`                 | 0600 | `parako:parako`  |
-| `/var/log/parako-install-*.log`          | 0600 | install operator |
-| `/etc/systemd/system/parako-id*.service` | 0644 | `root:root`      |
-| `/etc/nginx/sites-available/parako-id`   | 0644 | `root:root`      |
-| `/usr/local/bin/parako`                  | 0755 | `root:root`      |
-| `/usr/local/bin/cosign`                  | 0755 | `root:root`      |
-| `${INSTALL_DIR}/.parako-state`           | 0600 | `parako:parako`  |
-| `${INSTALL_DIR}/.supervisor`             | 0644 | `parako:parako`  |
+Files the installer writes (mode is enforced regardless of the operator's umask):
 
-The installer enforces these regardless of the operator's umask.
+| File                            | Mode | Owner            | Notes                                             |
+| ------------------------------- | ---- | ---------------- | ------------------------------------------------- |
+| `/var/log/parako-install-*.log` | 0600 | install operator | Installer's own structured log                    |
+| `/usr/local/bin/parako`         | 0755 | `root:root`      | Operator helper; install is non-fatal             |
+| `/usr/local/bin/cosign`         | 0755 | `root:root`      | Only if cosign bootstrap was needed               |
+| `${INSTALL_DIR}/.parako-state`  | 0644 | install operator | No secrets; readable by non-root operators        |
+| `${INSTALL_DIR}/.install-lock`  | 0644 | install operator | flock target for install / update / rollback / gc |
 
-## systemd hardening
+Files the installer does **not** create or modify:
 
-The installed systemd units (generated by [`scripts/manage/systemd/generate.ts`](https://github.com/Dahkenangnon/Parako.ID/tree/main/scripts/manage/systemd/generate.ts)) include:
-
-```ini
-NoNewPrivileges=yes
-ProtectSystem=strict
-PrivateTmp=yes
-ReadWritePaths=${INSTALL_DIR}
-```
-
-The `parako` system user runs all Parako.ID processes. Never root.
-
-Additional hardening directives (`ProtectHome=yes`, `LockPersonality=yes`, `RestrictRealtime=yes`, `RestrictSUIDSGID=yes`, `SystemCallFilter=@system-service`, `CapabilityBoundingSet=`) are tracked for a future release; they require validation against Node.js's JIT and native-module footprint before being enabled by default. `MemoryDenyWriteExecute=yes` is intentionally excluded — it is incompatible with the V8 JIT.
+| File                                              | Why                            |
+| ------------------------------------------------- | ------------------------------ |
+| `runtime/.env`                                    | Operator-owned secrets         |
+| `runtime/jwks/jwks.json`                          | Operator-owned signing keys    |
+| `runtime/parako.jsonc`, `runtime/parako-rp.jsonc` | Operator-owned config          |
+| `runtime/data/parako.db`                          | Operator-owned database        |
+| `/etc/systemd/system/*.service`                   | Operator-managed supervisor    |
+| `/etc/nginx/sites-available/*`                    | Operator-managed reverse proxy |
+| `/etc/letsencrypt/*`                              | Operator-managed TLS           |
 
 ## Network egress points
 
 During install and update, the installer makes outbound HTTPS connections only to:
 
-| Host                            | Purpose                                            |
-| ------------------------------- | -------------------------------------------------- |
-| `api.github.com`                | Resolve latest release tag                         |
-| `github.com`                    | Download release tarball + signature + certificate |
-| `objects.githubusercontent.com` | Release artifact CDN                               |
-| `rekor.sigstore.dev`            | Cosign transparency log verification               |
-| `fulcio.sigstore.dev`           | Cosign certificate authority                       |
-| `time.cloudflare.com`           | NTP-style time skew check (Date: header only)      |
+| Host                                           | Purpose                                                                            |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `api.github.com`                               | Resolve latest release tag (skipped under `--offline` and when `--version` is set) |
+| `github.com` / `objects.githubusercontent.com` | Release tarball + signature + certificate download                                 |
+| `rekor.sigstore.dev` / `fulcio.sigstore.dev`   | Cosign transparency log + certificate authority                                    |
 
-When `PARAKO_RELEASE_MIRROR` is set, the mirror URL is added to this list (and validated against an allowlist or explicit operator confirmation).
+Under `--offline`, the installer makes no network calls and requires `--version`, `--tarball`, `--checksum`, `--signature`, `--certificate`, and a preinstalled `cosign` binary on `PATH`.
 
 No telemetry. The installer does not phone home.
 
@@ -225,6 +207,7 @@ Sigstore keyless signing does not use long-lived keys, so there's no key rotatio
 ## See also
 
 - [Installer](installer.md)
+- [Security](security.md) — defense-in-depth at the application layer
 - [parako CLI](parako-cli.md)
 - [Sigstore documentation](https://docs.sigstore.dev/)
 - [Aaron Maxwell — Unofficial Bash Strict Mode](http://redsymbol.net/articles/unofficial-bash-strict-mode/)

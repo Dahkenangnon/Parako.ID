@@ -5,6 +5,8 @@ category: 'DevOps'
 order: 1
 ---
 
+> **Operator-run procedure.** Everything on this page — PM2 / systemd setup, nginx vhost, TLS / certbot, `.env` secrets, database provisioning, backups — is done by the operator. The Parako.ID installer (`install.sh` / `parako update`) only places and updates application files; it does not configure your supervisor, proxy, TLS, secrets, or database. See [Installer](installer.md) for the installer's scope.
+
 ## Pre-Deployment Checklist
 
 Before deploying to production, verify these items:
@@ -453,3 +455,11 @@ SECURITY_LOGGING_LEVEL=info
 SECURITY_LOGGING_PRETTY_PRINT=false
 SECURITY_LOGGING_FILE_LOGGING_ENABLED=true
 ```
+
+## See also
+
+- [Installer](installer.md)
+- [Configuration](configuration.md)
+- [Installer Security](installer-security.md)
+- [Multi-Tenancy](multi-tenancy.md)
+- [Troubleshooting](troubleshooting.md)

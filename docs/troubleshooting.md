@@ -295,3 +295,10 @@ psql -d parako -c "VACUUM ANALYZE;"
 
 - **GitHub Issues** — Report bugs and request features at the [Parako.ID repository](https://github.com/Dahkenangnon/Parako.ID/issues)
 - **Security vulnerabilities** — Report privately to [dah.kenangnon@gmail.com](mailto:dah.kenangnon@gmail.com)
+
+## See also
+
+- [Installer](installer.md)
+- [Configuration](configuration.md)
+- [Database](database.md)
+- [Upgrades](upgrades.md)

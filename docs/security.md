@@ -215,7 +215,9 @@ Scores IP addresses for fraud risk, detecting proxies, VPNs, and known malicious
 
 Set the `IPQUALITYSCORE_API_KEY` environment variable. IPs scoring above the `fraud_score_threshold` (0–100) are flagged in the audit log.
 
-## JWKS / Key Management
+## Key Management
+
+### JWKS
 
 Parako.ID uses JSON Web Key Sets (JWKS) for signing OIDC tokens. Configure key management in `security.key_store`:
 
@@ -352,3 +354,9 @@ Configure trusted domains and proxy IPs for accurate client IP detection:
 | `high_risk_countries` | ISO 3166-1 country codes flagged in audit logs      |
 
 When behind a reverse proxy (nginx, Cloudflare), set `deployment.server.proxy: true` and add the proxy IPs to `trusted_proxies` for correct `X-Forwarded-For` handling.
+
+## See also
+
+- [Installer Security](installer-security.md)
+- [Configuration](configuration.md)
+- [Deployment](deployment.md)

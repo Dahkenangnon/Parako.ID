@@ -223,3 +223,9 @@ Configure the default and available locales:
 ```
 
 The user's locale preference is stored in a cookie and can be changed from the login page or account settings. Remove locales from the `available` array to hide them from the locale selector.
+
+## See also
+
+- [Configuration](configuration.md)
+- [Admin Panel](admin-panel.md)
+- [Multi-Tenancy](multi-tenancy.md)

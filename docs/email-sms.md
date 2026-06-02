@@ -116,13 +116,13 @@ To enable:
 }
 ```
 
-| Field         | Description                       |
-| ------------- | --------------------------------- |
-| `enabled`     | Enable the SMS channel            |
-| `provider`    | SMS provider (currently `twilio`) |
-| `api_key`     | Twilio Account SID                |
-| `api_secret`  | Twilio Auth Token                 |
-| `from_number` | Twilio phone number to send from  |
+| Field         | Description                                        |
+| ------------- | -------------------------------------------------- |
+| `enabled`     | Enable the SMS channel                             |
+| `provider`    | SMS provider; `twilio` is the only built-in option |
+| `api_key`     | Twilio Account SID                                 |
+| `api_secret`  | Twilio Auth Token                                  |
+| `from_number` | Twilio phone number to send from                   |
 
 ### Enabling SMS Features
 
@@ -181,3 +181,9 @@ Configure which notification channels are available and their default behavior:
 | `allow_user_preferences` | `true`  | Allow users to customize their notification preferences         |
 
 When `allow_user_preferences` is enabled, users can manage their notification settings from their account page.
+
+## See also
+
+- [Configuration](configuration.md)
+- [Security](security.md)
+- [Authentication](authentication.md)

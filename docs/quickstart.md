@@ -1,179 +1,77 @@
 ---
 title: 'Quickstart'
-subtitle: 'Get Parako.ID running in minutes'
+subtitle: 'Get Parako.ID running in five minutes'
 category: 'Getting Started'
 order: 2
 ---
 
+Two paths land you on a working Parako.ID. Choose the one that matches your goal.
+
+| Path                        | Audience                        | Time                        |
+| --------------------------- | ------------------------------- | --------------------------- |
+| [From source](#from-source) | Contributors, local development | ~3 minutes                  |
+| [Installer](#installer)     | Operators deploying to a host   | ~5 minutes + operator setup |
+
 ## Prerequisites
 
-Before you begin, ensure you have:
+Linux x86_64 or aarch64, Node.js ≥ 24, pnpm ≥ 11. Enable pnpm via Corepack:
 
-- **Node.js** >= 24 — [Download](https://nodejs.org/)
-- **pnpm** >= 11 — Install with `corepack enable && corepack prepare pnpm@11.4.0 --activate` (Corepack also reads the `packageManager` field in `package.json` and pins the exact version automatically.)
+```bash
+corepack enable && corepack prepare pnpm@11 --activate
+```
 
-Optional for production:
-
-- MongoDB or PostgreSQL (SQLite is used by default)
-- Redis (for OIDC token storage or session caching)
-- An SMTP server (for email verification and notifications)
-
-## Install from Source
-
-Clone the repository and install dependencies:
+## From source
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd Parako.ID
 pnpm install
-```
-
-Copy the example environment file and generate required secrets:
-
-```bash
 cp .env.example .env
-```
-
-Edit `.env` and set at minimum:
-
-```bash
-DEPLOYMENT_ENVIRONMENT=development
-DEPLOYMENT_SERVER_PORT=9007
-DEPLOYMENT_URL=http://localhost:9007
-STORAGE_ADAPTER=sqlite
-ENCRYPTION_KEY=$(openssl rand -hex 32)
-```
-
-Push the database schema:
-
-```bash
 pnpm db:push
-```
-
-JWKS keys are automatically generated on first startup and stored in the database — no manual step needed.
-
-> **Note:** For file-based single-tenant setups (`USE_FILE_CONFIG=true`), you can use `pnpm keys generate` after building (`pnpm build`) to write keys to a local file instead.
-
-Start the development server:
-
-```bash
 pnpm dev
 ```
 
-Parako.ID is now running at `http://localhost:9007`.
+JWKS keys are generated automatically on first start and stored in the database. The server listens on `http://localhost:9007`.
 
-## One-Line Install
+> **Important:** `.env` ships with development defaults. Production secrets and database choices live in [Configuration](configuration.md).
 
-For a guided installation on a fresh Ubuntu server:
-
-```bash
-# User-local install
-curl -sSL https://get.parako.id | bash
-
-# System-wide (installs to /opt/parako-id, requires sudo)
-curl -sSL https://get.parako.id | sudo bash
-
-# Try Parako.ID in 30 seconds (ephemeral SQLite in /tmp; opens browser)
-curl -sSL https://get.parako.id | bash -s -- --demo
-```
-
-The installer runs preflight checks, then prompts for environment, port, deployment URL, supervisor (systemd or PM2), database, and Redis. It verifies the release via cosign (Sigstore), generates a `.env` with cryptographically-random secrets, validates DB and Redis connectivity, runs schema migrations, and starts the service. See [Installer](installer.md) for the full flag reference.
-
-After install, the `parako` operator binary is on `PATH`:
+## Installer
 
 ```bash
-parako status            # supervisor + /health + version
-parako doctor            # full diagnostic
-parako update            # in-place upgrade
-parako rollback          # revert to previous snapshot
-parako --help            # all verbs
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-Upgrade later with `--update`:
+The installer verifies the release via cosign (Sigstore) and places files under `/opt/parako-id/`. It does not configure your supervisor, database, TLS, or secrets — see [Installer](installer.md) for the full contract.
 
-```bash
-curl -sSL https://get.parako.id | sudo bash -s -- --update
-# or:
-sudo parako update
-```
+> **Important:** The installer prints a next-steps card on completion. Complete those steps before starting the service.
 
-This snapshots the install, backs up the database, swaps in the new version, runs migrations, health-checks the new release via `/health`, and rolls back automatically if it fails.
+Operator steps after install:
 
-## Create Your First Account
+1. Create `/opt/parako-id/runtime/.env` from `/opt/parako-id/current/contrib/.env.sample` and fill in your DB / Redis / secrets.
+2. Wire your process manager to `/opt/parako-id/current` (sample PM2 ecosystem ships at `current/contrib/ecosystem.config.cjs.sample`; nginx examples at [`docs/reference/nginx-vhost-examples/`](reference/nginx-vhost-examples/)).
+3. Apply any database migration named in the release notes.
+4. Start your service.
+5. Probe `http://localhost:9007/health`.
 
-Open your browser and navigate to:
+The `parako` operator binary is on `PATH`; see [parako CLI](parako-cli.md) for the verb reference and [Upgrades](upgrades.md) for the upgrade runbook.
 
-```
-http://localhost:9007/auth/register
-```
+## Create your first admin
 
-Fill in your name, email, and password to create your account. To access the admin panel, assign the `admin` role to your account — see [Admin Panel](admin-panel.md) for details.
+Open `http://localhost:9007/auth/register` and create an account. Promote that user to `admin` via the admin panel or by editing the user record directly. See [Admin Panel](admin-panel.md).
 
-## Register Your First OIDC Client
+## Register your first OIDC client
 
-The recommended way to create OIDC clients is through the admin panel:
+Use the admin panel at `/admin/oidc-clients` — the wizard collects client type, redirect URIs, and scopes, then prints the `client_id` and `client_secret`. Store the secret immediately; it is encrypted at rest and not retrievable afterward.
 
-1. Navigate to `/admin/oidc-clients` and click **Create Client**
-2. The wizard walks you through:
-   - **Client type** — Web Application, SPA, Native, Device Flow, API, or Service Account
-   - **Client name** — A human-readable name (e.g., "My Web App")
-   - **Redirect URIs** — Where to redirect after login (e.g., `http://localhost:3000/callback`)
-   - **Allowed scopes** — What user data the client can access
-3. Note the `client_id` and `client_secret`. Store the secret securely — it is encrypted at rest and cannot be retrieved later.
+See [OIDC Clients](oidc-clients.md) for the full client model and presets, or [CLI Tools](cli-tools.md) for `pnpm client add` (file-based single-tenant only).
 
-> **Alternative:** For file-based single-tenant setups, you can use the CLI (`pnpm client add`) after building (`pnpm build`). The CLI writes to file-based config rather than the database. See [CLI Tools](cli-tools.md) for details.
+## Test the OIDC flow
 
-See [OIDC Clients](oidc-clients.md) for full client management documentation.
+Walk through an end-to-end authorization-code + PKCE exchange against your local Parako.ID in [Integrating Your App](integrating-your-app.md#authorization-code-flow).
 
-## Test the OIDC Flow
+## See also
 
-Build the authorization URL with your client's details:
-
-```
-http://localhost:9007/oidc/v1/authorize?
-  client_id=YOUR_CLIENT_ID&
-  redirect_uri=http://localhost:3000/callback&
-  response_type=code&
-  scope=openid+profile+email&
-  code_challenge=YOUR_CODE_CHALLENGE&
-  code_challenge_method=S256&
-  state=random_state_value
-```
-
-Open this URL in your browser. You will see the Parako.ID login page. Sign in with the account you created earlier, then consent to share your profile data.
-
-After consent, Parako.ID redirects to your `redirect_uri` with an authorization code:
-
-```
-http://localhost:3000/callback?code=AUTH_CODE&state=random_state_value
-```
-
-Exchange the code for tokens:
-
-```bash
-curl -X POST http://localhost:9007/oidc/v1/token \
-  -u "YOUR_CLIENT_ID:YOUR_CLIENT_SECRET" \
-  -d "grant_type=authorization_code" \
-  -d "code=AUTH_CODE" \
-  -d "redirect_uri=http://localhost:3000/callback" \
-  -d "code_verifier=YOUR_CODE_VERIFIER"
-```
-
-The response contains your `access_token`, `id_token`, and `refresh_token`.
-
-Fetch user info with the access token:
-
-```bash
-curl http://localhost:9007/oidc/v1/userinfo \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
-## Next Steps
-
-- [Configuration](configuration.md) — Customize your deployment settings
-- [OIDC Clients](oidc-clients.md) — Manage client applications and scopes
-- [Admin Panel](admin-panel.md) — Manage users, clients, settings, and audit logs
-- [Social Login](social-login.md) — Add Google, GitHub, and other providers
-- [Authentication](authentication.md) — Configure MFA, password policies, and account recovery
-- [Deployment](deployment.md) — Deploy to production with PM2 or systemd
-- [Integrating Your App](integrating-your-app.md) — Connect your applications to Parako.ID
+- [Installer](installer.md)
+- [Configuration](configuration.md)
+- [Integrating Your App](integrating-your-app.md)
+- [Troubleshooting](troubleshooting.md)

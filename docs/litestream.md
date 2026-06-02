@@ -121,3 +121,8 @@ litestream restore -config litestream.yml -o /tmp/restored.db ./data/parako.db
 - For multi-process deployments, use PostgreSQL or MongoDB instead of SQLite.
 
 See also: [Security — Key Management](security.md#key-management) for JWKS configuration and rotation.
+
+## See also
+
+- [Database](database.md)
+- [Deployment](deployment.md)

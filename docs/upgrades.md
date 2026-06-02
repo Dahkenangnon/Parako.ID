@@ -1,48 +1,95 @@
-# Upgrading Parako.ID
+---
+title: 'Upgrading Parako.ID'
+subtitle: 'Operator runbook for parako update and rollback'
+category: 'DevOps'
+order: 4
+---
 
-> Operator quick-reference: [Installer](installer.md) and [`parako update`](parako-cli.md#lifecycle).
-> This page covers the partition policy (what's preserved across upgrades) that the installer respects.
+`parako update` is a release-pointer switcher: download, verify, stage, atomic symlink swap. The database, services, reverse proxy, and TLS remain operator-owned. The release notes for every version list the exact migration command (if any) and any breaking changes. See [Installer](installer.md) for the full installer contract.
 
-Parako.ID partitions its install tree into **shipped** state and
-**operator-managed** state. Everything outside `runtime/` is shipped:
-extracting a new release tarball over an existing install replaces it
-wholesale. Everything inside `runtime/` is operator-managed:
-configuration (`runtime/.env`, `runtime/parako.jsonc`,
-`runtime/parako-rp.jsonc`), process tuning
-(`runtime/ecosystem.config.cjs`), signing keys (`runtime/jwks/`),
-uploads (`runtime/uploads/`), the sqlite database
-(`runtime/data/parako.db`), logs (`runtime/logs/`), and config snapshots
-(`runtime/config-backups/`). **A future Parako.ID release will never
-overwrite anything under `runtime/`.**
+## Pre-upgrade checklist
 
-## Tarball installs (the installer path)
+| Step | Action                                                                                                                           |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Read the [release notes](https://github.com/Dahkenangnon/Parako.ID/releases) for the target version. Note any migration command. |
+| 2    | Back up the database if a migration is required (see step 2 below).                                                              |
+| 3    | Confirm your supervisor and reverse-proxy configuration are unchanged.                                                           |
 
-Operators installed via `curl -sSL https://get.parako.id | sudo bash` upgrade with:
+## Applying an upgrade
 
-```bash
-parako update                       # or: curl -sSL https://get.parako.id | sudo bash -s -- --update
-```
-
-The installer snapshots the current install, takes a DB backup (`pg_dump` / `mongodump` / `sqlite3 .backup`; the update aborts if the required CLI is missing), downloads + cosign-verifies the new release, preserves everything under `runtime/`, runs migrations against the new code, performs an atomic directory swap, and auto-rolls back on health-check failure. Full details: [Installer](installer.md).
-
-Use `--plan` for a no-mutation preview and `--dry-run` for a download/verify/extract/dependency-install rehearsal (the live database is never touched under `--dry-run`).
-
-## Git-clone installs (from source)
-
-If you installed via `git clone`, the installer's `--update` mode refuses to run (a `.git` directory under the install dir is a positive signal of a source install). Upgrade manually:
+### 1. Verify the new release
 
 ```bash
-git pull && pnpm install && pnpm build && pnpm db:migrate:deploy && pnpm restart
+parako update --dry-run --version vX.Y.Z
 ```
 
-Read the release notes for any breaking changes that mention `runtime/` paths — most commonly `runtime/ecosystem.config.cjs` (when PM2 defaults change) or `runtime/views/` (when shipped templates change). If a release note instructs you to merge a new value into your operator file, do so by hand.
+Downloads and cosign-verifies the artifact against a TMPDIR scratch space, prints what would change, and exits. No filesystem mutation on the install directory.
 
-## Sidecar update mechanism (planned)
+### 2. Back up the database
 
-A follow-up release will ship a `MANIFEST.json` alongside the tarball listing the SHA256 of every file under `runtime/` classified as a **managed default** (a file that ships with the release but that the operator may have customized). The installer's update flow will then compare your current files against the previous manifest:
+```bash
+# PostgreSQL
+sudo -u postgres pg_dump --no-owner --format=custom parako > parako-pre-vX.Y.Z.dump
 
-- **Unchanged** (you never customized): the new version overwrites silently.
-- **Changed** (you customized it): the new version is dropped alongside yours as `<file>.update-vX.Y.Z`. You merge at your convenience, then delete the sidecar. The update is logged to `runtime/.update-log.md`.
-- **Never touched** (your `runtime/.env`, your `runtime/parako.jsonc`, your `runtime/parako-rp.jsonc`, your `runtime/jwks/`, your `runtime/data/`, your `runtime/uploads/`, your `runtime/logs/`, your `runtime/config-backups/`): not in the manifest at all; the update never produces a sidecar.
+# MongoDB
+mongodump --uri="${MONGO_URI}" --archive=parako-pre-vX.Y.Z.archive --gzip
 
-Until that mechanism ships, the current installer preserves the whole `runtime/` tree wholesale and never overwrites it on upgrade.
+# SQLite
+sqlite3 /opt/parako-id/runtime/data/parako.db ".backup parako-pre-vX.Y.Z.db"
+```
+
+Skip if the release notes specify no migration command and you accept the risk.
+
+### 3. Apply the release-pointer swap
+
+```bash
+sudo parako update --version vX.Y.Z
+```
+
+Atomic `mv -T` on `/opt/parako-id/current`. The previous release directory is retained for rollback.
+
+### 4. Run the migration (if release notes specify one)
+
+```bash
+cd /opt/parako-id/current
+sudo -u parako pnpm db:migrate:deploy
+```
+
+> **Warning:** If the release notes name no migration command, skip this step.
+
+### 5. Restart your service and verify
+
+```bash
+sudo systemctl restart parako-id parako-id-worker   # or: pm2 restart … / docker compose restart parako-id
+curl -sf http://localhost:9007/health
+```
+
+## Rollback
+
+```bash
+sudo parako rollback                  # previous release
+sudo parako rollback --to v0.1.5      # specific release
+```
+
+`parako rollback` atomically re-aims the `current` symlink to a prior release directory. The application files revert.
+
+> **Warning:** Database migrations are NOT rolled back. If you ran a forward migration in step 4, apply the reverse migration manually before restarting on the older release.
+
+### Rollback decision tree
+
+```
+Did you run a migration this upgrade?
+├── No  → parako rollback → restart your service. Done.
+└── Yes → apply reverse migration → parako rollback → restart your service.
+```
+
+## Source installs
+
+Source installs (git clone) upgrade manually: `git pull && pnpm install && pnpm build`, then any migration named in the release notes, then restart. The bash installer refuses `--update` against a directory containing `.git/`. See [Install from Source](installer-from-source.md). Everything under `runtime/` is operator-managed and survives every upgrade — see [Installer → Layout](installer.md#layout).
+
+## See also
+
+- [Installer](installer.md)
+- [parako CLI](parako-cli.md)
+- [Updates & Maintenance](updates-and-maintenance.md)
+- [Install from Source](installer-from-source.md)

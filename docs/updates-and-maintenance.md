@@ -7,66 +7,9 @@ order: 3
 
 ## Updating Parako.ID
 
-### Tarball installs (recommended)
+`parako update` is a release-pointer switcher; database migrations, service restart, backups, and health checks are operator-owned. The full operator runbook (read notes → backup → dry-run → apply → migrate → restart → verify → rollback) lives in [Upgrades](upgrades.md). Source-install upgrades follow the manual procedure in [Install from Source](installer-from-source.md).
 
-If you installed via the one-liner at `https://get.parako.id`, upgrade with:
-
-```bash
-curl -sSL https://get.parako.id | bash -s -- --update
-```
-
-This is the same script that handled the install. In `--update` mode it:
-
-1. Detects the existing install at `INSTALL_DIR` (default `/opt/parako-id` for sudo installs, otherwise `./parako-id`)
-2. Reads the supervisor (`systemd` or `pm2`) from the `.supervisor` marker written at install time
-3. Snapshots the install directory to `*.backup.YYYYMMDDHHMMSS`
-4. Stops the service
-5. Downloads and verifies the new tarball (SHA256)
-6. Extracts to a sibling `*.new.YYYYMMDDHHMMSS` directory
-7. Preserves your instance state across the swap. Specifically:
-   - `.env`, `.supervisor` marker, `data/` (SQLite DB + uploads), `logs/`
-   - `runtime/jwks/` — signing keys
-   - `runtime/views/` — instance custom view overrides
-   - `runtime/assets/` — instance custom theme assets
-   - `runtime/config-backups/` — admin-saved config snapshots
-   - Only `runtime/locales/` is refreshed from the new tarball (so new translations land)
-8. Runs database migrations against the new code (`pnpm db:migrate:deploy` for PostgreSQL or `pnpm db:push` for SQLite — MongoDB is no-op)
-9. Atomically swaps directories (old archived as `*.old.YYYYMMDDHHMMSS`)
-10. Starts the service via the recorded supervisor
-11. Health-checks `http://127.0.0.1:<port>/.well-known/openid-configuration` for up to 30 seconds
-12. **Automatically rolls back** if the health check fails — old version is restored, broken upgrade is preserved at `*.failed.YYYYMMDDHHMMSS` for inspection
-
-Pin a specific version with `--update --version X.Y.Z`. Pass `--force` to skip the confirmation prompt.
-
-After a successful upgrade, you can clean up the snapshots:
-
-```bash
-rm -rf /opt/parako-id.backup.* /opt/parako-id.old.*
-```
-
-### Source / dev installs
-
-For installations cloned via `git clone`, follow the manual procedure documented at [Install from source](installer-from-source.md). It includes the honest drawbacks (no automated rollback, supply-chain risk at every `pnpm install`, no cosign verification of the working tree) and the manual snapshot + restore commands you run yourself before and after each update.
-
-### Rolling back manually (any install method)
-
-If you need to revert without triggering the automatic rollback (e.g., to roll back days after a successful upgrade):
-
-```bash
-# Tarball: restore from backup snapshot
-sudo systemctl stop parako-id parako-id-worker   # or pm2 stop
-sudo mv /opt/parako-id /opt/parako-id.broken
-sudo mv /opt/parako-id.backup.YYYYMMDDHHMMSS /opt/parako-id
-sudo systemctl start parako-id parako-id-worker
-
-# Source: checkout previous tag
-git checkout <previous-tag>
-pnpm install
-pnpm build
-pnpm restart
-```
-
-If the upgrade modified the database schema, restore the database from a pre-upgrade backup before reverting application code.
+> **Warning:** `parako rollback` reverts application files only. Database migrations are not reversed.
 
 ## Key Rotation
 
@@ -254,3 +197,10 @@ Filter audit entries by:
 - IP address
 - Date range
 - Tenant (in multi-tenant mode)
+
+## See also
+
+- [Upgrades](upgrades.md)
+- [parako CLI](parako-cli.md)
+- [Security](security.md)
+- [Configuration](configuration.md)

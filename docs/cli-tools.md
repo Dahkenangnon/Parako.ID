@@ -5,19 +5,17 @@ category: 'Guides'
 order: 2
 ---
 
-## Overview
+> **Important:** These are operator-run helpers. The installer / `parako update` never invokes them; the operator runs them ad hoc.
 
-Parako.ID includes three CLI tools for server-side management:
+Three `pnpm` scripts operate directly on local files (`runtime/parako-rp.jsonc`, `runtime/jwks/jwks.json`, generated systemd units) without requiring the application server to be running:
 
-| Tool    | Command                  | Purpose                              |
-| ------- | ------------------------ | ------------------------------------ |
-| Client  | `pnpm client <command>`  | Manage OIDC client applications      |
-| Keys    | `pnpm keys <command>`    | Manage JWKS signing keys             |
-| Systemd | `pnpm systemd <command>` | Generate and manage systemd services |
+| Tool    | Command                  | Purpose                                |
+| ------- | ------------------------ | -------------------------------------- |
+| Client  | `pnpm client <command>`  | Manage OIDC client applications        |
+| Keys    | `pnpm keys <command>`    | Manage JWKS signing keys               |
+| Systemd | `pnpm systemd <command>` | Generate and manage systemd unit files |
 
-All CLI tools work with local files (`runtime/parako-rp.jsonc`, `runtime/jwks/jwks.json`) and do not require the application server to be running.
-
-For version updates, use the installer's `--update` mode or `parako update`. See [Installer](installer.md) and [parako CLI](parako-cli.md). Git-clone installs still update via `git pull && pnpm install && pnpm build && pnpm restart`; see [Installing from source](installer-from-source.md).
+Version upgrades are handled by `parako update` (release-pointer swap only). DB migrations, restart, backups, and proxy / TLS reloads are operator-owned — see [Upgrades](upgrades.md).
 
 ## Client Management
 
@@ -94,7 +92,7 @@ Generates a new key set with three algorithms: RS256, ES256, and EdDSA. Required
 
 ### Rotation and Listing
 
-The CLI intentionally exposes only `generate` for first-boot bootstrap. In production, key rotation and listing are handled by the **DB-backed key store**, configured under `security.key_store` (`type: 'database'`):
+The CLI exposes only `generate` for first-boot bootstrap. In production, key rotation and listing are handled by the **DB-backed key store**, configured under `security.key_store` (`type: 'database'`):
 
 - **Automatic rotation** every `rotation_interval_days` (default 90), with a configurable `overlap_window_seconds` (default 7200) during which both old and new keys remain valid for token verification
 - **Manual rotation** via the admin panel or the Management API (`POST /api/v1/jwks/rotate` with `parako:jwks:rotate` scope)
@@ -105,6 +103,8 @@ See [Security](security.md) for full key-store configuration.
 ## Systemd Service
 
 Generate and manage systemd unit files as an alternative to PM2.
+
+> **Operator-run.** This is a manual maintenance command. The Parako.ID installer does not run `pnpm systemd` for you, does not enable any systemd unit, and does not start / stop / restart anything.
 
 ```bash
 pnpm systemd <command>
@@ -206,3 +206,10 @@ Or use `journalctl` directly:
 ```bash
 journalctl -u parako-id -u parako-id-worker -f
 ```
+
+## See also
+
+- [Upgrades](upgrades.md)
+- [Deployment](deployment.md)
+- [Admin Panel](admin-panel.md)
+- [Security](security.md)

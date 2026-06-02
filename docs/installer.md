@@ -1,287 +1,200 @@
 ---
 title: 'Installer'
-subtitle: 'Install, update, roll back, and diagnose Parako.ID with the official installer'
+subtitle: 'Place and update Parako application files. Operators own the rest.'
 category: 'DevOps'
 order: 1
 ---
 
-The Parako.ID installer is a single bash script published at `https://get.parako.id`. It handles fresh installation, in-place updates, post-hoc rollback, garbage collection of snapshots, and diagnostic reporting. The source lives at [`installer/install.sh`](https://github.com/Dahkenangnon/Parako.ID/tree/main/installer) in the project repo for full transparency.
+The Parako.ID installer is a single bash script published at `https://get.parako.id`. It verifies the release artifact, stages it, preserves operator-owned runtime files, and atomically switches the application release pointer.
+
+> **Important:** Infrastructure, database backups, database migrations, process management, reverse proxy, TLS, secrets, and production configuration remain operator responsibilities. The installer never performs any of these. The next-steps card it prints after every install or update names each operator action and links to the per-release migration command.
+
+Source: [`installer/install.sh`](https://github.com/Dahkenangnon/Parako.ID/tree/main/installer).
 
 ## Quick reference
 
 ```bash
-# Interactive install
-curl -sSL https://get.parako.id | sudo bash
+# Fresh install (system-wide)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 
-# Non-interactive production install with TLS (single-tenant)
-curl -sSL https://get.parako.id | sudo bash -s -- \
-  --non-interactive --force \
-  --domain auth.example.com \
-  --db postgres --postgres-url 'postgresql://parako:***@localhost/parako' \
-  --redis-url 'redis://localhost:6379' \
-  --supervisor systemd \
-  --with-nginx --with-tls --tls-email admin@example.com
+# Pinned version
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash -s -- --version v0.2.0
 
-# After install, create the first admin via the public registration page:
-#   https://auth.example.com/auth/register
-# (Single-tenant admin seeding via the installer is not yet implemented;
-#  --bootstrap-admin currently requires --multi-tenant. See "Bootstrap admin"
-#  below.)
-
-# In-place update to latest stable
-curl -sSL https://get.parako.id | sudo bash -s -- --update
-
-# Preview the update without changing anything
-curl -sSL https://get.parako.id | sudo bash -s -- --update --plan
-
-# Roll back to the previous snapshot
-curl -sSL https://get.parako.id | sudo bash -s -- --rollback
-
-# Diagnose an existing install
-curl -sSL https://get.parako.id | sudo bash -s -- --doctor
+# Update / rollback / gc / doctor — see parako CLI for the helper
+parako update
+parako rollback
+parako gc --keep 3 --yes
+parako doctor
 ```
 
-After install, all of the above are also available via the operator binary `parako`. See [parako CLI](parako-cli.md).
+Full upgrade runbook: [Upgrades](upgrades.md). Operator CLI reference: [parako CLI](parako-cli.md).
 
-## Prerequisites
+## What the installer does
 
-| Requirement     | Version    | Notes                                                    |
-| --------------- | ---------- | -------------------------------------------------------- |
-| bash            | ≥ 4.0      | On Alpine: `apk add bash` first                          |
-| Node.js         | ≥ 24       | <https://nodejs.org>                                     |
-| pnpm            | ≥ 11       | `corepack enable && corepack prepare pnpm@11 --activate` |
-| openssl         | any recent | For secret generation                                    |
-| curl OR wget    | any recent | TLS 1.2 capable                                          |
-| sudo (or root)  | —          | For system-wide installs only                            |
-| Free disk space | ≥ 2 GB     | Verified by preflight                                    |
+| Phase    | Action                                                                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Verify   | OS / arch check, download tarball + SHA256SUMS + cosign signature + certificate, verify SHA256, verify the cosign keyless signature against Sigstore.                                                        |
+| Stage    | Extract into `INSTALL_DIR/releases/.staging.<tag>.<pid>/`, smoke-check `dist/src/index.js`, atomically promote to `releases/<tag>/`.                                                                         |
+| Preserve | On first install only, populate `INSTALL_DIR/runtime/` with the shipped `locales/`, `views/`, `assets/` subtrees. Replace `releases/<tag>/runtime` with a symlink back to the shared `INSTALL_DIR/runtime/`. |
+| Switch   | Atomic `mv -T` swap of the `INSTALL_DIR/current` symlink to the new release. Record metadata in `INSTALL_DIR/.parako-state` (mode `0644`, no secrets).                                                       |
+| Hand off | Install `/usr/local/bin/parako` (non-fatal). Print the next-steps card.                                                                                                                                      |
 
-The installer's preflight catches missing prerequisites, system time skew, port conflicts, DNS failures, and unwriteable directories **before** any download or mutation.
+Escape hatch: `--insecure-no-signature --reason "<text>"` when Sigstore is unreachable (reason is logged). See [Installer Security](installer-security.md).
 
-## What happens during an install
+## What the installer does NOT do
 
-1. **Preflight** — every requirement above is checked and reported as `[OK]`, `[WARN]`, or `[FAIL]`. Any failure exits the installer with code 2 before any download.
-2. **Sniff** — the installer probes your host for already-running services (PostgreSQL, MongoDB, Redis, nginx, certbot) and pre-fills wizard defaults from what it finds.
-3. **Download** — release tarball, SHA256SUMS, cosign signature, and certificate fetched from GitHub Releases (over TLS 1.2+, with the `--proto '=https' --tlsv1.2` curl flags borrowed from rustup).
-4. **Verify** — the tarball's SHA256 is matched against SHA256SUMS, and **the cosign signature is verified against the Sigstore transparency log** with the certificate identity bound to the `release.yml` workflow. Verification is mandatory.
-5. **Wizard** — collects environment, port, deployment URL, supervisor, database, Redis. Smart defaults from the sniff step. Press Enter to accept any default.
-6. **Beginning ritual** — before any mutation, the installer prints:
-   - Preflight results
-   - Detected services
-   - Plan: every file that will be created or modified outside `INSTALL_DIR`
-   - Install notes preview
-   - Install log location
-   - Safety assurances
-     Then waits for `[y/N]` (60s timeout) or 5s grace under `--non-interactive --force`.
-7. **Write `.env`** — atomically, mode 0600, owned by the `parako` user. Six cryptographic secrets generated via `openssl rand -hex 32`.
-8. **Validate connections** — DB and Redis dial-tests using the release's bundled drivers.
-9. **Install dependencies** — skipped if the tarball already ships `node_modules` (the default for v0.2.0+).
-10. **Run migrations** — Prisma `migrate deploy` (PostgreSQL), `db push` (SQLite), no-op (MongoDB).
-11. **Supervisor setup** — systemd unit files via `dist/scripts/manage/systemd.js install`, or PM2 via `runtime/ecosystem.config.cjs`.
-12. **Generate `INSTALL_NOTES.md`** — every wizard answer, every selected flag, version, snapshot path. Secrets redacted to `***`.
-13. **Install `parako` binary** — `/usr/local/bin/parako` (system) or `~/.local/bin/parako` (user).
-14. **nginx + TLS (if requested)** — vhost rendered via `write_root_file()` with allowlist + backup + verify; certbot run for Let's Encrypt.
-15. **Health check** — `/health` endpoint polled for 15 s.
-16. **Recovery card** — prints URL, admin path, log location, common operations.
+Operator-owned, never performed by the installer:
 
-## Modes
+- **Database** — connections, migrations, backups, restores, schema rollbacks.
+- **Services** — start, stop, restart, supervisor configuration (systemd, PM2, docker, runit, …).
+- **Reverse proxy** — nginx, Caddy, Traefik, HAProxy configuration and reloads.
+- **TLS** — certbot, Let's Encrypt, internal CA, certificate renewal.
+- **Secrets** — `runtime/.env`, signing keys (`runtime/jwks/`), API tokens, admin passwords.
+- **OS packages** — Node.js, pnpm, openssl, database client tooling, cosign.
+- **Bootstrap admin** — create the first administrator via `/auth/register`, then promote.
 
-The installer supports six mutually-exclusive modes:
+The release notes for every version list the exact migration command (if any) and any breaking changes.
 
-| Mode         | When to use                                       |
-| ------------ | ------------------------------------------------- |
-| (no flag)    | Fresh install on a clean machine                  |
-| `--update`   | In-place upgrade of an existing install           |
-| `--rollback` | Restore the previous snapshot                     |
-| `--doctor`   | Diagnose an existing install (no mutation)        |
-| `--gc`       | Garbage-collect old snapshots                     |
-| `--demo`     | Ephemeral SQLite install in `/tmp` for evaluation |
+## Layout
 
-## Update flow
+```text
+/opt/parako-id/
+├── current        →  /opt/parako-id/releases/v0.2.0/      (atomic mv -T swap)
+├── releases/
+│   └── v0.2.0/
+│       ├── dist/, node_modules/, package.json, public/, contrib/
+│       └── runtime  →  /opt/parako-id/runtime/             (absolute symlink)
+├── runtime/                                                (operator-managed)
+│   ├── .env                                                (you create from contrib/.env.sample)
+│   ├── jwks/                                               (only for file-backed key storage)
+│   ├── parako-rp.jsonc                                     (your OIDC client registry)
+│   ├── data/, uploads/, logs/, backups/, config-backups/   (operator data)
+│   └── locales/, views/, assets/                           (populated on first install only)
+├── .parako-state                                           (0644, no secrets)
+└── .install-lock
+```
+
+Point your supervisor's `WorkingDirectory` (systemd) or `cwd` (PM2) at `/opt/parako-id/current`.
+
+## Configuration setup (first install)
+
+Copy the shipped samples into your operator-owned `runtime/` tree, edit `.env`, and (for file-backed key storage only) generate `runtime/jwks/jwks.json` with `jose`/`openssl`. The default DB-backed key store does not require it. See [Configuration](configuration.md) and [Deployment](deployment.md) for env-var and supervisor/nginx/TLS reference.
 
 ```bash
-# Latest stable
-curl -sSL https://get.parako.id | sudo bash -s -- --update
-
-# Pin
-curl -sSL https://get.parako.id | sudo bash -s -- --update --version 0.3.1
-
-# Plan (no mutations)
-curl -sSL https://get.parako.id | sudo bash -s -- --update --plan
-
-# Everything except the directory swap
-curl -sSL https://get.parako.id | sudo bash -s -- --update --dry-run
+sudo cp /opt/parako-id/current/contrib/.env.sample            /opt/parako-id/runtime/.env
+sudo cp /opt/parako-id/current/contrib/parako-rp.sample.jsonc /opt/parako-id/runtime/parako-rp.jsonc
+sudo $EDITOR /opt/parako-id/runtime/.env
 ```
 
-Update procedure:
-
-1. **Snapshot** the current install to `${INSTALL_DIR}.backup.${ts}` (full directory copy).
-2. **Stop the service** via the recorded supervisor.
-3. **Back up the database** to `runtime/backups/pre-${ver}-${ts}.*` (`pg_dump` / `mongodump` / `sqlite3 .backup`). Failure to back up aborts the update.
-4. **Download + verify** the target release (cosign mandatory).
-5. **Extract** to `${INSTALL_DIR}.new.${ts}`.
-6. **Preserve runtime state** — `runtime/{jwks,views,assets,config-backups,data,uploads}`, `runtime/.env`, and `.supervisor` marker carried over from the old install. **`runtime/locales` is intentionally refreshed** from the new tarball so new translations land.
-7. **Run migrations** against the new code.
-8. **Atomic swap** — the new directory takes over `${INSTALL_DIR}`; the old one becomes `${INSTALL_DIR}.old.${ts}`.
-9. **Start the service** and **health-check** `/health`.
-10. **Auto-rollback on health failure** — the snapshot is restored, the broken upgrade is preserved at `${INSTALL_DIR}.failed.${ts}` for inspection.
-
-## Rollback flow
+## Update procedure
 
 ```bash
-# Latest snapshot
-curl -sSL https://get.parako.id | sudo bash -s -- --rollback
-
-# Specific snapshot
-curl -sSL https://get.parako.id | sudo bash -s -- --rollback --to 20260601T134208Z
-
-# Also rewind DB migrations (use with care)
-curl -sSL https://get.parako.id | sudo bash -s -- --rollback --migrate-back
+parako update                     # latest stable
+parako update --version v0.2.1    # pin
 ```
 
-Rollback explicitly does **not** auto-revert on health-check failure (the operator chose rollback; if the snapshot is broken, the operator wants to know loud and clear).
+See [Upgrades](upgrades.md) for the full operator runbook (read notes → backup DB → dry-run → apply → migrate → restart → verify → rollback). Pre-change-window rehearsals:
+
+| Mode                      | Network | Download + verify | INSTALL_DIR writes       |
+| ------------------------- | ------- | ----------------- | ------------------------ |
+| `parako update --plan`    | no      | no                | no                       |
+| `parako update --dry-run` | yes     | yes               | no                       |
+| `parako update` (real)    | yes     | yes               | yes (after confirmation) |
+
+## Rollback
+
+```bash
+parako rollback                  # previous release
+parako rollback --to v0.1.5      # specific release
+```
+
+Atomic re-aim of the `current` symlink. Application files revert.
+
+> **Warning:** Database migrations are NOT reversed. See [Upgrades → Rollback](upgrades.md#rollback) for the decision tree.
 
 ## Garbage collection
 
 ```bash
-# Preview (default; no deletes)
-curl -sSL https://get.parako.id | sudo bash -s -- --gc --keep 3
-
-# Apply
-curl -sSL https://get.parako.id | sudo bash -s -- --gc --keep 3 --yes
+parako gc                        # preview
+parako gc --keep 3 --yes         # apply
 ```
 
-Removes `*.backup.*`, `*.old.*`, `*.failed.*`, and `runtime/backups/pre-*` older than the N most recent of each kind.
+Two releases are protected unconditionally: the currently-pointed release and the previous one. `--keep N` (default 3) retains N more from the deletable set. **GC never touches `runtime/`** — including `runtime/backups/`, `runtime/logs/`, and `runtime/uploads/`.
 
-## Multi-tenant install
+## Doctor
 
 ```bash
-curl -sSL https://get.parako.id | sudo bash -s -- \
-  --non-interactive --force \
-  --multi-tenant --base-domain auth.example.com \
-  --db postgres --postgres-url '...' \
-  --redis-url 'redis://localhost:6379' \
-  --supervisor systemd \
-  --with-nginx --with-tls --tls-email admin@example.com \
-  --certbot-dns-plugin cloudflare \
-  --bootstrap-admin admin@example.com
+parako doctor                    # human-readable
+parako doctor --json             # structured output
 ```
 
-Prerequisites:
+Reports file/config sanity only: resolves `current`, confirms `dist/src/index.js` exists, warns on missing `runtime/.env`, lists the releases on disk. Doctor does NOT call `systemctl`, `pm2`, `curl /health`, or any database client. Use your own tooling for service / DB / health probing.
 
-- Wildcard DNS A record: `*.auth.example.com` → VPS IP
-- Explicit A records for `_ops.auth.example.com` and `_platforms.auth.example.com`
-- A certbot DNS plugin (`cloudflare`, `route53`, `digitalocean`, …) configured for wildcard cert issuance
+## Air-gapped install
 
-See [Multi-tenancy](multi-tenancy.md) for application-level configuration.
-
-## Bootstrap admin
-
-`--bootstrap-admin <email>` seeds the first administrator on the very first start of the app, via the master-tenant bootstrap path in [`src/multi-tenancy/master-tenant-bootstrap.ts`](https://github.com/Dahkenangnon/Parako.ID/tree/main/src/multi-tenancy/master-tenant-bootstrap.ts). It is currently **gated by `multiTenancy.enabled`**, so the installer enforces:
-
-```
---bootstrap-admin  =>  also requires --multi-tenant  (or --demo)
-```
-
-Running `--bootstrap-admin` without `--multi-tenant` aborts with an explicit error. In single-tenant mode, create the first administrator by visiting `/auth/register` after the installer finishes; the very first user can be promoted to admin via the admin panel. A first-class single-tenant seeding path is planned for a later release.
-
-`--demo` enables multi-tenancy implicitly so the printed admin credentials log in.
-
-## Air-gapped / offline install
+The installer itself must already be on the air-gapped host. **On a connected machine:**
 
 ```bash
-curl -sSL https://get.parako.id | sudo bash -s -- \
-  --offline \
-  --version v0.2.0 \
-  --tarball   ./parako-id-v0.2.0.tar.gz \
-  --checksum  ./SHA256SUMS \
-  --signature ./parako-id-v0.2.0.tar.gz.sig \
+VERSION=v0.2.0
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id/install.sh -o install.sh
+gh release download "$VERSION" -R Dahkenangnon/Parako.ID \
+  -p "parako-id-${VERSION}.tar.gz" \
+  -p "parako-id-${VERSION}.tar.gz.sig" \
+  -p "parako-id-${VERSION}.tar.gz.pem" \
+  -p SHA256SUMS
+# Also fetch a cosign binary for the air-gapped host's arch:
+#   https://docs.sigstore.dev/cosign/system_config/installation/
+```
+
+**Transfer** all files plus the `cosign` binary to the air-gapped host. **On that host**, with `cosign` on `PATH`:
+
+```bash
+sudo bash ./install.sh \
+  --offline --version v0.2.0 \
+  --tarball     ./parako-id-v0.2.0.tar.gz \
+  --checksum    ./SHA256SUMS \
+  --signature   ./parako-id-v0.2.0.tar.gz.sig \
   --certificate ./parako-id-v0.2.0.tar.gz.pem
 ```
 
-Under `--offline`:
+Under `--offline`: `--version` is required; `cosign` must be preinstalled (the installer refuses to fetch it); cosign verification still runs against the supplied files.
 
-- `--version <vX.Y.Z>` is required (the GitHub releases API is not consulted).
-- `cosign` MUST be preinstalled on `PATH`; the installer refuses to fetch the cosign binary in offline mode. Install cosign from <https://docs.sigstore.dev/cosign/system_config/installation/> on a connected machine, then transfer it to the air-gapped host.
-- Preflight DNS and time-sync probes are skipped; the installer trusts the local clock.
-- Cosign verification still runs against the supplied files; the same Sigstore-bound identity regex applies.
-
-A release-manifest mirror can be configured via `PARAKO_RELEASE_MIRROR` for partially-disconnected environments where GitHub's API is intermittently unreachable but the release CDN is. The mirror path is unused under `--offline`.
-
-## Demo mode
+## Verifying the installer itself
 
 ```bash
-curl -sSL https://get.parako.id | bash -s -- --demo
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/install.sh
+EXPECTED="<sha256 from the release notes>"
+[ "$(sha256sum /tmp/install.sh | awk '{print $1}')" = "$EXPECTED" ] \
+  && bash /tmp/install.sh --help \
+  || echo "MISMATCH — DO NOT RUN"
 ```
 
-Ephemeral install under `/tmp/parako-id-demo-${pid}` with SQLite, a backgrounded node process, and an auto-seeded admin (one-time password printed). Opens your default browser to the login page. Register OIDC clients via `/admin/oidc-clients` after first login. Tear down with the printed `kill ... && rm -rf ...` command.
+Full chain-of-trust: [Installer Security](installer-security.md).
 
-A red `DEMO MODE — DO NOT USE IN PRODUCTION` banner is printed; never confused with a production install.
+## Prerequisites
 
-## Install log
+| Requirement     | Version                    | Notes                                                     |
+| --------------- | -------------------------- | --------------------------------------------------------- |
+| Linux           | x86_64 or aarch64          | Other OS / arch fails fast in preflight                   |
+| bash            | ≥ 4.0                      | Alpine: `apk add bash`                                    |
+| GNU coreutils   | any recent                 | For `mv -T`. Alpine: `apk add coreutils`                  |
+| util-linux      | any recent                 | For `flock`. Alpine: `apk add util-linux`                 |
+| curl OR wget    | any recent                 | TLS 1.2 capable                                           |
+| openssl, tar    | any recent                 | For checksum verification + extraction                    |
+| Free disk space | ≥ 2 GB                     | Verified by preflight                                     |
+| Node.js, pnpm   | per release notes          | Operator-provisioned; the installer does not install them |
+| Database        | per release notes          | Operator-provisioned (PostgreSQL, MongoDB, or SQLite)     |
+| Supervisor      | systemd / PM2 / docker / … | Operator-managed                                          |
 
-Every run writes a structured log to:
-
-- `/var/log/parako-install-${ts}.log` (root install)
-- `~/.local/state/parako/install-${ts}.log` (user install)
-
-Mode 0600. Sensitive values (URI credentials, secret/key/token/password identifiers) are auto-redacted on every line.
-
-## Beginning ritual
-
-Before any mutation, every install and update prints six labeled panels in plain text (no Unicode box-drawing). Operators see exactly what's about to happen and can abort with Ctrl+C.
-
-Example:
-
-```
-parako.id installer v0.2.0
-
-== Preflight checks
-  Node ............................. v24.5.0 [OK]
-  pnpm ............................. 11.4.0 [OK]
-  Disk free ........................ 14.2 GB [OK]
-  Port 9007 ........................ free [OK]
-  DNS .............................. github.com, api.github.com [OK]
-  System time ...................... within 12s of UTC [OK]
-
-== Detected on this host
-  PostgreSQL ....................... localhost:5432
-  Redis ............................ localhost:6379
-
-== Plan
-  Operation ........................ fresh install
-  Version .......................... v0.2.0
-  Install directory ................ /opt/parako-id
-  Database ......................... postgresql
-  Supervisor ....................... systemd
-  URL .............................. https://auth.example.com
-
-  Files that will be written outside /opt/parako-id:
-    /etc/systemd/system/parako-id.service
-    /etc/systemd/system/parako-id-worker.service
-    /etc/nginx/sites-available/parako-id
-    /usr/local/bin/parako
-    /var/log/parako-install-20260601T134208Z.log
-
-== Install notes
-  Operator answers will be written to:
-    /opt/parako-id/runtime/INSTALL_NOTES.md (mode 0600; secrets redacted)
-
-== Install log
-  /var/log/parako-install-20260601T134208Z.log
-
-Before anything changes on your system:
-  - Every preflight check above passed.
-  - The release tarball will be verified via cosign (Sigstore).
-  - A complete snapshot is taken before any mutation.
-  - You can roll back later with `parako rollback`.
-
-Proceed? [y/N]
-```
+If a preflight check fails, the installer exits with code 2 before any download or filesystem write.
 
 ## See also
 
-- [parako CLI](parako-cli.md) — operator binary reference
-- [Installer security](installer-security.md) — threat model and cosign chain-of-trust
-- [Install from source](installer-from-source.md) — git-clone path with honest drawbacks
-- [Updates & maintenance](updates-and-maintenance.md) — broader operational topics
-- [Deployment](deployment.md) — nginx, TLS, multi-tenancy infrastructure notes
+- [Upgrades](upgrades.md)
+- [parako CLI](parako-cli.md)
+- [Installer Security](installer-security.md)
+- [Install from Source](installer-from-source.md)
+- [Configuration](configuration.md)
+- [Deployment](deployment.md)
+- [Quickstart](quickstart.md)
+- [Troubleshooting](troubleshooting.md)

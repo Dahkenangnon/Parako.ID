@@ -45,48 +45,55 @@ Parako.ID runs on a single VPS — or scales out across many — and gives you t
 
 ## Install
 
-One-liner (recommended):
+> **Parako's installer/updater safely places and updates Parako application files.** It verifies the release artifact, stages it, preserves operator-owned runtime/config files, and switches the application release pointer. **Infrastructure, database backups, database migrations, process management, reverse proxy, TLS, secrets, and production configuration remain operator responsibilities.**
+
+One-liner:
 
 ```bash
-# Interactive install
-curl -sSL https://get.parako.id | bash
-
-# Try it in 30 seconds (ephemeral, opens browser)
-curl -sSL https://get.parako.id | bash -s -- --demo
+# Install the latest stable application release
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-The installer runs preflight checks, verifies the release via cosign (Sigstore), and installs the `parako` operator binary alongside the server. After install:
+After install the `parako` operator binary is on `PATH`. The minimal verb set is intentional — the installer never manages your supervisor, DB, or proxy:
 
 ```bash
-parako status            # supervisor + /health + version
-parako doctor            # full diagnostic
-parako update            # in-place upgrade with auto-rollback
-parako --help            # all verbs
+parako version            # parako + app + previous version
+parako paths              # resolved install paths
+parako doctor             # file/config sanity (no service / DB / network)
+parako update             # in-place application-files update
+parako rollback           # app-files-only rollback (DOES NOT roll back DB migration)
+parako gc --keep 3 --yes  # prune old releases/ (never touches runtime/)
 ```
 
-See [docs/installer](https://docs.parako.id/installer) and [docs/parako-cli](https://docs.parako.id/parako-cli) for the full flag and verb reference.
+After install, operator next steps:
+
+1. **Provision** Node.js ≥ 24 + pnpm ≥ 11, a database (PostgreSQL or MongoDB recommended for production; SQLite for evaluation), and optionally Redis.
+2. **Create your `.env`**: `cp /opt/parako-id/current/contrib/.env.sample /opt/parako-id/runtime/.env` and edit.
+3. **Wire your supervisor** to `/opt/parako-id/current` (systemd / PM2 / docker / your tool of choice). A sample PM2 ecosystem file ships at `/opt/parako-id/current/contrib/ecosystem.config.cjs.sample`. Reference nginx vhost examples live under [`docs/reference/`](./docs/reference/).
+4. **Apply any DB migration** named in the release notes (the installer does not run migrations).
+5. **Start your service** and verify `/health`.
+
+See [docs/installer](https://docs.parako.id/installer) and [docs/parako-cli](https://docs.parako.id/parako-cli) for the full reference.
 
 Manual tarball (when piping `curl | bash` is not acceptable):
 
 ```bash
-# GitHub direct asset URLs require the exact filename — pick the version you want.
 VERSION=v0.2.0
 wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz"
 wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz.sig"
 wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz.pem"
-# Verify the signature before extracting (cosign installation: https://docs.sigstore.dev/cosign/system_config/installation/)
+wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/SHA256SUMS"
+# Install cosign first: https://docs.sigstore.dev/cosign/system_config/installation/
 cosign verify-blob \
   --signature "parako-id-${VERSION}.tar.gz.sig" \
   --certificate "parako-id-${VERSION}.tar.gz.pem" \
   --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   "parako-id-${VERSION}.tar.gz"
-tar -xzf "parako-id-${VERSION}.tar.gz" && cd parako-id-release
-cp .env.example runtime/.env   # edit DB, Redis, and admin credentials
-pnpm start
+# Then run the installer in --offline mode against the verified files (see docs/installer for full args).
 ```
 
-**Requirements:** Node.js ≥ 24, pnpm ≥ 11. SQLite is the zero-setup default; MongoDB or PostgreSQL recommended for production along with Redis.
+**Requirements:** Linux x86_64 or aarch64, bash ≥ 4.0, GNU coreutils (`mv -T`), util-linux (`flock`), curl/wget, openssl, tar. Node.js / pnpm / database / Redis are operator-provisioned.
 
 ## Usage
 
@@ -106,24 +113,24 @@ pnpm db:push && pnpm keys generate && pnpm dev
 
 ## Documentation
 
-| Section                                                             | What it covers                                                       |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Quickstart](https://docs.parako.id/quickstart)                     | Install, first-user, first-client in under 10 minutes                |
-| [Installer](https://docs.parako.id/installer)                       | Every flag for install / update / rollback / doctor / gc / demo      |
-| [parako CLI](https://docs.parako.id/parako-cli)                     | `parako` operator binary verbs                                       |
-| [Installer security](https://docs.parako.id/installer-security)     | Threat model, cosign chain-of-trust, how to verify install.sh itself |
-| [Install from source](https://docs.parako.id/installer-from-source) | git-clone path with honest drawbacks                                 |
-| [Configuration](https://docs.parako.id/configuration)               | Env vars, schema, hierarchy, secret rotation                         |
-| [Multi-tenancy](https://docs.parako.id/multi-tenancy)               | Per-tenant isolation, branding, OIDC instances                       |
-| [Social login](https://docs.parako.id/social-login)                 | Google, GitHub, Microsoft, LinkedIn, Facebook                        |
-| [Deployment](https://docs.parako.id/deployment)                     | systemd, PM2, reverse proxy, TLS, hardening                          |
-| [CLI tools](https://docs.parako.id/cli-tools)                       | `pnpm client`, `pnpm keys`, `pnpm systemd`                           |
-| [Management API](https://docs.parako.id/api/overview)               | Programmatic admin via 30 scoped permissions                         |
-| [Upgrades](https://docs.parako.id/upgrades)                         | What survives an upgrade and how to apply new defaults               |
+| Section                                                             | What it covers                                                   |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| [Quickstart](https://docs.parako.id/quickstart)                     | Install, first-user, first-client in under 10 minutes            |
+| [Installer](https://docs.parako.id/installer)                       | Every flag for install / update / rollback / doctor / gc         |
+| [parako CLI](https://docs.parako.id/parako-cli)                     | `parako` operator binary verbs                                   |
+| [Installer security](https://docs.parako.id/installer-security)     | Threat model, cosign chain-of-trust, verifying install.sh itself |
+| [Install from source](https://docs.parako.id/installer-from-source) | git-clone path and trade-offs vs the tarball installer           |
+| [Configuration](https://docs.parako.id/configuration)               | Env vars, schema, hierarchy, secret rotation                     |
+| [Multi-tenancy](https://docs.parako.id/multi-tenancy)               | Per-tenant isolation, branding, OIDC instances                   |
+| [Social login](https://docs.parako.id/social-login)                 | Google, GitHub, Microsoft, LinkedIn, Facebook                    |
+| [Deployment](https://docs.parako.id/deployment)                     | systemd, PM2, reverse proxy, TLS, hardening                      |
+| [CLI tools](https://docs.parako.id/cli-tools)                       | `pnpm client`, `pnpm keys`, `pnpm systemd`                       |
+| [Management API](https://docs.parako.id/api/overview)               | Programmatic admin via 30 scoped permissions                     |
+| [Upgrades](https://docs.parako.id/upgrades)                         | What survives an upgrade and how to apply new defaults           |
 
 ## Roadmap
 
-> **OpenID Federation 1.0** support is planned. We are building [oidfed](https://github.com/Dahkenangnon/oidfed) — a runtime-agnostic, spec-compliant implementation for JavaScript — and Parako.ID will integrate it in a future release. Follow at [oidfed.com](https://oidfed.com) and star the [repo](https://github.com/Dahkenangnon/oidfed) to track progress.
+[OpenID Federation 1.0](https://openid.net/specs/openid-federation-1_0.html) integration is in development via the standalone [oidfed](https://github.com/Dahkenangnon/oidfed) library. Track progress at [oidfed.com](https://oidfed.com).
 
 ## Contributing
 

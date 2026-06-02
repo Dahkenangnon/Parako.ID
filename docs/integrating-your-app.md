@@ -5,36 +5,28 @@ category: 'Guides'
 order: 3
 ---
 
-## Overview
+Parako.ID is a standards-compliant OIDC / OAuth 2.0 provider. Any client library that supports OpenID Connect works out of the box; there is no Parako.ID-specific SDK.
 
-Parako.ID is a standards-compliant OIDC/OAuth2 provider. Any client library that supports OpenID Connect works out of the box. You do not need a Parako.ID-specific SDK.
+## Pick the right grant
 
-The integration flow is the same regardless of your application framework:
+| Application type               | Grant                     | Secret | PKCE     | Token storage                                        |
+| ------------------------------ | ------------------------- | ------ | -------- | ---------------------------------------------------- |
+| Web app (server-rendered)      | Authorization Code + PKCE | Yes    | Required | Server-side session                                  |
+| Single Page App (browser-only) | Authorization Code + PKCE | No     | Required | Memory or sessionStorage; refresh via silent re-auth |
+| Native / mobile                | Authorization Code + PKCE | No     | Required | Secure keychain / keystore                           |
+| Backend service (no user)      | Client Credentials        | Yes    | n/a      | Server-side, scoped per request                      |
+| Smart TV / CLI / IoT           | Device Flow (RFC 8628)    | Yes    | n/a      | Device-local; refresh on demand                      |
 
-1. Register an OIDC client in Parako.ID
-2. Discover endpoints via the discovery URL
-3. Implement the appropriate grant type for your app
-4. Verify tokens and fetch user info
+See [OIDC Clients](oidc-clients.md) for the matching preset, allowed scopes, and PKCE enforcement rules, and [OIDC Endpoints](oidc-endpoints.md) for the endpoint reference and token TTLs.
 
-## Step 1: Register a Client
+## The integration flow
 
-Register a client using the CLI or admin panel. See [OIDC Clients](oidc-clients.md) for details.
+1. Register an OIDC client. See [OIDC Clients](oidc-clients.md).
+2. Point your library at discovery: `https://your-host/oidc/v1/.well-known/openid-configuration`. Most libraries auto-configure from this endpoint.
+3. Implement the grant from the table above.
+4. Verify tokens (`/oidc/v1/jwks`) and fetch user info (`/oidc/v1/userinfo`).
 
-```bash
-pnpm client add
-```
-
-Note the `client_id` and `client_secret` (if applicable) from the output.
-
-## Step 2: Discover Endpoints
-
-Point your OIDC client library to the discovery URL:
-
-```
-https://your-parako.example.com/oidc/v1/.well-known/openid-configuration
-```
-
-Most libraries auto-configure themselves from this endpoint — no need to manually specify authorization, token, or userinfo URLs.
+The discovery URL is configurable via `oidc.path` (default `/oidc/v1`); see [Configuration](configuration.md).
 
 ## Web Application (Confidential)
 
@@ -86,71 +78,18 @@ const userinfo = await client.fetchUserInfo(
 );
 ```
 
-### PHP / Laravel — `jumbojett/openid-connect-php`
+### Other server-side libraries
 
-```bash
-composer require jumbojett/openid-connect-php
-```
+The pattern above (discover → PKCE → authorize → callback → fetch userinfo) maps directly across languages. Point any of these libraries at `https://your-parako.example.com/oidc/v1/.well-known/openid-configuration`:
 
-```php
-use Jumbojett\OpenIDConnectClient;
-
-$oidc = new OpenIDConnectClient(
-    'https://your-parako.example.com/oidc/v1',
-    'YOUR_CLIENT_ID',
-    'YOUR_CLIENT_SECRET'
-);
-
-$oidc->setRedirectURL('https://app.example.com/callback');
-$oidc->addScope(['openid', 'profile', 'email']);
-$oidc->setCodeChallengeMethod('S256');
-
-// Redirects to Parako.ID and handles callback automatically
-$oidc->authenticate();
-
-$sub     = $oidc->getVerifiedClaims('sub');
-$email   = $oidc->getVerifiedClaims('email');
-$name    = $oidc->getVerifiedClaims('name');
-$token   = $oidc->getAccessToken();
-```
-
-### Python / Flask / Django — `Authlib`
-
-```bash
-pip install Authlib requests
-```
-
-```python
-import requests as http_requests
-from authlib.integrations.requests_client import OAuth2Session
-
-ISSUER = 'https://your-parako.example.com/oidc/v1'
-
-# Fetch OIDC provider metadata
-metadata = http_requests.get(f'{ISSUER}/.well-known/openid-configuration').json()
-
-client = OAuth2Session(
-    client_id='YOUR_CLIENT_ID',
-    client_secret='YOUR_CLIENT_SECRET',
-    scope='openid profile email',
-    redirect_uri='https://app.example.com/callback',
-    code_challenge_method='S256',
-)
-
-# Step 1: Generate authorization URL
-uri, state = client.create_authorization_url(metadata['authorization_endpoint'])
-# Redirect user to `uri`...
-
-# Step 2: In callback handler, exchange code for tokens
-token = client.fetch_token(
-    metadata['token_endpoint'],
-    authorization_response=callback_url,
-)
-
-# Step 3: Fetch user info
-userinfo = client.get(metadata['userinfo_endpoint']).json()
-# userinfo['sub'], userinfo['email'], userinfo['name']
-```
+| Stack                   | Library                                           | Install                                         |
+| ----------------------- | ------------------------------------------------- | ----------------------------------------------- |
+| PHP / Laravel           | `jumbojett/openid-connect-php`                    | `composer require jumbojett/openid-connect-php` |
+| Python / Flask / Django | `Authlib`                                         | `pip install Authlib`                           |
+| Ruby / Rails            | `omniauth_openid_connect`                         | `gem install omniauth_openid_connect`           |
+| Java / Spring           | Spring Security OAuth2 Client                     | (Spring starter)                                |
+| Go                      | `coreos/go-oidc`                                  | `go get github.com/coreos/go-oidc/v3`           |
+| .NET                    | Microsoft.AspNetCore.Authentication.OpenIdConnect | NuGet                                           |
 
 ## Single-Page Application (Public)
 
@@ -196,75 +135,15 @@ function Dashboard() {
 }
 ```
 
-### Angular — `angular-auth-oidc-client`
+### Other SPA libraries
 
-```bash
-npm install angular-auth-oidc-client
-```
+| Framework | Library                                        |
+| --------- | ---------------------------------------------- |
+| Angular   | `angular-auth-oidc-client`                     |
+| Vue       | `oidc-client-ts` (vanilla, framework-agnostic) |
+| Svelte    | `oidc-client-ts` (vanilla)                     |
 
-```typescript
-// app.config.ts
-import { provideAuth } from 'angular-auth-oidc-client';
-
-export const appConfig = {
-  providers: [
-    provideAuth({
-      config: {
-        authority: 'https://your-parako.example.com/oidc/v1',
-        clientId: 'YOUR_SPA_CLIENT_ID',
-        redirectUrl: 'https://app.example.com/callback',
-        postLogoutRedirectUri: 'https://app.example.com',
-        scope: 'openid profile email',
-        responseType: 'code',
-      },
-    }),
-  ],
-};
-
-// In a component:
-import { OidcSecurityService } from 'angular-auth-oidc-client';
-
-export class AppComponent {
-  constructor(private oidc: OidcSecurityService) {}
-  login() {
-    this.oidc.authorize();
-  }
-  logout() {
-    this.oidc.logoff();
-  }
-  // Subscribe to this.oidc.userData$ for user info
-}
-```
-
-### Vue.js — `oidc-client-ts`
-
-```bash
-npm install oidc-client-ts
-```
-
-```typescript
-import { UserManager } from 'oidc-client-ts';
-
-const userManager = new UserManager({
-  authority: 'https://your-parako.example.com/oidc/v1',
-  client_id: 'YOUR_SPA_CLIENT_ID',
-  redirect_uri: 'https://app.example.com/callback',
-  post_logout_redirect_uri: 'https://app.example.com',
-  response_type: 'code',
-  scope: 'openid profile email',
-  automaticSilentRenew: true,
-});
-
-// Redirect to login
-await userManager.signinRedirect();
-
-// In callback page:
-const user = await userManager.signinRedirectCallback();
-// user.access_token, user.profile.sub, user.profile.email
-
-// Sign out
-await userManager.signoutRedirect();
-```
+All three configure with the same fields: `authority`, `client_id`, `redirect_uri`, `scope`, `response_type: 'code'`, `automaticSilentRenew: true`.
 
 ## Native / Mobile App
 
@@ -315,37 +194,16 @@ await revoke(config, {
 });
 ```
 
-### Flutter — `flutter_appauth`
+### Other mobile/desktop libraries
 
-```bash
-flutter pub add flutter_appauth
-```
+| Platform           | Library                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| Flutter            | `flutter_appauth`                                                   |
+| iOS (Swift)        | AppAuth-iOS                                                         |
+| Android (Kotlin)   | AppAuth-Android                                                     |
+| Electron / desktop | `electron-oauth2` or `openid-client` with a local-loopback redirect |
 
-```dart
-import 'package:flutter_appauth/flutter_appauth.dart';
-
-final appAuth = const FlutterAppAuth();
-
-// Login — opens system browser
-final result = await appAuth.authorizeAndExchangeCode(
-  AuthorizationTokenRequest(
-    'YOUR_MOBILE_CLIENT_ID',
-    'com.example.myapp://callback',
-    issuer: 'https://your-parako.example.com/oidc/v1',
-    scopes: ['openid', 'profile', 'email'],
-  ),
-);
-
-// result?.accessToken, result?.idToken, result?.refreshToken
-
-// Refresh tokens
-final refreshed = await appAuth.token(TokenRequest(
-  'YOUR_MOBILE_CLIENT_ID',
-  'com.example.myapp://callback',
-  issuer: 'https://your-parako.example.com/oidc/v1',
-  refreshToken: result?.refreshToken,
-));
-```
+All use the same flow: open the system browser, complete the authorization code grant with PKCE, exchange via the discovery `token_endpoint`.
 
 ## Machine-to-Machine
 
@@ -480,6 +338,9 @@ Register a `backchannel_logout_uri` with your client to receive logout notificat
 
 Your application should validate the `logout_token` and invalidate the corresponding session.
 
-## Compatibility Note
+## See also
 
-Parako.ID follows the OpenID Connect and OAuth 2.0 specifications. The libraries listed in this guide are popular community-maintained projects — they are not developed or maintained by Parako.ID. While they work well with any standards-compliant provider, library updates could occasionally introduce breaking changes or non-standard behavior. Always refer to each library's own documentation for the most current API and configuration options.
+- [OIDC Clients](oidc-clients.md)
+- [OIDC Endpoints](oidc-endpoints.md)
+- [Configuration](configuration.md)
+- [Social Login](social-login.md)
