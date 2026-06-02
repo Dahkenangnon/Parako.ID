@@ -385,6 +385,12 @@ create_production_package() {
         find "$release_dir/runtime" -maxdepth 1 -mindepth 1 \
              ! -name 'locales' ! -name 'views' ! -name 'assets' \
              -exec rm -rf {} + 2>/dev/null || true
+        # Ensure the three first-install dirs exist even when .gitignore
+        # excluded their contents from the source checkout. Operators
+        # override by dropping files in here after first install.
+        mkdir -p "$release_dir/runtime/locales" \
+                 "$release_dir/runtime/views" \
+                 "$release_dir/runtime/assets"
         log_info "Sanitized release_dir/runtime/ (kept: locales, views, assets)"
     else
         log_error "runtime/ directory not found — artifact will be broken"

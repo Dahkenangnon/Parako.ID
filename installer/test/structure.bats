@@ -182,11 +182,11 @@ load helpers
 }
 
 @test "install.sh stages extraction into .staging.\$\$ before promotion" {
-  grep -q '.staging.${TAG}.$$' "${INSTALLER_SH}"
+  grep -qF '.staging.${TAG}.$$' "${INSTALLER_SH}"
 }
 
 @test "install.sh uses unique temp symlinks (current.tmp.\$\$)" {
-  grep -q 'current.tmp.$$' "${INSTALLER_SH}"
+  grep -qF 'current.tmp.$$' "${INSTALLER_SH}"
 }
 
 @test "install.sh acquires flock around mutating modes" {
