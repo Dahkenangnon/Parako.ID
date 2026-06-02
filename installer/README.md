@@ -71,14 +71,13 @@ parako --help                      # all commands
 
 ## Files in this directory
 
-| File           | Purpose                                                                                          |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| `install.sh`   | The installer + updater + rollback + doctor + gc — served at `get.parako.id`.                    |
-| `parako.sh`    | The operator binary, copied to `/usr/local/bin/parako` (system) or `~/.local/bin/parako` (user). |
-| `index.html`   | Landing page at `get.parako.id`.                                                                 |
-| `templates/`   | nginx vhost templates rendered by `--with-nginx` / `--multi-tenant`.                             |
-| `test/`        | ShellCheck + Bats lint + 4-OS smoke matrix (Ubuntu 22/24, Debian 12, Alpine 3.19).               |
-| `CHANGELOG.md` | Installer-only changelog (separate from the project CHANGELOG).                                  |
+| File         | Purpose                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| `install.sh` | The installer + updater + rollback + doctor + gc — served at `get.parako.id`.                    |
+| `parako.sh`  | The operator binary, copied to `/usr/local/bin/parako` (system) or `~/.local/bin/parako` (user). |
+| `index.html` | Landing page at `get.parako.id`.                                                                 |
+| `templates/` | nginx vhost templates rendered by `--with-nginx` / `--multi-tenant`.                             |
+| `test/`      | ShellCheck + Bats lint + 4-OS smoke matrix (Ubuntu 22/24, Debian 12, Alpine 3.19).               |
 
 ## Security
 
