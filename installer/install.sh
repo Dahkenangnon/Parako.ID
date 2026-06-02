@@ -223,11 +223,19 @@ log_init() {
 # §3  Minimal prompt helpers (used by beginning_ritual only)
 # -----------------------------------------------------------------------------
 prompt_yn_timeout() {
-  local text=$1 default=$2 secs=${3:-60} hint="" answer=""
+  local text=$1 default=$2 secs=${3:-60} hint="" answer="" rc=0
   if [ "${default}" = "yes" ]; then hint="Y/n"; else hint="y/N"; fi
   printf '  %s%s%s [%s%s%s] (%ds timeout): ' \
     "${C_CYAN}" "${text}" "${C_RESET}" "${C_DIM}" "${hint}" "${C_RESET}" "${secs}"
-  if ! IFS= read -r -t "${secs}" answer; then
+  # When invoked via `curl ... | bash`, stdin is the pipe (no keyboard input)
+  # and read times out instantly. Fall back to the controlling /dev/tty so the
+  # prompt still works in that idiom.
+  if [ ! -t 0 ] && [ -r /dev/tty ]; then
+    IFS= read -r -t "${secs}" answer < /dev/tty || rc=$?
+  else
+    IFS= read -r -t "${secs}" answer || rc=$?
+  fi
+  if [ "${rc}" -ne 0 ]; then
     printf '\n'
     log_warn "no response within ${secs}s; aborting"
     return 1
@@ -705,7 +713,11 @@ verify_release_signature() {
     if [ "${FLAG_NON_INTERACTIVE}" -eq 0 ]; then
       printf 'Type %syes%s in full to confirm: ' "${C_RED}" "${C_RESET}"
       local conf=""
-      IFS= read -r conf || conf=""
+      if [ ! -t 0 ] && [ -r /dev/tty ]; then
+        IFS= read -r conf < /dev/tty || conf=""
+      else
+        IFS= read -r conf || conf=""
+      fi
       [ "${conf}" = "yes" ] || die "signature bypass requires explicit yes"
     fi
     return 0
