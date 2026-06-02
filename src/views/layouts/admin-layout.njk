@@ -249,7 +249,7 @@
     </aside>
 
     <!-- Mobile Header -->
-    <header class="md:hidden fixed top-0 left-0 right-0 z-30 flex items-center justify-between bg-card border-b border-border px-4 py-3">
+    <header class="md:hidden fixed top-0 left-0 right-0 z-30 flex h-16 items-center justify-between bg-card border-b border-border px-4">
         <div class="flex items-center gap-3">
             <button type="button" id="mobile-menu-button" class="p-3 hover:bg-muted focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center">
                 <i data-lucide="menu" class="h-5 w-5"></i>
@@ -268,16 +268,17 @@
         {% include "partials/shell-theme-language-controls.njk" %}
     </header>
 
-    {% set layoutNamespace = 'admin-layout' %}
-    {% set shellControlsVariant = 'desktop' %}
-    {% include "partials/shell-theme-language-controls.njk" %}
-
     <!-- Main Content -->
     <main id="main-content" class="flex-1 flex flex-col min-h-0 overflow-hidden bg-background {% if sidebar_expanded %}main-content-expanded{% else %}main-content-collapsed{% endif %}">
         <!-- Fixed mobile header spacer (non-scrolling) -->
         <div class="flex-none h-16 md:hidden"></div>
         <!-- Scrollable content wrapper with padding -->
         <div class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+            <div class="hidden md:block mb-4">
+                {% set layoutNamespace = 'admin-layout' %}
+                {% set shellControlsVariant = 'desktop' %}
+                {% include "partials/shell-theme-language-controls.njk" %}
+            </div>
             {% block admin_content %}
             <!-- Content here -->
             {% endblock %}

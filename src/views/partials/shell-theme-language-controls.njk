@@ -31,7 +31,7 @@
     </div>
 </div>
 {% else %}
-<div class="hidden md:flex fixed top-6 right-6 z-30 gap-2 items-center">
+<div class="hidden md:flex justify-end gap-2 items-center">
     <div class="relative">
         <button type="button" id="lang-toggle" class="flex h-9 items-center gap-1.5 px-3 rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="{{ t(namespace + '.theme_language.language') }}" aria-expanded="false">
             <span class="text-sm">{{ currentLocaleData.flag if currentLocaleData else '' }}</span>

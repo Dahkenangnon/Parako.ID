@@ -1,7 +1,7 @@
 {% extends "layouts/admin-layout.njk" %}
 
 {% block admin_content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="w-full">
     <!-- Page Header -->
     <div class="mb-6">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -103,9 +103,9 @@
 
     <!-- Tenants Table -->
     {% if tenants and tenants.length > 0 %}
-    <div class="bg-card border border-border overflow-hidden">
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-border">
+    <div class="w-full bg-card border border-border overflow-hidden">
+        <div class="w-full overflow-x-auto">
+            <table class="w-full min-w-full divide-y divide-border">
                 <thead class="bg-muted/50">
                     <tr>
                         <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Slug</th>

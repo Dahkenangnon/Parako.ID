@@ -1,7 +1,7 @@
 {% extends "layouts/admin-layout.njk" %}
 {% block admin_content %}
     <div
-        class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        class="w-full">
         <!-- Page Header -->
         <div class="mb-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -157,7 +157,7 @@
                 </div>
 
                 {# ── OIDC Sessions Table ── #}
-                <div class="bg-card border border-border mb-6">
+                <div class="w-full bg-card border border-border mb-6">
                     <div class="px-6 py-4 border-b border-border">
                         <div class="flex items-center justify-between">
                             <h2 class="text-lg font-semibold text-foreground flex items-center">
@@ -175,8 +175,8 @@
                         </div>
                     </div>
                     {% if sessions and sessions.length > 0 %}
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-border">
+                        <div class="w-full overflow-x-auto">
+                            <table class="w-full min-w-full divide-y divide-border">
                                 <thead class="bg-muted/50 border-b border-border">
                                     <tr>
                                         <th scope="col" class="px-6 py-3 text-left">
@@ -348,7 +348,7 @@
                     </div>
 
                 {# ── Express Sessions Table ── #}
-                <div class="bg-card border border-border">
+                <div class="w-full bg-card border border-border">
                     <div class="px-6 py-4 border-b border-border">
                         <div class="flex items-center justify-between">
                             <h2 class="text-lg font-semibold text-foreground flex items-center">
@@ -366,8 +366,8 @@
                         </div>
                     </div>
                     {% if expressSessions and expressSessions.length > 0 %}
-                        <div class="overflow-x-auto">
-                            <table class="min-w-full divide-y divide-border">
+                        <div class="w-full overflow-x-auto">
+                            <table class="w-full min-w-full divide-y divide-border">
                                 <thead class="bg-muted/50 border-b border-border">
                                     <tr>
                                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wide">User</th>
