@@ -6,6 +6,13 @@ Releases are cut by the maintainer with `pnpm release <patch|minor|major>` on `m
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-06-02
+
+### Bug Fixes
+
+- read prompts from /dev/tty when stdin is a pipe ([c6fd92a](https://github.com/Dahkenangnon/Parako.ID/commit/c6fd92a82d6fc1ca3b917737ac9b156c488b9e1c))
+- use bash shell in installer smoke matrix for pipefail support ([0730fff](https://github.com/Dahkenangnon/Parako.ID/commit/0730fff49401a0901ccf56bab6b1b7aeaa02b879))
+
 ## [0.2.0] - 2026-06-02
 
 ### Features
