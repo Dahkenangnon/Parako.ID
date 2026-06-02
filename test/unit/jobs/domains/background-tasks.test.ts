@@ -8,7 +8,9 @@ vi.mock('ioredis', () => {
     quit: vi.fn().mockResolvedValue(undefined),
     disconnect: vi.fn(),
   };
-  const RedisCtor = vi.fn().mockImplementation(() => mockRedis);
+  const RedisCtor = vi.fn().mockImplementation(function Redis() {
+    return mockRedis;
+  });
   return { default: RedisCtor, Redis: RedisCtor };
 });
 
@@ -27,8 +29,12 @@ vi.mock('bullmq', () => {
   };
 
   return {
-    Queue: vi.fn().mockImplementation(() => mockQueue),
-    Worker: vi.fn().mockImplementation(() => mockWorker),
+    Queue: vi.fn().mockImplementation(function Queue() {
+      return mockQueue;
+    }),
+    Worker: vi.fn().mockImplementation(function Worker() {
+      return mockWorker;
+    }),
   };
 });
 

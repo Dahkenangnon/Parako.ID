@@ -9,7 +9,9 @@ vi.mock('bullmq', () => {
   };
 
   return {
-    Worker: vi.fn().mockImplementation(() => ({ ...mockWorker })),
+    Worker: vi.fn().mockImplementation(function Worker() {
+      return { ...mockWorker };
+    }),
   };
 });
 

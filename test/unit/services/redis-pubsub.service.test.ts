@@ -10,15 +10,17 @@ const mockOn = vi.fn();
 const mockDuplicate = vi.fn();
 
 vi.mock('ioredis', () => {
-  const MockRedis = vi.fn().mockImplementation(() => ({
-    connect: mockConnect,
-    publish: mockPublish,
-    subscribe: mockSubscribe,
-    unsubscribe: mockUnsubscribe,
-    quit: mockQuit,
-    on: mockOn,
-    duplicate: mockDuplicate,
-  }));
+  const MockRedis = vi.fn().mockImplementation(function MockRedis() {
+    return {
+      connect: mockConnect,
+      publish: mockPublish,
+      subscribe: mockSubscribe,
+      unsubscribe: mockUnsubscribe,
+      quit: mockQuit,
+      on: mockOn,
+      duplicate: mockDuplicate,
+    };
+  });
   return { default: MockRedis, Redis: MockRedis };
 });
 

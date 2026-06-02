@@ -18,7 +18,9 @@ vi.mock('bullmq', () => {
   };
 
   return {
-    Queue: vi.fn().mockImplementation(() => ({ ...mockQueue })),
+    Queue: vi.fn().mockImplementation(function Queue() {
+      return { ...mockQueue };
+    }),
   };
 });
 
