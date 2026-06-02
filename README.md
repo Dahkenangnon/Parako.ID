@@ -66,11 +66,22 @@ parako --help            # all verbs
 
 See [docs/installer](https://docs.parako.id/installer) and [docs/parako-cli](https://docs.parako.id/parako-cli) for the full flag and verb reference.
 
-Manual tarball:
+Manual tarball (when piping `curl | bash` is not acceptable):
 
 ```bash
-wget https://github.com/Dahkenangnon/Parako.ID/releases/latest/download/parako-id-v*.tar.gz
-tar -xzf parako-id-v*.tar.gz && cd parako-id-release
+# GitHub direct asset URLs require the exact filename — pick the version you want.
+VERSION=v0.2.0
+wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz"
+wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz.sig"
+wget "https://github.com/Dahkenangnon/Parako.ID/releases/download/${VERSION}/parako-id-${VERSION}.tar.gz.pem"
+# Verify the signature before extracting (cosign installation: https://docs.sigstore.dev/cosign/system_config/installation/)
+cosign verify-blob \
+  --signature "parako-id-${VERSION}.tar.gz.sig" \
+  --certificate "parako-id-${VERSION}.tar.gz.pem" \
+  --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  "parako-id-${VERSION}.tar.gz"
+tar -xzf "parako-id-${VERSION}.tar.gz" && cd parako-id-release
 cp .env.example runtime/.env   # edit DB, Redis, and admin credentials
 pnpm start
 ```

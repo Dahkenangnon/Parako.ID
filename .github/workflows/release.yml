@@ -280,7 +280,7 @@ jobs:
               "$file"
             # Verify locally to fail fast on identity-binding regression.
             cosign verify-blob \
-              --bundle "$file.sig" \
+              --signature "$file.sig" \
               --certificate "$file.pem" \
               --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
               --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \

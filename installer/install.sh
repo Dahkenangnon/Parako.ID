@@ -667,6 +667,17 @@ parse_args() {
     die "--with-tls requires --with-nginx"
   fi
 
+  # --bootstrap-admin is only seeded by the multi-tenancy master-tenant path
+  # (src/multi-tenancy/master-tenant-bootstrap.ts, gated by multiTenancy.enabled
+  # at src/index.ts). For single-tenant installs the credentials would never be
+  # seeded and the operator would be unable to log in. Demo mode bypasses this
+  # because demo_main writes MULTI_TENANCY_ENABLED=true to runtime/.env.
+  if [ -n "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ] \
+     && [ "${FLAG_MULTI_TENANT}" -eq 0 ] \
+     && [ "${FLAG_DEMO}" -eq 0 ]; then
+    die "--bootstrap-admin currently requires --multi-tenant (single-tenant admin seeding is not yet implemented). Either add --multi-tenant --base-domain <domain>, or create the first admin via /auth/register after the installer finishes."
+  fi
+
   # Non-interactive enforcement of required flags.
   if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && [ "${FLAG_FORCE}" -eq 0 ]; then
     die "--non-interactive also requires --force (no prompts will be possible)"
@@ -905,8 +916,13 @@ preflight() {
   check_openssl
   check_disk_space
   check_port_free
-  check_dns
-  check_time_sync
+  if [ "${FLAG_OFFLINE}" -eq 0 ]; then
+    check_dns
+    check_time_sync
+  else
+    _pf_ok "DNS" "skipped (--offline)"
+    _pf_ok "system time" "skipped (--offline; trusting local clock)"
+  fi
   check_os_release
   check_umask_sane
   check_urandom
@@ -1028,6 +1044,9 @@ fetch_latest_version() {
     log_ok "target version: ${TAG}"
     return 0
   fi
+  if [ "${FLAG_OFFLINE}" -eq 1 ]; then
+    die "--offline requires --version <vX.Y.Z>; the GitHub API is not reachable in offline mode"
+  fi
   log_info "fetching latest release from GitHub"
   local response=""
   if response=$(download_stdout "${GITHUB_API}/releases/latest" 2>/dev/null); then
@@ -1132,6 +1151,10 @@ verify_checksum() {
 ensure_cosign() {
   command -v cosign >/dev/null 2>&1 && return 0
 
+  if [ "${FLAG_OFFLINE}" -eq 1 ]; then
+    die "--offline requires cosign to be preinstalled on PATH; refusing to download cosign in offline mode. Install cosign v${COSIGN_VERSION} (https://docs.sigstore.dev/cosign/system_config/installation/) before re-running."
+  fi
+
   local arch bin expected tmp
   arch=$(uname -m)
   case "${arch}" in
@@ -1181,7 +1204,7 @@ verify_release_signature() {
   ensure_cosign
   log_info "verifying cosign signature"
   if cosign verify-blob \
-    --bundle "${SIGNATURE_FILE}" \
+    --signature "${SIGNATURE_FILE}" \
     --certificate "${CERTIFICATE_FILE}" \
     --certificate-identity-regexp "${COSIGN_CERT_IDENTITY_REGEX}" \
     --certificate-oidc-issuer "${COSIGN_OIDC_ISSUER}" \
@@ -1756,24 +1779,24 @@ backup_db_before_update() {
       ;;
     mongodb)
       log_info "backing up MongoDB via mongodump"
-      if command -v mongodump >/dev/null 2>&1; then
-        mongodump --uri="${ANS_MONGO_URI}" --archive="${backup_dir}/${stamp}.archive.gz" --gzip >/dev/null 2>&1 \
-          || die "mongodump failed; aborting update"
-        log_ok "MongoDB backup at ${backup_dir}/${stamp}.archive.gz"
-      else
-        log_warn "mongodump not installed; skipping logical DB backup (filesystem snapshot still taken)"
-      fi
+      command -v mongodump >/dev/null 2>&1 \
+        || die "mongodump not installed; required for safe MongoDB update. Install mongodb-database-tools and re-run."
+      mongodump --uri="${ANS_MONGO_URI}" --archive="${backup_dir}/${stamp}.archive.gz" --gzip >/dev/null 2>&1 \
+        || die "mongodump failed; aborting update"
+      log_ok "MongoDB backup at ${backup_dir}/${stamp}.archive.gz"
       ;;
     sqlite)
       log_info "backing up SQLite via .backup"
       local sqlite_path="${RESOLVED_INSTALL_DIR}/runtime/data/parako.db"
-      if [ -f "${sqlite_path}" ] && command -v sqlite3 >/dev/null 2>&1; then
+      command -v sqlite3 >/dev/null 2>&1 \
+        || die "sqlite3 CLI not installed; required for safe SQLite update. Install sqlite3 and re-run."
+      if [ ! -f "${sqlite_path}" ]; then
+        log_warn "no SQLite database at ${sqlite_path}; nothing to back up (filesystem snapshot still taken)"
+      else
         sqlite3 "${sqlite_path}" ".backup ${backup_dir}/${stamp}.db" \
           || die "sqlite3 .backup failed; aborting update"
         gzip -f "${backup_dir}/${stamp}.db"
         log_ok "SQLite backup at ${backup_dir}/${stamp}.db.gz"
-      else
-        log_warn "SQLite file or sqlite3 CLI missing; skipping DB backup"
       fi
       ;;
   esac
@@ -1925,7 +1948,7 @@ print_assurances_panel() {
   printf 'Before anything changes on your system:\n'
   printf '  - Every preflight check above passed.\n'
   if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 0 ] && [ "${FLAG_DEMO}" -eq 0 ]; then
-    printf '  - The release tarball will be verified via cosign (Sigstore).\n'
+    printf '  - The release tarball has been verified via cosign (Sigstore).\n'
   fi
   if [ "${FLAG_UPDATE}" -eq 1 ]; then
     printf '  - A complete snapshot is taken before any mutation.\n'
@@ -2055,12 +2078,7 @@ install_main() {
   verify_release_signature
 
   local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  ensure_install_dir "${install_dir}"
-  log_info "extracting to ${install_dir}"
-  tar -xzf "${TARBALL_FILE}" -C "${install_dir}" --strip-components=1 \
-    || die "extraction failed"
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" && pwd)
-  log_ok "extracted"
+  RESOLVED_INSTALL_DIR=${install_dir}
 
   collect_answers
   [ "${FLAG_NON_INTERACTIVE}" -eq 0 ] && confirm_or_edit
@@ -2068,6 +2086,14 @@ install_main() {
   apply_guards
 
   beginning_ritual
+
+  # ----- Mutations begin here. Everything above is read-only / TMPDIR only. -----
+  ensure_install_dir "${install_dir}"
+  log_info "extracting to ${install_dir}"
+  tar -xzf "${TARBALL_FILE}" -C "${install_dir}" --strip-components=1 \
+    || die "extraction failed"
+  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" && pwd)
+  log_ok "extracted"
 
   maybe_generate_bootstrap_password
   generate_env_file
@@ -2105,7 +2131,10 @@ install_main() {
 # Invariants:
 #   - Snapshot before mutation; DB backup before extract.
 #   - Atomic mv-based swap; rollback on health-check failure.
-#   - --plan: no mutations, exit 0. --dry-run: everything except swap, exit 0.
+#   - --plan: no mutations, exit 0.
+#   - --dry-run: download, verify, extract, install dependencies into a sibling
+#     directory; exit BEFORE database migrations and BEFORE the directory swap.
+#     Live database state is never mutated under --dry-run.
 # =============================================================================
 
 stop_service_for_update() {
@@ -2249,16 +2278,19 @@ update_main() {
   local old_dir=${RESOLVED_INSTALL_DIR}
   RESOLVED_INSTALL_DIR=${new_dir}
   install_dependencies
-  run_db_migrations
-  RESOLVED_INSTALL_DIR=${old_dir}
 
   if [ "${FLAG_DRY_RUN}" -eq 1 ]; then
-    log_info "--dry-run: skipping directory swap and start"
+    RESOLVED_INSTALL_DIR=${old_dir}
+    log_info "--dry-run: download/verify/extract/deps OK; skipping migrations, swap, and start"
+    log_info "live database was not touched"
     rm -rf "${new_dir}"
     rm -rf "${backup_dir}"
     start_service_for_update "${supervisor}"
     return 0
   fi
+
+  run_db_migrations
+  RESOLVED_INSTALL_DIR=${old_dir}
 
   # 7. Atomic swap
   local old_archived="${RESOLVED_INSTALL_DIR}.old.${timestamp}"
@@ -2794,6 +2826,10 @@ demo_main() {
   ANS_REDIS="no"
   ANS_PORT=${FLAG_PORT:-9007}
   ANS_SUPERVISOR="pm2"  # use pm2 for backgrounded process, simpler teardown
+  # Bootstrap admin seeding is currently gated by multiTenancy.enabled in the
+  # app (src/index.ts → bootstrapMasterTenant). Force MT on for demo so the
+  # printed admin credentials actually log in.
+  FLAG_MULTI_TENANT=1
 
   INSTALL_DIR="/tmp/parako-id-demo-$$"
   DEMO_ADMIN_EMAIL="demo@parako.id"

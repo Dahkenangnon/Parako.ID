@@ -17,7 +17,7 @@ Parako.ID includes three CLI tools for server-side management:
 
 All CLI tools work with local files (`runtime/parako-rp.jsonc`, `runtime/jwks/jwks.json`) and do not require the application server to be running.
 
-For version updates, see [Updates & Maintenance](updates-and-maintenance.md). Updates are performed manually via `git pull` until a dedicated bash installer ships in a future release.
+For version updates, use the installer's `--update` mode or `parako update`. See [Installer](installer.md) and [parako CLI](parako-cli.md). Git-clone installs still update via `git pull && pnpm install && pnpm build && pnpm restart`; see [Installing from source](installer-from-source.md).
 
 ## Client Management
 

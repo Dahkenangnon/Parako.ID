@@ -13,15 +13,20 @@ The Parako.ID installer is a single bash script published at `https://get.parako
 # Interactive install
 curl -sSL https://get.parako.id | sudo bash
 
-# Non-interactive production install with TLS
+# Non-interactive production install with TLS (single-tenant)
 curl -sSL https://get.parako.id | sudo bash -s -- \
   --non-interactive --force \
   --domain auth.example.com \
   --db postgres --postgres-url 'postgresql://parako:***@localhost/parako' \
   --redis-url 'redis://localhost:6379' \
   --supervisor systemd \
-  --with-nginx --with-tls --tls-email admin@example.com \
-  --bootstrap-admin admin@example.com
+  --with-nginx --with-tls --tls-email admin@example.com
+
+# After install, create the first admin via the public registration page:
+#   https://auth.example.com/auth/register
+# (Single-tenant admin seeding via the installer is not yet implemented;
+#  --bootstrap-admin currently requires --multi-tenant. See "Bootstrap admin"
+#  below.)
 
 # In-place update to latest stable
 curl -sSL https://get.parako.id | sudo bash -s -- --update
@@ -169,20 +174,38 @@ Prerequisites:
 
 See [Multi-tenancy](multi-tenancy.md) for application-level configuration.
 
+## Bootstrap admin
+
+`--bootstrap-admin <email>` seeds the first administrator on the very first start of the app, via the master-tenant bootstrap path in [`src/multi-tenancy/master-tenant-bootstrap.ts`](https://github.com/Dahkenangnon/Parako.ID/tree/main/src/multi-tenancy/master-tenant-bootstrap.ts). It is currently **gated by `multiTenancy.enabled`**, so the installer enforces:
+
+```
+--bootstrap-admin  =>  also requires --multi-tenant  (or --demo)
+```
+
+Running `--bootstrap-admin` without `--multi-tenant` aborts with an explicit error. In single-tenant mode, create the first administrator by visiting `/auth/register` after the installer finishes; the very first user can be promoted to admin via the admin panel. A first-class single-tenant seeding path is planned for a later release.
+
+`--demo` enables multi-tenancy implicitly so the printed admin credentials log in.
+
 ## Air-gapped / offline install
 
 ```bash
 curl -sSL https://get.parako.id | sudo bash -s -- \
   --offline \
+  --version v0.2.0 \
   --tarball   ./parako-id-v0.2.0.tar.gz \
   --checksum  ./SHA256SUMS \
   --signature ./parako-id-v0.2.0.tar.gz.sig \
   --certificate ./parako-id-v0.2.0.tar.gz.pem
 ```
 
-Cosign verification still runs against the supplied files; the same Sigstore-bound identity regex applies.
+Under `--offline`:
 
-A release-manifest mirror can be configured via `PARAKO_RELEASE_MIRROR` for partially-disconnected environments where GitHub's API is intermittently unreachable but the release CDN is.
+- `--version <vX.Y.Z>` is required (the GitHub releases API is not consulted).
+- `cosign` MUST be preinstalled on `PATH`; the installer refuses to fetch the cosign binary in offline mode. Install cosign from <https://docs.sigstore.dev/cosign/system_config/installation/> on a connected machine, then transfer it to the air-gapped host.
+- Preflight DNS and time-sync probes are skipped; the installer trusts the local clock.
+- Cosign verification still runs against the supplied files; the same Sigstore-bound identity regex applies.
+
+A release-manifest mirror can be configured via `PARAKO_RELEASE_MIRROR` for partially-disconnected environments where GitHub's API is intermittently unreachable but the release CDN is. The mirror path is unused under `--offline`.
 
 ## Demo mode
 
