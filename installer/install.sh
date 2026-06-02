@@ -96,7 +96,7 @@ readonly COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'
 # Runtime subtrees the installer is allowed to copy out of the tarball into
 # INSTALL_DIR/runtime/ on FIRST install only. Defense in depth: scripts/release.sh
 # also sanitizes the tarball so the source paths shouldn't contain anything else.
-readonly RUNTIME_FIRST_INSTALL_ALLOWLIST=(locales views assets)
+readonly RUNTIME_FIRST_INSTALL_ALLOWLIST=(locales views)
 
 if [ "$(id -u 2>/dev/null || printf '1000')" = "0" ]; then
   readonly DEFAULT_INSTALL_DIR="/opt/parako-id"
@@ -138,6 +138,10 @@ FLAG_NON_INTERACTIVE=0
 FLAG_FORCE=0
 FLAG_NO_COLOR=0
 FLAG_JSON=0
+FLAG_UNINSTALL=0
+FLAG_PURGE=0
+FLAG_KEEP_BIN=0
+FLAG_CLEAN_STALE=0
 
 # Runtime state.
 DOWNLOAD_CMD=""
@@ -283,12 +287,16 @@ Modes (mutually exclusive):
   --rollback                   Switch current → previous release pointer
   --doctor                     File/config sanity report (no service/DB/network)
   --gc                         Prune old releases/ (never touches runtime/)
+  --uninstall                  Remove this install (preserves runtime/ unless --purge)
 
 Mode modifiers:
   --to <vX.Y.Z>                (--rollback) Specific target release
   --keep <N>                   (--gc) Releases-to-retain from the deletable set
                                (current + previous always protected; default 3)
   --yes                        (--gc) Apply; default is preview only
+  --purge                      (--uninstall) Also remove runtime/ (operator data)
+  --keep-bin                   (--uninstall) Preserve /usr/local/bin/parako helper
+  --clean-stale                Auto-remove stale current.tmp.* symlinks left by a crashed run
 
 Source resolution:
   --version <vX.Y.Z>           Pin a release version (default: latest stable)
@@ -317,14 +325,11 @@ Behavior:
   --json                       (--doctor) Emit structured JSON
   --help                       Show this message
 
-What the installer does NOT do (OPERATOR responsibilities):
-  - configure or start systemd/PM2/docker
-  - configure nginx, certbot, or TLS
-  - create or modify /etc/* outside the parako binary
-  - install OS packages (apt/yum/apk)
-  - run database migrations or backups
-  - create runtime/.env or runtime/jwks/
-  - bootstrap an admin user
+Scope:
+  Application files only. The operator manages database, services, reverse
+  proxy, TLS, OS packages, runtime/.env, runtime/jwks/, and the bootstrap
+  admin. The installer never writes outside the install directory except for
+  the optional /usr/local/bin/parako helper.
 
 See:
   https://docs.parako.id/installer
@@ -353,6 +358,10 @@ parse_args() {
         shift ;;
       --doctor) FLAG_DOCTOR=1 ;;
       --gc)     FLAG_GC=1 ;;
+      --uninstall) FLAG_UNINSTALL=1 ;;
+      --purge)     FLAG_PURGE=1 ;;
+      --keep-bin)  FLAG_KEEP_BIN=1 ;;
+      --clean-stale) FLAG_CLEAN_STALE=1 ;;
       --keep)
         [ $# -lt 2 ] && die "--keep requires N"
         case "$2" in ''|*[!0-9]*) die "--keep must be a non-negative integer" ;; esac
@@ -399,12 +408,13 @@ parse_args() {
   RESOLVED_INSTALL_DIR=${INSTALL_DIR}
 
   local mode_count=0
-  [ "${FLAG_UPDATE}"   -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_ROLLBACK}" -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_DOCTOR}"   -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_GC}"       -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_UPDATE}"    -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_ROLLBACK}"  -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_DOCTOR}"    -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_GC}"        -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_UNINSTALL}" -eq 1 ] && mode_count=$((mode_count + 1))
   if [ "${mode_count}" -gt 1 ]; then
-    die "--update, --rollback, --doctor, --gc are mutually exclusive"
+    die "--update, --rollback, --doctor, --gc, --uninstall are mutually exclusive"
   fi
 
   if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 1 ] && [ -z "${FLAG_INSECURE_REASON}" ]; then
@@ -755,7 +765,12 @@ acquire_lock() {
     mkdir -p "${lock_dir}" 2>/dev/null || lock_dir="${TMPDIR:-/tmp}"
     lock_file="${lock_dir}/.install-lock"
   fi
-  exec 9>"${lock_file}" 2>/dev/null || die "could not open lock file ${lock_file}"
+  # NOTE: do not append `2>/dev/null` to a redirection-only `exec` — bash treats
+  # it as another permanent redirection, silencing stderr for the rest of the
+  # script and swallowing every die/log_err that follows.
+  if ! { exec 9>"${lock_file}"; } 2>/dev/null; then
+    die "could not open lock file ${lock_file}"
+  fi
   flock --nonblock --exclusive 9 \
     || die "another installer run is in progress (lock: ${lock_file})"
   LOCK_FD=9
@@ -789,18 +804,13 @@ beginning_ritual() {
   print_label "Target version" "${TAG:-?}"
   print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
   printf '\n'
-  printf 'Before any mutation, this installer will:\n'
-  printf '  - Acquire an installer lock at %s/.install-lock.\n' "${RESOLVED_INSTALL_DIR}"
-  printf '  - Stage the new release under %s/releases/.staging.%s.$$.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
-  printf '  - Promote staging to %s/releases/%s/.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
-  printf '  - Atomically switch %s/current to the new release.\n' "${RESOLVED_INSTALL_DIR}"
-  printf '\n'
-  printf 'It will NOT:\n'
-  printf '  - Touch %s/runtime/ or %s/runtime/.env.\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
-  printf '  - Start, stop, restart, enable, or configure any service.\n'
-  printf '  - Run database migrations or back up the database.\n'
-  printf '  - Configure nginx, certbot, or TLS.\n'
-  printf '  - Install OS packages.\n'
+  printf 'Scope: application files only. Database, services, reverse proxy, TLS,\n'
+  printf 'and runtime configuration remain operator-managed.\n\n'
+  printf 'Steps:\n'
+  printf '  1. Acquire an installer lock at %s/.install-lock.\n' "${RESOLVED_INSTALL_DIR}"
+  printf '  2. Stage the release under %s/releases/.staging.%s.$$.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
+  printf '  3. Promote staging to %s/releases/%s/.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
+  printf '  4. Atomically switch %s/current to the new release.\n' "${RESOLVED_INSTALL_DIR}"
   printf '\n'
 
   if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && [ "${FLAG_FORCE}" -eq 1 ]; then
@@ -819,16 +829,22 @@ beginning_ritual() {
 # §10  .parako-state (mode 0644, NO secrets)
 # -----------------------------------------------------------------------------
 write_parako_state() {
-  local version=$1 previous=${2:-}
+  local version=$1 previous=${2:-} bin_path=${3:-}
+  # Preserve existing PARAKO_BIN_PATH on update/rollback when caller does not
+  # pass an explicit path (binary install only happens on fresh install path).
+  if [ -z "${bin_path}" ]; then
+    bin_path=$(read_state_field PARAKO_BIN_PATH 2>/dev/null || true)
+  fi
   local state_file="${RESOLVED_INSTALL_DIR}/.parako-state"
   local state_tmp="${state_file}.tmp.$$"
   {
     printf '# Parako.ID installer state — no secrets, safe to read.\n'
-    printf 'INSTALL_DIR=%s\n'      "${RESOLVED_INSTALL_DIR}"
-    printf 'VERSION=%s\n'          "${version}"
-    printf 'PREVIOUS_VERSION=%s\n' "${previous}"
-    printf 'INSTALLED_AT=%s\n'     "${RUN_TIMESTAMP}"
+    printf 'INSTALL_DIR=%s\n'       "${RESOLVED_INSTALL_DIR}"
+    printf 'VERSION=%s\n'           "${version}"
+    printf 'PREVIOUS_VERSION=%s\n'  "${previous}"
+    printf 'INSTALLED_AT=%s\n'      "${RUN_TIMESTAMP}"
     printf 'INSTALLER_VERSION=%s\n' "${INSTALLER_VERSION}"
+    [ -n "${bin_path}" ] && printf 'PARAKO_BIN_PATH=%s\n' "${bin_path}"
   } > "${state_tmp}"
   chmod 0644 "${state_tmp}"
   mv -f "${state_tmp}" "${state_file}"
@@ -844,6 +860,7 @@ read_state_field() {
 # §11  parako operator-binary install (non-fatal)
 # -----------------------------------------------------------------------------
 install_parako_binary() {
+  PARAKO_BIN_RESOLVED=""
   if [ "${FLAG_NO_BIN}" -eq 1 ]; then
     log_info "--no-bin: skipping /usr/local/bin/parako install"
     return 0
@@ -855,7 +872,9 @@ install_parako_binary() {
     return 0
   fi
   if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
-    if ! write_root_file "${src}" "/usr/local/bin/parako" 0755 root:root; then
+    if write_root_file "${src}" "/usr/local/bin/parako" 0755 root:root; then
+      PARAKO_BIN_RESOLVED="/usr/local/bin/parako"
+    else
       log_warn "could not install /usr/local/bin/parako; install manually:"
       log_warn "  cp ${src} /usr/local/bin/parako && chmod 0755 /usr/local/bin/parako"
     fi
@@ -863,6 +882,7 @@ install_parako_binary() {
     if mkdir -p "${DEFAULT_BIN_DIR}" 2>/dev/null \
        && install -m 0755 "${src}" "${DEFAULT_BIN_DIR}/parako" 2>/dev/null; then
       log_ok "installed parako at ${DEFAULT_BIN_DIR}/parako"
+      PARAKO_BIN_RESOLVED="${DEFAULT_BIN_DIR}/parako"
       case ":${PATH}:" in
         *":${DEFAULT_BIN_DIR}:"*) ;;
         *) log_warn "${DEFAULT_BIN_DIR} is not on PATH; add it to your shell init to use \`parako\`" ;;
@@ -887,28 +907,24 @@ print_next_steps_card() {
     print_label "Previous release" "${RESOLVED_INSTALL_DIR}/releases/${previous}  (kept for rollback)"
   fi
   print_label "Runtime"          "${RESOLVED_INSTALL_DIR}/runtime          (operator-managed)"
-  printf '\n  This installer does NOT manage your database, services, proxy, or TLS.\n'
-  printf '  Your next steps:\n\n'
+  printf '\n  Next steps (operator):\n\n'
   if [ -z "${previous}" ]; then
-    printf '    1. (First install) Create your configuration. Copy and edit:\n'
+    printf '    1. Create your configuration:\n'
     printf '         cp %s/current/contrib/.env.sample             %s/runtime/.env\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
     printf '         cp %s/current/contrib/parako-rp.sample.jsonc  %s/runtime/parako-rp.jsonc\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
     printf '       Generate JWKS only if you use file-backed key storage.\n\n'
   fi
-  printf '    %s Read the release notes for %s and apply any required database\n' "$([ -z "${previous}" ] && printf '2.' || printf '1.')" "${current}"
-  printf '       migration manually. The release notes list the exact command.\n'
+  printf '    %s Apply any database migration listed in the release notes:\n' "$([ -z "${previous}" ] && printf '2.' || printf '1.')"
   printf '       %s\n\n' "${releases_url}"
-  printf '    %s If migrating, back up your database first with your own tooling\n' "$([ -z "${previous}" ] && printf '3.' || printf '2.')"
-  printf '       (pg_dump / mongodump / sqlite3 .backup).\n\n'
-  printf '    %s Restart your service with your own process manager\n' "$([ -z "${previous}" ] && printf '4.' || printf '3.')"
-  printf '       (systemctl / pm2 / docker-compose / whatever you use).\n'
+  printf '    %s Back up the database first (pg_dump / mongodump / sqlite3 .backup).\n\n' "$([ -z "${previous}" ] && printf '3.' || printf '2.')"
+  printf '    %s Restart the service via your process manager (systemctl / pm2 / docker compose).\n' "$([ -z "${previous}" ] && printf '4.' || printf '3.')"
   printf '       Reference unit / ecosystem at %s/current/contrib/.\n\n' "${RESOLVED_INSTALL_DIR}"
-  printf '    %s Verify the application is healthy with your own probe.\n\n' "$([ -z "${previous}" ] && printf '5.' || printf '4.')"
-  printf '    %s If anything is wrong, roll back the app files with:\n' "$([ -z "${previous}" ] && printf '6.' || printf '5.')"
-  printf '         parako rollback              # to previous release\n'
-  printf '         parako rollback --to vX.Y.Z  # to a specific release\n'
-  printf '       Note: this rolls back the application files ONLY. Any database\n'
-  printf '       migration you ran will NOT be reversed.\n\n'
+  printf '    %s Verify health with your application probe.\n\n' "$([ -z "${previous}" ] && printf '5.' || printf '4.')"
+  printf '    %s Roll back application files with:\n' "$([ -z "${previous}" ] && printf '6.' || printf '5.')"
+  printf '         parako rollback              # previous release\n'
+  printf '         parako rollback --to vX.Y.Z  # specific release\n'
+  printf '       Database migrations are not reversed automatically — apply the reverse\n'
+  printf '       migration manually before restarting on the older release.\n\n'
 }
 
 # -----------------------------------------------------------------------------
@@ -925,16 +941,18 @@ _first_install_runtime_populate() {
       cp -a "${release_dir}/runtime/${sub}" "${dest}/${sub}"
     fi
   done
-  log_ok "runtime/ populated from shipped defaults (locales, views, assets)"
-  log_warn "runtime/.env and runtime/jwks/ are operator-owned and were NOT created."
-  log_warn "Copy ${RESOLVED_INSTALL_DIR}/current/contrib/.env.sample to runtime/.env and edit."
+  log_ok "runtime/ populated from shipped defaults (locales, views)"
+  log_info "runtime/.env and runtime/jwks/ are operator-owned — create them yourself:"
+  log_info "  cp ${RESOLVED_INSTALL_DIR}/current/contrib/.env.sample ${RESOLVED_INSTALL_DIR}/runtime/.env"
 }
 
 _link_release_runtime() {
   local release_dir=$1
   local runtime_link="${release_dir}/runtime"
   rm -rf "${runtime_link}"
-  ln -s "${RESOLVED_INSTALL_DIR}/runtime" "${runtime_link}"
+  # Relative target survives a rename of the install dir (rollback to an older
+  # release still resolves to the shared runtime via ../../runtime).
+  ln -s "../../runtime" "${runtime_link}"
 }
 
 _atomic_pointer_swap() {
@@ -974,11 +992,23 @@ _promote_staging() {
 }
 
 _sanity_check_no_stale_current_tmp() {
-  local stale
-  stale=$(find "${RESOLVED_INSTALL_DIR}" -maxdepth 1 -name 'current.tmp.*' 2>/dev/null | head -n1)
-  if [ -n "${stale}" ]; then
-    die "stale temp symlink found: ${stale}; inspect and remove manually before proceeding"
+  local stale_files
+  mapfile -t stale_files < <(find "${RESOLVED_INSTALL_DIR}" -maxdepth 1 -name 'current.tmp.*' 2>/dev/null)
+  [ "${#stale_files[@]}" -eq 0 ] && return 0
+
+  if [ "${FLAG_CLEAN_STALE}" -eq 1 ]; then
+    # Lock is already held by the caller, so no concurrent installer can be
+    # writing these. Remove and continue.
+    local f
+    for f in "${stale_files[@]}"; do
+      rm -f "${f}" 2>/dev/null \
+        && log_info "removed stale temp symlink: ${f}" \
+        || log_warn "could not remove stale temp symlink: ${f}"
+    done
+    return 0
   fi
+
+  die "stale temp symlink found: ${stale_files[0]}; pass --clean-stale to auto-remove or inspect and rm manually"
 }
 
 install_main() {
@@ -1036,8 +1066,8 @@ install_main() {
   _link_release_runtime "${release_dir}"
   _atomic_pointer_swap
 
-  write_parako_state "${TAG}" "${previous_version}"
   install_parako_binary
+  write_parako_state "${TAG}" "${previous_version}" "${PARAKO_BIN_RESOLVED:-}"
 
   print_next_steps_card "${TAG}" "${previous_version}"
 }
@@ -1081,8 +1111,8 @@ rollback_main() {
   print_label "Current"   "${current_target}"
   print_label "Target"    "${target}"
   printf '\n'
-  printf 'This rolls back the APPLICATION FILES ONLY. Any database migration\n'
-  printf 'you ran around %s will NOT be reversed.\n\n' "${current_target}"
+  printf 'Scope: application files only. Apply any reverse database migration\n'
+  printf 'for %s manually before restarting on the older release.\n\n' "${current_target}"
   if [ "${FLAG_FORCE}" -eq 0 ] && [ "${FLAG_NON_INTERACTIVE}" -eq 0 ]; then
     if ! prompt_yn_timeout "Proceed with app-file rollback?" "no" 60; then
       log_info "aborted by operator"
@@ -1175,10 +1205,9 @@ doctor_main() {
   fi
   print_label "Releases on disk" "${releases_count}"
   printf '\n'
-  printf '  Doctor checks application FILES only. It does NOT probe:\n'
-  printf '    - service status (use your supervisor)\n'
-  printf '    - database connectivity (use your DB client)\n'
-  printf '    - HTTP /health (use curl)\n'
+  printf '  Doctor checks application files only. For service status, database\n'
+  printf '  connectivity, and HTTP health, use your supervisor, DB client, and\n'
+  printf '  health probe respectively.\n'
 }
 
 # -----------------------------------------------------------------------------
@@ -1256,7 +1285,129 @@ gc_main() {
 }
 
 # -----------------------------------------------------------------------------
-# §18  --plan (pure preview; no network, no INSTALL_DIR writes)
+# §18  uninstall_main (remove install pointer + releases; runtime preserved
+#      unless --purge; parako binary removed unless --keep-bin)
+# -----------------------------------------------------------------------------
+uninstall_main() {
+  preflight
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+  [ -d "${RESOLVED_INSTALL_DIR}" ] || die "install dir not found: ${RESOLVED_INSTALL_DIR}"
+
+  _sanity_check_no_stale_current_tmp
+  acquire_lock
+
+  # Inventory operator data under runtime/ before deciding what to remove.
+  local has_operator_data=0
+  local notes=()
+  local rt="${RESOLVED_INSTALL_DIR}/runtime"
+  if [ -d "${rt}" ]; then
+    [ -s "${rt}/.env" ] && { has_operator_data=1; notes+=("runtime/.env"); }
+    if [ -d "${rt}/jwks" ] && [ -n "$(find "${rt}/jwks" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | head -n1)" ]; then
+      has_operator_data=1; notes+=("runtime/jwks/ (signing keys — destroying breaks every issued token)")
+    fi
+    local sub
+    for sub in uploads backups config-backups logs data; do
+      if [ -d "${rt}/${sub}" ] && [ -n "$(find "${rt}/${sub}" -mindepth 1 -not -name '.gitkeep' 2>/dev/null | head -n1)" ]; then
+        has_operator_data=1; notes+=("runtime/${sub}/")
+      fi
+    done
+  fi
+
+  local current_target=""
+  [ -L "${RESOLVED_INSTALL_DIR}/current" ] \
+    && current_target=$(basename "$(readlink -f "${RESOLVED_INSTALL_DIR}/current")") || true
+
+  print_header "Uninstall plan"
+  print_label "Install dir"     "${RESOLVED_INSTALL_DIR}"
+  print_label "Current release" "${current_target:-<none>}"
+  printf '\n'
+  printf '  Will remove: %s/{current, releases/, .parako-state, .install-lock}\n' "${RESOLVED_INSTALL_DIR}"
+  if [ "${FLAG_PURGE}" -eq 1 ]; then
+    printf '  Will remove: %s/runtime/  (--purge)\n' "${RESOLVED_INSTALL_DIR}"
+    if [ "${has_operator_data}" -eq 1 ]; then
+      printf '    Operator data that will be destroyed:\n'
+      local n; for n in "${notes[@]}"; do printf '      - %s\n' "${n}"; done
+    fi
+  else
+    printf '  Will preserve: %s/runtime/  (operator-managed; pass --purge to also remove)\n' "${RESOLVED_INSTALL_DIR}"
+  fi
+  # Resolve binary path: prefer state-file, fall back to PATH lookup.
+  local bin_path
+  bin_path=$(read_state_field PARAKO_BIN_PATH 2>/dev/null || true)
+  if [ -z "${bin_path}" ]; then
+    bin_path=$(command -v parako 2>/dev/null || true)
+  fi
+  if [ "${FLAG_KEEP_BIN}" -eq 1 ]; then
+    printf '  Will preserve: %s  (--keep-bin)\n' "${bin_path:-<no parako binary found>}"
+  elif [ -n "${bin_path}" ] && [ -f "${bin_path}" ]; then
+    printf '  Will remove: %s  (parako helper binary)\n' "${bin_path}"
+  fi
+  printf '\n'
+
+  if [ "${has_operator_data}" -eq 1 ] && [ "${FLAG_PURGE}" -eq 0 ]; then
+    log_info "operator data present under runtime/ — will be preserved without --purge"
+  fi
+
+  if [ "${FLAG_FORCE}" -eq 0 ] && [ "${FLAG_NON_INTERACTIVE}" -eq 0 ]; then
+    if ! prompt_yn_timeout "Proceed with uninstall?" "no" 60; then
+      log_info "aborted by operator"
+      exit 0
+    fi
+    if [ "${FLAG_PURGE}" -eq 1 ] && [ "${has_operator_data}" -eq 1 ]; then
+      printf '  --purge will destroy operator data. Type %syes%s in full to confirm: ' "${C_RED}" "${C_RESET}"
+      local conf=""
+      if [ ! -t 0 ] && [ -r /dev/tty ]; then
+        IFS= read -r conf < /dev/tty || conf=""
+      else
+        IFS= read -r conf || conf=""
+      fi
+      [ "${conf}" = "yes" ] || die "--purge with operator data requires explicit yes"
+    fi
+  fi
+
+  # Atomic-ish removal: current pointer first (clients lose target immediately),
+  # then releases/, then state metadata. Lock is released on EXIT trap.
+  if [ -L "${RESOLVED_INSTALL_DIR}/current" ] || [ -e "${RESOLVED_INSTALL_DIR}/current" ]; then
+    rm -rf "${RESOLVED_INSTALL_DIR}/current"
+    log_ok "removed current symlink"
+  fi
+  if [ -d "${RESOLVED_INSTALL_DIR}/releases" ]; then
+    rm -rf "${RESOLVED_INSTALL_DIR}/releases"
+    log_ok "removed releases/"
+  fi
+  rm -f "${RESOLVED_INSTALL_DIR}/.parako-state"
+  # Lock file is still held; the EXIT trap closes FD 9; remove the file last.
+
+  if [ "${FLAG_PURGE}" -eq 1 ] && [ -d "${rt}" ]; then
+    rm -rf "${rt}"
+    log_ok "removed runtime/  (--purge)"
+  fi
+
+  if [ "${FLAG_KEEP_BIN}" -eq 0 ] && [ -n "${bin_path}" ] && [ -f "${bin_path}" ]; then
+    local need_sudo=""
+    [ -w "${bin_path}" ] || need_sudo="sudo"
+    if [ -n "${need_sudo}" ] && [ "${RUNNING_AS_ROOT}" -eq 0 ] && ! command -v sudo >/dev/null 2>&1; then
+      log_warn "cannot remove ${bin_path} (no sudo available); rm manually"
+    else
+      ${need_sudo} rm -f "${bin_path}" \
+        && log_ok "removed ${bin_path}" \
+        || log_warn "could not remove ${bin_path}; rm manually"
+    fi
+  fi
+
+  print_header "Uninstall complete"
+  print_label "Install dir"  "${RESOLVED_INSTALL_DIR}"
+  if [ "${FLAG_PURGE}" -eq 1 ]; then
+    print_label "Runtime"   "removed"
+  else
+    print_label "Runtime"   "${rt}  (preserved)"
+  fi
+  printf '\n'
+  printf '  To reinstall: curl --proto =https --tlsv1.2 -fsSL https://get.parako.id | bash\n\n'
+}
+
+# -----------------------------------------------------------------------------
+# §19  --plan (pure preview; no network, no INSTALL_DIR writes)
 # -----------------------------------------------------------------------------
 plan_main() {
   local mode=${1:-install}
@@ -1267,11 +1418,12 @@ plan_main() {
   print_label "Target version" "${target}"
   print_label "Install dir"    "${RESOLVED_INSTALL_DIR}"
   printf '\n'
+  printf '  Scope: application files only. Runtime, database, services, reverse\n'
+  printf '  proxy, and TLS remain operator-managed.\n\n'
   printf '  Would resolve %s, download + cosign-verify the artifact, stage it under\n' "${target}"
   printf '    %s/releases/.staging.<tag>.$$\n' "${RESOLVED_INSTALL_DIR}"
   printf '  then atomically swap %s/current.\n' "${RESOLVED_INSTALL_DIR}"
-  printf '\n  Would NOT touch runtime/, the database, any service, nginx, or TLS.\n'
-  printf '\n  Use --dry-run to actually download + verify (no INSTALL_DIR writes).\n'
+  printf '\n  Use --dry-run to download + verify against a TMPDIR scratch space (no install).\n'
 }
 
 # -----------------------------------------------------------------------------
@@ -1295,6 +1447,7 @@ main() {
     exit 0
   fi
 
+  if [ "${FLAG_UNINSTALL}" -eq 1 ]; then uninstall_main; exit 0; fi
   if [ "${FLAG_DOCTOR}" -eq 1 ]; then doctor_main; exit 0; fi
   if [ "${FLAG_GC}"     -eq 1 ]; then gc_main;     exit 0; fi
   if [ "${FLAG_ROLLBACK}" -eq 1 ]; then rollback_main; exit 0; fi
