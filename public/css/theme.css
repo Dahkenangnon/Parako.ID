@@ -47,7 +47,7 @@
      Secondary: Alternative interactive elements
      Accent: Hover states, highlights
      ------------------------------------------------------------------------- */
-  --primary: #2563eb;
+  --primary: #2656a8;
   --primary-foreground: #fefeff;
   --secondary: #e2e4ea;
   --secondary-foreground: #2b2b2b;
@@ -85,7 +85,7 @@
      ------------------------------------------------------------------------- */
   --input: #e3e4e9;
   --border: #d4d6de;
-  --ring: #2563eb;
+  --ring: #2656a8;
 
   /* -------------------------------------------------------------------------
      BORDER RADIUS
@@ -96,7 +96,7 @@
      CHART COLORS - Light Mode
      Data visualization palette
      ------------------------------------------------------------------------- */
-  --chart-1: #2563eb;
+  --chart-1: #2656a8;
   --chart-2: #7c3aed;
   --chart-3: #a855f7;
   --chart-4: #16803c;
@@ -108,21 +108,21 @@
      ------------------------------------------------------------------------- */
   --sidebar: #e2e4ea;
   --sidebar-foreground: #2b2b2b;
-  --sidebar-primary: #2563eb;
+  --sidebar-primary: #2656a8;
   --sidebar-primary-foreground: #fefeff;
   --sidebar-accent: #d4d6de;
   --sidebar-accent-foreground: #2b2b2b;
   --sidebar-border: #d4d6de;
-  --sidebar-ring: #2563eb;
+  --sidebar-ring: #2656a8;
 
   /* -------------------------------------------------------------------------
      EFFECTS & OVERLAYS - Light Mode
      Gradients, patterns, and decorative elements
      ------------------------------------------------------------------------- */
-  --gradient-from: rgba(37, 99, 235, 0.08);
+  --gradient-from: rgba(38, 86, 168, 0.08);
   --gradient-via: rgba(238, 240, 245, 0.95);
   --gradient-to: rgba(124, 58, 237, 0.12);
-  --pattern-tint: rgba(37, 99, 235, 0.04);
+  --pattern-tint: rgba(38, 86, 168, 0.04);
   --pattern-dot: #d4d6de;
 
   /* -------------------------------------------------------------------------
@@ -222,54 +222,6 @@
   --shadow-light: rgba(0, 0, 0, 0.3);
   --shadow-medium: rgba(0, 0, 0, 0.4);
   --shadow-large: rgba(0, 0, 0, 0.5);
-}
-
-/* ============================================================================
-   TAILWIND CSS THEME BRIDGE
-   ============================================================================
-   Maps CSS variables to Tailwind's @theme directive for full integration
-   Enables: bg-primary, text-foreground, border-border, etc.
-   ============================================================================ */
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
-  --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 /* ============================================================================

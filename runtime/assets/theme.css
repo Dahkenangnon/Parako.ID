@@ -1,46 +1,233 @@
-@layer base {
-  :root {
-    --background: 45 33% 97%;
-    --foreground: 60 3% 8%;
-    --card: 45 33% 97%;
-    --card-foreground: 60 3% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 60 3% 8%;
-    --primary: 17 60% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 45 12% 89%;
-    --secondary-foreground: 60 3% 8%;
-    --muted: 45 12% 89%;
-    --muted-foreground: 40 5% 45%;
-    --accent: 17 60% 60%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 40 8% 80%;
-    --input: 40 8% 80%;
-    --ring: 17 60% 60%;
-    --radius: 0.5rem;
-  }
+/**
+ * ============================================================================
+ * CUSTOM THEME & STYLES - Application Customization File
+ * ============================================================================
+ *
+ * This file customizes the default look and color scheme of the application.
+ * It overrides Tailwind CSS design tokens and provides a unified visual theme.
+ *
+ * HOW IT WORKS:
+ * - CSS variables defined here override Tailwind's default color palette
+ * - The :root selector defines Light Mode colors
+ * - The .dark selector defines Dark Mode colors
+ * - Changes apply immediately on browser refresh
+ *
+ * CUSTOMIZATION GUIDE:
+ * - Primary colors: Define brand identity (buttons, links, focus states)
+ * - Secondary colors: Supporting UI elements
+ * - Destructive/Success/Warning/Info: Semantic feedback colors
+ * - Surface colors (card, popover): Container backgrounds
+ * - Sidebar colors: Navigation panel theming
+ *
+ * CURRENT THEME: Parako.ID Brand Theme
+ * ============================================================================
+ */
 
-  .dark {
-    --background: 60 3% 8%;
-    --foreground: 45 33% 97%;
-    --card: 60 3% 11%;
-    --card-foreground: 45 33% 97%;
-    --popover: 60 3% 11%;
-    --popover-foreground: 45 33% 97%;
-    --primary: 17 55% 55%;
-    --primary-foreground: 60 3% 8%;
-    --secondary: 60 3% 18%;
-    --secondary-foreground: 45 33% 97%;
-    --muted: 60 3% 18%;
-    --muted-foreground: 40 5% 60%;
-    --accent: 17 55% 55%;
-    --accent-foreground: 60 3% 8%;
-    --destructive: 0 70% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 60 3% 22%;
-    --input: 60 3% 22%;
-    --ring: 17 55% 55%;
-  }
+/* ============================================================================
+   TAILWIND CSS DESIGN TOKENS
+   ============================================================================
+   These CSS variables integrate with Tailwind's utility classes:
+   - bg-primary, text-primary-foreground, border-primary, etc.
+   - bg-card, text-card-foreground, etc.
+   - All standard Tailwind color utilities are mapped to these tokens
+   ============================================================================ */
+
+:root {
+  /* -------------------------------------------------------------------------
+     BASE COLORS - Light Mode
+     ------------------------------------------------------------------------- */
+  --background: #eef0f5;
+  --foreground: #2b2b2b;
+  --muted: #e8e9ef;
+  --muted-foreground: #5b5c62;
+
+  /* -------------------------------------------------------------------------
+     INTERACTIVE COLORS - Light Mode
+     Primary: Main brand color for buttons, links, focus rings
+     Secondary: Alternative interactive elements
+     Accent: Hover states, highlights
+     ------------------------------------------------------------------------- */
+  --primary: #2656a8;
+  --primary-foreground: #fefeff;
+  --secondary: #e2e4ea;
+  --secondary-foreground: #2b2b2b;
+  --accent: #e0e3eb;
+  --accent-foreground: #2b2b2b;
+
+  /* -------------------------------------------------------------------------
+     SEMANTIC COLORS - Light Mode
+     Used for status indicators and feedback
+     ------------------------------------------------------------------------- */
+  --destructive: #c53030;
+  --destructive-foreground: #ffffff;
+  --success: #16803c;
+  --success-foreground: #ffffff;
+  --warning: #c49a1b;
+  --warning-foreground: #2b2b2b;
+  --info: #2558d1;
+  --info-foreground: #ffffff;
+
+  /* -------------------------------------------------------------------------
+     SURFACE COLORS - Light Mode
+     Card: Elevated content containers
+     Popover: Dropdowns, tooltips, modals
+     ------------------------------------------------------------------------- */
+  --card: #f3f4f8;
+  --card-foreground: #2b2b2b;
+  --popover: #f3f4f8;
+  --popover-foreground: #2b2b2b;
+
+  /* -------------------------------------------------------------------------
+     FORM COLORS - Light Mode
+     Input: Form field backgrounds
+     Border: Dividers and borders
+     Ring: Focus ring color
+     ------------------------------------------------------------------------- */
+  --input: #e3e4e9;
+  --border: #d4d6de;
+  --ring: #2656a8;
+
+  /* -------------------------------------------------------------------------
+     BORDER RADIUS
+     ------------------------------------------------------------------------- */
+  --radius: 0.5rem;
+
+  /* -------------------------------------------------------------------------
+     CHART COLORS - Light Mode
+     Data visualization palette
+     ------------------------------------------------------------------------- */
+  --chart-1: #2656a8;
+  --chart-2: #7c3aed;
+  --chart-3: #a855f7;
+  --chart-4: #16803c;
+  --chart-5: #c53030;
+
+  /* -------------------------------------------------------------------------
+     SIDEBAR COLORS - Light Mode
+     Navigation panel theming
+     ------------------------------------------------------------------------- */
+  --sidebar: #e2e4ea;
+  --sidebar-foreground: #2b2b2b;
+  --sidebar-primary: #2656a8;
+  --sidebar-primary-foreground: #fefeff;
+  --sidebar-accent: #d4d6de;
+  --sidebar-accent-foreground: #2b2b2b;
+  --sidebar-border: #d4d6de;
+  --sidebar-ring: #2656a8;
+
+  /* -------------------------------------------------------------------------
+     EFFECTS & OVERLAYS - Light Mode
+     Gradients, patterns, and decorative elements
+     ------------------------------------------------------------------------- */
+  --gradient-from: rgba(38, 86, 168, 0.08);
+  --gradient-via: rgba(238, 240, 245, 0.95);
+  --gradient-to: rgba(124, 58, 237, 0.12);
+  --pattern-tint: rgba(38, 86, 168, 0.04);
+  --pattern-dot: #d4d6de;
+
+  /* -------------------------------------------------------------------------
+     SHADOWS - Light Mode
+     Elevation shadows for depth
+     ------------------------------------------------------------------------- */
+  --shadow-light: rgba(0, 0, 0, 0.05);
+  --shadow-medium: rgba(0, 0, 0, 0.1);
+  --shadow-large: rgba(0, 0, 0, 0.25);
 }
+
+/* ============================================================================
+   DARK MODE THEME
+   ============================================================================
+   Activated when .dark class is applied to <html> or <body>
+   ============================================================================ */
+
+.dark {
+  /* -------------------------------------------------------------------------
+     BASE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --background: #252838;
+  --foreground: #d8dae0;
+  --muted: #2f3240;
+  --muted-foreground: #8b8d96;
+
+  /* -------------------------------------------------------------------------
+     INTERACTIVE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --primary: #6b8aff;
+  --primary-foreground: #ffffff;
+  --secondary: #3e4158;
+  --secondary-foreground: #d8dae0;
+  --accent: #363950;
+  --accent-foreground: #b4b8ff;
+
+  /* -------------------------------------------------------------------------
+     SEMANTIC COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --destructive: #f87171;
+  --destructive-foreground: #252838;
+  --success: #4ade80;
+  --success-foreground: #252838;
+  --warning: #facc15;
+  --warning-foreground: #252838;
+  --info: #93b4ff;
+  --info-foreground: #252838;
+
+  /* -------------------------------------------------------------------------
+     SURFACE COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --card: #2f3240;
+  --card-foreground: #d8dae0;
+  --popover: #2f3240;
+  --popover-foreground: #d8dae0;
+
+  /* -------------------------------------------------------------------------
+     FORM COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --input: #3e4158;
+  --border: #3e4158;
+  --ring: #6b8aff;
+
+  /* -------------------------------------------------------------------------
+     CHART COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --chart-1: #6b8aff;
+  --chart-2: #a78bfa;
+  --chart-3: #c084fc;
+  --chart-4: #4ade80;
+  --chart-5: #f87171;
+
+  /* -------------------------------------------------------------------------
+     SIDEBAR COLORS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --sidebar: #2f3240;
+  --sidebar-foreground: #d8dae0;
+  --sidebar-primary: #6b8aff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #363950;
+  --sidebar-accent-foreground: #b4b8ff;
+  --sidebar-border: #3e4158;
+  --sidebar-ring: #6b8aff;
+
+  /* -------------------------------------------------------------------------
+     EFFECTS & OVERLAYS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --gradient-from: rgba(107, 138, 255, 0.1);
+  --gradient-via: rgba(37, 40, 56, 0.9);
+  --gradient-to: rgba(124, 58, 237, 0.25);
+  --pattern-tint: rgba(107, 138, 255, 0.08);
+  --pattern-dot: #3e4158;
+
+  /* -------------------------------------------------------------------------
+     SHADOWS - Dark Mode
+     ------------------------------------------------------------------------- */
+  --shadow-light: rgba(0, 0, 0, 0.3);
+  --shadow-medium: rgba(0, 0, 0, 0.4);
+  --shadow-large: rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   CUSTOM CSS RULES
+   ============================================================================
+   Add your custom CSS styles below to extend or override default styles.
+   ============================================================================ */
+
+/* Add custom styles here */

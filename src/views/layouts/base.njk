@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="{{ locale or app.locales.default or 'en' }}" dir="{% if (locale or app.locales.default) == 'ar' %}rtl{% else %}ltr{% endif %}" class="h-full overflow-hidden" >
+<html lang="{{ locale or app.locales.default or 'en' }}" dir="{% if (locale or app.locales.default) == 'ar' %}rtl{% else %}ltr{% endif %}" class="min-h-full" >
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     
     <!-- Dynamic Title -->
     {% set pageTitle = title | default('') %}
@@ -52,7 +52,7 @@
     <!-- Additional Meta Tags -->
     <meta name="author" content="{{ branding.companyName or '' }}">
     <meta name="robots" content="index, follow">
-    <meta name="theme-color" content="{{ branding.colors and branding.colors.primary or '#2563eb' }}">
+    <meta name="theme-color" content="{{ branding.colors and branding.colors.light and branding.colors.light.primary or '#2656a8' }}">
     
     <!-- Web App Manifest -->
     <link rel="manifest" href="/manifest.webmanifest">
@@ -97,8 +97,8 @@
     {% block head %}{% endblock %}
 </head>
 
-    <body class="{{ htmlClass }} dark:text-foreground h-full flex flex-col overflow-hidden{% if userTheme == 'dark' %} dark{% endif %}" data-theme="{{ userTheme }}">
-        <main class="h-full flex flex-col overflow-hidden">
+    <body class="{{ htmlClass }} dark:text-foreground min-h-svh flex flex-col{% if userTheme == 'dark' %} dark{% endif %}" data-theme="{{ userTheme }}">
+        <main class="min-h-svh flex flex-col">
             {% block content %}{% endblock %}
         </main>
         {% include "partials/flash.njk" %}

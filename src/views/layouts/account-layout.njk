@@ -1,4 +1,5 @@
 {% extends "layouts/base.njk" %}
+{% import "partials/ui.njk" as ui %}
 {# Define available locales at top level so both mobile and desktop can use it #}
 {% set availableLocales = getAvailableLocales() %}
 {% set currentLocaleData = null %}
@@ -50,37 +51,10 @@
 
             <!-- Main Navigation -->
             <div class="space-y-1">
-                <!-- My Profile (account root) -->
-                <a href="{{ routes.accountFull.dashboard }}"
-                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'my-account' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
-                   data-tooltip="{{ t('account-layout.sidebar.navigation.my_profile') }}">
-                    <i data-lucide="user" class="h-4 w-4 flex-shrink-0"></i>
-                    <span class="sidebar-text truncate">{{ t('account-layout.sidebar.navigation.my_profile') }}</span>
-                </a>
-
-                <!-- Apps -->
-                <a href="{{ routes.accountFull.apps }}"
-                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'apps' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
-                   data-tooltip="{{ t('account-layout.sidebar.navigation.apps') }}">
-                    <i data-lucide="grid-3x3" class="h-4 w-4 flex-shrink-0"></i>
-                    <span class="sidebar-text truncate">{{ t('account-layout.sidebar.navigation.apps') }}</span>
-                </a>
-
-                <!-- Sessions -->
-                <a href="{{ routes.accountFull.sessions }}"
-                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'sessions' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
-                   data-tooltip="{{ t('account-layout.sidebar.navigation.sessions') }}">
-                    <i data-lucide="monitor" class="h-4 w-4 flex-shrink-0"></i>
-                    <span class="sidebar-text truncate">{{ t('account-layout.sidebar.navigation.sessions') }}</span>
-                </a>
-
-                <!-- Settings -->
-                <a href="{{ routes.accountFull.settings }}"
-                   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if activePage == 'settings' %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
-                   data-tooltip="{{ t('account-layout.sidebar.navigation.settings') }}">
-                    <i data-lucide="settings" class="h-4 w-4 flex-shrink-0"></i>
-                    <span class="sidebar-text truncate">{{ t('account-layout.sidebar.navigation.settings') }}</span>
-                </a>
+                {{ ui.sidebar_nav_item(routes.accountFull.dashboard, activePage == 'my-account', 'user', t('account-layout.sidebar.navigation.my_profile')) }}
+                {{ ui.sidebar_nav_item(routes.accountFull.apps, activePage == 'apps', 'grid-3x3', t('account-layout.sidebar.navigation.apps')) }}
+                {{ ui.sidebar_nav_item(routes.accountFull.sessions, activePage == 'sessions', 'monitor', t('account-layout.sidebar.navigation.sessions')) }}
+                {{ ui.sidebar_nav_item(routes.accountFull.settings, activePage == 'settings', 'settings', t('account-layout.sidebar.navigation.settings')) }}
             </div>
 
         </nav>
@@ -272,76 +246,19 @@
             </div>
         </div>
 
-        <!-- Mobile Theme/Language Toggle -->
-        <div class="relative">
-            <button type="button" id="mobile-theme-lang-toggle" class="p-3 hover:bg-muted focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="{{ t('account-layout.theme_language.settings') }}" aria-expanded="false">
-                <i data-lucide="settings" class="h-5 w-5"></i>
-            </button>
-
-            <!-- Mobile Theme/Language Dropdown -->
-            <div id="mobile-theme-lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-48 bg-card border-2 border-border z-50">
-                <!-- Language Options (first) -->
-                <div class="p-2 border-b border-border">
-                    <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t('account-layout.theme_language.language') }}</p>
-                    {% for localeData in availableLocales %}
-                        <button type="button" data-locale="{{ localeData.code }}" class="mobile-locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
-                            <span>{{ localeData.flag }}</span>
-                            <span>{{ localeData.label }}</span>
-                        </button>
-                    {% endfor %}
-                </div>
-
-                <!-- Theme Options (second) -->
-                <div class="p-2">
-                    <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t('account-layout.theme_language.theme') }}</p>
-                    <button type="button" data-theme="light" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'light' %}bg-muted border-primary{% endif %}">
-                        <i data-lucide="sun" class="h-4 w-4"></i>
-                        <span>{{ t('account-layout.theme_language.light') }}</span>
-                    </button>
-                    <button type="button" data-theme="dark" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'dark' %}bg-muted border-primary{% endif %}">
-                        <i data-lucide="moon" class="h-4 w-4"></i>
-                        <span>{{ t('account-layout.theme_language.dark') }}</span>
-                    </button>
-                </div>
-            </div>
-        </div>
+        {% set layoutNamespace = 'account-layout' %}
+        {% set shellControlsVariant = 'mobile' %}
+        {% include "partials/shell-theme-language-controls.njk" %}
     </header>
 
-    <!-- Floating Language and Theme Toggles (Desktop Only) - Side by Side -->
-    <div class="hidden md:flex fixed top-6 right-6 z-30 gap-2 items-center">
-        <!-- Language Toggle (first / left) - shows flag + label -->
-        <div class="relative">
-            <button type="button" id="lang-toggle" class="flex h-9 items-center gap-1.5 px-3 rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="{{ t('account-layout.theme_language.language') }}" aria-expanded="false">
-                <span class="text-sm">{{ currentLocaleData.flag if currentLocaleData else '' }}</span>
-                <span class="text-xs text-foreground">{{ currentLocaleData.label if currentLocaleData else '' }}</span>
-                <i data-lucide="chevron-down" class="h-3 w-3 text-muted-foreground"></i>
-            </button>
-
-            <!-- Language Dropdown -->
-            <div id="lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-40 bg-card border-2 border-border rounded z-50">
-                <div class="p-1">
-                    {% for localeData in availableLocales %}
-                        <button type="button" data-locale="{{ localeData.code }}" class="locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
-                            <span>{{ localeData.flag }}</span>
-                            <span>{{ localeData.label }}</span>
-                        </button>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Theme Toggle (second / right edge) -->
-        <div class="relative">
-            <button type="button" id="theme-toggle" class="flex h-9 w-9 items-center justify-center rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="Theme">
-                <i data-lucide="sun" id="theme-icon" class="h-4 w-4"></i>
-            </button>
-        </div>
-    </div>
+    {% set layoutNamespace = 'account-layout' %}
+    {% set shellControlsVariant = 'desktop' %}
+    {% include "partials/shell-theme-language-controls.njk" %}
 
     <!-- Main Content -->
     <main id="main-content" class="flex-1 flex flex-col min-h-0 overflow-hidden bg-background {% if sidebar_expanded %}main-content-expanded{% else %}main-content-collapsed{% endif %}">
         <!-- Fixed mobile header spacer (non-scrolling) -->
-        <div class="flex-none h-16"></div>
+        <div class="flex-none h-16 md:hidden"></div>
         <!-- Scrollable content wrapper with padding -->
         <div class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
             {% block account_content %}
@@ -471,9 +388,9 @@
     content: attr(data-tooltip);
     position: fixed;
     left: 56px;
-    background-color: hsl(var(--popover));
-    color: hsl(var(--popover-foreground));
-    border: 1px solid hsl(var(--border));
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    border: 1px solid var(--border);
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
     white-space: nowrap;

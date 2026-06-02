@@ -1,0 +1,60 @@
+{% set namespace = layoutNamespace or 'account-layout' %}
+
+{% if shellControlsVariant == 'mobile' %}
+<div class="relative">
+    <button type="button" id="mobile-theme-lang-toggle" class="p-3 hover:bg-muted focus:outline-none border-2 border-transparent focus:border-primary min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="{{ t(namespace + '.theme_language.settings') }}" aria-expanded="false">
+        <i data-lucide="settings" class="h-5 w-5"></i>
+    </button>
+
+    <div id="mobile-theme-lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-48 bg-card border-2 border-border z-50">
+        <div class="p-2 border-b border-border">
+            <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t(namespace + '.theme_language.language') }}</p>
+            {% for localeData in availableLocales %}
+                <button type="button" data-locale="{{ localeData.code }}" class="mobile-locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
+                    <span>{{ localeData.flag }}</span>
+                    <span>{{ localeData.label }}</span>
+                </button>
+            {% endfor %}
+        </div>
+
+        <div class="p-2">
+            <p class="text-xs font-medium text-muted-foreground uppercase px-2 py-1">{{ t(namespace + '.theme_language.theme') }}</p>
+            <button type="button" data-theme="light" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'light' %}bg-muted border-primary{% endif %}">
+                <i data-lucide="sun" class="h-4 w-4"></i>
+                <span>{{ t(namespace + '.theme_language.light') }}</span>
+            </button>
+            <button type="button" data-theme="dark" class="mobile-theme-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if userTheme == 'dark' %}bg-muted border-primary{% endif %}">
+                <i data-lucide="moon" class="h-4 w-4"></i>
+                <span>{{ t(namespace + '.theme_language.dark') }}</span>
+            </button>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="hidden md:flex fixed top-6 right-6 z-30 gap-2 items-center">
+    <div class="relative">
+        <button type="button" id="lang-toggle" class="flex h-9 items-center gap-1.5 px-3 rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="{{ t(namespace + '.theme_language.language') }}" aria-expanded="false">
+            <span class="text-sm">{{ currentLocaleData.flag if currentLocaleData else '' }}</span>
+            <span class="text-xs text-foreground">{{ currentLocaleData.label if currentLocaleData else '' }}</span>
+            <i data-lucide="chevron-down" class="h-3 w-3 text-muted-foreground"></i>
+        </button>
+
+        <div id="lang-dropdown" class="hidden absolute top-full right-0 mt-2 w-40 bg-card border-2 border-border rounded z-50">
+            <div class="p-1">
+                {% for localeData in availableLocales %}
+                    <button type="button" data-locale="{{ localeData.code }}" class="locale-option w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted border-2 border-transparent {% if localeData.code == userLocale %}bg-muted border-primary{% endif %}">
+                        <span>{{ localeData.flag }}</span>
+                        <span>{{ localeData.label }}</span>
+                    </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="relative">
+        <button type="button" id="theme-toggle" class="flex h-9 w-9 items-center justify-center rounded border-2 border-border bg-card hover:bg-muted focus:outline-none focus:border-primary" aria-label="Theme">
+            <i data-lucide="sun" id="theme-icon" class="h-4 w-4"></i>
+        </button>
+    </div>
+</div>
+{% endif %}

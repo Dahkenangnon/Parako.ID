@@ -277,7 +277,7 @@ export default class EmailUtils implements IEmailService {
       companyName: brandingConfig.companyName,
       branding: brandingConfig,
       brandColors: {
-        primary: brandingConfig.colors?.light?.primary || '#2563eb',
+        primary: brandingConfig.colors?.light?.primary || '#2656a8',
       },
       appUrl: currentConfig.deployment.url,
       websiteUrl: currentConfig.integrations.urls.website,

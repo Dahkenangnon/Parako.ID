@@ -1,15 +1,17 @@
 {% extends "layouts/admin-layout.njk" %}
 {% block admin_content %}
-  <div
-    class="max-w-[1600px] mx-auto space-y-8">
+  <div class="max-w-[1600px] mx-auto space-y-6">
     <!-- Header Section -->
-    <div class="text-center mb-6">
-      <div class="inline-flex items-center justify-center mb-4">
-        {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-24 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
-        {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-24 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+    <div class="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p class="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Admin</p>
+        <h1 class="text-2xl font-semibold text-foreground">Control panel</h1>
+        <p class="text-sm text-muted-foreground">Manage users, applications, sessions, and platform settings.</p>
       </div>
-        <h1 class="text-3xl font-bold text-foreground mb-2">Your Parako.ID Control Panel</h1>
-        <p class="text-sm text-muted-foreground">Manage system settings, users and oidc/oauth2 applications</p>
+      <div class="flex items-center">
+        {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+        {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+      </div>
       </div>
       <!-- Quick Access & Resources Section -->
       <div
@@ -20,7 +22,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Add User -->
-            <a href="/admin/users/new" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/users/new" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="user-plus" class="h-5 w-5 text-primary"></i>
@@ -30,7 +32,7 @@
               <p class="text-sm text-muted-foreground">Create new account</p>
             </a>
             <!-- New Application -->
-            <a href="/admin/oidc-clients/create" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/oidc-clients/create" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="plus" class="h-5 w-5 text-primary"></i>
@@ -41,7 +43,7 @@
             </a>
             <!-- Settings / Configuration -->
             {% if isPlatformTenant %}
-            <a href="/admin/settings" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/settings" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="settings" class="h-5 w-5 text-primary"></i>
@@ -51,7 +53,7 @@
               <p class="text-sm text-muted-foreground">Configure system</p>
             </a>
             {% else %}
-            <a href="/admin/configuration" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/configuration" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="sliders-horizontal" class="h-5 w-5 text-primary"></i>
@@ -66,7 +68,7 @@
               href="https://docs.parako.id"
               target="_blank"
               rel="noopener noreferrer"
-              class="bg-background border border-border p-4 hover:border-primary">
+              class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="book-open" class="h-5 w-5 text-primary"></i>
@@ -84,7 +86,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Users Metric -->
-            <a href="/admin/users" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/users" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users" class="h-5 w-5 text-primary"></i>
@@ -100,7 +102,7 @@
               </div>
             </a>
             <!-- Applications Metric -->
-            <a href="/admin/oidc-clients" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/oidc-clients" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
@@ -113,7 +115,7 @@
               <div class="text-xs text-muted-foreground">Connected apps</div>
             </a>
             <!-- Active Sessions Metric -->
-            <a href="/admin/sessions" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/sessions" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="user-check" class="h-5 w-5 text-primary"></i>
@@ -126,7 +128,7 @@
               <div class="text-xs text-muted-foreground">{{ stats.grants.active | default(0) }} active</div>
             </a>
             <!-- Activity Metric -->
-            <a href="/admin/activities" class="bg-background border border-border p-4 hover:border-primary">
+            <a href="/admin/activities" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="activity" class="h-5 w-5 text-primary"></i>
@@ -150,7 +152,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Users Management -->
-            <a href="/admin/users" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/users" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users" class="h-5 w-5 text-primary"></i>
@@ -164,7 +166,7 @@
               </div>
             </a>
             <!-- Applications -->
-            <a href="/admin/oidc-clients" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/oidc-clients" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
@@ -177,7 +179,7 @@
               </div>
             </a>
             <!-- Active Sessions -->
-            <a href="/admin/sessions" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/sessions" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users-round" class="h-5 w-5 text-primary"></i>
@@ -190,7 +192,7 @@
               </div>
             </a>
             <!-- Permissions -->
-            <a href="/admin/user-grants" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/user-grants" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="shield-check" class="h-5 w-5 text-primary"></i>
@@ -210,7 +212,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Data Management -->
-            <a href="/admin/data-transfer" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/data-transfer" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="database" class="h-5 w-5 text-primary"></i>
@@ -223,7 +225,7 @@
               </div>
             </a>
             <!-- Activity Logs -->
-            <a href="/admin/activities" class="bg-card border border-border p-5 hover:border-primary">
+            <a href="/admin/activities" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="file-text" class="h-5 w-5 text-primary"></i>

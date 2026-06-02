@@ -380,7 +380,7 @@ async function main() {
       short_name: 'Parako',
       start_url: '/',
       display: 'minimal-ui',
-      theme_color: '#2563eb',
+      theme_color: '#2656a8',
       background_color: '#ffffff',
       icons: [
         {

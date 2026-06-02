@@ -1,0 +1,8 @@
+{% macro sidebar_nav_item(href, active, icon, label, tooltip) %}
+<a href="{{ href }}"
+   class="sidebar-nav-item flex items-center gap-3 px-3 py-2 text-sm {% if active %}bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-sidebar-primary{% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground border-l-2 border-transparent{% endif %}"
+   data-tooltip="{{ tooltip or label }}">
+    <i data-lucide="{{ icon }}" class="h-4 w-4 flex-shrink-0"></i>
+    <span class="sidebar-text truncate">{{ label }}</span>
+</a>
+{% endmacro %}
