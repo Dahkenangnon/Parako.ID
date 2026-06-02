@@ -9,15 +9,18 @@ order: 3
 
 ## Verbs
 
-| Verb                               | Purpose                                              | Delegates to                                   |
-| ---------------------------------- | ---------------------------------------------------- | ---------------------------------------------- |
-| `parako version`                   | Print helper + app + previous-release versions       | reads `current/package.json` + `.parako-state` |
-| `parako paths`                     | Print resolved install paths                         | reads `.parako-state`                          |
-| `parako doctor [--json]`           | File / config sanity (no service, no DB, no network) | `install.sh --doctor`                          |
-| `parako update [--version vX.Y.Z]` | App-files update; atomic symlink swap                | `install.sh --update`                          |
-| `parako rollback [--to vX.Y.Z]`    | Re-aim `current` to a prior release                  | `install.sh --rollback`                        |
-| `parako gc [--keep N] [--yes]`     | Prune old `releases/v*/`; never touches `runtime/`   | `install.sh --gc`                              |
-| `parako --help`                    | Help text                                            | —                                              |
+| Verb                                      | Purpose                                                             | Delegates to                                   |
+| ----------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
+| `parako version`                          | Print helper + app + previous-release versions                      | reads `current/package.json` + `.parako-state` |
+| `parako paths`                            | Print resolved install paths                                        | reads `.parako-state`                          |
+| `parako doctor [--json]`                  | File / config sanity (no service, no DB, no network)                | `install.sh --doctor`                          |
+| `parako update [--version vX.Y.Z]`        | App-files update; atomic symlink swap                               | `install.sh --update`                          |
+| `parako rollback [--to vX.Y.Z]`           | Re-aim `current` to a prior release                                 | `install.sh --rollback`                        |
+| `parako gc [--keep N] [--yes]`            | Prune old `releases/v*/`; never touches `runtime/`                  | `install.sh --gc`                              |
+| `parako clean-stale`                      | Auto-remove stale `current.tmp.*` symlinks left by a crashed run    | `install.sh --clean-stale --doctor`            |
+| `parako self-update [--force]`            | Refresh the parako helper itself (prefers contrib/, falls back URL) | none (atomic local replace)                    |
+| `parako uninstall [--purge] [--keep-bin]` | Remove the install; preserves `runtime/` unless `--purge`           | `install.sh --uninstall`                       |
+| `parako --help`                           | Help text                                                           | —                                              |
 
 ## `parako version`
 
@@ -92,6 +95,39 @@ parako gc --keep 3 --yes           # apply, retain N from the deletable set
 ```
 
 Two releases are always protected (current and previous, per `.parako-state`); `--keep N` (default 3) retains N more from `releases/v*/` sorted by mtime. GC never touches `runtime/`.
+
+## `parako uninstall`
+
+```bash
+parako uninstall                 # remove releases/, current, .parako-state; also removes /usr/local/bin/parako
+parako uninstall --keep-bin      # same, but preserves the parako helper binary
+parako uninstall --purge         # also wipes runtime/ (operator data — requires explicit `yes` confirmation)
+```
+
+By default `parako uninstall` keeps `runtime/` (operator data — `.env`, JWKS, uploads). Pass `--purge` for a complete wipe.
+
+## `parako self-update`
+
+```bash
+parako self-update               # refresh from contrib/parako.sh (cosign-verified) or get.parako.id
+parako self-update --force       # reinstall even if version matches
+parako self-update --from-url <URL>   # explicit fetch URL (HTTPS only)
+```
+
+`parako self-update` updates **only** the parako helper binary at `/usr/local/bin/parako` (or `~/.local/bin/parako` for non-root installs). For application updates, use `parako update`.
+
+Source priority:
+
+1. `<install>/current/contrib/parako.sh` if an install exists (already cosign-verified at install time).
+2. `https://get.parako.id/parako.sh` otherwise (TLS-only trust).
+
+## `parako clean-stale`
+
+```bash
+parako clean-stale
+```
+
+Removes any `current.tmp.*` symlink left over by a crashed installer run, then runs `parako doctor`. Safe to run anytime — acquires the installer lock first so it cannot race with a concurrent install.
 
 ## See also
 
