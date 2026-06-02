@@ -4,6 +4,10 @@
 
 load helpers
 
+# -----------------------------------------------------------------------------
+# install.sh — strict-mode + safety
+# -----------------------------------------------------------------------------
+
 @test "install.sh has valid bash syntax" {
   run assert_syntax "${INSTALLER_SH}"
   [ "${status}" -eq 0 ]
@@ -49,24 +53,150 @@ load helpers
   [ "${status}" -eq 0 ]
 }
 
-@test "install.sh has all required section banners" {
-  for section in '§0' '§1' '§2' '§3' '§4' '§5' '§6' '§7' '§8' '§9' '§10' '§11' '§12' '§13' '§14' '§15' '§16' '§17' '§18' '§19' '§20' '§21' '§22' '§23' '§24' '§25' '§26'; do
-    grep -qE "^# ${section}[[:space:]]" "${INSTALLER_SH}" \
-      || { echo "missing section banner ${section} in install.sh"; return 1; }
-  done
+# -----------------------------------------------------------------------------
+# install.sh — minimal-deployer scope (functions that MUST exist)
+# -----------------------------------------------------------------------------
+
+@test "install.sh defines install_main" {
+  grep -qE '^install_main\(\)' "${INSTALLER_SH}"
 }
 
-@test "install.sh banner includes invariants for every numbered section" {
-  # For each section in §0..§26, find its banner and assert an Invariants line follows within 30 lines.
-  # §0 is exempt (handled inline by the strict-mode block).
-  for section in '§1' '§2' '§3' '§4' '§5' '§6' '§7' '§8' '§9' '§10' '§11' '§12' '§13' '§14' '§15' '§16' '§17' '§18' '§19' '§20' '§21' '§22' '§23' '§24' '§25' '§26'; do
-    line=$(grep -nE "^# ${section}[[:space:]]" "${INSTALLER_SH}" | head -n1 | cut -d: -f1)
-    [ -n "${line}" ] || { echo "no banner for ${section}"; return 1; }
-    end=$((line + 30))
-    sed -n "${line},${end}p" "${INSTALLER_SH}" | grep -q 'Invariants:' \
-      || { echo "${section} missing Invariants block"; return 1; }
-  done
+@test "install.sh defines update_main" {
+  grep -qE '^update_main\(\)' "${INSTALLER_SH}"
 }
+
+@test "install.sh defines rollback_main" {
+  grep -qE '^rollback_main\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines doctor_main" {
+  grep -qE '^doctor_main\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines gc_main" {
+  grep -qE '^gc_main\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines plan_main" {
+  grep -qE '^plan_main\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines verify_release_signature" {
+  grep -qE '^verify_release_signature\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines write_root_file for privileged writes" {
+  grep -qE '^write_root_file\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh defines write_parako_state" {
+  grep -qE '^write_parako_state\(\)' "${INSTALLER_SH}"
+}
+
+# -----------------------------------------------------------------------------
+# install.sh — minimal-deployer scope (functions that MUST NOT exist)
+# -----------------------------------------------------------------------------
+
+@test "install.sh does NOT define setup_nginx" {
+  ! grep -qE '^setup_nginx\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define setup_tls" {
+  ! grep -qE '^setup_tls\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define setup_systemd" {
+  ! grep -qE '^setup_systemd\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define run_db_migrations" {
+  ! grep -qE '^run_db_migrations\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define backup_db_before_update" {
+  ! grep -qE '^backup_db_before_update\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define start_application" {
+  ! grep -qE '^start_application\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define install_dependencies" {
+  ! grep -qE '^install_dependencies\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define generate_env_file" {
+  ! grep -qE '^generate_env_file\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define validate_mongodb / validate_postgresql / validate_redis" {
+  ! grep -qE '^validate_(mongodb|postgresql|redis)\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define demo_main" {
+  ! grep -qE '^demo_main\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh does NOT define maybe_generate_bootstrap_password" {
+  ! grep -qE '^maybe_generate_bootstrap_password\(\)' "${INSTALLER_SH}"
+}
+
+# -----------------------------------------------------------------------------
+# install.sh — minimal-deployer scope (flags that MUST NOT exist)
+# -----------------------------------------------------------------------------
+
+@test "install.sh does not advertise --with-nginx / --with-tls / --tls-email" {
+  ! grep -qE -- '--with-nginx|--with-tls|--tls-email' "${INSTALLER_SH}"
+}
+
+@test "install.sh does not advertise --bootstrap-admin" {
+  ! grep -qE -- '--bootstrap-admin' "${INSTALLER_SH}"
+}
+
+@test "install.sh does not advertise --multi-tenant" {
+  ! grep -qE -- '--multi-tenant' "${INSTALLER_SH}"
+}
+
+@test "install.sh does not advertise --migrate-back" {
+  ! grep -qE -- '--migrate-back' "${INSTALLER_SH}"
+}
+
+# -----------------------------------------------------------------------------
+# install.sh — mode + atomic-swap requirements
+# -----------------------------------------------------------------------------
+
+@test "install.sh enforces preflight OS/arch check" {
+  grep -qE '^check_os_arch\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh checks for GNU mv -T support" {
+  grep -qE '^check_coreutils\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh checks for util-linux flock" {
+  grep -qE '^check_flock\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh uses mv -T for atomic pointer swap" {
+  grep -q 'mv -Tf' "${INSTALLER_SH}"
+}
+
+@test "install.sh stages extraction into .staging.\$\$ before promotion" {
+  grep -q '.staging.${TAG}.$$' "${INSTALLER_SH}"
+}
+
+@test "install.sh uses unique temp symlinks (current.tmp.\$\$)" {
+  grep -q 'current.tmp.$$' "${INSTALLER_SH}"
+}
+
+@test "install.sh acquires flock around mutating modes" {
+  grep -qE '^acquire_lock\(\)' "${INSTALLER_SH}"
+  grep -q 'flock --nonblock --exclusive 9' "${INSTALLER_SH}"
+}
+
+# -----------------------------------------------------------------------------
+# parako.sh — strict-mode + minimal command surface
+# -----------------------------------------------------------------------------
 
 @test "parako.sh has valid bash syntax" {
   run assert_syntax "${PARAKO_SH}"
@@ -78,43 +208,33 @@ load helpers
   [ "${status}" -eq 0 ]
 }
 
-@test "parako.sh sets umask 077" {
-  run assert_umask_0077 "${PARAKO_SH}"
-  [ "${status}" -eq 0 ]
-}
-
-@test "parako.sh installs ERR + EXIT traps" {
-  run assert_traps_installed "${PARAKO_SH}"
-  [ "${status}" -eq 0 ]
-}
-
 @test "parako.sh contains no eval" {
   run assert_no_eval "${PARAKO_SH}"
   [ "${status}" -eq 0 ]
 }
 
-@test "install.sh references existing /health endpoint not heavy OIDC discovery" {
-  grep -q "${HEALTH_PATH:-/health}" "${INSTALLER_SH}"
-  primary_count=$(grep -c '/health"' "${INSTALLER_SH}" 2>/dev/null || echo 0)
-  fallback_count=$(grep -c '/.well-known/openid-configuration' "${INSTALLER_SH}" 2>/dev/null || echo 0)
-  [ "${primary_count}" -ge 1 ]
-  # Fallback is documented but not the primary probe.
-  [ "${fallback_count}" -le 3 ]
+@test "parako.sh defines version, paths, doctor, update, rollback, gc" {
+  for verb in cmd_version cmd_paths cmd_doctor cmd_update cmd_rollback cmd_gc; do
+    grep -qE "^${verb}\\(\\)" "${PARAKO_SH}" \
+      || { echo "missing ${verb} in parako.sh"; return 1; }
+  done
 }
 
-@test "install.sh references pnpm not yarn (yarn migrated to pnpm)" {
-  yarn_count=$(grep -cE '\byarn\b' "${INSTALLER_SH}" || true)
-  [ "${yarn_count}" -le 1 ]  # at most one comment mention
+@test "parako.sh does NOT define start/stop/restart/status/logs/config/migrate/backup/restore/diag" {
+  for verb in cmd_start cmd_stop cmd_restart cmd_status cmd_logs cmd_config cmd_migrate cmd_backup cmd_restore cmd_diag cmd_shell; do
+    if grep -qE "^${verb}\\(\\)" "${PARAKO_SH}"; then
+      echo "${verb} should be absent from parako.sh"
+      return 1
+    fi
+  done
 }
 
-@test "install.sh uses write_root_file() for privileged writes" {
-  grep -q '^write_root_file\(\)' "${INSTALLER_SH}"
-  # No direct write to /etc/ via `>` or `tee` outside of write_root_file.
-  ! grep -nE '>[[:space:]]*"?/(etc|usr/local/bin)/' "${INSTALLER_SH}" \
-    | grep -v 'write_root_file\|case "\${dest}"' \
-    | grep -v 'log_warn\|log_info\|log_err\|log_ok\|^[[:space:]]*#' || true
+@test "parako.sh delegates update/rollback/gc to install.sh" {
+  grep -q 'run_installer --update'   "${PARAKO_SH}"
+  grep -q 'run_installer --rollback' "${PARAKO_SH}"
+  grep -q 'run_installer --gc'       "${PARAKO_SH}"
 }
 
-@test "parako.sh delegates update/rollback/gc to installer" {
-  grep -q 'INSTALLER_URL' "${PARAKO_SH}"
+@test "parako.sh INSTALLER_URL is HTTPS get.parako.id (default)" {
+  grep -q 'INSTALLER_URL.*https://get.parako.id' "${PARAKO_SH}"
 }

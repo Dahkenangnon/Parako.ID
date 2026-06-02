@@ -1,50 +1,61 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Parako.ID Installer
+# Parako.ID installer / updater — minimal application release deployer.
 # License: MIT  https://github.com/Dahkenangnon/Parako.ID/blob/main/LICENSE
 # Threat model: docs/installer-security.md
-# Prerequisite: bash >= 4.0 (Alpine: `apk add bash` before running)
+#
+# Responsibility statement:
+#   This installer/updater safely places and updates Parako application files.
+#   It verifies the release artifact, stages it, preserves operator-owned
+#   runtime/config files, and switches the application release pointer.
+#   Infrastructure, database backups, database migrations, process management,
+#   reverse proxy, TLS, secrets, and production configuration remain operator
+#   responsibilities.
+#
+# Prerequisites:
+#   - Linux x86_64 or aarch64.
+#   - bash >= 4.0 (Alpine: `apk add bash` first).
+#   - GNU coreutils (for `mv -T`) and util-linux (for `flock`).
+#     Alpine: `apk add coreutils util-linux` first.
+#   - curl OR wget, openssl, tar, >= 2 GB free disk.
 # =============================================================================
 
-# =============================================================================
+# -----------------------------------------------------------------------------
 # §0  Strict mode + safety guards
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - errexit, nounset, pipefail, errtrace, IFS, inherit_errexit, umask 077.
-#   - ERR trap reports failing line + command; EXIT trap cleans up tempdir + lock.
-#   - INT/TERM/HUP trap reports interruption and exits 130.
-# References:
-#   http://redsymbol.net/articles/unofficial-bash-strict-mode/
-#   https://www.shellcheck.net/wiki/SC2310 (set -e gotchas)
-# =============================================================================
 set -Eeuo pipefail
 IFS=$'\n\t'
 shopt -s inherit_errexit 2>/dev/null || true
 umask 077
 
-# Filled in §1 once paths exist; declared here so cleanup is safe early.
 TMPDIR_PATH=""
 LOCK_FD=""
 LOG_FILE=""
+STAGING_DIR=""
+CURRENT_TMP=""
 
 on_error() {
   local exit_code=$? line=${BASH_LINENO[0]:-0} cmd=${BASH_COMMAND:-?}
-  # Avoid recursion if log_err itself fails.
   if declare -F log_err >/dev/null 2>&1; then
     log_err "exit ${exit_code} at line ${line}: ${cmd}"
   else
-    printf '[ERR]  exit %d at line %d: %s\n' "${exit_code}" "${line}" "${cmd}" >&2
+    printf '[FAIL] exit %d at line %d: %s\n' "${exit_code}" "${line}" "${cmd}" >&2
   fi
   cleanup
   exit "${exit_code}"
 }
 
 cleanup() {
+  if [ -n "${STAGING_DIR}" ] && [ -d "${STAGING_DIR}" ]; then
+    rm -rf "${STAGING_DIR}" 2>/dev/null || true
+  fi
+  if [ -n "${CURRENT_TMP}" ] && [ -L "${CURRENT_TMP}" ]; then
+    rm -f "${CURRENT_TMP}" 2>/dev/null || true
+  fi
   if [ -n "${TMPDIR_PATH}" ] && [ -d "${TMPDIR_PATH}" ]; then
     rm -rf "${TMPDIR_PATH}" 2>/dev/null || true
   fi
   if [ -n "${LOCK_FD}" ]; then
-    # LOCK_FD is always 9 (set by acquire_lock); close that FD explicitly.
     exec 9>&- 2>/dev/null || true
   fi
 }
@@ -63,44 +74,30 @@ trap on_error ERR
 trap cleanup EXIT
 trap on_interrupt INT TERM HUP
 
-# =============================================================================
-# §1  Constants + paths
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - All constants are read-only after this section.
-#   - Paths are resolved deterministically; no surprise sudo re-execs.
-# =============================================================================
-
+# §1  Constants
+# -----------------------------------------------------------------------------
 readonly INSTALLER_VERSION="0.2.0"
 readonly REPO_OWNER="Dahkenangnon"
 readonly REPO_NAME="Parako.ID"
 readonly GITHUB_API="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
-readonly DEFAULT_PORT=9007
-readonly MIN_NODE_MAJOR=24
-readonly MIN_PNPM_MAJOR=11
 readonly MIN_BASH_MAJOR=4
 readonly MIN_DISK_BYTES=2147483648  # 2 GiB
-readonly HEALTH_PATH="/health"
-readonly HEALTH_FALLBACK_PATH="/.well-known/openid-configuration"
-readonly HEALTH_TIMEOUT_SECS=15
-readonly TIME_SKEW_TOLERANCE_SECS=60
 
-# Cosign bootstrap chain-of-trust constants. Updated by the maintainer when the
-# cosign release bumps. Verification source: sigstore/cosign GitHub Releases.
+# Cosign bootstrap chain-of-trust constants. When bumping COSIGN_VERSION,
+# refresh both SHA values from sigstore/cosign's cosign_checksums.txt.
 # https://github.com/sigstore/cosign/releases
 readonly COSIGN_VERSION="2.4.1"
-# Real SHA256 values from sigstore/cosign v2.4.1 cosign_checksums.txt.
-# When bumping COSIGN_VERSION, re-fetch from:
-#   curl -sSfL https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign_checksums.txt
-# Procedure documented in docs/installer-security.md#updating-cosign-bootstrap-constants
 readonly COSIGN_SHA256_LINUX_AMD64="8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b"
 readonly COSIGN_SHA256_LINUX_ARM64="3b2e2e3854d0356c45fe6607047526ccd04742d20bd44afb5be91fa2a6e7cb4a"
-
-# Cosign identity for Parako.ID release signing (set when CI starts signing).
 readonly COSIGN_CERT_IDENTITY_REGEX='https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*'
 readonly COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'
 
-# Installation directory defaults: /opt/parako-id (root) or ./parako-id (user).
+# Runtime subtrees the installer is allowed to copy out of the tarball into
+# INSTALL_DIR/runtime/ on FIRST install only. Defense in depth: scripts/release.sh
+# also sanitizes the tarball so the source paths shouldn't contain anything else.
+readonly RUNTIME_FIRST_INSTALL_ALLOWLIST=(locales views assets)
+
 if [ "$(id -u 2>/dev/null || printf '1000')" = "0" ]; then
   readonly DEFAULT_INSTALL_DIR="/opt/parako-id"
   readonly DEFAULT_LOG_DIR="/var/log"
@@ -120,30 +117,15 @@ INSTALL_DIR=""
 FLAG_HELP=0
 FLAG_VERSION=""
 FLAG_DIR=""
-FLAG_PORT=""
-FLAG_NO_START=0
-FLAG_NON_INTERACTIVE=0
 FLAG_UPDATE=0
-FLAG_FORCE=0
-FLAG_PLAN=0
-FLAG_DRY_RUN=0
-FLAG_DOCTOR=0
 FLAG_ROLLBACK=0
 FLAG_ROLLBACK_TO=""
-FLAG_MIGRATE_BACK=0
+FLAG_DOCTOR=0
 FLAG_GC=0
 FLAG_KEEP=3
 FLAG_YES=0
-FLAG_JSON=0
-FLAG_NO_COLOR=0
-FLAG_WITH_NGINX=0
-FLAG_WITH_TLS=0
-FLAG_DOMAIN=""
-FLAG_TLS_EMAIL=""
-FLAG_MULTI_TENANT=0
-FLAG_BASE_DOMAIN=""
-FLAG_CERTBOT_DNS_PLUGIN=""
-FLAG_DEMO=0
+FLAG_PLAN=0
+FLAG_DRY_RUN=0
 FLAG_OFFLINE=0
 FLAG_OFFLINE_TARBALL=""
 FLAG_OFFLINE_CHECKSUM=""
@@ -151,31 +133,11 @@ FLAG_OFFLINE_SIGNATURE=""
 FLAG_OFFLINE_CERTIFICATE=""
 FLAG_INSECURE_NO_SIGNATURE=0
 FLAG_INSECURE_REASON=""
-FLAG_BOOTSTRAP_ADMIN_EMAIL=""
-FLAG_DB=""
-FLAG_POSTGRES_URL=""
-FLAG_MONGO_URI=""
-FLAG_REDIS_URL=""
-FLAG_SUPERVISOR=""
-
-# Wizard answers.
-BOOTSTRAP_ADMIN_PASSWORD=""
-ANS_ENV="development"
-ANS_PORT="${DEFAULT_PORT}"
-ANS_URL=""
-ANS_DB="sqlite"
-ANS_MONGO_URI="mongodb://localhost:27017/parako-id"
-ANS_PG_URL="postgresql://localhost:5432/parako"
-ANS_REDIS="no"
-ANS_REDIS_HOST="localhost"
-ANS_REDIS_PORT="6379"
-ANS_SUPERVISOR="systemd"
-
-# Sniffed environment.
-SNIFFED_MONGO=""
-SNIFFED_POSTGRES=""
-SNIFFED_REDIS=""
-SNIFFED_INIT=""
+FLAG_NO_BIN=0
+FLAG_NON_INTERACTIVE=0
+FLAG_FORCE=0
+FLAG_NO_COLOR=0
+FLAG_JSON=0
 
 # Runtime state.
 DOWNLOAD_CMD=""
@@ -183,49 +145,25 @@ TAG=""
 RESOLVED_INSTALL_DIR=""
 RUN_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-# =============================================================================
-# §2  Logging + UI (color, label format, spinner, redactor)
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Output is plain text. NO Unicode box-drawing characters.
-#   - Colors auto-disabled on non-TTY or when NO_COLOR is set.
-#   - Every log line passes through redact() before going to disk OR stdout.
-#   - Log file is mode 0600, JSON-lines on disk for tooling, human on stdout.
-# Reference:
-#   https://no-color.org/
-# =============================================================================
-
-# Color codes; emptied later if NO_COLOR or non-TTY.
-C_RED=""
-C_GREEN=""
-C_YELLOW=""
-C_BLUE=""
-C_CYAN=""
-C_BOLD=""
-C_DIM=""
-C_RESET=""
+# §2  Logging + UI (color, label format, redactor)
+# -----------------------------------------------------------------------------
+C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_CYAN=""
+C_BOLD=""; C_DIM=""; C_RESET=""
 
 ui_init_colors() {
   if [ -n "${NO_COLOR:-}" ] || [ "${FLAG_NO_COLOR}" -eq 1 ] || [ ! -t 1 ]; then
     return 0
   fi
-  C_RED=$'\033[0;31m'
-  C_GREEN=$'\033[0;32m'
-  C_YELLOW=$'\033[1;33m'
-  C_BLUE=$'\033[0;34m'
-  C_CYAN=$'\033[0;36m'
-  C_BOLD=$'\033[1m'
-  C_DIM=$'\033[2m'
-  C_RESET=$'\033[0m'
+  C_RED=$'\033[0;31m'; C_GREEN=$'\033[0;32m'; C_YELLOW=$'\033[1;33m'
+  C_BLUE=$'\033[0;34m'; C_CYAN=$'\033[0;36m'
+  C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_RESET=$'\033[0m'
 }
 
-# Section header. Plain text, no boxes.
 print_header() {
   printf '\n%s== %s%s\n' "${C_CYAN}${C_BOLD}" "$1" "${C_RESET}"
 }
 
-# Dotted-label fact row. Renders: "  label .........  value"
-# Total width auto-fits terminal up to 80 cols.
 print_label() {
   local label=$1 value=$2 width=70
   if command -v tput >/dev/null 2>&1; then
@@ -234,18 +172,15 @@ print_label() {
     [ "${cols}" -lt 60 ] && cols=60
     width=$((cols - 4))
   fi
-  local lbl_len=${#label} val_len=${#value}
-  local dots_len=$((width - lbl_len - val_len - 2))
+  local dots_len=$((width - ${#label} - ${#value} - 2))
   [ "${dots_len}" -lt 3 ] && dots_len=3
   local dots
   dots=$(printf '%*s' "${dots_len}" '' | tr ' ' '.')
   printf '  %s %s %s\n' "${label}" "${dots}" "${value}"
 }
 
-# Sensitive-value redactor. Used by ALL log writes.
+# Sensitive-value redactor applied to every log write.
 redact() {
-  # Remove credential-bearing URI authority (scheme://user:pass@host).
-  # Mask any KEY=VALUE pair where KEY matches a sensitive name.
   sed -E \
     -e 's,(://)[^:[:space:]]+:[^@[:space:]]+@,\1***@,g' \
     -e 's/(([Pp][Aa][Ss][Ss][Ww]?[Oo][Rr]?[Dd]|[Ss][Ee][Cc][Rr][Ee][Tt]|[Tt][Oo][Kk][Ee][Nn]|[Cc][Rr][Ee][Dd][Ee][Nn][Tt][Ii][Aa][Ll]|[Aa][Pp][Ii][_]?[Kk][Ee][Yy]|[Aa][Pp][Ii][Kk][Ee][Yy]|[Hh][Mm][Aa][Cc][_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Jj][Ww][Tt][_]?[Ss][Ee][Cc][Rr][Ee][Tt]|[Cc][Oo][Oo][Kk][Ii][Ee][_]?[Ss][Ee][Cc][Rr][Ee][Tt][_]?[12]?|[Ee][Nn][Cc][Rr][Yy][Pp][Tt][Ii][Oo][Nn][_]?[Kk][Ee][Yy]|[Pp][Aa][Ii][Rr][Ww][Ii][Ss][Ee][_]?[Ss][Aa][Ll][Tt]))[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=***/g'
@@ -257,8 +192,6 @@ _log_disk() {
   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local redacted_msg
   redacted_msg=$(printf '%s' "${message}" | redact)
-  # JSON-lines for tooling. printf escapes embedded quotes; we limit message
-  # to single-line for simplicity.
   redacted_msg=${redacted_msg//\\/\\\\}
   redacted_msg=${redacted_msg//\"/\\\"}
   redacted_msg=${redacted_msg//$'\n'/ }
@@ -266,49 +199,19 @@ _log_disk() {
     "${ts}" "${level}" "${source}" "${redacted_msg}" >> "${LOG_FILE}" 2>/dev/null || true
 }
 
-log_info() {
-  local msg
-  msg=$(printf '%s' "$1" | redact)
-  printf '%s[INFO]%s %s\n' "${C_BLUE}" "${C_RESET}" "${msg}"
-  _log_disk INFO main "$1"
-}
+log_info() { local m; m=$(printf '%s' "$1" | redact); printf '%s[INFO]%s %s\n' "${C_BLUE}"   "${C_RESET}" "${m}"; _log_disk INFO  main "$1"; }
+log_ok()   { local m; m=$(printf '%s' "$1" | redact); printf '%s[OK]%s   %s\n' "${C_GREEN}"  "${C_RESET}" "${m}"; _log_disk OK    main "$1"; }
+log_warn() { local m; m=$(printf '%s' "$1" | redact); printf '%s[WARN]%s %s\n' "${C_YELLOW}" "${C_RESET}" "${m}" >&2; _log_disk WARN  main "$1"; }
+log_err()  { local m; m=$(printf '%s' "$1" | redact); printf '%s[FAIL]%s %s\n' "${C_RED}"    "${C_RESET}" "${m}" >&2; _log_disk ERROR main "$1"; }
+die()      { log_err "$1"; exit "${2:-1}"; }
 
-log_ok() {
-  local msg
-  msg=$(printf '%s' "$1" | redact)
-  printf '%s[OK]%s   %s\n' "${C_GREEN}" "${C_RESET}" "${msg}"
-  _log_disk OK main "$1"
-}
-
-log_warn() {
-  local msg
-  msg=$(printf '%s' "$1" | redact)
-  printf '%s[WARN]%s %s\n' "${C_YELLOW}" "${C_RESET}" "${msg}" >&2
-  _log_disk WARN main "$1"
-}
-
-log_err() {
-  local msg
-  msg=$(printf '%s' "$1" | redact)
-  printf '%s[FAIL]%s %s\n' "${C_RED}" "${C_RESET}" "${msg}" >&2
-  _log_disk ERROR main "$1"
-}
-
-die() { log_err "$1"; exit "${2:-1}"; }
-
-# Set up the log file. Called immediately after color init.
 log_init() {
-  local dir
-  if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
-    dir="${DEFAULT_LOG_DIR}"
-  else
-    dir="${DEFAULT_LOG_DIR}"
+  local dir="${DEFAULT_LOG_DIR}"
+  if [ "${RUNNING_AS_ROOT}" -eq 0 ]; then
     mkdir -p "${dir}" 2>/dev/null || dir="${TMPDIR:-/tmp}"
   fi
   LOG_FILE="${dir}/parako-install-${RUN_TIMESTAMP}.log"
-  # mode 0600 even if mkdir created the dir 0755.
   : > "${LOG_FILE}" 2>/dev/null || {
-    # If we can't write to /var/log, fall back to TMPDIR.
     LOG_FILE="${TMPDIR:-/tmp}/parako-install-${RUN_TIMESTAMP}.log"
     : > "${LOG_FILE}"
   }
@@ -316,59 +219,9 @@ log_init() {
   _log_disk INFO main "installer ${INSTALLER_VERSION} starting, run ${RUN_TIMESTAMP}"
 }
 
-# =============================================================================
-# §3  Input helpers
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - All prompts go to stderr by way of printf (so command substitution captures
-#     only the chosen value via read -r answer; answer is printed via printf '%s').
-#   - Validators (is_valid_*) accept exactly one argument and return 0/1.
-# =============================================================================
-
-prompt_value() {
-  local text=$1 default=${2:-} answer=""
-  if [ -n "${default}" ]; then
-    printf '  %s%s%s [%s%s%s]: ' "${C_CYAN}" "${text}" "${C_RESET}" "${C_DIM}" "${default}" "${C_RESET}"
-  else
-    printf '  %s%s%s: ' "${C_CYAN}" "${text}" "${C_RESET}"
-  fi
-  IFS= read -r answer || answer=""
-  [ -z "${answer}" ] && [ -n "${default}" ] && answer="${default}"
-  printf '%s' "${answer}"
-}
-
-prompt_choice() {
-  local text=$1 options=$2 default=$3 answer="" saved_ifs
-  while true; do
-    printf '  %s%s%s (%s%s%s) [%s%s%s]: ' \
-      "${C_CYAN}" "${text}" "${C_RESET}" \
-      "${C_DIM}" "${options}" "${C_RESET}" \
-      "${C_DIM}" "${default}" "${C_RESET}"
-    IFS= read -r answer || answer=""
-    [ -z "${answer}" ] && answer="${default}"
-    saved_ifs=${IFS}
-    IFS=/
-    for opt in ${options}; do
-      if [ "${answer}" = "${opt}" ]; then
-        IFS=${saved_ifs}
-        printf '%s' "${answer}"
-        return 0
-      fi
-    done
-    IFS=${saved_ifs}
-    printf '  %sInvalid choice.%s Please enter one of: %s\n' "${C_RED}" "${C_RESET}" "${options}" >&2
-  done
-}
-
-prompt_yn() {
-  local text=$1 default=$2 hint="" answer=""
-  if [ "${default}" = "yes" ]; then hint="Y/n"; else hint="y/N"; fi
-  printf '  %s%s%s [%s%s%s]: ' "${C_CYAN}" "${text}" "${C_RESET}" "${C_DIM}" "${hint}" "${C_RESET}"
-  IFS= read -r answer || answer=""
-  [ -z "${answer}" ] && answer="${default}"
-  case "${answer}" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
-}
-
+# §3  Minimal prompt helpers (used by beginning_ritual only)
+# -----------------------------------------------------------------------------
 prompt_yn_timeout() {
   local text=$1 default=$2 secs=${3:-60} hint="" answer=""
   if [ "${default}" = "yes" ]; then hint="Y/n"; else hint="y/N"; fi
@@ -383,37 +236,6 @@ prompt_yn_timeout() {
   case "${answer}" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
 }
 
-is_valid_port() {
-  case "$1" in ''|*[!0-9]*) return 1 ;; esac
-  [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
-}
-
-is_valid_url() {
-  case "$1" in
-    https://*|http://*) ;;
-    *) return 1 ;;
-  esac
-  # Reject shell metacharacters.
-  case "$1" in *[\;\|\&\$\`\<\>]*) return 1 ;; esac
-  return 0
-}
-
-is_valid_domain() {
-  # Conservative RFC 1035-ish check.
-  case "$1" in
-    ''|*[!a-zA-Z0-9._-]*|.*|*.|*..*) return 1 ;;
-  esac
-  return 0
-}
-
-is_valid_email() {
-  case "$1" in
-    ''|*[\;\|\&\$\`\<\>]*) return 1 ;;
-    *@*.*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 is_safe_path() {
   case "$1" in
     *..*|*[\;\|\&\$\`\<\>\*\?]*) return 1 ;;
@@ -422,115 +244,84 @@ is_safe_path() {
   return 0
 }
 
-# =============================================================================
-# §4  Args parser + help
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Every flag value is validated by an explicit is_valid_* function.
-#   - Unknown flags emit a warning but do not abort (forward compatibility).
-#   - Mutually exclusive modes (--update / --rollback / --doctor / --gc / --demo)
-#     are detected after parsing.
-# =============================================================================
-
+# §4  Argparse + help
+# -----------------------------------------------------------------------------
 print_help() {
   cat <<HELPEOF
 Parako.ID installer v${INSTALLER_VERSION}
 
-Install, update, roll back, or diagnose a Parako.ID server.
+  This installer/updater safely places and updates Parako application files.
+  It verifies the release artifact, stages it, preserves operator-owned
+  runtime/config files, and switches the application release pointer.
+
+  Infrastructure, database backups, database migrations, process management,
+  reverse proxy, TLS, secrets, and production configuration remain OPERATOR
+  responsibilities.
 
 Common workflows:
-  Fresh install (interactive)
-    curl -sSL https://get.parako.id | bash
-
-  Fresh install (system-wide, sudo)
-    curl -sSL https://get.parako.id | sudo bash
-
-  Production install (non-interactive)
-    curl -sSL https://get.parako.id | sudo bash -s -- \\
-      --non-interactive --force \\
-      --domain auth.example.com \\
-      --db postgres --postgres-url 'postgresql://parako:***@localhost/parako' \\
-      --redis-url 'redis://localhost:6379' \\
-      --supervisor systemd \\
-      --with-nginx --with-tls --tls-email admin@example.com \\
-      --bootstrap-admin admin@example.com
+  Fresh install (system-wide)
+    curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 
   Update to latest stable
-    curl -sSL https://get.parako.id | sudo bash -s -- --update
+    parako update          # or: install.sh --update
 
-  Preview an update without changing anything
-    curl -sSL https://get.parako.id | sudo bash -s -- --update --plan
-
-  Roll back to the previous snapshot
-    curl -sSL https://get.parako.id | sudo bash -s -- --rollback
-
-  Diagnose an existing install
-    curl -sSL https://get.parako.id | sudo bash -s -- --doctor
+  Roll back app files (DOES NOT roll back any DB migration)
+    parako rollback        # or: install.sh --rollback
 
 Modes (mutually exclusive):
-  (no flag)               Fresh install
-  --update                In-place upgrade of an existing installation
-  --rollback              Restore the previous snapshot
-  --doctor                Diagnose an existing install (no mutation)
-  --gc                    Garbage-collect old snapshots
-  --demo                  Ephemeral SQLite install in /tmp for evaluation
+  (no mode flag)               Fresh install
+  --update                     In-place update of an existing install
+  --rollback                   Switch current → previous release pointer
+  --doctor                     File/config sanity report (no service/DB/network)
+  --gc                         Prune old releases/ (never touches runtime/)
 
 Mode modifiers:
-  --plan                  Show what an --update would do without mutating
-  --dry-run               Do everything except the directory swap
-  --to YYYYMMDDHHMMSS     (--rollback) Target a specific snapshot
-  --migrate-back          (--rollback) Reverse DB migrations (use with care)
-  --keep N                (--gc) Number of snapshots to retain (default 3)
+  --to <vX.Y.Z>                (--rollback) Specific target release
+  --keep <N>                   (--gc) Releases-to-retain from the deletable set
+                               (current + previous always protected; default 3)
+  --yes                        (--gc) Apply; default is preview only
 
-Configuration flags:
-  --version X.Y.Z         Install/update to a specific version
-  --dir <path>            Override install directory
-  --port <port>           Override server port
-  --supervisor <s>        systemd | pm2 (default: auto-detected)
-  --db <type>             sqlite | postgres | mongo
-  --postgres-url <url>    PostgreSQL connection URL
-  --mongo-uri <uri>       MongoDB URI
-  --redis-url <url>       Redis URL
-  --domain <d>            Public domain
-  --bootstrap-admin <e>   Seed an initial admin user with this email
+Source resolution:
+  --version <vX.Y.Z>           Pin a release version (default: latest stable)
+  --dir <path>                 Install directory (default: ${DEFAULT_INSTALL_DIR})
 
-Reverse proxy / TLS:
-  --with-nginx            Render and install an nginx vhost
-  --with-tls              Run certbot for Let's Encrypt
-  --tls-email <e>         Email for certbot registration
-  --multi-tenant          Enable multi-tenancy + wildcard nginx config
-  --base-domain <d>       Base domain for multi-tenancy
-  --certbot-dns-plugin <p>  certbot DNS plugin for wildcard cert
+Preview modes (no mutations):
+  --plan                       Pure preview; no network, no INSTALL_DIR writes
+  --dry-run                    Download + verify; exits before INSTALL_DIR writes
 
-Air-gapped / offline install:
-  --offline               Skip all network calls
-  --tarball <path>        (--offline) Pre-downloaded release tarball
-  --checksum <path>       (--offline) SHA256SUMS file
-  --signature <path>      (--offline) cosign signature
-  --certificate <path>    (--offline) cosign certificate
+Air-gapped install:
+  --offline                    No network; requires --version and --tarball
+  --tarball <path>             Pre-downloaded release tarball
+  --checksum <path>            SHA256SUMS file
+  --signature <path>           cosign signature file
+  --certificate <path>         cosign certificate file
 
-Security escape (USE WITH CARE):
-  --insecure-no-signature Bypass cosign verification
-  --reason "<text>"       (--insecure-no-signature) Required reason logged
+Security escape (use only when Sigstore is unreachable):
+  --insecure-no-signature      Bypass cosign verification
+  --reason "<text>"            (--insecure-no-signature) Required reason
 
-Behaviour:
-  --no-start              Skip auto-start after install
-  --non-interactive       Use all defaults; no prompts
-  --force                 Skip confirmation prompts
-  --yes                   (--gc) Apply, not dry-run
-  --json                  (--doctor) Emit structured JSON
-  --no-color              Disable colored output
+Behavior:
+  --no-bin                     Skip /usr/local/bin/parako install
+  --non-interactive            No prompts (requires --force)
+  --force                      Skip confirmation; allow overwrite of existing release
+  --no-color                   Disable colored output
+  --json                       (--doctor) Emit structured JSON
+  --help                       Show this message
 
-Environment:
-  INSTALL_DIR             Installation directory
-  NO_COLOR                Disable colored output
-  PARAKO_RELEASE_MIRROR   Fallback release manifest URL
-  PARAKO_LOCK_FILE        Override installer lock file path
+What the installer does NOT do (OPERATOR responsibilities):
+  - configure or start systemd/PM2/docker
+  - configure nginx, certbot, or TLS
+  - create or modify /etc/* outside the parako binary
+  - install OS packages (apt/yum/apk)
+  - run database migrations or backups
+  - create runtime/.env or runtime/jwks/
+  - bootstrap an admin user
 
-Documentation:
+See:
   https://docs.parako.id/installer
-  https://docs.parako.id/parako-cli
   https://docs.parako.id/installer-security
+  https://github.com/${REPO_OWNER}/${REPO_NAME}/releases  (per-release migration notes)
 HELPEOF
 }
 
@@ -539,80 +330,28 @@ parse_args() {
     case "$1" in
       --help|-h) FLAG_HELP=1 ;;
       --version)
-        [ $# -lt 2 ] && die "--version requires a value"
-        FLAG_VERSION=$2; shift ;;
+        [ $# -lt 2 ] && die "--version requires vX.Y.Z"
+        case "$2" in v*) FLAG_VERSION=$2 ;; *) FLAG_VERSION="v$2" ;; esac
+        shift ;;
       --dir)
         [ $# -lt 2 ] && die "--dir requires a path"
-        is_safe_path "$2" || die "--dir value is unsafe: $2"
+        is_safe_path "$2" || die "--dir path unsafe: $2"
         FLAG_DIR=$2; shift ;;
-      --port)
-        [ $# -lt 2 ] && die "--port requires a value"
-        is_valid_port "$2" || die "--port value is not a valid port: $2"
-        FLAG_PORT=$2; shift ;;
-      --supervisor)
-        [ $# -lt 2 ] && die "--supervisor requires a value"
-        case "$2" in systemd|pm2) FLAG_SUPERVISOR=$2 ;; *) die "--supervisor must be systemd or pm2" ;; esac
-        shift ;;
-      --db)
-        [ $# -lt 2 ] && die "--db requires a value"
-        case "$2" in sqlite|postgres|postgresql|mongo|mongodb)
-          case "$2" in postgres) FLAG_DB="postgresql" ;; mongo) FLAG_DB="mongodb" ;; *) FLAG_DB=$2 ;; esac
-          ;;
-        *) die "--db must be sqlite, postgres, or mongo" ;;
-        esac
-        shift ;;
-      --postgres-url)
-        [ $# -lt 2 ] && die "--postgres-url requires a value"
-        FLAG_POSTGRES_URL=$2; shift ;;
-      --mongo-uri)
-        [ $# -lt 2 ] && die "--mongo-uri requires a value"
-        FLAG_MONGO_URI=$2; shift ;;
-      --redis-url)
-        [ $# -lt 2 ] && die "--redis-url requires a value"
-        FLAG_REDIS_URL=$2; shift ;;
-      --domain)
-        [ $# -lt 2 ] && die "--domain requires a value"
-        is_valid_domain "$2" || die "--domain is not a valid domain: $2"
-        FLAG_DOMAIN=$2; shift ;;
-      --bootstrap-admin)
-        [ $# -lt 2 ] && die "--bootstrap-admin requires an email"
-        is_valid_email "$2" || die "--bootstrap-admin is not a valid email: $2"
-        FLAG_BOOTSTRAP_ADMIN_EMAIL=$2; shift ;;
-      --no-start) FLAG_NO_START=1 ;;
-      --non-interactive) FLAG_NON_INTERACTIVE=1 ;;
-      --update) FLAG_UPDATE=1 ;;
+      --update)   FLAG_UPDATE=1 ;;
       --rollback) FLAG_ROLLBACK=1 ;;
       --to)
-        [ $# -lt 2 ] && die "--to requires a timestamp"
-        FLAG_ROLLBACK_TO=$2; shift ;;
-      --migrate-back) FLAG_MIGRATE_BACK=1 ;;
+        [ $# -lt 2 ] && die "--to requires vX.Y.Z"
+        case "$2" in v*) FLAG_ROLLBACK_TO=$2 ;; *) FLAG_ROLLBACK_TO="v$2" ;; esac
+        shift ;;
       --doctor) FLAG_DOCTOR=1 ;;
-      --gc) FLAG_GC=1 ;;
+      --gc)     FLAG_GC=1 ;;
       --keep)
-        [ $# -lt 2 ] && die "--keep requires a number"
+        [ $# -lt 2 ] && die "--keep requires N"
         case "$2" in ''|*[!0-9]*) die "--keep must be a non-negative integer" ;; esac
         FLAG_KEEP=$2; shift ;;
-      --yes) FLAG_YES=1 ;;
-      --plan) FLAG_PLAN=1 ;;
+      --yes)     FLAG_YES=1 ;;
+      --plan)    FLAG_PLAN=1 ;;
       --dry-run) FLAG_DRY_RUN=1 ;;
-      --force) FLAG_FORCE=1 ;;
-      --json) FLAG_JSON=1 ;;
-      --no-color) FLAG_NO_COLOR=1 ;;
-      --with-nginx) FLAG_WITH_NGINX=1 ;;
-      --with-tls) FLAG_WITH_TLS=1 ;;
-      --tls-email)
-        [ $# -lt 2 ] && die "--tls-email requires an email"
-        is_valid_email "$2" || die "--tls-email is not a valid email: $2"
-        FLAG_TLS_EMAIL=$2; shift ;;
-      --multi-tenant) FLAG_MULTI_TENANT=1 ;;
-      --base-domain)
-        [ $# -lt 2 ] && die "--base-domain requires a domain"
-        is_valid_domain "$2" || die "--base-domain is not a valid domain: $2"
-        FLAG_BASE_DOMAIN=$2; shift ;;
-      --certbot-dns-plugin)
-        [ $# -lt 2 ] && die "--certbot-dns-plugin requires a plugin name"
-        FLAG_CERTBOT_DNS_PLUGIN=$2; shift ;;
-      --demo) FLAG_DEMO=1 ;;
       --offline) FLAG_OFFLINE=1 ;;
       --tarball)
         [ $# -lt 2 ] && die "--tarball requires a path"
@@ -634,67 +373,44 @@ parse_args() {
       --reason)
         [ $# -lt 2 ] && die "--reason requires a quoted text"
         FLAG_INSECURE_REASON=$2; shift ;;
+      --no-bin)          FLAG_NO_BIN=1 ;;
+      --non-interactive) FLAG_NON_INTERACTIVE=1 ;;
+      --force)           FLAG_FORCE=1 ;;
+      --no-color)        FLAG_NO_COLOR=1 ;;
+      --json)            FLAG_JSON=1 ;;
       *) log_warn "unknown option: $1" ;;
     esac
     shift
   done
 
-  # --dir overrides INSTALL_DIR which overrides DEFAULT_INSTALL_DIR.
   if [ -n "${FLAG_DIR}" ]; then
     INSTALL_DIR=${FLAG_DIR}
   elif [ -z "${INSTALL_DIR}" ]; then
-    INSTALL_DIR=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
+    INSTALL_DIR=${DEFAULT_INSTALL_DIR}
   fi
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
 
-  # Mutually exclusive modes.
   local mode_count=0
-  [ "${FLAG_UPDATE}" -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_UPDATE}"   -eq 1 ] && mode_count=$((mode_count + 1))
   [ "${FLAG_ROLLBACK}" -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_DOCTOR}" -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_GC}" -eq 1 ] && mode_count=$((mode_count + 1))
-  [ "${FLAG_DEMO}" -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_DOCTOR}"   -eq 1 ] && mode_count=$((mode_count + 1))
+  [ "${FLAG_GC}"       -eq 1 ] && mode_count=$((mode_count + 1))
   if [ "${mode_count}" -gt 1 ]; then
-    die "--update, --rollback, --doctor, --gc, --demo are mutually exclusive"
+    die "--update, --rollback, --doctor, --gc are mutually exclusive"
   fi
 
-  # --insecure-no-signature requires --reason.
   if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 1 ] && [ -z "${FLAG_INSECURE_REASON}" ]; then
     die "--insecure-no-signature requires --reason \"<text>\""
   fi
 
-  # --with-tls requires --with-nginx.
-  if [ "${FLAG_WITH_TLS}" -eq 1 ] && [ "${FLAG_WITH_NGINX}" -eq 0 ]; then
-    die "--with-tls requires --with-nginx"
-  fi
-
-  # --bootstrap-admin is only seeded by the multi-tenancy master-tenant path
-  # (src/multi-tenancy/master-tenant-bootstrap.ts, gated by multiTenancy.enabled
-  # at src/index.ts). For single-tenant installs the credentials would never be
-  # seeded and the operator would be unable to log in. Demo mode bypasses this
-  # because demo_main writes MULTI_TENANCY_ENABLED=true to runtime/.env.
-  if [ -n "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ] \
-     && [ "${FLAG_MULTI_TENANT}" -eq 0 ] \
-     && [ "${FLAG_DEMO}" -eq 0 ]; then
-    die "--bootstrap-admin currently requires --multi-tenant (single-tenant admin seeding is not yet implemented). Either add --multi-tenant --base-domain <domain>, or create the first admin via /auth/register after the installer finishes."
-  fi
-
-  # Non-interactive enforcement of required flags.
   if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && [ "${FLAG_FORCE}" -eq 0 ]; then
     die "--non-interactive also requires --force (no prompts will be possible)"
   fi
 }
 
-# =============================================================================
-# §5  Preflight checks (FAIL FAST)
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - No mutation of system state. Read-only inspection only.
-#   - Every check emits exactly one labeled fact row with [OK]/[WARN]/[FAIL].
-#   - Any FAIL exits the script with code 2 BEFORE any download or mutation.
-#   - Network calls limited to: api.github.com, time.cloudflare.com,
-#     raw.githubusercontent.com (mirror fallback only).
-# =============================================================================
-
+# §5  Preflight
+# -----------------------------------------------------------------------------
 PREFLIGHT_FAIL_COUNT=0
 PREFLIGHT_WARN_COUNT=0
 
@@ -702,72 +418,87 @@ _pf_ok()   { print_label "$1" "$2 [${C_GREEN}OK${C_RESET}]"; _log_disk OK prefli
 _pf_warn() { print_label "$1" "$2 [${C_YELLOW}WARN${C_RESET}]"; PREFLIGHT_WARN_COUNT=$((PREFLIGHT_WARN_COUNT + 1)); _log_disk WARN preflight "$1: $2"; }
 _pf_fail() { print_label "$1" "$2 [${C_RED}FAIL${C_RESET}]"; PREFLIGHT_FAIL_COUNT=$((PREFLIGHT_FAIL_COUNT + 1)); _log_disk ERROR preflight "$1: $2"; }
 
+check_os_arch() {
+  local kernel arch
+  kernel=$(uname -s 2>/dev/null || printf 'unknown')
+  arch=$(uname -m 2>/dev/null || printf 'unknown')
+  if [ "${kernel}" != "Linux" ]; then
+    _pf_fail "OS" "${kernel} (Parako.ID v${INSTALLER_VERSION} installer supports Linux only)"
+    return
+  fi
+  case "${arch}" in
+    x86_64|amd64)   _pf_ok "OS / arch" "Linux ${arch}" ;;
+    aarch64|arm64)  _pf_ok "OS / arch" "Linux ${arch}" ;;
+    *)              _pf_fail "OS / arch" "Linux ${arch} (supported: x86_64, aarch64)" ;;
+  esac
+}
+
 check_bash_version() {
   local major=${BASH_VERSINFO[0]:-0}
   if [ "${major}" -ge "${MIN_BASH_MAJOR}" ]; then
     _pf_ok "bash" "${BASH_VERSION:-?}"
   else
-    _pf_fail "bash" "${BASH_VERSION:-?} (need >= ${MIN_BASH_MAJOR})"
+    _pf_fail "bash" "version ${BASH_VERSION:-?} < ${MIN_BASH_MAJOR}.x (Alpine: \`apk add bash\` first)"
   fi
 }
 
-check_node() {
-  if ! command -v node >/dev/null 2>&1; then
-    _pf_fail "Node.js" "not installed (need >= ${MIN_NODE_MAJOR})"
-    return
-  fi
-  local nv major
-  nv=$(node --version 2>/dev/null || printf 'v0')
-  major=$(printf '%s' "${nv}" | sed 's/^v//' | cut -d. -f1)
-  if [ "${major}" -ge "${MIN_NODE_MAJOR}" ]; then
-    _pf_ok "Node.js" "${nv}"
+check_coreutils() {
+  # `mv -T` is a GNU coreutils extension; BusyBox `mv` does NOT accept it.
+  # https://www.gnu.org/software/coreutils/manual/html_node/mv-invocation.html
+  if mv --help 2>&1 | grep -q -- '--no-target-directory'; then
+    _pf_ok "coreutils" "mv -T supported (GNU)"
   else
-    _pf_fail "Node.js" "${nv} (need >= v${MIN_NODE_MAJOR})"
+    _pf_fail "coreutils" "GNU mv -T not supported (Alpine: \`apk add coreutils\`)"
   fi
 }
 
-check_pnpm() {
-  if ! command -v pnpm >/dev/null 2>&1; then
-    if command -v corepack >/dev/null 2>&1; then
-      _pf_warn "pnpm" "missing (corepack present; will activate)"
-    else
-      _pf_fail "pnpm" "not installed (need >= ${MIN_PNPM_MAJOR})"
-    fi
-    return
-  fi
-  local pv major
-  pv=$(pnpm --version 2>/dev/null || printf '0')
-  major=$(printf '%s' "${pv}" | cut -d. -f1)
-  if [ "${major}" -ge "${MIN_PNPM_MAJOR}" ]; then
-    _pf_ok "pnpm" "${pv}"
+check_flock() {
+  # flock(1) is util-linux; not part of POSIX. BusyBox does not provide it.
+  if command -v flock >/dev/null 2>&1; then
+    _pf_ok "flock" "$(command -v flock)"
   else
-    _pf_fail "pnpm" "${pv} (need >= ${MIN_PNPM_MAJOR})"
+    _pf_fail "flock" "not found (Alpine: \`apk add util-linux\`)"
+  fi
+}
+
+check_downloader() {
+  if command -v curl >/dev/null 2>&1; then
+    _pf_ok "downloader" "curl $(curl --version 2>/dev/null | awk 'NR==1 {print $2}')"
+  elif command -v wget >/dev/null 2>&1; then
+    _pf_ok "downloader" "wget $(wget --version 2>/dev/null | awk 'NR==1 {print $3}')"
+  else
+    _pf_fail "downloader" "neither curl nor wget found"
   fi
 }
 
 check_openssl() {
-  if ! command -v openssl >/dev/null 2>&1; then
-    _pf_fail "openssl" "not installed (required for secrets)"
-    return
+  if command -v openssl >/dev/null 2>&1; then
+    _pf_ok "openssl" "$(openssl version 2>/dev/null | awk '{print $1, $2}')"
+  else
+    _pf_fail "openssl" "not found"
   fi
-  local ov
-  ov=$(openssl version 2>/dev/null | cut -d' ' -f2)
-  _pf_ok "openssl" "${ov:-installed}"
+}
+
+check_tar() {
+  if command -v tar >/dev/null 2>&1; then
+    _pf_ok "tar" "$(tar --version 2>/dev/null | awk 'NR==1 {print $1, $4}')"
+  else
+    _pf_fail "tar" "not found"
+  fi
 }
 
 check_disk_space() {
-  local target=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  local parent
+  local parent target=${INSTALL_DIR}
   parent=$(dirname "${target}")
-  [ -d "${parent}" ] || parent="/"
-  local avail_kib avail_gib
-  # df -P is POSIX; busybox df supports it.
-  avail_kib=$(df -P "${parent}" 2>/dev/null | awk 'NR==2 {print $4}')
-  if [ -z "${avail_kib}" ]; then
-    _pf_warn "disk free" "cannot determine"
-    return
+  while [ ! -d "${parent}" ] && [ "${parent}" != "/" ]; do
+    parent=$(dirname "${parent}")
+  done
+  local avail_bytes
+  if command -v df >/dev/null 2>&1; then
+    avail_bytes=$(df -PB1 "${parent}" 2>/dev/null | awk 'NR==2 {print $4}')
   fi
-  local avail_bytes=$((avail_kib * 1024))
+  [ -z "${avail_bytes}" ] && { _pf_warn "disk free" "could not measure"; return; }
+  local avail_gib
   avail_gib=$(awk -v b="${avail_bytes}" 'BEGIN { printf "%.1f GB", b/1024/1024/1024 }')
   if [ "${avail_bytes}" -ge "${MIN_DISK_BYTES}" ]; then
     _pf_ok "disk free" "${avail_gib}"
@@ -776,159 +507,19 @@ check_disk_space() {
   fi
 }
 
-check_port_free() {
-  local port=${FLAG_PORT:-${DEFAULT_PORT}}
-  # bash /dev/tcp redirect: opens a TCP connection. If it succeeds, port is busy.
-  # We close immediately by redirecting from /dev/null.
-  if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
-    exec 3<&- 3>&- 2>/dev/null || true
-    _pf_fail "port ${port}" "in use"
-  else
-    _pf_ok "port ${port}" "free"
-  fi
-}
-
-check_dns() {
-  local host="api.github.com"
-  local ok=0
-  if command -v getent >/dev/null 2>&1; then
-    getent hosts "${host}" >/dev/null 2>&1 && ok=1
-  elif command -v nslookup >/dev/null 2>&1; then
-    nslookup "${host}" >/dev/null 2>&1 && ok=1
-  else
-    (exec 3<>"/dev/tcp/${host}/443") 2>/dev/null && ok=1
-    exec 3<&- 3>&- 2>/dev/null || true
-  fi
-  if [ "${ok}" -eq 1 ]; then
-    _pf_ok "DNS" "${host}"
-  else
-    _pf_fail "DNS" "could not resolve ${host}"
-  fi
-}
-
-check_time_sync() {
-  # Parse the Date: header from time.cloudflare.com.
-  local remote local_ts skew tolerance=${TIME_SKEW_TOLERANCE_SECS}
-  local hdr
-  if command -v curl >/dev/null 2>&1; then
-    hdr=$(curl --proto '=https' --tlsv1.2 -sI --max-time 5 'https://time.cloudflare.com' 2>/dev/null \
-      | awk -F': ' 'tolower($1)=="date" {print $2}' | tr -d '\r')
-  elif command -v wget >/dev/null 2>&1; then
-    hdr=$(wget -S --spider --timeout=5 -q 'https://time.cloudflare.com' 2>&1 \
-      | awk -F': ' 'tolower($1)~/date/ {print $2}' | tr -d '\r' | head -n1)
-  fi
-  if [ -z "${hdr}" ]; then
-    _pf_warn "system time" "cannot reach time.cloudflare.com (will trust local clock)"
-    return
-  fi
-  if ! remote=$(date -d "${hdr}" +%s 2>/dev/null); then
-    _pf_warn "system time" "could not parse remote Date header"
-    return
-  fi
-  local_ts=$(date +%s)
-  skew=$((remote > local_ts ? remote - local_ts : local_ts - remote))
-  if [ "${skew}" -le "${tolerance}" ]; then
-    _pf_ok "system time" "within ${skew}s of UTC"
-  else
-    _pf_fail "system time" "drift ${skew}s exceeds ${tolerance}s (sync NTP first)"
-  fi
-}
-
-check_os_release() {
-  if [ -f /etc/os-release ] && grep -q '^NAME=' /etc/os-release; then
-    local name
-    name=$(awk -F= '$1=="PRETTY_NAME"{gsub(/"/, "", $2); print $2}' /etc/os-release)
-    _pf_ok "OS" "${name:-Linux}"
-  else
-    _pf_warn "OS" "unrecognized; not /etc/os-release"
-  fi
-}
-
-check_umask_sane() {
-  local u
-  u=$(umask)
-  case "${u}" in
-    0077|077|0007|007|0022|022|0027|027) _pf_ok "umask" "${u}" ;;
-    *) _pf_warn "umask" "${u} (broad permissions)" ;;
-  esac
-}
-
-check_urandom() {
-  if [ -r /dev/urandom ]; then
-    _pf_ok "/dev/urandom" "readable"
-  else
-    _pf_fail "/dev/urandom" "not readable"
-  fi
-}
-
-check_sudo() {
-  if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
-    _pf_ok "privileges" "running as root"
-    return
-  fi
-  if command -v sudo >/dev/null 2>&1; then
-    if sudo -n true 2>/dev/null; then
-      _pf_ok "sudo" "available (passwordless)"
-    else
-      _pf_warn "sudo" "available (will prompt for password)"
-    fi
-  else
-    _pf_warn "sudo" "not installed (system-wide install will fail)"
-  fi
-}
-
-check_for_with_nginx() {
-  [ "${FLAG_WITH_NGINX}" -eq 1 ] || return 0
-  if ! command -v nginx >/dev/null 2>&1; then
-    _pf_fail "nginx" "not installed (required by --with-nginx)"
-    return
-  fi
-  local v
-  v=$(nginx -v 2>&1 | sed 's|^nginx version: nginx/||')
-  _pf_ok "nginx" "${v}"
-}
-
-check_for_with_tls() {
-  [ "${FLAG_WITH_TLS}" -eq 1 ] || return 0
-  # Port 80 must be reachable for HTTP-01 challenge.
-  if (exec 3<>"/dev/tcp/127.0.0.1/80") 2>/dev/null; then
-    exec 3<&- 3>&- 2>/dev/null || true
-    _pf_warn "port 80" "in use (certbot HTTP challenge may conflict)"
-  else
-    _pf_ok "port 80" "free"
-  fi
-  if command -v certbot >/dev/null 2>&1; then
-    _pf_ok "certbot" "$(certbot --version 2>&1 | head -n1)"
-  else
-    _pf_warn "certbot" "not installed (will offer to install)"
-  fi
-  [ -n "${FLAG_TLS_EMAIL}" ] || _pf_fail "--tls-email" "required when --with-tls is set"
-}
-
 preflight() {
   print_header "Preflight checks"
   PREFLIGHT_FAIL_COUNT=0
   PREFLIGHT_WARN_COUNT=0
 
+  check_os_arch
   check_bash_version
-  check_node
-  check_pnpm
+  check_coreutils
+  check_flock
+  check_downloader
   check_openssl
+  check_tar
   check_disk_space
-  check_port_free
-  if [ "${FLAG_OFFLINE}" -eq 0 ]; then
-    check_dns
-    check_time_sync
-  else
-    _pf_ok "DNS" "skipped (--offline)"
-    _pf_ok "system time" "skipped (--offline; trusting local clock)"
-  fi
-  check_os_release
-  check_umask_sane
-  check_urandom
-  check_sudo
-  check_for_with_nginx
-  check_for_with_tls
 
   if [ "${PREFLIGHT_FAIL_COUNT}" -gt 0 ]; then
     printf '\n'
@@ -940,74 +531,26 @@ preflight() {
   fi
 }
 
-# =============================================================================
-# §6  Environment sniffer (smart defaults)
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - No mutation. Probes only.
-#   - Detected services populate SNIFFED_* globals used by the wizard defaults.
-# =============================================================================
-
-sniff_environment() {
-  print_header "Detected on this host"
-
-  if (exec 3<>"/dev/tcp/127.0.0.1/27017") 2>/dev/null; then
-    exec 3<&- 3>&- 2>/dev/null || true
-    SNIFFED_MONGO="localhost:27017"
-    print_label "MongoDB" "${SNIFFED_MONGO}"
-  fi
-  if (exec 3<>"/dev/tcp/127.0.0.1/5432") 2>/dev/null; then
-    exec 3<&- 3>&- 2>/dev/null || true
-    SNIFFED_POSTGRES="localhost:5432"
-    print_label "PostgreSQL" "${SNIFFED_POSTGRES}"
-  fi
-  if command -v redis-cli >/dev/null 2>&1; then
-    if redis-cli -h localhost -p 6379 ping >/dev/null 2>&1; then
-      SNIFFED_REDIS="localhost:6379"
-      print_label "Redis" "${SNIFFED_REDIS}"
-    fi
-  elif (exec 3<>"/dev/tcp/127.0.0.1/6379") 2>/dev/null; then
-    exec 3<&- 3>&- 2>/dev/null || true
-    SNIFFED_REDIS="localhost:6379"
-    print_label "Redis" "${SNIFFED_REDIS}"
-  fi
-  # PID 1 detection — feeds the supervisor default.
-  if [ -r /proc/1/comm ]; then
-    SNIFFED_INIT=$(cat /proc/1/comm 2>/dev/null)
-    print_label "init system" "${SNIFFED_INIT} (pid 1)"
-  fi
-}
-
-# =============================================================================
-# §7  Mirror-aware downloader
+# §6  Downloader + checksum
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Every download uses TLS 1.2+. No --insecure / -k.
-#   - PARAKO_RELEASE_MIRROR (if set) must match an allowlist or be explicitly
-#     confirmed by the operator.
 # References:
-#   https://users.rust-lang.org/t/how-to-send-1-proceed-with-installation-default-in-a-single-command/89235
-# =============================================================================
-
+#   rustup curl hardening: https://rustup.rs/
+#   TLS 1.2+ enforcement: --proto '=https' --tlsv1.2
+# -----------------------------------------------------------------------------
 readonly CURL_FLAGS=(--proto '=https' --tlsv1.2 --silent --show-error --fail --location --retry 3 --retry-delay 2 --max-time 120)
 readonly WGET_FLAGS=(--secure-protocol=TLSv1_2 --https-only --quiet --tries=3 --timeout=120)
 
 detect_downloader() {
-  if command -v curl >/dev/null 2>&1; then
-    DOWNLOAD_CMD="curl"
-  elif command -v wget >/dev/null 2>&1; then
-    DOWNLOAD_CMD="wget"
-  else
-    die "neither curl nor wget found"
+  if command -v curl >/dev/null 2>&1; then DOWNLOAD_CMD="curl"
+  elif command -v wget >/dev/null 2>&1; then DOWNLOAD_CMD="wget"
+  else die "neither curl nor wget found"
   fi
 }
 
 download_file() {
   local url=$1 out=$2
-  case "${url}" in
-    https://*) ;;
-    *) die "refusing non-HTTPS URL: ${url}" ;;
-  esac
+  case "${url}" in https://*) ;; *) die "refusing non-HTTPS URL: ${url}" ;; esac
   if [ "${DOWNLOAD_CMD}" = "curl" ]; then
     curl "${CURL_FLAGS[@]}" -o "${out}" "${url}"
   else
@@ -1017,10 +560,7 @@ download_file() {
 
 download_stdout() {
   local url=$1
-  case "${url}" in
-    https://*) ;;
-    *) die "refusing non-HTTPS URL: ${url}" ;;
-  esac
+  case "${url}" in https://*) ;; *) die "refusing non-HTTPS URL: ${url}" ;; esac
   if [ "${DOWNLOAD_CMD}" = "curl" ]; then
     curl "${CURL_FLAGS[@]}" "${url}"
   else
@@ -1040,7 +580,7 @@ compute_sha256() {
 
 fetch_latest_version() {
   if [ -n "${FLAG_VERSION}" ]; then
-    case "${FLAG_VERSION}" in v*) TAG="${FLAG_VERSION}" ;; *) TAG="v${FLAG_VERSION}" ;; esac
+    TAG=${FLAG_VERSION}
     log_ok "target version: ${TAG}"
     return 0
   fi
@@ -1048,33 +588,20 @@ fetch_latest_version() {
     die "--offline requires --version <vX.Y.Z>; the GitHub API is not reachable in offline mode"
   fi
   log_info "fetching latest release from GitHub"
-  local response=""
-  if response=$(download_stdout "${GITHUB_API}/releases/latest" 2>/dev/null); then
-    :
-  elif [ -n "${PARAKO_RELEASE_MIRROR:-}" ]; then
-    log_warn "GitHub API unreachable; trying mirror ${PARAKO_RELEASE_MIRROR}"
-    case "${PARAKO_RELEASE_MIRROR}" in
-      https://*) ;;
-      *) die "PARAKO_RELEASE_MIRROR must be HTTPS" ;;
-    esac
-    response=$(download_stdout "${PARAKO_RELEASE_MIRROR}" 2>/dev/null) \
-      || die "Failed to fetch from mirror as well"
-  else
-    die "Failed to fetch latest release from GitHub API. Set PARAKO_RELEASE_MIRROR or use --version."
-  fi
+  local response
+  response=$(download_stdout "${GITHUB_API}/releases/latest" 2>/dev/null) \
+    || die "failed to fetch latest release from GitHub API; pass --version <vX.Y.Z>"
   if command -v jq >/dev/null 2>&1; then
     TAG=$(printf '%s' "${response}" | jq -r '.tag_name // .latest // empty')
   else
     TAG=$(printf '%s' "${response}" | grep -E '"(tag_name|latest)"' | head -n1 \
       | sed -E 's/.*"(tag_name|latest)":[[:space:]]*"([^"]+)".*/\2/')
   fi
-  [ -z "${TAG}" ] && die "Could not parse release tag from response"
+  [ -z "${TAG}" ] && die "could not parse release tag from response"
   case "${TAG}" in v*) ;; *) TAG="v${TAG}" ;; esac
   log_ok "target version: ${TAG}"
 }
 
-# Fetch tarball + signature + certificate + SHA256SUMS into TMPDIR_PATH.
-# Sets globals: TARBALL_FILE, SIGNATURE_FILE, CERTIFICATE_FILE, CHECKSUM_FILE.
 TARBALL_FILE=""
 SIGNATURE_FILE=""
 CERTIFICATE_FILE=""
@@ -1104,8 +631,7 @@ fetch_release_artifacts() {
 
   log_info "downloading ${tarball_name}"
   download_file "${base_url}/${tarball_name}" "${TARBALL_FILE}"
-  download_file "${base_url}/SHA256SUMS" "${CHECKSUM_FILE}"
-  # Signature + certificate may not exist on pre-v0.2.0 releases.
+  download_file "${base_url}/SHA256SUMS"      "${CHECKSUM_FILE}"
   if ! download_file "${base_url}/${tarball_name}.sig" "${SIGNATURE_FILE}" 2>/dev/null; then
     SIGNATURE_FILE=""
   fi
@@ -1122,32 +648,21 @@ verify_checksum() {
   local expected actual basename
   basename=$(basename "${TARBALL_FILE}")
   expected=$(grep -E "[[:space:]]${basename}\$" "${CHECKSUM_FILE}" | awk '{print $1}')
-  [ -z "${expected}" ] && {
-    log_warn "${basename} not listed in SHA256SUMS; skipping"
-    return 0
-  }
-  actual=$(compute_sha256 "${TARBALL_FILE}") || {
-    log_warn "sha256sum/shasum not available; skipping"
-    return 0
-  }
+  [ -z "${expected}" ] && { log_warn "${basename} not listed in SHA256SUMS; skipping"; return 0; }
+  actual=$(compute_sha256 "${TARBALL_FILE}") || { log_warn "sha256sum/shasum not available; skipping"; return 0; }
   if [ "${actual}" != "${expected}" ]; then
     die "checksum mismatch: expected ${expected}, got ${actual}"
   fi
   log_ok "SHA256 verified"
 }
 
-# =============================================================================
-# §8  Cosign bootstrap + verifier
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - cosign verification is MANDATORY for tarball-mode installs/updates.
-#   - Escape hatch (--insecure-no-signature) requires --reason and is logged.
-#   - Cosign binary, if auto-installed, is verified against an inlined SHA256.
-# Reference:
+# §7  Cosign bootstrap + verifier
+# -----------------------------------------------------------------------------
+# References:
 #   https://docs.sigstore.dev/cosign/verifying/verify/
 #   https://docs.sigstore.dev/cosign/system_config/installation/
-# =============================================================================
-
+# -----------------------------------------------------------------------------
 ensure_cosign() {
   command -v cosign >/dev/null 2>&1 && return 0
 
@@ -1158,8 +673,8 @@ ensure_cosign() {
   local arch bin expected tmp
   arch=$(uname -m)
   case "${arch}" in
-    x86_64|amd64) bin="cosign-linux-amd64"; expected=${COSIGN_SHA256_LINUX_AMD64} ;;
-    aarch64|arm64) bin="cosign-linux-arm64"; expected=${COSIGN_SHA256_LINUX_ARM64} ;;
+    x86_64|amd64)   bin="cosign-linux-amd64"; expected=${COSIGN_SHA256_LINUX_AMD64} ;;
+    aarch64|arm64)  bin="cosign-linux-arm64"; expected=${COSIGN_SHA256_LINUX_ARM64} ;;
     *) die "unsupported architecture for cosign auto-install: ${arch}" ;;
   esac
   log_info "installing cosign ${COSIGN_VERSION} for signature verification"
@@ -1196,7 +711,7 @@ verify_release_signature() {
     return 0
   fi
   if [ -z "${SIGNATURE_FILE}" ] || [ ! -f "${SIGNATURE_FILE}" ]; then
-    die "no signature found; releases prior to v0.2.0 are unsigned. Pass --insecure-no-signature --reason \"<text>\" if you must proceed."
+    die "no signature found; pass --insecure-no-signature --reason \"<text>\" if you must proceed."
   fi
   if [ -z "${CERTIFICATE_FILE}" ] || [ ! -f "${CERTIFICATE_FILE}" ]; then
     die "no signing certificate found"
@@ -1215,754 +730,65 @@ verify_release_signature() {
   fi
 }
 
-# =============================================================================
-# §9  Wizard
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Defaults pulled from §6 sniff_environment when available.
-#   - Edit loop allows the operator to revise any field before commit.
-# =============================================================================
-
-collect_answers() {
-  print_header "Configuration"
-  printf '  Press Enter to accept defaults.\n\n'
-
-  # Apply flag overrides first.
-  [ -n "${FLAG_PORT}" ] && ANS_PORT=${FLAG_PORT}
-  [ -n "${FLAG_DOMAIN}" ] && ANS_URL="https://${FLAG_DOMAIN}"
-  [ -n "${FLAG_DB}" ] && ANS_DB=${FLAG_DB}
-  [ -n "${FLAG_POSTGRES_URL}" ] && ANS_PG_URL=${FLAG_POSTGRES_URL}
-  [ -n "${FLAG_MONGO_URI}" ] && ANS_MONGO_URI=${FLAG_MONGO_URI}
-  [ -n "${FLAG_SUPERVISOR}" ] && ANS_SUPERVISOR=${FLAG_SUPERVISOR}
-
-  if [ -n "${FLAG_REDIS_URL}" ]; then
-    ANS_REDIS="yes"
-    # Parse redis://host:port
-    local hp
-    hp=${FLAG_REDIS_URL#redis://}
-    hp=${hp%%/*}
-    ANS_REDIS_HOST=${hp%:*}
-    ANS_REDIS_PORT=${hp#*:}
-    [ "${ANS_REDIS_PORT}" = "${hp}" ] && ANS_REDIS_PORT="6379"
-  fi
-
-  # Sniffed defaults.
-  [ -n "${SNIFFED_MONGO}" ] && ANS_MONGO_URI="mongodb://${SNIFFED_MONGO}/parako-id"
-  [ -n "${SNIFFED_REDIS}" ] && {
-    ANS_REDIS="yes"
-    ANS_REDIS_HOST=${SNIFFED_REDIS%:*}
-    ANS_REDIS_PORT=${SNIFFED_REDIS#*:}
-  }
-  [ "${SNIFFED_INIT}" = "systemd" ] && ANS_SUPERVISOR="systemd"
-
-  if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ]; then
-    # Non-interactive mode: trust flags + defaults.
-    [ -z "${ANS_DB}" ] && ANS_DB="sqlite"
-    return 0
-  fi
-
-  ANS_ENV=$(prompt_choice "Environment" "development/production" "${ANS_ENV}")
-  printf '\n'
-  while true; do
-    ANS_PORT=$(prompt_value "Server port" "${ANS_PORT}")
-    printf '\n'
-    is_valid_port "${ANS_PORT}" && break
-    log_warn "Invalid port number"
-  done
-
-  if [ "${ANS_ENV}" = "production" ]; then
-    while true; do
-      ANS_URL=$(prompt_value "Deployment URL (e.g. https://auth.example.com)" "${ANS_URL}")
-      printf '\n'
-      is_valid_url "${ANS_URL}" && break
-      log_warn "Deployment URL is required for production and must be https://..."
-    done
+# §8  Locking + privileged file write helper
+# -----------------------------------------------------------------------------
+acquire_lock() {
+  local lock_dir lock_file
+  if [ -n "${PARAKO_LOCK_FILE:-}" ]; then
+    lock_file=${PARAKO_LOCK_FILE}
   else
-    ANS_URL=$(prompt_value "Deployment URL (optional)" "${ANS_URL}")
-    printf '\n'
+    lock_dir=${RESOLVED_INSTALL_DIR}
+    [ -d "${lock_dir}" ] || lock_dir=${DEFAULT_LOCK_DIR}
+    mkdir -p "${lock_dir}" 2>/dev/null || lock_dir="${TMPDIR:-/tmp}"
+    lock_file="${lock_dir}/.install-lock"
   fi
+  exec 9>"${lock_file}" 2>/dev/null || die "could not open lock file ${lock_file}"
+  flock --nonblock --exclusive 9 \
+    || die "another installer run is in progress (lock: ${lock_file})"
+  LOCK_FD=9
+}
 
-  ANS_SUPERVISOR=$(prompt_choice "Process supervisor" "systemd/pm2" "${ANS_SUPERVISOR}")
-  printf '\n'
-
-  ANS_DB=$(prompt_choice "Database" "sqlite/mongodb/postgresql" "${ANS_DB}")
-  printf '\n'
-  case "${ANS_DB}" in
-    mongodb)
-      ANS_MONGO_URI=$(prompt_value "MongoDB URI" "${ANS_MONGO_URI}")
-      printf '\n' ;;
-    postgresql)
-      ANS_PG_URL=$(prompt_value "PostgreSQL URL" "${ANS_PG_URL}")
-      printf '\n' ;;
+write_root_file() {
+  local src=$1 dest=$2 mode=${3:-0644} owner=${4:-root:root}
+  case "${dest}" in
+    /usr/local/bin/parako)                         ;;
+    /usr/local/bin/cosign)                         ;;
+    *) die "refusing to write outside allowlist: ${dest}" ;;
   esac
-
-  local redis_def="${ANS_REDIS}"
-  [ "${ANS_ENV}" = "production" ] && [ -z "${SNIFFED_REDIS}" ] && redis_def="yes"
-  if prompt_yn "Enable Redis" "${redis_def}"; then
-    ANS_REDIS="yes"
-    printf '\n'
-    ANS_REDIS_HOST=$(prompt_value "Redis host" "${ANS_REDIS_HOST}")
-    printf '\n'
-    while true; do
-      ANS_REDIS_PORT=$(prompt_value "Redis port" "${ANS_REDIS_PORT}")
-      printf '\n'
-      is_valid_port "${ANS_REDIS_PORT}" && break
-      log_warn "Invalid port"
-    done
-  else
-    ANS_REDIS="no"
-    printf '\n'
-  fi
-}
-
-print_summary() {
-  print_header "Configuration summary"
-  print_label "Environment" "${ANS_ENV}"
-  print_label "Port" "${ANS_PORT}"
-  [ -n "${ANS_URL}" ] && print_label "Deployment URL" "${ANS_URL}"
-  print_label "Supervisor" "${ANS_SUPERVISOR}"
-  print_label "Database" "${ANS_DB}"
-  case "${ANS_DB}" in
-    mongodb) print_label "MongoDB URI" "$(printf '%s' "${ANS_MONGO_URI}" | redact)" ;;
-    postgresql) print_label "PostgreSQL URL" "$(printf '%s' "${ANS_PG_URL}" | redact)" ;;
-  esac
-  print_label "Redis" "${ANS_REDIS}"
-  if [ "${ANS_REDIS}" = "yes" ]; then
-    print_label "Redis host" "${ANS_REDIS_HOST}"
-    print_label "Redis port" "${ANS_REDIS_PORT}"
-  fi
-}
-
-edit_field() {
-  case "$1" in
-    1) ANS_ENV=$(prompt_choice "Environment" "development/production" "${ANS_ENV}"); printf '\n' ;;
-    2) while true; do
-         ANS_PORT=$(prompt_value "Server port" "${ANS_PORT}")
-         printf '\n'
-         is_valid_port "${ANS_PORT}" && break
-       done ;;
-    3) ANS_URL=$(prompt_value "Deployment URL" "${ANS_URL}"); printf '\n' ;;
-    4) ANS_SUPERVISOR=$(prompt_choice "Supervisor" "systemd/pm2" "${ANS_SUPERVISOR}"); printf '\n' ;;
-    5) ANS_DB=$(prompt_choice "Database" "sqlite/mongodb/postgresql" "${ANS_DB}"); printf '\n'
-       case "${ANS_DB}" in
-         mongodb) ANS_MONGO_URI=$(prompt_value "MongoDB URI" "${ANS_MONGO_URI}"); printf '\n' ;;
-         postgresql) ANS_PG_URL=$(prompt_value "PostgreSQL URL" "${ANS_PG_URL}"); printf '\n' ;;
-       esac ;;
-    6) if prompt_yn "Enable Redis" "${ANS_REDIS}"; then
-         ANS_REDIS="yes"; printf '\n'
-         ANS_REDIS_HOST=$(prompt_value "Redis host" "${ANS_REDIS_HOST}"); printf '\n'
-         while true; do
-           ANS_REDIS_PORT=$(prompt_value "Redis port" "${ANS_REDIS_PORT}")
-           printf '\n'
-           is_valid_port "${ANS_REDIS_PORT}" && break
-         done
-       else ANS_REDIS="no"; printf '\n'; fi ;;
-    *) log_warn "invalid field number: $1" ;;
-  esac
-}
-
-confirm_or_edit() {
-  while true; do
-    print_summary
-    printf '\n  Is this correct? [%sY%s/n/e]  Y=proceed, n=abort, e=edit: ' "${C_BOLD}" "${C_RESET}"
-    local answer=""
-    IFS= read -r answer || answer=""
-    case "${answer}" in
-      ""|y|Y|yes|Yes|YES) return 0 ;;
-      n|N|no|No|NO) log_info "aborted by operator"; exit 0 ;;
-      e|E|edit|Edit|EDIT)
-        printf '\n  Which value to edit?\n'
-        printf '  1) Environment  2) Port  3) URL  4) Supervisor  5) Database  6) Redis\n'
-        printf '  Enter field number (1-6): '
-        local fnum=""
-        IFS= read -r fnum || fnum=""
-        edit_field "${fnum}" ;;
-      *) printf '  Please enter Y, n, or e.\n' >&2 ;;
-    esac
-  done
-}
-
-# =============================================================================
-# §10 Connection validators
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Validation requires the release tarball to be extracted (we use its
-#     bundled node_modules to drive the DB clients).
-# =============================================================================
-
-validate_mongodb() {
-  log_info "testing MongoDB connection"
-  if (cd "${RESOLVED_INSTALL_DIR}" && PARAKO_TEST_URI=$1 node -e "
-    const{MongoClient}=require('mongodb');
-    MongoClient.connect(process.env.PARAKO_TEST_URI,{serverSelectionTimeoutMS:5000})
-      .then(c=>{c.close();process.exit(0)}).catch(()=>process.exit(1));
-  " 2>/dev/null); then
-    log_ok "MongoDB connection OK"
-    return 0
-  fi
-  log_warn "could not connect to MongoDB"
-  return 1
-}
-
-validate_postgresql() {
-  log_info "testing PostgreSQL connection"
-  if (cd "${RESOLVED_INSTALL_DIR}" && PARAKO_TEST_URI=$1 node -e "
-    const{Client}=require('pg');
-    const c=new Client({connectionString:process.env.PARAKO_TEST_URI,connectionTimeoutMillis:5000});
-    c.connect().then(()=>{c.end();process.exit(0)}).catch(()=>process.exit(1));
-  " 2>/dev/null); then
-    log_ok "PostgreSQL connection OK"
-    return 0
-  fi
-  log_warn "could not connect to PostgreSQL"
-  return 1
-}
-
-validate_redis() {
-  log_info "testing Redis connection"
-  if (cd "${RESOLVED_INSTALL_DIR}" && PARAKO_TEST_HOST=$1 PARAKO_TEST_PORT=$2 node -e "
-    const R=require('ioredis');
-    const r=new R({host:process.env.PARAKO_TEST_HOST,port:Number(process.env.PARAKO_TEST_PORT),lazyConnect:true,connectTimeout:5000,maxRetriesPerRequest:1});
-    r.connect().then(()=>r.ping()).then(()=>{r.disconnect();process.exit(0)}).catch(()=>process.exit(1));
-  " 2>/dev/null); then
-    log_ok "Redis connection OK"
-    return 0
-  fi
-  log_warn "could not connect to Redis"
-  return 1
-}
-
-validate_connections() {
-  local retry=""
-  if [ "${ANS_DB}" = "mongodb" ]; then
-    while true; do
-      validate_mongodb "${ANS_MONGO_URI}" && break
-      [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && { log_warn "proceeding with unvalidated URI"; break; }
-      printf '  Enter new URI or Enter to skip: '
-      IFS= read -r retry || retry=""
-      [ -z "${retry}" ] && { log_warn "proceeding with unvalidated URI"; break; }
-      ANS_MONGO_URI=${retry}
-    done
-  fi
-  if [ "${ANS_DB}" = "postgresql" ]; then
-    while true; do
-      validate_postgresql "${ANS_PG_URL}" && break
-      [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && { log_warn "proceeding with unvalidated URL"; break; }
-      printf '  Enter new URL or Enter to skip: '
-      IFS= read -r retry || retry=""
-      [ -z "${retry}" ] && { log_warn "proceeding with unvalidated URL"; break; }
-      ANS_PG_URL=${retry}
-    done
-  fi
-  if [ "${ANS_REDIS}" = "yes" ]; then
-    while true; do
-      validate_redis "${ANS_REDIS_HOST}" "${ANS_REDIS_PORT}" && break
-      [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && { log_warn "proceeding with unvalidated Redis"; break; }
-      printf '  Enter new host:port or Enter to skip: '
-      IFS= read -r retry || retry=""
-      [ -z "${retry}" ] && { log_warn "proceeding with unvalidated Redis"; break; }
-      ANS_REDIS_HOST=${retry%:*}
-      local np
-      np=${retry#*:}
-      [ "${np}" != "${retry}" ] && [ -n "${np}" ] && ANS_REDIS_PORT=${np}
-    done
-  fi
-}
-
-# =============================================================================
-# §11 Secret + .env generator
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - .env is written atomically (write to .tmp, then mv).
-#   - Mode 0600 enforced regardless of umask.
-#   - Secrets sourced from openssl rand or /dev/urandom; never logged.
-# =============================================================================
-
-apply_guards() {
-  if [ "${ANS_ENV}" = "production" ] && [ "${ANS_DB}" = "sqlite" ]; then
-    log_warn "SQLite is not recommended for production; consider PostgreSQL or MongoDB"
-  fi
-  if [ "${ANS_ENV}" = "production" ] && [ -z "${ANS_URL}" ]; then
-    die "deployment URL is required for production environments"
-  fi
-}
-
-_gen_hex32() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 32
-  else
-    od -An -tx1 -N32 /dev/urandom | tr -d ' \n'
-  fi
-}
-
-generate_env_file() {
-  local env_file="${RESOLVED_INSTALL_DIR}/runtime/.env"
-  local env_tmp="${env_file}.tmp.$$"
-  mkdir -p "$(dirname "${env_file}")"
-  log_info "generating runtime/.env"
-
-  local ek jw c1 c2 hm ps
-  ek=$(_gen_hex32)
-  jw=$(_gen_hex32)
-  c1=$(_gen_hex32)
-  c2=$(_gen_hex32)
-  hm=$(_gen_hex32)
-  ps=$(_gen_hex32)
-
-  local pp uf mt
-  if [ "${ANS_ENV}" = "development" ]; then pp="true"; uf="true"; else pp="false"; uf="false"; fi
-  if [ "${FLAG_MULTI_TENANT}" -eq 1 ]; then mt="true"; else mt="false"; fi
-
-  {
-    printf '# Parako.ID — generated by installer v%s on %s\n' "${INSTALLER_VERSION}" "${RUN_TIMESTAMP}"
-    printf 'DEPLOYMENT_ENVIRONMENT=%s\n' "${ANS_ENV}"
-    printf 'DEPLOYMENT_SERVER_PORT=%s\n' "${ANS_PORT}"
-    [ -n "${ANS_URL}" ] && printf 'DEPLOYMENT_URL=%s\n' "${ANS_URL}"
-    printf '\nSTORAGE_ADAPTER=%s\n' "${ANS_DB}"
-    case "${ANS_DB}" in
-      mongodb) printf 'STORAGE_MONGODB_URI=%s\n' "${ANS_MONGO_URI}" ;;
-      sqlite)  printf 'STORAGE_SQLITE_PATH=./runtime/data/parako.db\n' ;;
-      postgresql) printf 'STORAGE_POSTGRESQL_URL=%s\nDATABASE_URL=%s\n' "${ANS_PG_URL}" "${ANS_PG_URL}" ;;
-    esac
-    if [ "${ANS_REDIS}" = "yes" ]; then
-      printf '\nREDIS_HOST=%s\nREDIS_PORT=%s\nOIDC_STORAGE_ADAPTER=redis\n' \
-        "${ANS_REDIS_HOST}" "${ANS_REDIS_PORT}"
-    fi
-    printf '\n'
-    printf 'ENCRYPTION_KEY=%s\n' "${ek}"
-    printf 'JWT_SECRET=%s\n' "${jw}"
-    printf 'COOKIE_SECRET_1=%s\n' "${c1}"
-    printf 'COOKIE_SECRET_2=%s\n' "${c2}"
-    printf 'HMAC_SECRET=%s\n' "${hm}"
-    printf 'PAIRWISE_SALT=%s\n' "${ps}"
-    printf '\n'
-    printf 'SECURITY_LOGGING_ENABLED=true\n'
-    printf 'SECURITY_LOGGING_LEVEL=info\n'
-    printf 'SECURITY_LOGGING_PRETTY_PRINT=%s\n' "${pp}"
-    printf 'SECURITY_LOGGING_FILE_LOGGING_ENABLED=true\n'
-    printf 'SECURITY_LOGGING_FILE_LOGGING_DIRECTORY=runtime/logs\n'
-    printf 'MULTI_TENANCY_ENABLED=%s\n' "${mt}"
-    printf 'USE_FILE_CONFIG=%s\n' "${uf}"
-    if [ "${FLAG_WITH_TLS}" -eq 1 ]; then
-      printf 'COOKIES_SECURE=true\n'
-    fi
-    if [ -n "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ]; then
-      printf '\n# Bootstrap admin (seeded on first start; REMOVE these two lines after first successful login)\n'
-      printf 'PARAKO_BOOTSTRAP_ADMIN_EMAIL=%s\n' "${FLAG_BOOTSTRAP_ADMIN_EMAIL}"
-      printf 'PARAKO_BOOTSTRAP_ADMIN_PASSWORD=%s\n' "${BOOTSTRAP_ADMIN_PASSWORD}"
-    fi
-  } > "${env_tmp}"
-
-  chmod 0600 "${env_tmp}"
-  mv "${env_tmp}" "${env_file}"
-  log_ok "runtime/.env written (mode 0600)"
-}
-
-# Generate the bootstrap admin password before .env is written so it can both
-# be embedded and printed in the recovery card. Must run before generate_env_file.
-maybe_generate_bootstrap_password() {
-  [ -z "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ] && return 0
-  # 16 hex chars (~64 bits of entropy) is plenty for a single-use bootstrap
-  # password that the operator rotates immediately.
-  BOOTSTRAP_ADMIN_PASSWORD=$(_gen_hex32 | cut -c1-16)
-}
-
-# =============================================================================
-# §12 INSTALL_NOTES.md generator
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Mode 0600.
-#   - Secrets redacted by redact() and by structural omission (no .env values).
-#   - Records every wizard answer, all selected flags, version, snapshot path.
-# =============================================================================
-
-generate_install_notes() {
-  local notes="${RESOLVED_INSTALL_DIR}/runtime/INSTALL_NOTES.md"
-  local notes_tmp="${notes}.tmp.$$"
-  mkdir -p "$(dirname "${notes}")"
-
-  local operator
-  operator=$(id -un 2>/dev/null || printf 'unknown')
-
-  {
-    printf '# Parako.ID Install Notes\n\n'
-    printf 'Generated by installer v%s.\n' "${INSTALLER_VERSION}"
-    printf 'Sensitive values redacted as `***`.\n\n'
-    printf '## Run\n\n'
-    printf '- Version: %s\n' "${TAG:-${INSTALLER_VERSION}}"
-    printf '- Date: %s\n' "${RUN_TIMESTAMP}"
-    printf '- Operator: %s (uid=%s)\n' "${operator}" "$(id -u 2>/dev/null || printf '?')"
-    printf '- Install dir: %s\n' "${RESOLVED_INSTALL_DIR}"
-    printf '- Run mode: %s\n' "$( [ "${FLAG_UPDATE}" -eq 1 ] && printf 'update' || printf 'install' )"
-    printf '\n'
-    printf '## Configuration\n\n'
-    printf '- Environment: %s\n' "${ANS_ENV}"
-    printf '- Server port: %s\n' "${ANS_PORT}"
-    [ -n "${ANS_URL}" ] && printf '- Deployment URL: %s\n' "${ANS_URL}"
-    printf '- Supervisor: %s\n' "${ANS_SUPERVISOR}"
-    printf '- Database: %s\n' "${ANS_DB}"
-    case "${ANS_DB}" in
-      mongodb) printf '- MongoDB URI: %s\n' "$(printf '%s' "${ANS_MONGO_URI}" | redact)" ;;
-      postgresql) printf '- PostgreSQL URL: %s\n' "$(printf '%s' "${ANS_PG_URL}" | redact)" ;;
-    esac
-    printf '- Redis: %s\n' "${ANS_REDIS}"
-    if [ "${ANS_REDIS}" = "yes" ]; then
-      printf '- Redis host:port: %s:%s\n' "${ANS_REDIS_HOST}" "${ANS_REDIS_PORT}"
-    fi
-    printf '\n'
-    printf '## Flags\n\n'
-    printf '- Non-interactive: %s\n' "${FLAG_NON_INTERACTIVE}"
-    printf '- With nginx: %s\n' "${FLAG_WITH_NGINX}"
-    printf '- With TLS: %s\n' "${FLAG_WITH_TLS}"
-    printf '- Multi-tenant: %s\n' "${FLAG_MULTI_TENANT}"
-    [ -n "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ] && printf '- Bootstrap admin email: %s\n' "${FLAG_BOOTSTRAP_ADMIN_EMAIL}"
-    if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 1 ]; then
-      printf '\n## SECURITY EXCEPTION\n\n'
-      printf 'Signature verification was bypassed via `--insecure-no-signature`.\n'
-      printf 'Reason: %s\n' "${FLAG_INSECURE_REASON}"
-    fi
-    printf '\n## Trust\n\n'
-    printf '- Cosign identity regex: `%s`\n' "${COSIGN_CERT_IDENTITY_REGEX}"
-    printf '- Cosign OIDC issuer: `%s`\n' "${COSIGN_OIDC_ISSUER}"
-    printf '\n## Files outside %s\n\n' "${RESOLVED_INSTALL_DIR}"
-    printf '- `/etc/systemd/system/parako-id.service`\n'
-    printf '- `/etc/systemd/system/parako-id-worker.service`\n'
-    [ "${FLAG_WITH_NGINX}" -eq 1 ] && printf '- `/etc/nginx/sites-available/parako-id`\n'
-    printf '- `%s/parako`\n' "${DEFAULT_BIN_DIR}"
-    printf '- `%s`\n' "${LOG_FILE}"
-    printf '\n## See also\n\n'
-    printf '- `parako --help`\n'
-    printf '- https://docs.parako.id/installer\n'
-    printf '- https://docs.parako.id/installer-security\n'
-  } > "${notes_tmp}"
-
-  chmod 0600 "${notes_tmp}"
-  mv "${notes_tmp}" "${notes}"
-  log_ok "INSTALL_NOTES.md written"
-}
-
-# =============================================================================
-# §13 Supervisor setup (systemd / PM2)
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Supervisor decision persisted in $INSTALL_DIR/.supervisor for --update.
-#   - systemd path delegates to compiled `dist/scripts/manage/systemd.js install`.
-# =============================================================================
-
-write_supervisor_marker() {
-  local marker="${RESOLVED_INSTALL_DIR}/.supervisor"
-  printf '%s\n' "${ANS_SUPERVISOR}" > "${marker}"
-  chmod 0644 "${marker}"
-}
-
-read_supervisor() {
-  local marker="${RESOLVED_INSTALL_DIR}/.supervisor"
-  if [ -f "${marker}" ]; then
-    head -n1 "${marker}" | tr -d '[:space:]'
-  else
-    printf 'pm2'
-  fi
-}
-
-setup_systemd() {
-  local node_path
-  node_path=$(command -v node 2>/dev/null || printf '/usr/bin/node')
-  log_info "installing systemd unit files"
   local prefix=""
   [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-  (cd "${RESOLVED_INSTALL_DIR}" && \
-    ${prefix} node dist/scripts/manage/systemd.js install \
-      --user "$(id -un)" \
-      --dir "${RESOLVED_INSTALL_DIR}" \
-      --env-file "${RESOLVED_INSTALL_DIR}/runtime/.env" \
-      --node-path "${node_path}" \
-      --force) \
-    || die "failed to install systemd services"
-  ${prefix} systemctl enable --now parako-id parako-id-worker \
-    || die "failed to enable/start systemd services"
-  log_ok "systemd services installed and started"
+  if [ -f "${dest}" ]; then
+    ${prefix} cp -a "${dest}" "${dest}.bak.${RUN_TIMESTAMP}" \
+      || return 1
+  fi
+  ${prefix} install -m "${mode}" -o "${owner%:*}" -g "${owner#*:}" "${src}" "${dest}" \
+    || return 1
+  [ -f "${dest}" ] || return 1
+  log_ok "wrote ${dest} (mode ${mode}, ${owner})"
 }
 
-start_application() {
-  case "${ANS_SUPERVISOR}" in
-    systemd)
-      if [ "${ANS_ENV}" = "production" ]; then
-        setup_systemd
-      else
-        log_info "development mode: starting foreground via pnpm dev (Ctrl-C to stop)"
-        (cd "${RESOLVED_INSTALL_DIR}" && pnpm dev)
-      fi
-      ;;
-    pm2)
-      if [ "${ANS_ENV}" = "production" ]; then
-        log_info "starting Parako.ID via PM2"
-        (cd "${RESOLVED_INSTALL_DIR}" && pnpm start) \
-          || die "PM2 start failed"
-      else
-        log_info "development mode: pnpm dev"
-        (cd "${RESOLVED_INSTALL_DIR}" && pnpm dev)
-      fi
-      ;;
-    *) die "unknown supervisor: ${ANS_SUPERVISOR}" ;;
-  esac
-}
-
-# =============================================================================
-# §14 DB migration + pre-update backup
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Migrations idempotent (Prisma).
-#   - DB backup runs BEFORE extract during --update; failure aborts update.
-#   - Backups retained: 3 most recent in runtime/backups/.
-# =============================================================================
-
-ensure_pnpm() {
-  if command -v pnpm >/dev/null 2>&1; then return 0; fi
-  if command -v corepack >/dev/null 2>&1; then
-    log_info "activating pnpm via corepack"
-    corepack enable >/dev/null 2>&1 || true
-    corepack prepare "pnpm@${MIN_PNPM_MAJOR}" --activate >/dev/null 2>&1 || true
-  fi
-  command -v pnpm >/dev/null 2>&1 || die "pnpm not available; install Node >= ${MIN_NODE_MAJOR} with corepack and try again"
-}
-
-install_dependencies() {
-  # Release tarballs ship with node_modules pre-bundled. If present, skip.
-  if [ -d "${RESOLVED_INSTALL_DIR}/node_modules" ] \
-     && [ -f "${RESOLVED_INSTALL_DIR}/node_modules/.modules.yaml" ]; then
-    log_ok "dependencies bundled in release"
-    return 0
-  fi
-  ensure_pnpm
-  log_info "installing production dependencies (pnpm install --prod)"
-  (cd "${RESOLVED_INSTALL_DIR}" && pnpm install --prod --frozen-lockfile 2>&1 | _log_disk DEBUG pnpm "$(cat)") \
-    || die "pnpm install failed"
-  log_ok "dependencies installed"
-}
-
-run_db_migrations() {
-  case "${ANS_DB}" in
-    postgresql)
-      log_info "applying PostgreSQL migrations"
-      (cd "${RESOLVED_INSTALL_DIR}" && pnpm db:migrate:deploy 2>&1 | _log_disk DEBUG prisma "$(cat)") \
-        || die "PostgreSQL migrations failed"
-      log_ok "migrations applied" ;;
-    sqlite)
-      log_info "syncing SQLite schema"
-      (cd "${RESOLVED_INSTALL_DIR}" && pnpm db:push 2>&1 | _log_disk DEBUG prisma "$(cat)") \
-        || die "SQLite schema sync failed"
-      log_ok "schema synced" ;;
-    mongodb)
-      log_ok "MongoDB requires no migration (indexes built on connect)" ;;
-    *) log_warn "unknown DB type: ${ANS_DB}; skipping migrations" ;;
-  esac
-}
-
-backup_db_before_update() {
-  local backup_dir="${RESOLVED_INSTALL_DIR}/runtime/backups"
-  mkdir -p "${backup_dir}"
-  chmod 0700 "${backup_dir}"
-  local prev_ver=${1:-unknown}
-  local stamp="pre-${prev_ver}-${RUN_TIMESTAMP}"
-  case "${ANS_DB}" in
-    postgresql)
-      log_info "backing up PostgreSQL via pg_dump"
-      if command -v pg_dump >/dev/null 2>&1; then
-        (cd "${RESOLVED_INSTALL_DIR}" && \
-          pg_dump --no-owner --format=custom "${ANS_PG_URL}" 2>/dev/null \
-          | gzip > "${backup_dir}/${stamp}.dump.gz") \
-          || die "pg_dump failed; aborting update"
-        log_ok "PostgreSQL backup at ${backup_dir}/${stamp}.dump.gz"
-      else
-        die "pg_dump not installed; required for safe PostgreSQL update"
-      fi
-      ;;
-    mongodb)
-      log_info "backing up MongoDB via mongodump"
-      command -v mongodump >/dev/null 2>&1 \
-        || die "mongodump not installed; required for safe MongoDB update. Install mongodb-database-tools and re-run."
-      mongodump --uri="${ANS_MONGO_URI}" --archive="${backup_dir}/${stamp}.archive.gz" --gzip >/dev/null 2>&1 \
-        || die "mongodump failed; aborting update"
-      log_ok "MongoDB backup at ${backup_dir}/${stamp}.archive.gz"
-      ;;
-    sqlite)
-      log_info "backing up SQLite via .backup"
-      local sqlite_path="${RESOLVED_INSTALL_DIR}/runtime/data/parako.db"
-      command -v sqlite3 >/dev/null 2>&1 \
-        || die "sqlite3 CLI not installed; required for safe SQLite update. Install sqlite3 and re-run."
-      if [ ! -f "${sqlite_path}" ]; then
-        log_warn "no SQLite database at ${sqlite_path}; nothing to back up (filesystem snapshot still taken)"
-      else
-        sqlite3 "${sqlite_path}" ".backup ${backup_dir}/${stamp}.db" \
-          || die "sqlite3 .backup failed; aborting update"
-        gzip -f "${backup_dir}/${stamp}.db"
-        log_ok "SQLite backup at ${backup_dir}/${stamp}.db.gz"
-      fi
-      ;;
-  esac
-  # Retain 3 most recent of each kind.
-  ls -1t "${backup_dir}"/pre-*.dump.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
-  ls -1t "${backup_dir}"/pre-*.archive.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
-  ls -1t "${backup_dir}"/pre-*.db.gz 2>/dev/null | tail -n +4 | xargs -r rm -f
-}
-
-# =============================================================================
-# §15 Health check (lightweight /health endpoint)
+# §9  Beginning ritual (confirmation gate)
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Polls /health (added in src/app.ts:159-218). Falls back to
-#     /.well-known/openid-configuration for installs older than v0.2.0.
-#   - 15s window, 0.5s interval.
-# =============================================================================
-
-_probe_url() {
-  local url=$1
-  if [ "${DOWNLOAD_CMD}" = "curl" ]; then
-    curl --proto '=https,=http' --tlsv1.2 -sSf --max-time 2 "${url}" >/dev/null 2>&1
-  else
-    wget -q --timeout=2 -O - "${url}" >/dev/null 2>&1
-  fi
-}
-
-health_check() {
-  local port=$1
-  local primary="http://127.0.0.1:${port}${HEALTH_PATH}"
-  local fallback="http://127.0.0.1:${port}${HEALTH_FALLBACK_PATH}"
-  log_info "health probe ${primary}"
-  local deadline now
-  deadline=$(( $(date +%s) + HEALTH_TIMEOUT_SECS ))
-  while true; do
-    if _probe_url "${primary}"; then
-      log_ok "health check passed"
-      return 0
-    fi
-    if _probe_url "${fallback}"; then
-      log_ok "health check passed (legacy endpoint)"
-      return 0
-    fi
-    now=$(date +%s)
-    [ "${now}" -ge "${deadline}" ] && break
-    sleep 0.5
-  done
-  log_warn "health check timed out after ${HEALTH_TIMEOUT_SECS}s"
-  return 1
-}
-
-read_port_from_env() {
-  local env=$1/runtime/.env
-  [ ! -f "${env}" ] && env=$1/.env
-  [ ! -f "${env}" ] && { printf '%s' "${DEFAULT_PORT}"; return; }
-  local p
-  p=$(grep -E '^DEPLOYMENT_SERVER_PORT=' "${env}" | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
-  [ -z "${p}" ] && p=${DEFAULT_PORT}
-  printf '%s' "${p}"
-}
-
-read_installed_version() {
-  local pkg=$1/package.json
-  [ ! -f "${pkg}" ] && { printf 'unknown'; return; }
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '.version // "unknown"' "${pkg}"
-  else
-    grep '"version"' "${pkg}" | head -n1 | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/'
-  fi
-}
-
-read_installed_db() {
-  local env=$1/runtime/.env
-  [ ! -f "${env}" ] && env=$1/.env
-  [ ! -f "${env}" ] && { printf 'sqlite'; return; }
-  local db
-  db=$(grep -E '^STORAGE_ADAPTER=' "${env}" | cut -d= -f2 | tr -d '"' | tr -d "'" | tr -d ' ')
-  [ -z "${db}" ] && db="sqlite"
-  printf '%s' "${db}"
-}
-
-read_pg_url_from_env() {
-  local env=$1/runtime/.env
-  [ ! -f "${env}" ] && env=$1/.env
-  [ ! -f "${env}" ] && return 0
-  grep -E '^STORAGE_POSTGRESQL_URL=' "${env}" | cut -d= -f2- | tr -d '"' | tr -d "'"
-}
-
-read_mongo_uri_from_env() {
-  local env=$1/runtime/.env
-  [ ! -f "${env}" ] && env=$1/.env
-  [ ! -f "${env}" ] && return 0
-  grep -E '^STORAGE_MONGODB_URI=' "${env}" | cut -d= -f2- | tr -d '"' | tr -d "'"
-}
-
-# =============================================================================
-# §16 Beginning ritual
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Runs AFTER preflight + sniff + wizard, BEFORE any mutation.
-#   - Six labeled panels in plain text. No box-drawing.
-#   - Interactive: 60s timeout. --non-interactive --force: 5s grace + Ctrl+C.
-# =============================================================================
-
-print_plan_panel() {
-  print_header "Plan"
-  local op="fresh install"
-  [ "${FLAG_UPDATE}" -eq 1 ] && op="in-place update"
-  [ "${FLAG_ROLLBACK}" -eq 1 ] && op="rollback"
-  [ "${FLAG_DEMO}" -eq 1 ] && op="demo (ephemeral)"
-  print_label "Operation" "${op}"
-  print_label "Version" "${TAG:-?}"
-  print_label "Install directory" "${RESOLVED_INSTALL_DIR:-${INSTALL_DIR}}"
-  print_label "Database" "${ANS_DB}"
-  print_label "Supervisor" "${ANS_SUPERVISOR}"
-  [ -n "${ANS_URL}" ] && print_label "URL" "${ANS_URL}"
-  if [ "${FLAG_WITH_NGINX}" -eq 1 ]; then
-    if [ "${FLAG_WITH_TLS}" -eq 1 ]; then
-      print_label "nginx + TLS" "yes (certbot)"
-    else
-      print_label "nginx" "yes"
-    fi
-  fi
-  [ "${FLAG_MULTI_TENANT}" -eq 1 ] && print_label "Multi-tenant" "yes (base: ${FLAG_BASE_DOMAIN})"
-  printf '\n  Files that will be written outside %s:\n' "${RESOLVED_INSTALL_DIR:-${INSTALL_DIR}}"
-  if [ "${ANS_SUPERVISOR}" = "systemd" ] && [ "${ANS_ENV}" = "production" ]; then
-    printf '    /etc/systemd/system/parako-id.service\n'
-    printf '    /etc/systemd/system/parako-id-worker.service\n'
-  fi
-  [ "${FLAG_WITH_NGINX}" -eq 1 ] && printf '    /etc/nginx/sites-available/parako-id\n'
-  printf '    %s/parako\n' "${DEFAULT_BIN_DIR}"
-  printf '    %s\n' "${LOG_FILE}"
-}
-
-print_install_notes_panel() {
-  print_header "Install notes"
-  printf '  Operator answers will be written to:\n'
-  printf '    %s/runtime/INSTALL_NOTES.md (mode 0600; secrets redacted)\n' \
-    "${RESOLVED_INSTALL_DIR:-${INSTALL_DIR}}"
-}
-
-print_log_panel() {
-  print_header "Install log"
-  printf '  %s\n' "${LOG_FILE}"
-}
-
-print_assurances_panel() {
-  printf '\n'
-  printf 'Before anything changes on your system:\n'
-  printf '  - Every preflight check above passed.\n'
-  if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 0 ] && [ "${FLAG_DEMO}" -eq 0 ]; then
-    printf '  - The release tarball has been verified via cosign (Sigstore).\n'
-  fi
-  if [ "${FLAG_UPDATE}" -eq 1 ]; then
-    printf '  - A complete snapshot is taken before any mutation.\n'
-    printf '  - A database backup is taken before migration.\n'
-    printf '  - Automatic rollback restores the prior state on failure.\n'
-  fi
-  printf '  - You can roll back later with `parako rollback`.\n'
-}
-
 beginning_ritual() {
-  print_plan_panel
-  print_install_notes_panel
-  print_log_panel
-  print_assurances_panel
+  print_header "Plan"
+  print_label "Operation" "$1"
+  print_label "Target version" "${TAG:-?}"
+  print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
+  printf '\n'
+  printf 'Before any mutation, this installer will:\n'
+  printf '  - Acquire an installer lock at %s/.install-lock.\n' "${RESOLVED_INSTALL_DIR}"
+  printf '  - Stage the new release under %s/releases/.staging.%s.$$.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
+  printf '  - Promote staging to %s/releases/%s/.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
+  printf '  - Atomically switch %s/current to the new release.\n' "${RESOLVED_INSTALL_DIR}"
+  printf '\n'
+  printf 'It will NOT:\n'
+  printf '  - Touch %s/runtime/ or %s/runtime/.env.\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
+  printf '  - Start, stop, restart, enable, or configure any service.\n'
+  printf '  - Run database migrations or back up the database.\n'
+  printf '  - Configure nginx, certbot, or TLS.\n'
+  printf '  - Install OS packages.\n'
   printf '\n'
 
   if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && [ "${FLAG_FORCE}" -eq 1 ]; then
@@ -1970,1064 +796,499 @@ beginning_ritual() {
     sleep 5
     return 0
   fi
-  if [ "${FLAG_FORCE}" -eq 1 ]; then
-    return 0
-  fi
+  if [ "${FLAG_FORCE}" -eq 1 ]; then return 0; fi
   if ! prompt_yn_timeout "Proceed?" "no" 60; then
     log_info "aborted by operator"
     exit 0
   fi
 }
 
-# =============================================================================
-# §17 Recovery summary card
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Plain text. No boxes.
-#   - Names URL, admin path, supervisor, log/notes paths, common parako verbs.
-# =============================================================================
-
-print_recovery_card() {
-  local url="http://localhost:${ANS_PORT}"
-  [ -n "${ANS_URL}" ] && url=${ANS_URL}
-  print_header "Parako.ID installed"
-  print_label "URL" "${url}"
-  print_label "Admin panel" "${url}/admin"
-  print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
-  print_label "Supervisor" "${ANS_SUPERVISOR}"
-  print_label "Install notes" "${RESOLVED_INSTALL_DIR}/runtime/INSTALL_NOTES.md"
-  print_label "Install log" "${LOG_FILE}"
-
-  if [ -n "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ] && [ -n "${BOOTSTRAP_ADMIN_PASSWORD}" ]; then
-    printf '\n  %sFirst-login admin credentials (shown only once):%s\n' "${C_BOLD}${C_YELLOW}" "${C_RESET}"
-    print_label "  Email" "${FLAG_BOOTSTRAP_ADMIN_EMAIL}"
-    print_label "  Password" "${BOOTSTRAP_ADMIN_PASSWORD}"
-    printf '\n  %sSAVE THIS PASSWORD NOW.%s After first login at %s/auth/login:\n' \
-      "${C_BOLD}${C_RED}" "${C_RESET}" "${url}"
-    printf '    1. Change the password via the admin panel.\n'
-    printf '    2. Remove PARAKO_BOOTSTRAP_ADMIN_EMAIL and PARAKO_BOOTSTRAP_ADMIN_PASSWORD\n'
-    printf '       from %s/runtime/.env\n' "${RESOLVED_INSTALL_DIR}"
-    printf '    3. parako restart\n'
-  fi
-
-  printf '\n  Common operations:\n'
-  printf '    parako status                 Show service state\n'
-  printf '    parako doctor                 Run health + security checks\n'
-  printf '    parako logs -f                Tail logs\n'
-  printf '    parako update                 Upgrade to latest stable\n'
-  printf '    parako rollback               Revert to previous snapshot\n'
-  printf '    parako backup --out FILE      Disaster-recovery archive\n'
-  if [ -z "${FLAG_BOOTSTRAP_ADMIN_EMAIL}" ]; then
-    printf '\n  Visit %s/auth/register to create your first user.\n' "${url}"
-  fi
+# §10  .parako-state (mode 0644, NO secrets)
+# -----------------------------------------------------------------------------
+write_parako_state() {
+  local version=$1 previous=${2:-}
+  local state_file="${RESOLVED_INSTALL_DIR}/.parako-state"
+  local state_tmp="${state_file}.tmp.$$"
+  {
+    printf '# Parako.ID installer state — no secrets, safe to read.\n'
+    printf 'INSTALL_DIR=%s\n'      "${RESOLVED_INSTALL_DIR}"
+    printf 'VERSION=%s\n'          "${version}"
+    printf 'PREVIOUS_VERSION=%s\n' "${previous}"
+    printf 'INSTALLED_AT=%s\n'     "${RUN_TIMESTAMP}"
+    printf 'INSTALLER_VERSION=%s\n' "${INSTALLER_VERSION}"
+  } > "${state_tmp}"
+  chmod 0644 "${state_tmp}"
+  mv -f "${state_tmp}" "${state_file}"
 }
 
-print_demo_card() {
-  local url="http://localhost:${ANS_PORT}"
-  print_header "Parako.ID DEMO MODE"
-  printf '  %sThis install is ephemeral and intended for evaluation only.%s\n\n' "${C_RED}${C_BOLD}" "${C_RESET}"
-  print_label "URL" "${url}"
-  print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
-  if [ -n "${DEMO_ADMIN_EMAIL:-}" ] && [ -n "${DEMO_ADMIN_PASSWORD:-}" ]; then
-    print_label "Admin email" "${DEMO_ADMIN_EMAIL}"
-    print_label "Admin password" "${DEMO_ADMIN_PASSWORD} (one-time, shown only here)"
-  fi
-  printf '\n  Register OIDC clients via %s/admin/oidc-clients after login.\n' "${url}"
-  printf '\n  To tear this demo down:\n'
-  if [ -n "${DEMO_PID:-}" ]; then
-    printf '    kill %s\n' "${DEMO_PID}"
-  fi
-  printf '    rm -rf %s\n' "${RESOLVED_INSTALL_DIR}"
+read_state_field() {
+  local field=$1 file="${RESOLVED_INSTALL_DIR}/.parako-state"
+  [ -r "${file}" ] || return 1
+  grep -E "^${field}=" "${file}" | head -n1 | cut -d= -f2-
 }
 
-# =============================================================================
-# §18 Install main flow
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Calls preflight() first; any FAIL aborts.
-#   - Calls beginning_ritual() AFTER wizard + before mutation.
-#   - On failure, EXIT trap cleans up tempdir; partial install dir is reported.
-# =============================================================================
-
-ensure_install_dir() {
-  local target=$1 parent
-  parent=$(dirname "${target}")
-  [ -d "${target}" ] && return 0
-  if [ -w "${parent}" ] 2>/dev/null; then
-    mkdir -p "${target}"
+# §11  parako operator-binary install (non-fatal)
+# -----------------------------------------------------------------------------
+install_parako_binary() {
+  if [ "${FLAG_NO_BIN}" -eq 1 ]; then
+    log_info "--no-bin: skipping /usr/local/bin/parako install"
+    return 0
+  fi
+  local src="${RESOLVED_INSTALL_DIR}/current/contrib/parako.sh"
+  if [ ! -f "${src}" ]; then
+    log_warn "parako helper not found at ${src}; skipping operator-binary install"
+    log_warn "after future release, install with: cp ${RESOLVED_INSTALL_DIR}/current/contrib/parako.sh /usr/local/bin/parako && chmod 0755 /usr/local/bin/parako"
     return 0
   fi
   if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
-    mkdir -p "${target}"
-  elif command -v sudo >/dev/null 2>&1; then
-    log_info "creating ${target} (sudo)"
-    sudo mkdir -p "${target}"
-    sudo chown "$(id -u):$(id -g)" "${target}"
+    if ! write_root_file "${src}" "/usr/local/bin/parako" 0755 root:root; then
+      log_warn "could not install /usr/local/bin/parako; install manually:"
+      log_warn "  cp ${src} /usr/local/bin/parako && chmod 0755 /usr/local/bin/parako"
+    fi
   else
-    die "cannot create ${target}: parent not writable and no sudo available"
+    if mkdir -p "${DEFAULT_BIN_DIR}" 2>/dev/null \
+       && install -m 0755 "${src}" "${DEFAULT_BIN_DIR}/parako" 2>/dev/null; then
+      log_ok "installed parako at ${DEFAULT_BIN_DIR}/parako"
+      case ":${PATH}:" in
+        *":${DEFAULT_BIN_DIR}:"*) ;;
+        *) log_warn "${DEFAULT_BIN_DIR} is not on PATH; add it to your shell init to use \`parako\`" ;;
+      esac
+    else
+      log_warn "could not install ${DEFAULT_BIN_DIR}/parako; install manually:"
+      log_warn "  cp ${src} ${DEFAULT_BIN_DIR}/parako && chmod 0755 ${DEFAULT_BIN_DIR}/parako"
+    fi
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# §12  Next-steps card
+# -----------------------------------------------------------------------------
+print_next_steps_card() {
+  local current=$1 previous=${2:-}
+  local releases_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${current}"
+  print_header "Parako.ID ${current} release pointer updated"
+  print_label "Install dir"      "${RESOLVED_INSTALL_DIR}"
+  print_label "Current release"  "${RESOLVED_INSTALL_DIR}/releases/${current}"
+  if [ -n "${previous}" ]; then
+    print_label "Previous release" "${RESOLVED_INSTALL_DIR}/releases/${previous}  (kept for rollback)"
+  fi
+  print_label "Runtime"          "${RESOLVED_INSTALL_DIR}/runtime          (operator-managed)"
+  printf '\n  This installer does NOT manage your database, services, proxy, or TLS.\n'
+  printf '  Your next steps:\n\n'
+  if [ -z "${previous}" ]; then
+    printf '    1. (First install) Create your configuration. Copy and edit:\n'
+    printf '         cp %s/current/contrib/.env.sample             %s/runtime/.env\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
+    printf '         cp %s/current/contrib/parako-rp.sample.jsonc  %s/runtime/parako-rp.jsonc\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
+    printf '       Generate JWKS only if you use file-backed key storage.\n\n'
+  fi
+  printf '    %s Read the release notes for %s and apply any required database\n' "$([ -z "${previous}" ] && printf '2.' || printf '1.')" "${current}"
+  printf '       migration manually. The release notes list the exact command.\n'
+  printf '       %s\n\n' "${releases_url}"
+  printf '    %s If migrating, back up your database first with your own tooling\n' "$([ -z "${previous}" ] && printf '3.' || printf '2.')"
+  printf '       (pg_dump / mongodump / sqlite3 .backup).\n\n'
+  printf '    %s Restart your service with your own process manager\n' "$([ -z "${previous}" ] && printf '4.' || printf '3.')"
+  printf '       (systemctl / pm2 / docker-compose / whatever you use).\n'
+  printf '       Reference unit / ecosystem at %s/current/contrib/.\n\n' "${RESOLVED_INSTALL_DIR}"
+  printf '    %s Verify the application is healthy with your own probe.\n\n' "$([ -z "${previous}" ] && printf '5.' || printf '4.')"
+  printf '    %s If anything is wrong, roll back the app files with:\n' "$([ -z "${previous}" ] && printf '6.' || printf '5.')"
+  printf '         parako rollback              # to previous release\n'
+  printf '         parako rollback --to vX.Y.Z  # to a specific release\n'
+  printf '       Note: this rolls back the application files ONLY. Any database\n'
+  printf '       migration you ran will NOT be reversed.\n\n'
+}
+
+# -----------------------------------------------------------------------------
+# §13  install_main / update_main shared core
+# -----------------------------------------------------------------------------
+_first_install_runtime_populate() {
+  # Allowlist copy of shipped runtime/ subtrees into operator-owned runtime/.
+  # Called only when ${RESOLVED_INSTALL_DIR}/runtime did not exist before this run.
+  local release_dir=$1 dest="${RESOLVED_INSTALL_DIR}/runtime"
+  mkdir -p "${dest}"
+  local sub
+  for sub in "${RUNTIME_FIRST_INSTALL_ALLOWLIST[@]}"; do
+    if [ -d "${release_dir}/runtime/${sub}" ]; then
+      cp -a "${release_dir}/runtime/${sub}" "${dest}/${sub}"
+    fi
+  done
+  log_ok "runtime/ populated from shipped defaults (locales, views, assets)"
+  log_warn "runtime/.env and runtime/jwks/ are operator-owned and were NOT created."
+  log_warn "Copy ${RESOLVED_INSTALL_DIR}/current/contrib/.env.sample to runtime/.env and edit."
+}
+
+_link_release_runtime() {
+  local release_dir=$1
+  local runtime_link="${release_dir}/runtime"
+  rm -rf "${runtime_link}"
+  ln -s "${RESOLVED_INSTALL_DIR}/runtime" "${runtime_link}"
+}
+
+_atomic_pointer_swap() {
+  # mv -T is GNU coreutils only; checked in preflight.
+  CURRENT_TMP="${RESOLVED_INSTALL_DIR}/current.tmp.$$"
+  ln -s "${RESOLVED_INSTALL_DIR}/releases/${TAG}" "${CURRENT_TMP}"
+  mv -Tf "${CURRENT_TMP}" "${RESOLVED_INSTALL_DIR}/current"
+  CURRENT_TMP=""
+}
+
+_extract_to_staging() {
+  STAGING_DIR="${RESOLVED_INSTALL_DIR}/releases/.staging.${TAG}.$$"
+  [ -e "${STAGING_DIR}" ] && die "staging dir already exists: ${STAGING_DIR}"
+  mkdir -p "${STAGING_DIR}"
+  log_info "extracting tarball to staging"
+  tar -xzf "${TARBALL_FILE}" -C "${STAGING_DIR}" --strip-components=1 \
+    || die "tar extraction failed"
+  [ -f "${STAGING_DIR}/dist/src/index.js" ] \
+    || die "smoke check failed: dist/src/index.js missing in extracted release"
+  log_ok "extraction smoke-checked"
+}
+
+_promote_staging() {
+  local target="${RESOLVED_INSTALL_DIR}/releases/${TAG}"
+  if [ -d "${target}" ]; then
+    if [ "${FLAG_FORCE}" -eq 1 ]; then
+      local archived="${RESOLVED_INSTALL_DIR}/releases/.replaced-${TAG}.$$"
+      log_warn "releases/${TAG} already exists; --force in effect, archiving as $(basename "${archived}")"
+      mv -T "${target}" "${archived}"
+    else
+      die "releases/${TAG} already exists; pass --force to archive it and proceed"
+    fi
+  fi
+  mv -T "${STAGING_DIR}" "${target}"
+  STAGING_DIR=""
+  log_ok "promoted staging to releases/${TAG}"
+}
+
+_sanity_check_no_stale_current_tmp() {
+  local stale
+  stale=$(find "${RESOLVED_INSTALL_DIR}" -maxdepth 1 -name 'current.tmp.*' 2>/dev/null | head -n1)
+  if [ -n "${stale}" ]; then
+    die "stale temp symlink found: ${stale}; inspect and remove manually before proceeding"
   fi
 }
 
 install_main() {
+  local mode=${1:-install}
   preflight
-  sniff_environment
-
   fetch_latest_version
   fetch_release_artifacts
   verify_checksum
   verify_release_signature
-
-  local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  RESOLVED_INSTALL_DIR=${install_dir}
-
-  collect_answers
-  [ "${FLAG_NON_INTERACTIVE}" -eq 0 ] && confirm_or_edit
-
-  apply_guards
-
-  beginning_ritual
-
-  # ----- Mutations begin here. Everything above is read-only / TMPDIR only. -----
-  ensure_install_dir "${install_dir}"
-  log_info "extracting to ${install_dir}"
-  tar -xzf "${TARBALL_FILE}" -C "${install_dir}" --strip-components=1 \
-    || die "extraction failed"
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" && pwd)
-  log_ok "extracted"
-
-  maybe_generate_bootstrap_password
-  generate_env_file
-  [ "${FLAG_NON_INTERACTIVE}" -eq 0 ] && validate_connections
-  install_dependencies
-  run_db_migrations
-  write_supervisor_marker
-  generate_install_notes
-  write_parako_state
-  install_parako_binary
-
-  if [ "${FLAG_WITH_NGINX}" -eq 1 ]; then
-    setup_nginx
-  fi
-  if [ "${FLAG_WITH_TLS}" -eq 1 ]; then
-    setup_tls
-  fi
-
-  print_recovery_card
-
-  if [ "${FLAG_NO_START}" -eq 0 ]; then
-    start_application
-  else
-    log_info "skipped auto-start (--no-start)"
-    case "${ANS_SUPERVISOR}" in
-      systemd) printf '  Start with: sudo systemctl start parako-id parako-id-worker\n' ;;
-      pm2) printf '  Start with: cd %s && pnpm start\n' "${RESOLVED_INSTALL_DIR}" ;;
-    esac
-  fi
-}
-
-# =============================================================================
-# §19 Update main flow
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Snapshot before mutation; DB backup before extract.
-#   - Atomic mv-based swap; rollback on health-check failure.
-#   - --plan: no mutations, exit 0.
-#   - --dry-run: download, verify, extract, install dependencies into a sibling
-#     directory; exit BEFORE database migrations and BEFORE the directory swap.
-#     Live database state is never mutated under --dry-run.
-# =============================================================================
-
-stop_service_for_update() {
-  local supervisor=$1
-  case "${supervisor}" in
-    systemd)
-      log_info "stopping systemd services"
-      local prefix=""
-      [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-      ${prefix} systemctl stop parako-id parako-id-worker 2>/dev/null \
-        || log_warn "systemctl stop returned non-zero" ;;
-    pm2)
-      log_info "stopping PM2 processes"
-      (cd "${RESOLVED_INSTALL_DIR}" && pm2 stop runtime/ecosystem.config.cjs 2>/dev/null) \
-        || log_warn "pm2 stop returned non-zero" ;;
-  esac
-}
-
-start_service_for_update() {
-  local supervisor=$1
-  case "${supervisor}" in
-    systemd)
-      log_info "starting systemd services"
-      local prefix=""
-      [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-      ${prefix} systemctl start parako-id parako-id-worker \
-        || die "failed to start systemd services" ;;
-    pm2)
-      log_info "starting PM2 processes"
-      (cd "${RESOLVED_INSTALL_DIR}" && pnpm start) \
-        || die "PM2 start failed" ;;
-  esac
-}
-
-print_update_plan() {
-  local current_version=$1 target_version=$2
-  print_header "Update plan"
-  print_label "Current version" "${current_version}"
-  print_label "Target version" "${target_version}"
-  print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
-  print_label "Supervisor" "$(read_supervisor)"
-  print_label "Database" "${ANS_DB}"
-  printf '\n  Steps:\n'
-  printf '    1. Take filesystem snapshot at %s.backup.%s\n' "${RESOLVED_INSTALL_DIR}" "${RUN_TIMESTAMP}"
-  printf '    2. Stop service\n'
-  printf '    3. Take logical DB backup to runtime/backups/pre-%s-%s.*\n' "${current_version}" "${RUN_TIMESTAMP}"
-  printf '    4. Download + verify (cosign) target release\n'
-  printf '    5. Extract to %s.new.%s\n' "${RESOLVED_INSTALL_DIR}" "${RUN_TIMESTAMP}"
-  printf '    6. Preserve runtime/{.env,jwks,views,assets,config-backups,data,uploads}\n'
-  printf '    7. Run database migrations\n'
-  printf '    8. Atomic directory swap\n'
-  printf '    9. Start service + health-check (/health)\n'
-  printf '   10. If health-check fails: restore snapshot automatically\n'
-}
-
-update_main() {
-  preflight
-
-  local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" 2>/dev/null && pwd) \
-    || die "no existing installation at ${install_dir}; run without --update for fresh install"
-
-  [ -f "${RESOLVED_INSTALL_DIR}/runtime/.env" ] || [ -f "${RESOLVED_INSTALL_DIR}/.env" ] \
-    || die "no .env in ${RESOLVED_INSTALL_DIR}; refusing to update an unconfigured install"
-  [ -f "${RESOLVED_INSTALL_DIR}/dist/src/index.js" ] \
-    || die "install at ${RESOLVED_INSTALL_DIR} looks broken (no dist/src/index.js)"
-
-  if [ -d "${RESOLVED_INSTALL_DIR}/.git" ]; then
-    die "git-clone install detected; see docs/installer-from-source.md for the manual update procedure"
-  fi
-
-  local current_version supervisor port
-  current_version=$(read_installed_version "${RESOLVED_INSTALL_DIR}")
-  supervisor=$(read_supervisor)
-  ANS_DB=$(read_installed_db "${RESOLVED_INSTALL_DIR}")
-  ANS_PG_URL=$(read_pg_url_from_env "${RESOLVED_INSTALL_DIR}")
-  ANS_MONGO_URI=$(read_mongo_uri_from_env "${RESOLVED_INSTALL_DIR}")
-  port=$(read_port_from_env "${RESOLVED_INSTALL_DIR}")
-
-  fetch_latest_version
-
-  if [ "${FLAG_PLAN}" -eq 1 ]; then
-    print_update_plan "${current_version}" "${TAG}"
-    log_info "--plan: no mutations performed"
-    return 0
-  fi
-
-  beginning_ritual
-
-  fetch_release_artifacts
-  verify_checksum
-  verify_release_signature
-
-  # 1. Filesystem snapshot
-  local timestamp=${RUN_TIMESTAMP}
-  local backup_dir="${RESOLVED_INSTALL_DIR}.backup.${timestamp}"
-  log_info "snapshotting to ${backup_dir}"
-  cp -a "${RESOLVED_INSTALL_DIR}" "${backup_dir}" \
-    || die "snapshot failed; aborting"
-  log_ok "snapshot created"
-
-  # 2. Stop service
-  stop_service_for_update "${supervisor}"
-
-  # 3. DB backup
-  backup_db_before_update "${current_version}"
-
-  # 4. Extract new release to sibling
-  local new_dir="${RESOLVED_INSTALL_DIR}.new.${timestamp}"
-  ensure_install_dir "${new_dir}"
-  log_info "extracting to ${new_dir}"
-  tar -xzf "${TARBALL_FILE}" -C "${new_dir}" --strip-components=1 \
-    || die "extraction failed"
-
-  # 5. Preserve runtime state.
-  log_info "preserving instance state"
-  local preserve_runtime="jwks views assets config-backups data uploads"
-  for sub in ${preserve_runtime}; do
-    if [ -d "${RESOLVED_INSTALL_DIR}/runtime/${sub}" ]; then
-      rm -rf "${new_dir}/runtime/${sub}"
-      mkdir -p "${new_dir}/runtime"
-      cp -a "${RESOLVED_INSTALL_DIR}/runtime/${sub}" "${new_dir}/runtime/${sub}" 2>/dev/null || true
-    fi
-  done
-  # Top-level legacy paths from v0.1.x layouts.
-  if [ -d "${RESOLVED_INSTALL_DIR}/data" ] && [ ! -d "${new_dir}/runtime/data" ]; then
-    rm -rf "${new_dir}/data"
-    cp -a "${RESOLVED_INSTALL_DIR}/data" "${new_dir}/data" 2>/dev/null || true
-  fi
-  # Always preserve runtime/.env and .supervisor marker.
-  if [ -f "${RESOLVED_INSTALL_DIR}/runtime/.env" ]; then
-    cp -a "${RESOLVED_INSTALL_DIR}/runtime/.env" "${new_dir}/runtime/.env"
-  elif [ -f "${RESOLVED_INSTALL_DIR}/.env" ]; then
-    mkdir -p "${new_dir}/runtime"
-    cp -a "${RESOLVED_INSTALL_DIR}/.env" "${new_dir}/runtime/.env"
-  fi
-  cp -a "${RESOLVED_INSTALL_DIR}/.supervisor" "${new_dir}/.supervisor" 2>/dev/null \
-    || printf '%s\n' "${supervisor}" > "${new_dir}/.supervisor"
-
-  # 6. Install deps + migrate against new code.
-  local old_dir=${RESOLVED_INSTALL_DIR}
-  RESOLVED_INSTALL_DIR=${new_dir}
-  install_dependencies
 
   if [ "${FLAG_DRY_RUN}" -eq 1 ]; then
-    RESOLVED_INSTALL_DIR=${old_dir}
-    log_info "--dry-run: download/verify/extract/deps OK; skipping migrations, swap, and start"
-    log_info "live database was not touched"
-    rm -rf "${new_dir}"
-    rm -rf "${backup_dir}"
-    start_service_for_update "${supervisor}"
+    log_ok "--dry-run: download + verify succeeded for ${TAG}"
+    log_info "no INSTALL_DIR writes performed; ${RESOLVED_INSTALL_DIR} untouched"
     return 0
   fi
 
-  run_db_migrations
-  RESOLVED_INSTALL_DIR=${old_dir}
-
-  # 7. Atomic swap
-  local old_archived="${RESOLVED_INSTALL_DIR}.old.${timestamp}"
-  mv "${RESOLVED_INSTALL_DIR}" "${old_archived}" \
-    || die "swap failed (could not move old dir)"
-  if ! mv "${new_dir}" "${RESOLVED_INSTALL_DIR}"; then
-    log_err "swap failed; restoring previous"
-    mv "${old_archived}" "${RESOLVED_INSTALL_DIR}" || true
-    die "update aborted"
+  # Writability deferred to here; not done in preflight.
+  if [ ! -d "${RESOLVED_INSTALL_DIR}" ]; then
+    if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
+      mkdir -p "${RESOLVED_INSTALL_DIR}"
+    elif command -v sudo >/dev/null 2>&1; then
+      log_info "creating ${RESOLVED_INSTALL_DIR} (sudo)"
+      sudo mkdir -p "${RESOLVED_INSTALL_DIR}"
+      sudo chown "$(id -u):$(id -g)" "${RESOLVED_INSTALL_DIR}"
+    else
+      die "cannot create ${RESOLVED_INSTALL_DIR}: parent not writable and no sudo available"
+    fi
   fi
-  log_ok "directory swap complete"
+  [ -w "${RESOLVED_INSTALL_DIR}" ] \
+    || die "${RESOLVED_INSTALL_DIR} not writable by $(id -un)"
 
-  # 8. Start + health check + auto-rollback
-  start_service_for_update "${supervisor}"
-  if health_check "${port}"; then
-    log_ok "update to ${TAG} complete"
-    log_info "snapshot: ${backup_dir}"
-    log_info "previous install: ${old_archived}"
-    log_info "remove with: parako gc --keep 3 --yes"
+  _sanity_check_no_stale_current_tmp
+
+  beginning_ritual "${mode}"
+
+  mkdir -p "${RESOLVED_INSTALL_DIR}/releases"
+  acquire_lock
+
+  local previous_version=""
+  if [ "${mode}" = "update" ]; then
+    previous_version=$(basename "$(readlink -f "${RESOLVED_INSTALL_DIR}/current")")
+    case "${previous_version}" in v*) ;; *) previous_version="" ;; esac
+  fi
+
+  _extract_to_staging
+  _promote_staging
+
+  local release_dir="${RESOLVED_INSTALL_DIR}/releases/${TAG}"
+  if [ ! -d "${RESOLVED_INSTALL_DIR}/runtime" ]; then
+    _first_install_runtime_populate "${release_dir}"
   else
-    log_err "health check failed; rolling back to ${current_version}"
-    stop_service_for_update "${supervisor}"
-    local failed="${RESOLVED_INSTALL_DIR}.failed.${timestamp}"
-    mv "${RESOLVED_INSTALL_DIR}" "${failed}" || true
-    mv "${old_archived}" "${RESOLVED_INSTALL_DIR}" \
-      || die "catastrophic rollback failure: old=${old_archived}, broken=${failed}"
-    start_service_for_update "${supervisor}"
-    log_err "rollback complete; previous version restored"
-    log_err "broken upgrade preserved at ${failed}"
-    log_err "snapshot at ${backup_dir}"
-    exit 1
+    log_info "runtime/ exists; not touched (operator-managed)"
   fi
+
+  _link_release_runtime "${release_dir}"
+  _atomic_pointer_swap
+
+  write_parako_state "${TAG}" "${previous_version}"
+  install_parako_binary
+
+  print_next_steps_card "${TAG}" "${previous_version}"
 }
 
-# =============================================================================
-# §20 Rollback main flow
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Operator explicitly chose rollback; do NOT auto-revert on health failure.
-#   - DB rollback only if --migrate-back.
-# =============================================================================
-
-list_snapshots() {
-  local dir=$1
-  local parent
-  parent=$(dirname "${dir}")
-  local base
-  base=$(basename "${dir}")
-  find "${parent}" -maxdepth 1 -name "${base}.backup.*" -type d 2>/dev/null | sort -r
+# §14  update_main
+# -----------------------------------------------------------------------------
+update_main() {
+  [ -L "${RESOLVED_INSTALL_DIR}/current" ] \
+    || die "no existing install detected at ${RESOLVED_INSTALL_DIR}/current; run without --update for a fresh install"
+  install_main "update"
 }
 
+# -----------------------------------------------------------------------------
+# §15  rollback_main
+# -----------------------------------------------------------------------------
 rollback_main() {
   preflight
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+  [ -d "${RESOLVED_INSTALL_DIR}" ] || die "install dir not found: ${RESOLVED_INSTALL_DIR}"
+  [ -L "${RESOLVED_INSTALL_DIR}/current" ] \
+    || die "no current symlink at ${RESOLVED_INSTALL_DIR}/current"
 
-  local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" 2>/dev/null && pwd) \
-    || die "no installation at ${install_dir}"
+  _sanity_check_no_stale_current_tmp
+  acquire_lock
 
-  local snapshots
-  snapshots=$(list_snapshots "${RESOLVED_INSTALL_DIR}")
-  if [ -z "${snapshots}" ]; then
-    log_warn "no snapshots found for ${RESOLVED_INSTALL_DIR}"
-    return 0
-  fi
-
-  local target_snapshot
+  local current_target target
+  current_target=$(basename "$(readlink -f "${RESOLVED_INSTALL_DIR}/current")")
   if [ -n "${FLAG_ROLLBACK_TO}" ]; then
-    target_snapshot="${RESOLVED_INSTALL_DIR}.backup.${FLAG_ROLLBACK_TO}"
-    [ -d "${target_snapshot}" ] || die "snapshot not found: ${target_snapshot}"
+    target=${FLAG_ROLLBACK_TO}
   else
-    target_snapshot=$(printf '%s\n' "${snapshots}" | head -n1)
+    target=$(read_state_field PREVIOUS_VERSION || true)
   fi
+  [ -n "${target}" ] || die "no previous version recorded; pass --to <vX.Y.Z>"
+  [ -d "${RESOLVED_INSTALL_DIR}/releases/${target}" ] \
+    || die "target release not on disk: ${RESOLVED_INSTALL_DIR}/releases/${target}"
+  [ "${target}" = "${current_target}" ] \
+    && die "target ${target} is already current; nothing to do"
 
   print_header "Rollback plan"
-  print_label "Current install" "${RESOLVED_INSTALL_DIR}"
-  print_label "Will restore" "${target_snapshot}"
-  print_label "Current is discarded to" "${RESOLVED_INSTALL_DIR}.rollback-discarded.${RUN_TIMESTAMP}"
-  if [ "${FLAG_MIGRATE_BACK}" -eq 1 ]; then
-    print_label "DB rollback" "yes (--migrate-back)"
-  else
-    print_label "DB rollback" "no (operator judgement)"
-  fi
-
-  printf '\n  Available snapshots:\n'
-  printf '%s\n' "${snapshots}" | head -n 10 | sed 's/^/    /'
+  print_label "Current"   "${current_target}"
+  print_label "Target"    "${target}"
   printf '\n'
-
-  if [ "${FLAG_FORCE}" -eq 0 ]; then
-    if ! prompt_yn_timeout "Proceed with rollback?" "no" 60; then
+  printf 'This rolls back the APPLICATION FILES ONLY. Any database migration\n'
+  printf 'you ran around %s will NOT be reversed.\n\n' "${current_target}"
+  if [ "${FLAG_FORCE}" -eq 0 ] && [ "${FLAG_NON_INTERACTIVE}" -eq 0 ]; then
+    if ! prompt_yn_timeout "Proceed with app-file rollback?" "no" 60; then
       log_info "aborted by operator"
       exit 0
     fi
   fi
 
-  local supervisor port
-  supervisor=$(read_supervisor)
-  port=$(read_port_from_env "${RESOLVED_INSTALL_DIR}")
+  TAG=${target}
+  _atomic_pointer_swap
+  write_parako_state "${target}" "${current_target}"
 
-  stop_service_for_update "${supervisor}"
-
-  local discarded="${RESOLVED_INSTALL_DIR}.rollback-discarded.${RUN_TIMESTAMP}"
-  mv "${RESOLVED_INSTALL_DIR}" "${discarded}" \
-    || die "could not move current install aside"
-  mv "${target_snapshot}" "${RESOLVED_INSTALL_DIR}" \
-    || { mv "${discarded}" "${RESOLVED_INSTALL_DIR}" || true
-         die "could not restore snapshot"
-       }
-
-  if [ "${FLAG_MIGRATE_BACK}" -eq 1 ]; then
-    log_warn "DB rollback requested; running migrations against restored version"
-    ANS_DB=$(read_installed_db "${RESOLVED_INSTALL_DIR}")
-    run_db_migrations
-  fi
-
-  start_service_for_update "${supervisor}"
-
-  if health_check "${port}"; then
-    log_ok "rollback complete; service is healthy"
-    log_info "discarded install at ${discarded}"
-  else
-    log_err "rollback restored snapshot, but health check FAILED"
-    log_err "service is stopped; investigate logs and rerun --update once cause is known"
-    exit 1
-  fi
+  print_header "Rollback complete"
+  print_label "Current" "${target}"
+  print_label "Previous" "${current_target}  (kept; rollback again to switch back)"
+  printf '\n  Restart your service with your own process manager.\n'
+  printf '  If you migrated the database when going to %s, you must apply the\n' "${current_target}"
+  printf '  reverse migration manually — see the %s release notes.\n\n' "${current_target}"
 }
 
-# =============================================================================
-# §21 Doctor main flow
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - No mutation.
-#   - Reports preflight + post-install checks.
-#   - --json emits structured output.
-# =============================================================================
-
+# §16  doctor_main (file/config only; no service / DB / network)
+# -----------------------------------------------------------------------------
 doctor_main() {
-  print_header "parako doctor"
-  preflight
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+  local install_dir=${RESOLVED_INSTALL_DIR}
+  local current_link="${install_dir}/current"
+  local current_target=""
+  local pkg_version="unknown"
+  local installed_at=""
+  local previous=""
 
-  local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  if [ ! -d "${install_dir}" ]; then
-    log_warn "no install at ${install_dir}; preflight-only mode"
-    return 0
+  if [ -L "${current_link}" ]; then
+    current_target=$(basename "$(readlink -f "${current_link}")")
   fi
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" && pwd)
-
-  print_header "Runtime"
-  local supervisor port version
-  supervisor=$(read_supervisor)
-  port=$(read_port_from_env "${RESOLVED_INSTALL_DIR}")
-  version=$(read_installed_version "${RESOLVED_INSTALL_DIR}")
-  print_label "Installed version" "${version}"
-  print_label "Supervisor" "${supervisor}"
-  print_label "Server port" "${port}"
-
-  case "${supervisor}" in
-    systemd)
-      if systemctl is-active --quiet parako-id 2>/dev/null; then
-        _pf_ok "systemd parako-id" "active"
-      else
-        _pf_fail "systemd parako-id" "not active"
-      fi
-      if systemctl is-active --quiet parako-id-worker 2>/dev/null; then
-        _pf_ok "systemd parako-id-worker" "active"
-      fi ;;
-    pm2)
-      if (cd "${RESOLVED_INSTALL_DIR}" && pm2 jlist 2>/dev/null | grep -q parako-id); then
-        _pf_ok "PM2 parako-id" "running"
-      else
-        _pf_fail "PM2 parako-id" "not running"
-      fi ;;
-  esac
-
-  if _probe_url "http://127.0.0.1:${port}/health"; then
-    _pf_ok "/health" "200"
-  elif _probe_url "http://127.0.0.1:${port}/readyz"; then
-    _pf_ok "/readyz" "200 (legacy)"
-  else
-    _pf_fail "/health" "no response"
+  if [ -L "${current_link}" ] && [ -f "${current_link}/package.json" ]; then
+    pkg_version=$(grep -E '"version"' "${current_link}/package.json" | head -n1 \
+      | sed -E 's/.*"version":[[:space:]]*"([^"]+)".*/\1/')
   fi
-
-  print_header "Configuration"
-  local env_file="${RESOLVED_INSTALL_DIR}/runtime/.env"
-  [ -f "${env_file}" ] || env_file="${RESOLVED_INSTALL_DIR}/.env"
-  if [ -f "${env_file}" ]; then
-    local perm
-    perm=$(stat -c '%a' "${env_file}" 2>/dev/null || stat -f '%Op' "${env_file}" 2>/dev/null | tail -c 4)
-    case "${perm}" in
-      600|0600) _pf_ok ".env permissions" "0600" ;;
-      *) _pf_fail ".env permissions" "${perm} (should be 0600)" ;;
-    esac
-  else
-    _pf_fail ".env" "missing"
+  if [ -r "${install_dir}/.parako-state" ]; then
+    installed_at=$(grep -E '^INSTALLED_AT=' "${install_dir}/.parako-state" | cut -d= -f2- || true)
+    previous=$(grep -E '^PREVIOUS_VERSION=' "${install_dir}/.parako-state" | cut -d= -f2- || true)
   fi
+  local entry="${current_link}/dist/src/index.js"
+  local env_file="${install_dir}/runtime/.env"
+  local jwks_file="${install_dir}/runtime/jwks/jwks.json"
 
-  print_header "Storage"
-  ANS_DB=$(read_installed_db "${RESOLVED_INSTALL_DIR}")
-  case "${ANS_DB}" in
-    postgresql)
-      ANS_PG_URL=$(read_pg_url_from_env "${RESOLVED_INSTALL_DIR}")
-      validate_postgresql "${ANS_PG_URL}" && _pf_ok "PostgreSQL" "reachable" || _pf_fail "PostgreSQL" "unreachable" ;;
-    mongodb)
-      ANS_MONGO_URI=$(read_mongo_uri_from_env "${RESOLVED_INSTALL_DIR}")
-      validate_mongodb "${ANS_MONGO_URI}" && _pf_ok "MongoDB" "reachable" || _pf_fail "MongoDB" "unreachable" ;;
-    sqlite)
-      if [ -f "${RESOLVED_INSTALL_DIR}/runtime/data/parako.db" ] \
-         || [ -f "${RESOLVED_INSTALL_DIR}/data/parako.db" ]; then
-        _pf_ok "SQLite" "file present"
-      else
-        _pf_warn "SQLite" "DB file not found"
-      fi ;;
-  esac
+  local entry_present=1; [ -f "${entry}" ] || entry_present=0
+  local env_present=1;   [ -f "${env_file}" ] || env_present=0
+  local jwks_present=1;  [ -f "${jwks_file}" ] || jwks_present=0
+  local releases_count=0
+  if [ -d "${install_dir}/releases" ]; then
+    releases_count=$(find "${install_dir}/releases" -maxdepth 1 -mindepth 1 -name 'v*' -type d 2>/dev/null | wc -l | tr -d ' ')
+  fi
 
   if [ "${FLAG_JSON}" -eq 1 ]; then
-    printf '{"timestamp":"%s","version":"%s","supervisor":"%s","port":%s,"db":"%s","failures":%d,"warnings":%d,"healthy":%s}\n' \
-      "${RUN_TIMESTAMP}" "${version}" "${supervisor}" "${port}" "${ANS_DB}" \
-      "${PREFLIGHT_FAIL_COUNT}" "${PREFLIGHT_WARN_COUNT}" \
-      "$( [ "${PREFLIGHT_FAIL_COUNT}" -eq 0 ] && printf 'true' || printf 'false' )"
+    printf '{\n'
+    printf '  "install_dir": "%s",\n'    "${install_dir}"
+    printf '  "current": "%s",\n'        "${current_target}"
+    printf '  "previous": "%s",\n'       "${previous}"
+    printf '  "version": "%s",\n'        "${pkg_version}"
+    printf '  "installed_at": "%s",\n'   "${installed_at}"
+    printf '  "entry_present": %s,\n'    "$([ "${entry_present}" -eq 1 ] && printf 'true' || printf 'false')"
+    printf '  "env_present": %s,\n'      "$([ "${env_present}"   -eq 1 ] && printf 'true' || printf 'false')"
+    printf '  "jwks_present": %s,\n'     "$([ "${jwks_present}"  -eq 1 ] && printf 'true' || printf 'false')"
+    printf '  "releases_on_disk": %s\n'  "${releases_count}"
+    printf '}\n'
+    return 0
   fi
 
-  if [ "${PREFLIGHT_FAIL_COUNT}" -eq 0 ] && [ "${PREFLIGHT_WARN_COUNT}" -eq 0 ]; then
-    printf '\nAll checks passed.\n'
-  elif [ "${PREFLIGHT_FAIL_COUNT}" -eq 0 ]; then
-    printf '\n%d warning(s), 0 failures.\n' "${PREFLIGHT_WARN_COUNT}"
+  print_header "Parako.ID doctor"
+  print_label "Install dir"     "${install_dir}"
+  print_label "Current release" "${current_target:-<none>}"
+  print_label "Previous"        "${previous:-<none>}"
+  print_label "Version"         "${pkg_version}"
+  print_label "Installed at"    "${installed_at:-<unknown>}"
+  if [ "${entry_present}" -eq 1 ]; then
+    _pf_ok "dist/src/index.js" "present"
   else
-    printf '\n%d failure(s), %d warning(s).\n' "${PREFLIGHT_FAIL_COUNT}" "${PREFLIGHT_WARN_COUNT}"
-    exit 1
+    _pf_fail "dist/src/index.js" "missing under current/"
   fi
+  if [ "${env_present}" -eq 1 ]; then
+    _pf_ok "runtime/.env" "present"
+  else
+    _pf_warn "runtime/.env" "missing (operator must create; copy from current/contrib/.env.sample)"
+  fi
+  if [ "${jwks_present}" -eq 1 ]; then
+    _pf_ok "runtime/jwks/jwks.json" "present"
+  else
+    print_label "runtime/jwks/jwks.json" "absent [${C_BLUE}INFO${C_RESET}] (only required for file-backed key storage)"
+  fi
+  print_label "Releases on disk" "${releases_count}"
+  printf '\n'
+  printf '  Doctor checks application FILES only. It does NOT probe:\n'
+  printf '    - service status (use your supervisor)\n'
+  printf '    - database connectivity (use your DB client)\n'
+  printf '    - HTTP /health (use curl)\n'
 }
 
-# =============================================================================
-# §22 GC main flow
 # -----------------------------------------------------------------------------
-# Invariants:
-#   - Default --dry-run; --yes required to actually delete.
-#   - Retains N most recent snapshots per category.
-# =============================================================================
-
+# §17  gc_main (prune releases/ only; never touches runtime/)
+# -----------------------------------------------------------------------------
 gc_main() {
-  local install_dir=${INSTALL_DIR:-${DEFAULT_INSTALL_DIR}}
-  RESOLVED_INSTALL_DIR=$(cd "${install_dir}" 2>/dev/null && pwd) \
-    || die "no installation at ${install_dir}"
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+  local install_dir=${RESOLVED_INSTALL_DIR}
+  [ -d "${install_dir}/releases" ] || die "no releases/ dir at ${install_dir}"
 
-  print_header "Snapshot inventory"
-  local parent
-  parent=$(dirname "${RESOLVED_INSTALL_DIR}")
-  local base
-  base=$(basename "${RESOLVED_INSTALL_DIR}")
+  acquire_lock
 
-  local total_kept=0 total_purge=0
-  local categories="backup old failed rollback-discarded"
-  local cat snaps purge_list keep_list
-  for cat in ${categories}; do
-    snaps=$(find "${parent}" -maxdepth 1 -name "${base}.${cat}.*" -type d 2>/dev/null | sort -r)
-    [ -z "${snaps}" ] && continue
-    keep_list=$(printf '%s\n' "${snaps}" | head -n "${FLAG_KEEP}")
-    purge_list=$(printf '%s\n' "${snaps}" | tail -n +"$((FLAG_KEEP + 1))")
-    while IFS= read -r s; do
-      [ -n "${s}" ] && { print_label "keep    ${cat}" "$(basename "${s}")"; total_kept=$((total_kept + 1)); }
-    done <<<"${keep_list}"
-    while IFS= read -r s; do
-      [ -n "${s}" ] && { print_label "purge   ${cat}" "$(basename "${s}")"; total_purge=$((total_purge + 1)); }
-    done <<<"${purge_list}"
-    if [ "${FLAG_YES}" -eq 1 ] && [ -n "${purge_list}" ]; then
-      while IFS= read -r s; do
-        [ -n "${s}" ] && rm -rf "${s}"
-      done <<<"${purge_list}"
+  local current="" previous=""
+  if [ -L "${install_dir}/current" ]; then
+    current=$(basename "$(readlink -f "${install_dir}/current")")
+  fi
+  previous=$(read_state_field PREVIOUS_VERSION 2>/dev/null || true)
+
+  # All versioned releases on disk, newest mtime first.
+  local all=()
+  while IFS= read -r line; do all+=("${line}"); done < <(
+    find "${install_dir}/releases" -maxdepth 1 -mindepth 1 -name 'v*' -type d -printf '%T@ %f\n' 2>/dev/null \
+      | sort -rn | awk '{print $2}'
+  )
+
+  # Build the deletable set (= all \ {current, previous}).
+  local deletable=() retained=() v
+  for v in "${all[@]}"; do
+    if [ "${v}" = "${current}" ] || [ "${v}" = "${previous}" ]; then
+      continue
     fi
+    deletable+=("${v}")
   done
 
-  # DB backups: same retention.
-  local backup_dir="${RESOLVED_INSTALL_DIR}/runtime/backups"
-  if [ -d "${backup_dir}" ]; then
-    for pat in 'pre-*.dump.gz' 'pre-*.archive.gz' 'pre-*.db.gz'; do
-      local files
-      files=$(ls -1t "${backup_dir}"/${pat} 2>/dev/null || true)
-      [ -z "${files}" ] && continue
-      local purge
-      purge=$(printf '%s\n' "${files}" | tail -n +"$((FLAG_KEEP + 1))")
-      while IFS= read -r f; do
-        [ -n "${f}" ] && { print_label "purge   db-backup" "$(basename "${f}")"; total_purge=$((total_purge + 1)); }
-        [ -n "${f}" ] && [ "${FLAG_YES}" -eq 1 ] && rm -f "${f}"
-      done <<<"${purge}"
-    done
-  fi
+  # Keep N most recent of the deletable set; rest are slated for deletion.
+  local to_delete=() i=0
+  for v in "${deletable[@]}"; do
+    if [ "${i}" -lt "${FLAG_KEEP}" ]; then
+      retained+=("${v}")
+    else
+      to_delete+=("${v}")
+    fi
+    i=$((i + 1))
+  done
 
+  print_header "GC plan"
+  print_label "Install dir"  "${install_dir}"
+  print_label "Current"      "${current:-<none>} (always retained)"
+  print_label "Previous"     "${previous:-<none>} (always retained)"
+  print_label "Keep policy"  "--keep ${FLAG_KEEP} (from the deletable set)"
+
+  printf '\n  Will retain: '
+  if [ ${#retained[@]} -eq 0 ]; then printf '<none beyond protected>'; else printf '%s ' "${retained[@]}"; fi
   printf '\n'
-  print_label "Kept" "${total_kept}"
-  print_label "Purged" "${total_purge}"
-  if [ "${FLAG_YES}" -eq 0 ] && [ "${total_purge}" -gt 0 ]; then
-    log_warn "dry-run; pass --yes to actually delete"
-  fi
-}
+  printf '  Will delete: '
+  if [ ${#to_delete[@]} -eq 0 ]; then printf '<none>'; else printf '%s ' "${to_delete[@]}"; fi
+  printf '\n\n'
 
-# =============================================================================
-# §23 nginx + TLS + multi-tenant helpers
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Every privileged file write goes through write_root_file().
-#   - Path allowlist enforced inside write_root_file (defense in depth).
-#   - Existing files backed up before overwrite; restored if verify fails.
-# =============================================================================
-
-write_root_file() {
-  local src=$1 dest=$2 mode=${3:-0644} owner=${4:-root:root}
-  case "${dest}" in
-    /etc/systemd/system/parako-id*.service) ;;
-    /etc/nginx/sites-available/parako-id) ;;
-    /etc/nginx/sites-available/parako-id-multi-tenant) ;;
-    /usr/local/bin/parako) ;;
-    /usr/local/bin/cosign) ;;
-    *) die "refusing to write outside allowlist: ${dest}" ;;
-  esac
-  local prefix=""
-  [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-
-  if [ -f "${dest}" ]; then
-    ${prefix} cp -a "${dest}" "${dest}.bak.${RUN_TIMESTAMP}" \
-      || die "could not back up existing ${dest}"
-  fi
-
-  ${prefix} install -m "${mode}" -o "${owner%:*}" -g "${owner#*:}" "${src}" "${dest}" \
-    || die "install failed for ${dest}"
-
-  [ -f "${dest}" ] || die "post-write verification failed: ${dest}"
-  log_ok "wrote ${dest} (mode ${mode}, ${owner})"
-}
-
-_render_nginx_single_tenant() {
-  local out=$1 domain=$2 port=$3
-  cat > "${out}" <<NGINXEOF
-upstream parako_${RUN_TIMESTAMP} {
-    server 127.0.0.1:${port};
-    keepalive 64;
-}
-
-server {
-    listen 80;
-    server_name ${domain};
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name ${domain};
-
-    ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
-
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        proxy_pass http://parako_${RUN_TIMESTAMP};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 90s;
-    }
-
-    location /css/ {
-        proxy_pass http://parako_${RUN_TIMESTAMP};
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location /js/ {
-        proxy_pass http://parako_${RUN_TIMESTAMP};
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-NGINXEOF
-}
-
-_render_nginx_multi_tenant() {
-  local out=$1 base=$2 port=$3
-  cat > "${out}" <<NGINXEOF
-upstream parako_${RUN_TIMESTAMP} {
-    server 127.0.0.1:${port};
-    keepalive 64;
-}
-
-server {
-    listen 80;
-    server_name *.${base} _ops.${base} _platforms.${base};
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name *.${base} _ops.${base} _platforms.${base};
-
-    ssl_certificate /etc/letsencrypt/live/${base}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${base}/privkey.pem;
-
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        proxy_pass http://parako_${RUN_TIMESTAMP};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_read_timeout 90s;
-    }
-}
-NGINXEOF
-}
-
-setup_nginx() {
-  local domain port tmp dest
-  if [ "${FLAG_MULTI_TENANT}" -eq 1 ]; then
-    domain=${FLAG_BASE_DOMAIN}
-    [ -z "${domain}" ] && die "--multi-tenant requires --base-domain"
-  else
-    domain=${FLAG_DOMAIN}
-    if [ -z "${domain}" ] && [ -n "${ANS_URL}" ]; then
-      domain=${ANS_URL#http*://}
-      domain=${domain%%/*}
-    fi
-    [ -z "${domain}" ] && die "--with-nginx requires --domain (or a Deployment URL)"
-  fi
-  port=${ANS_PORT}
-  tmp=$(mktemp -t parako-nginx-XXXX)
-  if [ "${FLAG_MULTI_TENANT}" -eq 1 ]; then
-    _render_nginx_multi_tenant "${tmp}" "${domain}" "${port}"
-    dest=/etc/nginx/sites-available/parako-id-multi-tenant
-  else
-    _render_nginx_single_tenant "${tmp}" "${domain}" "${port}"
-    dest=/etc/nginx/sites-available/parako-id
-  fi
-
-  if [ -f "${dest}" ] && [ "${FLAG_FORCE}" -eq 0 ]; then
-    if ! diff -q "${tmp}" "${dest}" >/dev/null 2>&1; then
-      log_warn "${dest} exists with different contents; pass --force to overwrite"
-      rm -f "${tmp}"
-      return 0
-    fi
-    log_info "${dest} already matches; no-op"
-    rm -f "${tmp}"
-  else
-    write_root_file "${tmp}" "${dest}" 0644 root:root
-    rm -f "${tmp}"
-    local prefix=""
-    [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-    ${prefix} ln -sf "${dest}" "/etc/nginx/sites-enabled/$(basename "${dest}")"
-    ${prefix} nginx -t || die "nginx -t failed"
-    ${prefix} systemctl reload nginx || die "nginx reload failed"
-    log_ok "nginx configured"
-  fi
-}
-
-setup_tls() {
-  local domain
-  if [ "${FLAG_MULTI_TENANT}" -eq 1 ]; then
-    domain=${FLAG_BASE_DOMAIN}
-  else
-    domain=${FLAG_DOMAIN:-${ANS_URL#http*://}}
-    domain=${domain%%/*}
-  fi
-  [ -z "${domain}" ] && die "TLS requires a domain"
-  [ -z "${FLAG_TLS_EMAIL}" ] && die "--with-tls requires --tls-email"
-
-  if ! command -v certbot >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
-      log_info "installing certbot"
-      local prefix=""
-      [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-      ${prefix} apt-get update -qq
-      ${prefix} apt-get install -y -qq certbot python3-certbot-nginx \
-        || die "certbot install failed"
-    else
-      die "certbot not installed; install it manually then re-run --with-tls"
-    fi
-  fi
-
-  local prefix=""
-  [ "${RUNNING_AS_ROOT}" -eq 0 ] && prefix="sudo"
-
-  if [ "${FLAG_MULTI_TENANT}" -eq 1 ]; then
-    if [ -z "${FLAG_CERTBOT_DNS_PLUGIN}" ]; then
-      log_warn "multi-tenant requires wildcard cert; --certbot-dns-plugin not set"
-      log_warn "skipping certbot; run manually:"
-      printf '  sudo certbot certonly --dns-PLUGIN -d "%s" -d "*.%s" --email "%s" --agree-tos\n' \
-        "${domain}" "${domain}" "${FLAG_TLS_EMAIL}"
-      return 0
-    fi
-    ${prefix} certbot certonly "--dns-${FLAG_CERTBOT_DNS_PLUGIN}" \
-      -d "${domain}" -d "*.${domain}" \
-      --email "${FLAG_TLS_EMAIL}" --agree-tos --non-interactive \
-      || die "certbot wildcard issuance failed"
-  else
-    ${prefix} certbot --nginx -d "${domain}" \
-      --email "${FLAG_TLS_EMAIL}" --agree-tos --non-interactive --redirect \
-      || die "certbot --nginx failed"
-  fi
-  log_ok "TLS provisioned for ${domain}"
-}
-
-# =============================================================================
-# §24 Demo mode helpers
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - Forced install dir under /tmp (ephemeral).
-#   - SQLite + foreground supervisor + auto-seeded admin (via env vars read by
-#     master-tenant-bootstrap on first start).
-#   - Prints prominent DEMO MODE banner; never confused with production.
-# =============================================================================
-
-DEMO_ADMIN_EMAIL=""
-DEMO_ADMIN_PASSWORD=""
-DEMO_PID=""
-
-demo_main() {
-  # Demo forces specific choices that override flags.
-  ANS_ENV="development"
-  ANS_DB="sqlite"
-  ANS_REDIS="no"
-  ANS_PORT=${FLAG_PORT:-9007}
-  ANS_SUPERVISOR="pm2"  # use pm2 for backgrounded process, simpler teardown
-  # Bootstrap admin seeding is currently gated by multiTenancy.enabled in the
-  # app (src/index.ts → bootstrapMasterTenant). Force MT on for demo so the
-  # printed admin credentials actually log in.
-  FLAG_MULTI_TENANT=1
-
-  INSTALL_DIR="/tmp/parako-id-demo-$$"
-  DEMO_ADMIN_EMAIL="demo@parako.id"
-  DEMO_ADMIN_PASSWORD=$(_gen_hex32 | cut -c1-16)
-
-  preflight
-  sniff_environment
-  fetch_latest_version
-  fetch_release_artifacts
-  verify_checksum
-  verify_release_signature
-
-  ensure_install_dir "${INSTALL_DIR}"
-  log_info "extracting demo install to ${INSTALL_DIR}"
-  tar -xzf "${TARBALL_FILE}" -C "${INSTALL_DIR}" --strip-components=1 \
-    || die "extraction failed"
-  RESOLVED_INSTALL_DIR=$(cd "${INSTALL_DIR}" && pwd)
-
-  apply_guards
-  beginning_ritual
-  generate_env_file
-  install_dependencies
-  run_db_migrations
-  write_supervisor_marker
-  generate_install_notes
-  write_parako_state
-
-  # Seed admin via env vars (read by master-tenant-bootstrap).
-  export PARAKO_BOOTSTRAP_ADMIN_EMAIL="${DEMO_ADMIN_EMAIL}"
-  export PARAKO_BOOTSTRAP_ADMIN_PASSWORD="${DEMO_ADMIN_PASSWORD}"
-
-  log_info "starting demo server in background"
-  mkdir -p "${RESOLVED_INSTALL_DIR}/runtime/logs"
-  # Run node directly (no subshell) so $! captures the node PID, not a subshell.
-  cd "${RESOLVED_INSTALL_DIR}"
-  nohup node dist/src/index.js \
-    > "${RESOLVED_INSTALL_DIR}/runtime/logs/demo.log" 2>&1 &
-  DEMO_PID=$!
-  cd - >/dev/null
-  sleep 2
-
-  if health_check "${ANS_PORT}"; then
-    print_demo_card
-    if command -v xdg-open >/dev/null 2>&1; then
-      xdg-open "http://localhost:${ANS_PORT}/auth/login" >/dev/null 2>&1 &
-    elif command -v open >/dev/null 2>&1; then
-      open "http://localhost:${ANS_PORT}/auth/login" >/dev/null 2>&1 &
-    fi
-  else
-    die "demo server did not become healthy; see ${RESOLVED_INSTALL_DIR}/runtime/logs/demo.log"
-  fi
-}
-
-# =============================================================================
-# §25 parako binary copier + state file
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - parako.sh is copied to /usr/local/bin/parako (system) or ~/.local/bin
-#     (user) via write_root_file().
-#   - .parako-state records install dir + version + supervisor, mode 0600.
-# =============================================================================
-
-write_parako_state() {
-  local state_file="${RESOLVED_INSTALL_DIR}/.parako-state"
-  local state_tmp="${state_file}.tmp.$$"
-  {
-    printf 'INSTALL_DIR=%s\n' "${RESOLVED_INSTALL_DIR}"
-    printf 'VERSION=%s\n' "${TAG:-${INSTALLER_VERSION}}"
-    printf 'SUPERVISOR=%s\n' "${ANS_SUPERVISOR}"
-    printf 'SUPERVISOR_USER=%s\n' "$(id -un)"
-    printf 'INSTALLED_AT=%s\n' "${RUN_TIMESTAMP}"
-    printf 'DB=%s\n' "${ANS_DB}"
-    printf 'PORT=%s\n' "${ANS_PORT}"
-    [ -n "${ANS_URL}" ] && printf 'URL=%s\n' "${ANS_URL}"
-  } > "${state_tmp}"
-  chmod 0600 "${state_tmp}"
-  mv "${state_tmp}" "${state_file}"
-}
-
-install_parako_binary() {
-  # parako.sh is published alongside install.sh at get.parako.id. Look for it
-  # in three places, in order of preference:
-  #   1. Beside install.sh (only present for --offline installs or when the
-  #      maintainer ran install.sh from a checkout).
-  #   2. Inside the extracted release tarball at contrib/parako.sh (future:
-  #      CI may ship parako.sh inside the tarball).
-  #   3. Fetch from https://get.parako.id/parako.sh (the standard path).
-  local src="" tmp_parako=""
-  if [ -f "$(dirname "$0")/parako.sh" ] 2>/dev/null; then
-    src="$(dirname "$0")/parako.sh"
-  elif [ -f "${RESOLVED_INSTALL_DIR}/contrib/parako.sh" ]; then
-    src="${RESOLVED_INSTALL_DIR}/contrib/parako.sh"
-  else
-    log_info "fetching parako binary from get.parako.id"
-    tmp_parako="${TMPDIR_PATH:-/tmp}/parako.sh.$$"
-    if download_file "https://get.parako.id/parako.sh" "${tmp_parako}" 2>/dev/null; then
-      # Sanity check: must be a bash script with our header.
-      if head -n5 "${tmp_parako}" | grep -q 'parako — Parako.ID operator binary'; then
-        src="${tmp_parako}"
-      else
-        log_warn "fetched parako.sh failed sanity check; not installing"
-        rm -f "${tmp_parako}"
-      fi
-    else
-      log_warn "could not fetch parako.sh from get.parako.id; skipping operator binary install"
-      log_warn "you can install it manually: curl -sSL https://get.parako.id/parako.sh -o /usr/local/bin/parako && chmod +x /usr/local/bin/parako"
-    fi
-  fi
-
-  [ -z "${src}" ] && return 0
-
-  if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
-    write_root_file "${src}" "/usr/local/bin/parako" 0755 root:root
-  else
-    mkdir -p "${DEFAULT_BIN_DIR}"
-    install -m 0755 "${src}" "${DEFAULT_BIN_DIR}/parako"
-    log_ok "installed parako at ${DEFAULT_BIN_DIR}/parako"
-    case ":${PATH}:" in
-      *":${DEFAULT_BIN_DIR}:"*) ;;
-      *) log_warn "${DEFAULT_BIN_DIR} is not on PATH; add it to your shell init to use \`parako\`" ;;
-    esac
-  fi
-
-  [ -n "${tmp_parako}" ] && rm -f "${tmp_parako}"
-}
-
-# =============================================================================
-# §26 Dispatcher (main "$@")
-# -----------------------------------------------------------------------------
-# Invariants:
-#   - parse_args runs first; --help short-circuits.
-#   - Lock file taken before any mode dispatch.
-#   - Mode dispatch is mutually exclusive (enforced in parse_args).
-# =============================================================================
-
-acquire_lock() {
-  local lock_dir lock_file
-  if [ -n "${PARAKO_LOCK_FILE:-}" ]; then
-    lock_file=${PARAKO_LOCK_FILE}
-  else
-    lock_dir=${DEFAULT_LOCK_DIR}
-    mkdir -p "${lock_dir}" 2>/dev/null || lock_dir="${TMPDIR:-/tmp}"
-    lock_file="${lock_dir}/parako-installer.lock"
-  fi
-  exec 9>"${lock_file}" 2>/dev/null || {
-    log_warn "could not open lock file ${lock_file}; running without lock"
+  if [ ${#to_delete[@]} -eq 0 ]; then
+    log_info "nothing to delete"
     return 0
-  }
-  if command -v flock >/dev/null 2>&1; then
-    flock --nonblock --exclusive 9 2>/dev/null || die "another installer run in progress (lock: ${lock_file})"
-    LOCK_FD=9
-  else
-    log_warn "flock not available; concurrent installer runs are not prevented"
   fi
+
+  if [ "${FLAG_YES}" -eq 0 ]; then
+    printf '  (preview only; pass --yes to apply)\n'
+    return 0
+  fi
+
+  for v in "${to_delete[@]}"; do
+    rm -rf "${install_dir}/releases/${v}" \
+      || log_warn "failed to remove releases/${v}"
+    log_ok "removed releases/${v}"
+  done
+  log_info "runtime/ untouched (gc does not manage operator data)"
 }
 
-print_banner() {
-  printf '\nparako.id installer v%s\n' "${INSTALLER_VERSION}"
+# -----------------------------------------------------------------------------
+# §18  --plan (pure preview; no network, no INSTALL_DIR writes)
+# -----------------------------------------------------------------------------
+plan_main() {
+  local mode=${1:-install}
+  RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+  local target=${FLAG_VERSION:-<latest>}
+  print_header "--plan (no network, no mutations)"
+  print_label "Operation"      "${mode}"
+  print_label "Target version" "${target}"
+  print_label "Install dir"    "${RESOLVED_INSTALL_DIR}"
+  printf '\n'
+  printf '  Would resolve %s, download + cosign-verify the artifact, stage it under\n' "${target}"
+  printf '    %s/releases/.staging.<tag>.$$\n' "${RESOLVED_INSTALL_DIR}"
+  printf '  then atomically swap %s/current.\n' "${RESOLVED_INSTALL_DIR}"
+  printf '\n  Would NOT touch runtime/, the database, any service, nginx, or TLS.\n'
+  printf '\n  Use --dry-run to actually download + verify (no INSTALL_DIR writes).\n'
 }
 
+# -----------------------------------------------------------------------------
+# §19  Dispatcher
+# -----------------------------------------------------------------------------
 main() {
   parse_args "$@"
+  ui_init_colors
+  log_init
+  detect_downloader
+
   if [ "${FLAG_HELP}" -eq 1 ]; then
     print_help
     exit 0
   fi
 
-  ui_init_colors
-  log_init
-  acquire_lock
-  print_banner
-
-  detect_downloader
-
-  if [ "${FLAG_DOCTOR}" -eq 1 ]; then
-    doctor_main
-    return
-  fi
-  if [ "${FLAG_GC}" -eq 1 ]; then
-    gc_main
-    return
-  fi
-  if [ "${FLAG_ROLLBACK}" -eq 1 ]; then
-    rollback_main
-    return
-  fi
-  if [ "${FLAG_DEMO}" -eq 1 ]; then
-    demo_main
-    return
-  fi
-  if [ "${FLAG_UPDATE}" -eq 1 ]; then
-    update_main
-    return
+  if [ "${FLAG_PLAN}" -eq 1 ]; then
+    if [ "${FLAG_UPDATE}" -eq 1 ]; then plan_main "update"
+    else plan_main "install"
+    fi
+    exit 0
   fi
 
-  install_main
+  if [ "${FLAG_DOCTOR}" -eq 1 ]; then doctor_main; exit 0; fi
+  if [ "${FLAG_GC}"     -eq 1 ]; then gc_main;     exit 0; fi
+  if [ "${FLAG_ROLLBACK}" -eq 1 ]; then rollback_main; exit 0; fi
+  if [ "${FLAG_UPDATE}"   -eq 1 ]; then update_main;   exit 0; fi
+
+  install_main "install"
 }
 
 main "$@"
-
-

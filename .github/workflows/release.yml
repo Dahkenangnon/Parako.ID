@@ -293,6 +293,22 @@ jobs:
           V: ${{ steps.extract.outputs.version }}
         run: node scripts/extract-changelog.mjs "$V" > RELEASE_BODY.md
 
+      - name: Append installer SHA256 to release notes
+        run: |
+          set -euo pipefail
+          if [ ! -f installer/install.sh ]; then
+            echo "::error::installer/install.sh not found at release time"
+            exit 1
+          fi
+          INSTALLER_SHA=$(sha256sum installer/install.sh | awk '{print $1}')
+          {
+            printf '\n## Installer integrity\n\n'
+            printf 'The installer published at <https://get.parako.id> for this release has the SHA256 below. After downloading `install.sh`, verify it with `sha256sum install.sh` before piping to bash.\n\n'
+            printf '```\n'
+            printf 'Installer SHA256: %s  installer/install.sh\n' "$INSTALLER_SHA"
+            printf '```\n'
+          } >> RELEASE_BODY.md
+
       - name: Create or reuse annotated tag
         env:
           V: ${{ steps.extract.outputs.version }}

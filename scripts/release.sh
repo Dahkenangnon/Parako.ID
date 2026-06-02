@@ -372,35 +372,67 @@ create_production_package() {
     cp README.md "$release_dir/"
     cp THIRD_PARTY_LICENSES.txt "$release_dir/" 2>/dev/null || log_warning "THIRD_PARTY_LICENSES.txt not found"
     
-    # Copy runtime directory (locales, views, assets, config-backups)
+    # Copy runtime directory and sanitize it. The installer's minimal-deployer
+    # model (docs/installer.md) preserves operator-owned runtime/ wholesale and
+    # only populates {locales, views, assets} on FIRST install. Strip anything
+    # operator-owned out of the shipped tarball so:
+    #   - the installer's first-install allowlist matches what's on disk;
+    #   - operators cannot accidentally pick up a stale .env, JWKS, DB file,
+    #     uploads, logs, or PM2 ecosystem from someone else's checkout.
     if [[ -d "runtime" ]]; then
         cp -r runtime "$release_dir/"
-        # Remove any existing key material (security: keys must be generated fresh)
-        rm -f "$release_dir/runtime/jwks/"*.json 2>/dev/null || true
-        rm -f "$release_dir/runtime/jwks/"*.pem 2>/dev/null || true
-        log_info "Copied runtime/ (locales, views, assets)"
+        # Strict allowlist of what stays under release_dir/runtime/.
+        find "$release_dir/runtime" -maxdepth 1 -mindepth 1 \
+             ! -name 'locales' ! -name 'views' ! -name 'assets' \
+             -exec rm -rf {} + 2>/dev/null || true
+        log_info "Sanitized release_dir/runtime/ (kept: locales, views, assets)"
     else
         log_error "runtime/ directory not found — artifact will be broken"
         exit 1
     fi
 
-    # Copy .env.example for first-run configuration
-    cp .env.example "$release_dir/"
+    # Ship the parako operator binary AND sample configuration files inside
+    # the tarball under contrib/. Samples are NOT placed at the tarball root
+    # so they cannot be mistaken for operator-owned files; the installer's
+    # next-steps card points operators to contrib/ for the copy-edit step.
+    # NOTE: this is the deliberate exception to "no installer/ files inside
+    # the tarball" — only parako.sh ships, never install.sh.
+    mkdir -p "$release_dir/contrib"
+    if [[ -f "installer/parako.sh" ]]; then
+        cp installer/parako.sh "$release_dir/contrib/parako.sh"
+        chmod 0755 "$release_dir/contrib/parako.sh"
+        log_info "Shipped installer/parako.sh at contrib/parako.sh"
+    else
+        log_error "installer/parako.sh not found — tarball would not include the parako operator binary"
+        exit 1
+    fi
+    if [[ -f ".env.example" ]]; then
+        cp .env.example "$release_dir/contrib/.env.sample"
+        log_info "Shipped .env.example at contrib/.env.sample"
+    else
+        log_error ".env.example not found — tarball would not include the env sample"
+        exit 1
+    fi
+    if [[ -f "parako-rp.example.json" ]]; then
+        cp parako-rp.example.json "$release_dir/contrib/parako-rp.sample.jsonc"
+        log_info "Shipped parako-rp.example.json at contrib/parako-rp.sample.jsonc"
+    elif [[ -f "parako.sample.jsonc" ]]; then
+        cp parako.sample.jsonc "$release_dir/contrib/parako-rp.sample.jsonc"
+        log_info "Shipped parako.sample.jsonc at contrib/parako-rp.sample.jsonc"
+    else
+        log_warning "no parako-rp.example.json or parako.sample.jsonc found; operators will have to assemble parako-rp.jsonc by hand"
+    fi
+    if [[ -f "runtime/ecosystem.config.cjs" ]]; then
+        cp runtime/ecosystem.config.cjs "$release_dir/contrib/ecosystem.config.cjs.sample"
+        log_info "Shipped runtime/ecosystem.config.cjs at contrib/ecosystem.config.cjs.sample"
+    else
+        log_warning "no runtime/ecosystem.config.cjs found; operators must write their own process-manager config"
+    fi
 
-    # Copy sample config files (reference for users)
-    cp parako.sample.jsonc "$release_dir/" 2>/dev/null || log_warning "parako.sample.jsonc not found"
-
-    # Create empty runtime directories (security: no existing data copied)
-    mkdir -p "$release_dir/logs"
-
-    # Create empty upload directories at the new runtime/ location
-    mkdir -p "$release_dir/runtime/uploads" "$release_dir/runtime/.tmp-uploads"
-    # Note: Upload directories are created empty for security
-    
-    # Copy essential documentation
+    # Copy essential documentation. Repo paths are canonical lowercase.
     mkdir -p "$release_dir/docs"
-    cp docs/DEPLOYMENT.md "$release_dir/docs/" 2>/dev/null || log_warning "DEPLOYMENT.md not found"
-    cp docs/QUICK-START.md "$release_dir/docs/" 2>/dev/null || log_warning "QUICK-START.md not found"
+    cp docs/deployment.md "$release_dir/docs/" 2>/dev/null || log_warning "docs/deployment.md not found"
+    cp docs/quickstart.md "$release_dir/docs/" 2>/dev/null || log_warning "docs/quickstart.md not found"
     
     # Create production package.json with ONLY production dependencies
     node -e "
@@ -422,11 +454,18 @@ create_production_package() {
             files: pkg.files,
             keywords: pkg.keywords,
             scripts: {
+                // 'start' runs node directly; operators wire their own
+                // supervisor (systemd / pm2 / docker) and call this if they
+                // want, but the installer never invokes it.
                 'start': 'node --experimental-specifier-resolution=node dist/src/index.js',
-                'restart': 'pm2 startOrRestart runtime/ecosystem.config.cjs --env production && pm2 save',
+                // 'client', 'keys', 'systemd' remain for operator ad-hoc use.
+                // The installer does NOT call any of them.
                 'client': 'node dist/scripts/manage/client.js',
                 'keys': 'node dist/scripts/manage/keys.js',
                 'systemd': 'node dist/scripts/manage/systemd.js',
+                // DB management scripts remain for operator ad-hoc use. The
+                // installer does NOT call them; release notes tell operators
+                // when and how to run migrations.
                 'db:push': 'prisma db push --config=prisma.config.ts --accept-data-loss',
                 'db:migrate:deploy': 'prisma migrate deploy --config=prisma.config.pg.ts'
             },
@@ -518,26 +557,55 @@ validate_production_package() {
     fi
 
     # Final validation
-    if [[ ! -d "parako-id-release/dist/src" ]] || [[ ! -d "parako-id-release/dist/scripts" ]] || [[ ! -d "parako-id-release/dist/src/views" ]] || [[ ! -d "parako-id-release/node_modules" ]] || [[ ! -f "parako-id-release/pnpm-lock.yaml" ]] || [[ ! -d "parako-id-release/runtime/locales" ]]; then
+    local missing=0
+    [[ ! -d "parako-id-release/dist/src" ]]                       && missing=1
+    [[ ! -d "parako-id-release/dist/scripts" ]]                   && missing=1
+    [[ ! -d "parako-id-release/dist/src/views" ]]                 && missing=1
+    [[ ! -d "parako-id-release/node_modules" ]]                   && missing=1
+    [[ ! -f "parako-id-release/pnpm-lock.yaml" ]]                 && missing=1
+    [[ ! -d "parako-id-release/runtime/locales" ]]                && missing=1
+    [[ ! -d "parako-id-release/runtime/views" ]]                  && missing=1
+    [[ ! -d "parako-id-release/runtime/assets" ]]                 && missing=1
+    [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && missing=1
+    [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && missing=1
+    [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && missing=1
+    if [[ "$missing" -eq 1 ]]; then
         log_error "Production package validation failed"
         log_error "Missing:"
-        [[ ! -d "parako-id-release/dist/src" ]] && log_error "  - dist/src directory"
-        [[ ! -d "parako-id-release/dist/scripts" ]] && log_error "  - dist/scripts directory"
-        [[ ! -d "parako-id-release/dist/src/views" ]] && log_error "  - dist/src/views directory"
-        [[ ! -d "parako-id-release/node_modules" ]] && log_error "  - node_modules directory"
-        [[ ! -f "parako-id-release/pnpm-lock.yaml" ]] && log_error "  - pnpm-lock.yaml file"
-        [[ ! -d "parako-id-release/runtime/locales" ]] && log_error "  - runtime/locales directory"
+        [[ ! -d "parako-id-release/dist/src" ]]                       && log_error "  - dist/src directory"
+        [[ ! -d "parako-id-release/dist/scripts" ]]                   && log_error "  - dist/scripts directory"
+        [[ ! -d "parako-id-release/dist/src/views" ]]                 && log_error "  - dist/src/views directory"
+        [[ ! -d "parako-id-release/node_modules" ]]                   && log_error "  - node_modules directory"
+        [[ ! -f "parako-id-release/pnpm-lock.yaml" ]]                 && log_error "  - pnpm-lock.yaml file"
+        [[ ! -d "parako-id-release/runtime/locales" ]]                && log_error "  - runtime/locales directory"
+        [[ ! -d "parako-id-release/runtime/views" ]]                  && log_error "  - runtime/views directory"
+        [[ ! -d "parako-id-release/runtime/assets" ]]                 && log_error "  - runtime/assets directory"
+        [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && log_error "  - contrib/parako.sh (parako operator binary)"
+        [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && log_error "  - contrib/.env.sample (operator env sample)"
+        [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && log_error "  - contrib/parako-rp.sample.jsonc (operator RP sample)"
         exit 1
     fi
-    
+
+    # Refuse to ship operator-owned subtrees inside runtime/. The first-install
+    # populate path in installer/install.sh trusts an allowlist; this enforces
+    # the same posture at packaging time.
+    local forbidden=(runtime/jwks runtime/uploads runtime/.tmp-uploads runtime/logs runtime/backups runtime/config-backups runtime/ecosystem.config.cjs runtime/parako.jsonc runtime/parako-rp.jsonc)
+    local entry
+    for entry in "${forbidden[@]}"; do
+        if [[ -e "parako-id-release/${entry}" ]]; then
+            log_error "SECURITY VIOLATION: runtime/ sanitization missed: ${entry}"
+            exit 1
+        fi
+    done
+
     # Security validation
     log_info "Running security validation..."
-    
+
     # Check for sensitive files in production package
     # NOTE: install.sh is the installer published to get.parako.id; installer/
     # is its source tree. Neither must ever ship inside a release tarball —
     # they live in source for audit transparency and deploy independently.
-    local sensitive_patterns=(".env" ".env.local" ".env.production" ".env.staging" "*.key" "*.pem" "*.p12" "*.pfx" "*.map" "parako.jsonc" "parako-rp.jsonc" "install.sh")
+    local sensitive_patterns=(".env" ".env.local" ".env.production" ".env.staging" ".env.example" "*.key" "*.pem" "*.p12" "*.pfx" "*.map" "*.db" "parako.jsonc" "parako-rp.jsonc" "parako.sample.jsonc" "install.sh" "jwks*.json" "jwks*.pem")
     for pattern in "${sensitive_patterns[@]}"; do
         if find "parako-id-release" -name "$pattern" -type f 2>/dev/null | grep -q .; then
             log_error "SECURITY VIOLATION: Found sensitive file in production package: $pattern"

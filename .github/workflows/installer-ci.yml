@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'installer/**'
+      - 'scripts/release.sh'
       - '.github/workflows/installer-ci.yml'
   pull_request:
     paths:
       - 'installer/**'
+      - 'scripts/release.sh'
       - '.github/workflows/installer-ci.yml'
   workflow_dispatch: {}
 
@@ -44,14 +46,83 @@ jobs:
           checkbashisms installer/install.sh || true
           checkbashisms installer/parako.sh || true
 
-      - name: Structure bats section banners and idiom enforcement
+      - name: Acceptance grep — no banned tool calls in installer code
+        run: |
+          set -euo pipefail
+          # The installer must not invoke service / DB / proxy / package tooling.
+          if grep -nE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
+               installer/install.sh installer/parako.sh \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+             | grep -vE '\bprintf .*' \
+             | grep -vE 'printf [^|]*\((systemctl|pm2|docker)' \
+             | grep -vE '"start / stop / restart"' \
+             | grep -vE 'NOT (manage|invoke|configure|run|do)' ; then
+            echo "::error::installer code contains a banned tool call (above)" >&2
+            exit 1
+          fi
+          if grep -nE '(apt-get install|yum install|apk add )' \
+               installer/install.sh installer/parako.sh \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+             | grep -vE 'die ' \
+             | grep -vE '_pf_(fail|warn|ok)' \
+             | grep -vE 'log_(warn|err) ' \
+             | grep -vE 'printf .*apk add' ; then
+            echo "::error::installer code contains a package-manager install call (above)" >&2
+            exit 1
+          fi
+          if grep -nE 'pnpm (install|db:)' \
+               installer/install.sh installer/parako.sh \
+             | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
+             | grep -vE 'printf .*' ; then
+            echo "::error::installer code contains pnpm install/db: invocation (above)" >&2
+            exit 1
+          fi
+          echo "installer code is free of banned tool calls"
+
+      - name: Structure bats — function/flag presence + absence assertions
         run: bats installer/test/structure.bats
+
+  fixture:
+    name: Build fixture tarball
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 20
+    outputs:
+      fixture_version: ${{ steps.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pnpm
+        run: corepack enable && corepack prepare pnpm@11 --activate
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Stage release tarball
+        id: build
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          V="0.0.0-ci.${SHA:0:8}"
+          bash scripts/release.sh "$V" --verbose
+          ls -la "parako-id-v${V}.tar.gz" SHA256SUMS
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parako-fixture
+          path: |
+            parako-id-v*.tar.gz
+            SHA256SUMS
+          retention-days: 1
 
   smoke:
     name: Smoke ${{ matrix.os }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: lint
+    needs: fixture
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -62,30 +133,75 @@ jobs:
           - alpine:3.19
     container:
       image: ${{ matrix.os }}
+    env:
+      OS_IMAGE: ${{ matrix.os }}
+      FIX_VERSION: ${{ needs.fixture.outputs.fixture_version }}
     steps:
       - uses: actions/checkout@v4
-
+      - uses: actions/download-artifact@v4
+        with:
+          name: parako-fixture
+          path: ./fixture
       - name: Install prerequisites
-        env:
-          OS_IMAGE: ${{ matrix.os }}
         run: |
           case "$OS_IMAGE" in
             ubuntu:*|debian:*)
               apt-get update -qq
-              apt-get install -y -qq bash bats curl ca-certificates openssl iproute2 procps
+              apt-get install -y -qq bash bats curl ca-certificates openssl tar coreutils util-linux
               ;;
             alpine:*)
-              apk add --no-cache bash bats curl ca-certificates openssl iproute2 procps coreutils
+              apk add --no-cache bash bats curl ca-certificates openssl tar coreutils util-linux
               ;;
           esac
           bash --version | head -n1
           bats --version
+          command -v flock
 
-      - name: Smoke tests input validation and mode gating
-        env:
-          OS_IMAGE: ${{ matrix.os }}
+      - name: Smoke bats (argparse + --plan + --help)
+        run: bats installer/test/smoke.bats
+
+      - name: Fresh install from fixture
         run: |
-          bats installer/test/smoke.bats || {
-            echo "smoke tests failed on $OS_IMAGE" >&2
+          set -euo pipefail
+          FIX_TAR="$(pwd)/fixture/parako-id-v${FIX_VERSION}.tar.gz"
+          FIX_SUMS="$(pwd)/fixture/SHA256SUMS"
+          bash installer/install.sh \
+            --dir /opt/parako-id \
+            --version "${FIX_VERSION}" \
+            --offline \
+            --tarball "${FIX_TAR}" \
+            --checksum "${FIX_SUMS}" \
+            --insecure-no-signature --reason "ci fixture; no signed release exists yet" \
+            --non-interactive --force \
+            --no-bin
+          test -L /opt/parako-id/current
+          test -d /opt/parako-id/runtime/locales
+          test -d /opt/parako-id/runtime/views
+          test -d /opt/parako-id/runtime/assets
+          # operator-owned: must NOT be created by installer
+          test ! -f /opt/parako-id/runtime/.env
+          test ! -d /opt/parako-id/runtime/jwks
+          # release dir layout: absolute symlinks
+          [[ "$(readlink /opt/parako-id/current)" == /opt/parako-id/releases/* ]]
+          [[ "$(readlink "/opt/parako-id/releases/v${FIX_VERSION}/runtime")" == /opt/parako-id/runtime ]]
+
+      - name: Doctor reports the install (no service / DB / network)
+        run: bash installer/install.sh --doctor --dir /opt/parako-id --no-color
+
+      - name: --gc preview with --keep 1 (nothing to delete on single-release install)
+        run: bash installer/install.sh --gc --dir /opt/parako-id --keep 1
+
+      - name: Install log must NOT contain any service / DB / proxy / package call
+        run: |
+          set -euo pipefail
+          LOG=$(find /var/log -maxdepth 1 -name 'parako-install-*.log' 2>/dev/null | head -n1)
+          if [ -z "${LOG}" ]; then
+            LOG=$(find /tmp -maxdepth 2 -name 'parako-install-*.log' 2>/dev/null | head -n1)
+          fi
+          test -n "${LOG}" || { echo "no install log found"; exit 1; }
+          if grep -qE '(systemctl|pm2 |pg_dump|mongodump|certbot|nginx -t|apt-get install|apk add )' "${LOG}"; then
+            echo "::error::install log contains a banned tool invocation" >&2
+            grep -nE '(systemctl|pm2 |pg_dump|mongodump|certbot|nginx -t|apt-get install|apk add )' "${LOG}" >&2 || true
             exit 1
-          }
+          fi
+          echo "install log clean"
