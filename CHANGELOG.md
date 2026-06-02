@@ -6,6 +6,23 @@ Releases are cut by the maintainer with `pnpm release <patch|minor|major>` on `m
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-06-02
+
+### Features
+
+- auto-clean stale current tmp with clean-stale flag ([514ce95](https://github.com/Dahkenangnon/Parako.ID/commit/514ce95ee6b53d6f68d12acad44420c376a5a7c6))
+
+### Bug Fixes
+
+- update admin and account templates ([d1d65d2](https://github.com/Dahkenangnon/Parako.ID/commit/d1d65d2562abcea6922de17ee3fb79e318713191))
+- unbreak silent exits and PARAKO_INSTALL_DIR propagation ([d069025](https://github.com/Dahkenangnon/Parako.ID/commit/d069025408dc4039503f1a1094d653273658f40e))
+- read prompts from /dev/tty when stdin is a pipe ([c6fd92a](https://github.com/Dahkenangnon/Parako.ID/commit/c6fd92a82d6fc1ca3b917737ac9b156c488b9e1c))
+- use bash shell in installer smoke matrix for pipefail support ([0730fff](https://github.com/Dahkenangnon/Parako.ID/commit/0730fff49401a0901ccf56bab6b1b7aeaa02b879))
+
+### Refactor
+
+- drop unused runtime/assets scaffold ([5f191fe](https://github.com/Dahkenangnon/Parako.ID/commit/5f191fefee4795fe140fbafebe8b4ad41648f5e9))
+
 ## [0.2.1] - 2026-06-02
 
 ### Bug Fixes
