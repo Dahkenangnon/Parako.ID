@@ -31,13 +31,13 @@ Full upgrade runbook: [Upgrades](upgrades.md). Operator CLI reference: [parako C
 
 ## What the installer does
 
-| Phase    | Action                                                                                                                                                                                                       |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Verify   | OS / arch check, download tarball + SHA256SUMS + cosign signature + certificate, verify SHA256, verify the cosign keyless signature against Sigstore.                                                        |
-| Stage    | Extract into `INSTALL_DIR/releases/.staging.<tag>.<pid>/`, smoke-check `dist/src/index.js`, atomically promote to `releases/<tag>/`.                                                                         |
-| Preserve | On first install only, populate `INSTALL_DIR/runtime/` with the shipped `locales/`, `views/`, `assets/` subtrees. Replace `releases/<tag>/runtime` with a symlink back to the shared `INSTALL_DIR/runtime/`. |
-| Switch   | Atomic `mv -T` swap of the `INSTALL_DIR/current` symlink to the new release. Record metadata in `INSTALL_DIR/.parako-state` (mode `0644`, no secrets).                                                       |
-| Hand off | Install `/usr/local/bin/parako` (non-fatal). Print the next-steps card.                                                                                                                                      |
+| Phase    | Action                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Verify   | OS / arch check, download tarball + SHA256SUMS + cosign signature + certificate, verify SHA256, verify the cosign keyless signature against Sigstore.                                                         |
+| Stage    | Extract into `INSTALL_DIR/releases/.staging.<tag>.<pid>/`, smoke-check `dist/src/index.js`, atomically promote to `releases/<tag>/`.                                                                          |
+| Preserve | On first install only, populate `INSTALL_DIR/runtime/` with the shipped `locales/` and `views/` subtrees. Replace `releases/<tag>/runtime` with a relative symlink back to the shared `INSTALL_DIR/runtime/`. |
+| Switch   | Atomic `mv -T` swap of the `INSTALL_DIR/current` symlink to the new release. Record metadata in `INSTALL_DIR/.parako-state` (mode `0644`, no secrets).                                                        |
+| Hand off | Install `/usr/local/bin/parako` (non-fatal). Print the next-steps card.                                                                                                                                       |
 
 Escape hatch: `--insecure-no-signature --reason "<text>"` when Sigstore is unreachable (reason is logged). See [Installer Security](installer-security.md).
 
@@ -63,13 +63,13 @@ The release notes for every version list the exact migration command (if any) an
 ├── releases/
 │   └── v0.2.0/
 │       ├── dist/, node_modules/, package.json, public/, contrib/
-│       └── runtime  →  /opt/parako-id/runtime/             (absolute symlink)
+│       └── runtime  →  ../../runtime                       (relative symlink)
 ├── runtime/                                                (operator-managed)
 │   ├── .env                                                (you create from contrib/.env.sample)
 │   ├── jwks/                                               (only for file-backed key storage)
 │   ├── parako-rp.jsonc                                     (your OIDC client registry)
 │   ├── data/, uploads/, logs/, backups/, config-backups/   (operator data)
-│   └── locales/, views/, assets/                           (populated on first install only)
+│   └── locales/, views/                                    (populated on first install only)
 ├── .parako-state                                           (0644, no secrets)
 └── .install-lock
 ```

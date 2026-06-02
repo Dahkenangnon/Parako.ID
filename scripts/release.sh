@@ -374,7 +374,7 @@ create_production_package() {
     
     # Copy runtime directory and sanitize it. The installer's minimal-deployer
     # model (docs/installer.md) preserves operator-owned runtime/ wholesale and
-    # only populates {locales, views, assets} on FIRST install. Strip anything
+    # only populates {locales, views} on FIRST install. Strip anything
     # operator-owned out of the shipped tarball so:
     #   - the installer's first-install allowlist matches what's on disk;
     #   - operators cannot accidentally pick up a stale .env, JWKS, DB file,
@@ -383,15 +383,13 @@ create_production_package() {
         cp -r runtime "$release_dir/"
         # Strict allowlist of what stays under release_dir/runtime/.
         find "$release_dir/runtime" -maxdepth 1 -mindepth 1 \
-             ! -name 'locales' ! -name 'views' ! -name 'assets' \
+             ! -name 'locales' ! -name 'views' \
              -exec rm -rf {} + 2>/dev/null || true
-        # Ensure the three first-install dirs exist even when .gitignore
-        # excluded their contents from the source checkout. Operators
-        # override by dropping files in here after first install.
+        # Ensure the first-install dirs exist even when .gitignore excluded
+        # their contents from the source checkout.
         mkdir -p "$release_dir/runtime/locales" \
-                 "$release_dir/runtime/views" \
-                 "$release_dir/runtime/assets"
-        log_info "Sanitized release_dir/runtime/ (kept: locales, views, assets)"
+                 "$release_dir/runtime/views"
+        log_info "Sanitized release_dir/runtime/ (kept: locales, views)"
     else
         log_error "runtime/ directory not found — artifact will be broken"
         exit 1
@@ -571,7 +569,6 @@ validate_production_package() {
     [[ ! -f "parako-id-release/pnpm-lock.yaml" ]]                 && missing=1
     [[ ! -d "parako-id-release/runtime/locales" ]]                && missing=1
     [[ ! -d "parako-id-release/runtime/views" ]]                  && missing=1
-    [[ ! -d "parako-id-release/runtime/assets" ]]                 && missing=1
     [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && missing=1
     [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && missing=1
     [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && missing=1
@@ -585,7 +582,6 @@ validate_production_package() {
         [[ ! -f "parako-id-release/pnpm-lock.yaml" ]]                 && log_error "  - pnpm-lock.yaml file"
         [[ ! -d "parako-id-release/runtime/locales" ]]                && log_error "  - runtime/locales directory"
         [[ ! -d "parako-id-release/runtime/views" ]]                  && log_error "  - runtime/views directory"
-        [[ ! -d "parako-id-release/runtime/assets" ]]                 && log_error "  - runtime/assets directory"
         [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && log_error "  - contrib/parako.sh (parako operator binary)"
         [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && log_error "  - contrib/.env.sample (operator env sample)"
         [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && log_error "  - contrib/parako-rp.sample.jsonc (operator RP sample)"

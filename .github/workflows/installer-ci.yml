@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install shellcheck + bats + checkbashisms
         run: |
@@ -90,8 +90,8 @@ jobs:
     outputs:
       fixture_version: ${{ steps.build.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
           node-version: '24'
       - name: Install pnpm
@@ -110,7 +110,7 @@ jobs:
           bash scripts/release.sh "$V" --verbose
           ls -la "parako-id-v${V}.tar.gz" SHA256SUMS
           echo "version=${V}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: parako-fixture
           path: |
@@ -137,8 +137,8 @@ jobs:
       OS_IMAGE: ${{ matrix.os }}
       FIX_VERSION: ${{ needs.fixture.outputs.fixture_version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: parako-fixture
           path: ./fixture
@@ -178,13 +178,12 @@ jobs:
           test -L /opt/parako-id/current
           test -d /opt/parako-id/runtime/locales
           test -d /opt/parako-id/runtime/views
-          test -d /opt/parako-id/runtime/assets
           # operator-owned: must NOT be created by installer
           test ! -f /opt/parako-id/runtime/.env
           test ! -d /opt/parako-id/runtime/jwks
-          # release dir layout: absolute symlinks
+          # release dir layout: current is absolute; per-release runtime is relative
           [[ "$(readlink /opt/parako-id/current)" == /opt/parako-id/releases/* ]]
-          [[ "$(readlink "/opt/parako-id/releases/v${FIX_VERSION}/runtime")" == /opt/parako-id/runtime ]]
+          [[ "$(readlink "/opt/parako-id/releases/v${FIX_VERSION}/runtime")" == ../../runtime ]]
 
       - name: Doctor reports the install (no service / DB / network)
         run: bash installer/install.sh --doctor --dir /opt/parako-id --no-color
