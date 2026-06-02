@@ -161,6 +161,7 @@ jobs:
         run: bats installer/test/smoke.bats
 
       - name: Fresh install from fixture
+        shell: bash
         run: |
           set -euo pipefail
           FIX_TAR="$(pwd)/fixture/parako-id-v${FIX_VERSION}.tar.gz"
@@ -192,6 +193,7 @@ jobs:
         run: bash installer/install.sh --gc --dir /opt/parako-id --keep 1
 
       - name: Install log must NOT contain any service / DB / proxy / package call
+        shell: bash
         run: |
           set -euo pipefail
           LOG=$(find /var/log -maxdepth 1 -name 'parako-install-*.log' 2>/dev/null | head -n1)
