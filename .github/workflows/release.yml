@@ -204,6 +204,9 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
+      # id-token is required for Sigstore keyless signing via GitHub OIDC.
+      # See: https://docs.sigstore.dev/cosign/signing/overview/
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -252,6 +255,39 @@ jobs:
           V: ${{ steps.extract.outputs.version }}
         run: bash scripts/release.sh "$V" --verbose
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign release artifacts with cosign keyless
+        env:
+          V: ${{ steps.extract.outputs.version }}
+          # COSIGN_EXPERIMENTAL is no longer required as of cosign 2.0; keyless is the default.
+          # Identity binds to the workflow path; verifiers must match this regex.
+          COSIGN_YES: 'true'
+        run: |
+          set -euo pipefail
+          for file in "parako-id-v$V.tar.gz" "parako-id-v$V.zip" SHA256SUMS; do
+            if [ ! -f "$file" ]; then
+              echo "::error::release artifact not found: $file"
+              exit 1
+            fi
+            cosign sign-blob \
+              --yes \
+              --output-signature "$file.sig" \
+              --output-certificate "$file.pem" \
+              "$file"
+            # Verify locally to fail fast on identity-binding regression.
+            cosign verify-blob \
+              --bundle "$file.sig" \
+              --certificate "$file.pem" \
+              --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              "$file"
+          done
+          ls -la parako-id-v*.sig parako-id-v*.pem SHA256SUMS.sig SHA256SUMS.pem
+
       - name: Extract changelog body for this version
         env:
           V: ${{ steps.extract.outputs.version }}
@@ -280,4 +316,10 @@ jobs:
           files: |
             parako-id-v*.tar.gz
             parako-id-v*.zip
+            parako-id-v*.tar.gz.sig
+            parako-id-v*.tar.gz.pem
+            parako-id-v*.zip.sig
+            parako-id-v*.zip.pem
             SHA256SUMS
+            SHA256SUMS.sig
+            SHA256SUMS.pem

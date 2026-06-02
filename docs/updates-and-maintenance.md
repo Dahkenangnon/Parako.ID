@@ -46,17 +46,7 @@ rm -rf /opt/parako-id.backup.* /opt/parako-id.old.*
 
 ### Source / dev installs
 
-For installations cloned via `git clone`:
-
-```bash
-git pull
-pnpm install
-pnpm db:migrate:deploy   # PostgreSQL only
-pnpm build
-pnpm restart
-```
-
-There is no automatic rollback for source installs. Take a database backup first if upgrading across schema changes.
+For installations cloned via `git clone`, follow the manual procedure documented at [Install from source](installer-from-source.md). It includes the honest drawbacks (no automated rollback, supply-chain risk at every `pnpm install`, no cosign verification of the working tree) and the manual snapshot + restore commands you run yourself before and after each update.
 
 ### Rolling back manually (any install method)
 

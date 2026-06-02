@@ -1,5 +1,8 @@
 # Upgrading Parako.ID
 
+> Operator quick-reference: [Installer](installer.md) and [`parako update`](parako-cli.md#lifecycle).
+> This page covers the partition policy (what's preserved across upgrades) that the installer respects.
+
 Parako.ID partitions its install tree into **shipped** state and
 **operator-managed** state. Everything outside `runtime/` is shipped:
 extracting a new release tarball over an existing install replaces it

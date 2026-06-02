@@ -534,7 +534,10 @@ validate_production_package() {
     log_info "Running security validation..."
     
     # Check for sensitive files in production package
-    local sensitive_patterns=(".env" ".env.local" ".env.production" ".env.staging" "*.key" "*.pem" "*.p12" "*.pfx" "*.map" "parako.jsonc" "parako-rp.jsonc")
+    # NOTE: install.sh is the installer published to get.parako.id; installer/
+    # is its source tree. Neither must ever ship inside a release tarball —
+    # they live in source for audit transparency and deploy independently.
+    local sensitive_patterns=(".env" ".env.local" ".env.production" ".env.staging" "*.key" "*.pem" "*.p12" "*.pfx" "*.map" "parako.jsonc" "parako-rp.jsonc" "install.sh")
     for pattern in "${sensitive_patterns[@]}"; do
         if find "parako-id-release" -name "$pattern" -type f 2>/dev/null | grep -q .; then
             log_error "SECURITY VIOLATION: Found sensitive file in production package: $pattern"
@@ -544,6 +547,14 @@ validate_production_package() {
             exit 1
         fi
     done
+
+    # Defense in depth: explicit directory check for installer/ (file pattern
+    # check above catches install.sh, this catches the whole tree).
+    if [[ -d "parako-id-release/installer" ]]; then
+        log_error "SECURITY VIOLATION: installer/ directory found in production package"
+        log_error "  - parako-id-release/installer"
+        exit 1
+    fi
     
     # Verify only production dependencies are installed
     cd parako-id-release

@@ -70,19 +70,34 @@ For a guided installation on a fresh Ubuntu server:
 # User-local install
 curl -sSL https://get.parako.id | bash
 
-# Or system-wide (installs to /opt/parako-id, requires sudo)
+# System-wide (installs to /opt/parako-id, requires sudo)
 curl -sSL https://get.parako.id | sudo bash
+
+# Try Parako.ID in 30 seconds (ephemeral SQLite in /tmp; opens browser)
+curl -sSL https://get.parako.id | bash -s -- --demo
 ```
 
-The installer prompts for environment, port, deployment URL, supervisor (systemd or PM2), database, and Redis. It generates a `.env` with cryptographically-random secrets, validates DB and Redis connectivity, runs schema migrations, and starts the service via your chosen supervisor.
+The installer runs preflight checks, then prompts for environment, port, deployment URL, supervisor (systemd or PM2), database, and Redis. It verifies the release via cosign (Sigstore), generates a `.env` with cryptographically-random secrets, validates DB and Redis connectivity, runs schema migrations, and starts the service. See [Installer](installer.md) for the full flag reference.
+
+After install, the `parako` operator binary is on `PATH`:
+
+```bash
+parako status            # supervisor + /health + version
+parako doctor            # full diagnostic
+parako update            # in-place upgrade
+parako rollback          # revert to previous snapshot
+parako --help            # all verbs
+```
 
 Upgrade later with `--update`:
 
 ```bash
 curl -sSL https://get.parako.id | sudo bash -s -- --update
+# or:
+sudo parako update
 ```
 
-This snapshots the install, swaps in the new version, runs migrations, health-checks the new release, and rolls back automatically if it fails.
+This snapshots the install, backs up the database, swaps in the new version, runs migrations, health-checks the new release via `/health`, and rolls back automatically if it fails.
 
 ## Create Your First Account
 

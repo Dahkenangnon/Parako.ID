@@ -48,8 +48,23 @@ Parako.ID runs on a single VPS — or scales out across many — and gives you t
 One-liner (recommended):
 
 ```bash
-curl -sSL https://get.parako.id | sh
+# Interactive install
+curl -sSL https://get.parako.id | bash
+
+# Try it in 30 seconds (ephemeral, opens browser)
+curl -sSL https://get.parako.id | bash -s -- --demo
 ```
+
+The installer runs preflight checks, verifies the release via cosign (Sigstore), and installs the `parako` operator binary alongside the server. After install:
+
+```bash
+parako status            # supervisor + /health + version
+parako doctor            # full diagnostic
+parako update            # in-place upgrade with auto-rollback
+parako --help            # all verbs
+```
+
+See [docs/installer](https://docs.parako.id/installer) and [docs/parako-cli](https://docs.parako.id/parako-cli) for the full flag and verb reference.
 
 Manual tarball:
 
@@ -80,16 +95,20 @@ pnpm db:push && pnpm keys generate && pnpm dev
 
 ## Documentation
 
-| Section                                               | What it covers                                         |
-| ----------------------------------------------------- | ------------------------------------------------------ |
-| [Quickstart](https://docs.parako.id/quickstart)       | Install, first-user, first-client in under 10 minutes  |
-| [Configuration](https://docs.parako.id/configuration) | Env vars, schema, hierarchy, secret rotation           |
-| [Multi-tenancy](https://docs.parako.id/multi-tenancy) | Per-tenant isolation, branding, OIDC instances         |
-| [Social login](https://docs.parako.id/social-login)   | Google, GitHub, Microsoft, LinkedIn, Facebook          |
-| [Deployment](https://docs.parako.id/deployment)       | systemd, PM2, reverse proxy, TLS, hardening            |
-| [CLI tools](https://docs.parako.id/cli-tools)         | `pnpm client`, `pnpm keys`, `pnpm systemd`             |
-| [Management API](https://docs.parako.id/api/overview) | Programmatic admin via 30 scoped permissions           |
-| [Upgrades](https://docs.parako.id/upgrades)           | What survives an upgrade and how to apply new defaults |
+| Section                                                             | What it covers                                                       |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Quickstart](https://docs.parako.id/quickstart)                     | Install, first-user, first-client in under 10 minutes                |
+| [Installer](https://docs.parako.id/installer)                       | Every flag for install / update / rollback / doctor / gc / demo      |
+| [parako CLI](https://docs.parako.id/parako-cli)                     | `parako` operator binary verbs                                       |
+| [Installer security](https://docs.parako.id/installer-security)     | Threat model, cosign chain-of-trust, how to verify install.sh itself |
+| [Install from source](https://docs.parako.id/installer-from-source) | git-clone path with honest drawbacks                                 |
+| [Configuration](https://docs.parako.id/configuration)               | Env vars, schema, hierarchy, secret rotation                         |
+| [Multi-tenancy](https://docs.parako.id/multi-tenancy)               | Per-tenant isolation, branding, OIDC instances                       |
+| [Social login](https://docs.parako.id/social-login)                 | Google, GitHub, Microsoft, LinkedIn, Facebook                        |
+| [Deployment](https://docs.parako.id/deployment)                     | systemd, PM2, reverse proxy, TLS, hardening                          |
+| [CLI tools](https://docs.parako.id/cli-tools)                       | `pnpm client`, `pnpm keys`, `pnpm systemd`                           |
+| [Management API](https://docs.parako.id/api/overview)               | Programmatic admin via 30 scoped permissions                         |
+| [Upgrades](https://docs.parako.id/upgrades)                         | What survives an upgrade and how to apply new defaults               |
 
 ## Roadmap
 

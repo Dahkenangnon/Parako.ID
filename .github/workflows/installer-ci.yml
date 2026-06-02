@@ -1,0 +1,91 @@
+name: Installer CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'installer/**'
+      - '.github/workflows/installer-ci.yml'
+  pull_request:
+    paths:
+      - 'installer/**'
+      - '.github/workflows/installer-ci.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint shellcheck + bash -n + structure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck + bats + checkbashisms
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck bats devscripts
+
+      - name: Syntax check bash -n
+        run: |
+          bash -n installer/install.sh
+          bash -n installer/parako.sh
+
+      - name: ShellCheck warning level fatal
+        run: |
+          shellcheck -S warning installer/install.sh
+          shellcheck -S warning installer/parako.sh
+
+      - name: Checkbashisms informational
+        continue-on-error: true
+        run: |
+          checkbashisms installer/install.sh || true
+          checkbashisms installer/parako.sh || true
+
+      - name: Structure bats section banners and idiom enforcement
+        run: bats installer/test/structure.bats
+
+  smoke:
+    name: Smoke ${{ matrix.os }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:12
+          - alpine:3.19
+    container:
+      image: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install prerequisites
+        env:
+          OS_IMAGE: ${{ matrix.os }}
+        run: |
+          case "$OS_IMAGE" in
+            ubuntu:*|debian:*)
+              apt-get update -qq
+              apt-get install -y -qq bash bats curl ca-certificates openssl iproute2 procps
+              ;;
+            alpine:*)
+              apk add --no-cache bash bats curl ca-certificates openssl iproute2 procps coreutils
+              ;;
+          esac
+          bash --version | head -n1
+          bats --version
+
+      - name: Smoke tests input validation and mode gating
+        env:
+          OS_IMAGE: ${{ matrix.os }}
+        run: |
+          bats installer/test/smoke.bats || {
+            echo "smoke tests failed on $OS_IMAGE" >&2
+            exit 1
+          }
