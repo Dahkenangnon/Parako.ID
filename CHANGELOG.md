@@ -6,6 +6,30 @@ Releases are cut by the maintainer with `pnpm release <patch|minor|major>` on `m
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-06-03
+
+### Features
+
+- replace default assets with Parako PNG branding ([b4cf01c](https://github.com/Dahkenangnon/Parako.ID/commit/b4cf01cdf635a09cd266fd61cea20385b6e6552f))
+- auto-clean stale current tmp with clean-stale flag ([514ce95](https://github.com/Dahkenangnon/Parako.ID/commit/514ce95ee6b53d6f68d12acad44420c376a5a7c6))
+
+### Bug Fixes
+
+- format generated release files before commit ([60bff94](https://github.com/Dahkenangnon/Parako.ID/commit/60bff94a9ebac8cbaa760357bed45a2e1e123c4d))
+- clear static analysis hotspots ([4c67e57](https://github.com/Dahkenangnon/Parako.ID/commit/4c67e57ef5e5e8947128f3b21697492f5e48a183))
+- resolve entity configs through allowlist ([3c57477](https://github.com/Dahkenangnon/Parako.ID/commit/3c57477469701e0626bb42453af862ae05e2d1a8))
+- validate ops social callback redirects ([977bccc](https://github.com/Dahkenangnon/Parako.ID/commit/977bccc291ef7d25fdd53152e508aa35f4fe7117))
+- serve precompressed assets from a manifest ([2142b90](https://github.com/Dahkenangnon/Parako.ID/commit/2142b90a9129e8a4e2132af81f974884cc761454))
+- harden redirects and recovery token lookup ([99c22a2](https://github.com/Dahkenangnon/Parako.ID/commit/99c22a2683aaa30ee4527bdfafe1fbaf5eff4e28))
+- update admin and account templates ([d1d65d2](https://github.com/Dahkenangnon/Parako.ID/commit/d1d65d2562abcea6922de17ee3fb79e318713191))
+- unbreak silent exits and PARAKO_INSTALL_DIR propagation ([d069025](https://github.com/Dahkenangnon/Parako.ID/commit/d069025408dc4039503f1a1094d653273658f40e))
+- read prompts from /dev/tty when stdin is a pipe ([c6fd92a](https://github.com/Dahkenangnon/Parako.ID/commit/c6fd92a82d6fc1ca3b917737ac9b156c488b9e1c))
+- use bash shell in installer smoke matrix for pipefail support ([0730fff](https://github.com/Dahkenangnon/Parako.ID/commit/0730fff49401a0901ccf56bab6b1b7aeaa02b879))
+
+### Refactor
+
+- drop unused runtime/assets scaffold ([5f191fe](https://github.com/Dahkenangnon/Parako.ID/commit/5f191fefee4795fe140fbafebe8b4ad41648f5e9))
+
 ## [0.2.2] - 2026-06-02
 
 ### Features
