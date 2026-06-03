@@ -403,16 +403,21 @@ export class UserService implements IUserService {
   }
 
   public async findByRecoveryToken(token: string): Promise<IUser | null> {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) return null;
+
     try {
-      if (!token) return null;
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const tokenHash = crypto
+        .createHash('sha256')
+        .update(normalizedToken)
+        .digest('hex');
       return this.userRepo.findOne({
         'recovery.secondary_email.verification_token': tokenHash,
       });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'find_user_by_recovery_token_failed',
-        token: token ? 'provided' : 'missing',
+        token: 'provided',
       });
       return null;
     }

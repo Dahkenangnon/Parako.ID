@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import {
   flashAndRedirect,
   isSameOriginPath,
+  toSameOriginPath,
 } from '../../../src/utils/flash-redirect.js';
 
 function makeDeps() {
@@ -38,12 +39,25 @@ describe('isSameOriginPath', () => {
     ['javascript:alert(1)'],
     ['data:text/html,<script>1</script>'],
     ['file:///etc/passwd'],
+    ['/\\evil.com'],
     ['admin/users'],
     [''],
     ['//attacker.example.com/login'],
     ['  /admin'],
   ])('rejects %s', path => {
     expect(isSameOriginPath(path)).toBe(false);
+  });
+});
+
+describe('toSameOriginPath', () => {
+  it('normalizes same-origin paths before redirecting', () => {
+    expect(toSameOriginPath('/admin/../admin/users?tab=active#top')).toBe(
+      '/admin/users?tab=active#top'
+    );
+  });
+
+  it('rejects paths that resolve to another origin', () => {
+    expect(toSameOriginPath('//attacker.example.com/login')).toBeNull();
   });
 });
 

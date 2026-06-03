@@ -17,24 +17,42 @@ import type { ISessionManager } from '../di/interfaces/session-manager.interface
  */
 export type FlashLevel = 'success' | 'error' | 'warning' | 'info';
 
-const SAME_ORIGIN_PATH = /^\/[^/]/;
-const SCHEME_PREFIX = /^[a-z][a-z0-9+.-]*:/i;
+const SAME_ORIGIN_BASE = 'https://parako.local';
+const SAME_ORIGIN = new URL(SAME_ORIGIN_BASE).origin;
+
+export type SameOriginPath = string & {
+  readonly __sameOriginPath: unique symbol;
+};
+
+export function toSameOriginPath(path: string): SameOriginPath | null {
+  if (typeof path !== 'string' || path.length === 0) {
+    return null;
+  }
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    return null;
+  }
+  if (path.includes('\\') || path.includes('\0')) {
+    return null;
+  }
+
+  try {
+    const url = new URL(path, SAME_ORIGIN_BASE);
+    if (url.origin !== SAME_ORIGIN) {
+      return null;
+    }
+    const normalizedPath = `${url.pathname}${url.search}${url.hash}`;
+    if (!normalizedPath.startsWith('/') || normalizedPath.startsWith('//')) {
+      return null;
+    }
+    return normalizedPath as SameOriginPath;
+  } catch {
+    return null;
+  }
+}
 
 /** Returns true when `path` is a safe same-origin pathname. */
 export function isSameOriginPath(path: string): boolean {
-  if (typeof path !== 'string' || path.length === 0) {
-    return false;
-  }
-  if (path === '/') {
-    return true;
-  }
-  if (!SAME_ORIGIN_PATH.test(path)) {
-    return false;
-  }
-  if (SCHEME_PREFIX.test(path)) {
-    return false;
-  }
-  return true;
+  return toSameOriginPath(path) !== null;
 }
 
 export interface FlashRedirectDeps {
@@ -49,7 +67,8 @@ export function flashAndRedirect(
   message: string,
   path: string
 ): void {
-  if (!isSameOriginPath(path)) {
+  const safePath = toSameOriginPath(path);
+  if (!safePath) {
     throw new Error(
       `flashAndRedirect: refusing to redirect to non-same-origin path "${path}"`
     );
@@ -57,5 +76,5 @@ export function flashAndRedirect(
 
   const flash = deps.sessionManager.flash(req);
   flash[level](message);
-  res.redirect(path);
+  res.redirect(safePath);
 }

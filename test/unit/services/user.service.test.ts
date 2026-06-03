@@ -8,6 +8,7 @@
  * GREEN: After migrating to IUserRepository.
  */
 import 'reflect-metadata';
+import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UserService } from '../../../src/services/user.service.js';
 import type { IUser } from '../../../src/types/user.js';
@@ -225,6 +226,31 @@ describe('UserService — IUserRepository delegation', () => {
 
       expect(repo.findById).toHaveBeenCalledWith('user-123');
       expect(result).toEqual(user);
+    });
+  });
+
+  describe('findByRecoveryToken', () => {
+    it('hashes a trimmed token and delegates to repo.findOne', async () => {
+      const user = makeUser();
+      const tokenHash = crypto
+        .createHash('sha256')
+        .update('recovery-token')
+        .digest('hex');
+      vi.mocked(repo.findOne).mockResolvedValue(user);
+
+      const result = await service.findByRecoveryToken(' recovery-token ');
+
+      expect(repo.findOne).toHaveBeenCalledWith({
+        'recovery.secondary_email.verification_token': tokenHash,
+      });
+      expect(result).toEqual(user);
+    });
+
+    it('returns null without querying when token is blank', async () => {
+      const result = await service.findByRecoveryToken('   ');
+
+      expect(repo.findOne).not.toHaveBeenCalled();
+      expect(result).toBeNull();
     });
   });
 
