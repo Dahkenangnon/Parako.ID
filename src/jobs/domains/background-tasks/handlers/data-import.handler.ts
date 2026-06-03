@@ -4,7 +4,7 @@ import type { IDataTransferService } from '../../../../di/interfaces/data-transf
 import type { ILogger } from '../../../../di/interfaces/logger.interface.js';
 import type { ImportContext } from '../../../../services/data-transfer/types.js';
 import {
-  entityConfigFactories,
+  getEntityConfigFactory,
   type EntityConfigDeps,
 } from '../../../../services/data-transfer/entities/index.js';
 
@@ -42,7 +42,7 @@ export function createDataImportHandler(
     const parsed = DataImportJobSchema.parse(data);
     const { entityId, rows, adminUser, tenantId } = parsed;
 
-    const configFactory = entityConfigFactories[entityId];
+    const configFactory = getEntityConfigFactory(entityId);
     if (!configFactory) {
       throw new Error(`Unknown entity: ${entityId}`);
     }

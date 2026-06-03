@@ -20,10 +20,25 @@ export interface EntityConfigDeps {
   logger: ILogger;
 }
 
-export const entityConfigFactories: Record<string, EntityConfigFactory> = {
+const entityConfigFactories: Record<string, EntityConfigFactory> = {
   users: createUserEntityConfig,
   'oidc-clients': createOidcClientEntityConfig,
   activities: createActivityEntityConfig,
 };
 
 export const ENTITY_IDS = Object.keys(entityConfigFactories);
+
+export function getEntityConfigFactory(
+  entityId: string
+): EntityConfigFactory | null {
+  switch (entityId) {
+    case 'users':
+      return createUserEntityConfig;
+    case 'oidc-clients':
+      return createOidcClientEntityConfig;
+    case 'activities':
+      return createActivityEntityConfig;
+    default:
+      return null;
+  }
+}

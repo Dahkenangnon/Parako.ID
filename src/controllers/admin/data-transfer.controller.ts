@@ -14,8 +14,8 @@ import type { IAdminDataTransferController } from '../../di/interfaces/admin-dat
 import { TYPES } from '../../di/types.js';
 import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import {
-  entityConfigFactories,
   ENTITY_IDS,
+  getEntityConfigFactory,
   type EntityConfigDeps,
 } from '../../services/data-transfer/entities/index.js';
 import { createBackgroundTaskQueue } from '../../jobs/domains/background-tasks/queue.js';
@@ -525,27 +525,19 @@ export class AdminDataTransferController implements IAdminDataTransferController
   }
 
   private getEntityConfig(entityId: string) {
-    if (
-      !Object.prototype.hasOwnProperty.call(entityConfigFactories, entityId)
-    ) {
-      throw new Error(`Unknown entity: ${entityId}`);
-    }
-    const factory = entityConfigFactories[entityId];
-    if (typeof factory !== 'function') {
+    const factory = getEntityConfigFactory(entityId);
+    if (!factory) {
       throw new Error(`Unknown entity: ${entityId}`);
     }
     return factory(this.getEntityConfigDeps());
   }
 
   private getEntityConfigSafe(entityId: string) {
-    if (
-      typeof entityId !== 'string' ||
-      !Object.prototype.hasOwnProperty.call(entityConfigFactories, entityId)
-    ) {
+    if (typeof entityId !== 'string') {
       return null;
     }
-    const factory = entityConfigFactories[entityId];
-    if (typeof factory !== 'function') return null;
+    const factory = getEntityConfigFactory(entityId);
+    if (!factory) return null;
     return factory(this.getEntityConfigDeps());
   }
 
