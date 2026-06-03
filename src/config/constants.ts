@@ -56,11 +56,11 @@ function _buildDefaultFullConfig(): AppConfig {
     // BRANDING - UI/UX Appearance & Theming
     branding: {
       companyName: 'Your Organization',
-      logo: '/images/logo-light.svg',
-      logoDark: '/images/logo-dark.svg',
-      logoIcon: '/images/logo-icon-light.svg',
-      logoIconDark: '/images/logo-icon-dark.svg',
-      favicon: '/favicon.svg',
+      logo: '/images/logo-light.png',
+      logoDark: '/images/logo-dark.png',
+      logoIcon: '/images/logo-icon-light.png',
+      logoIconDark: '/images/logo-icon-dark.png',
+      favicon: '/favicon.png',
       // Theme colors - defaults match public/css/theme.css (Parako.ID Brand Theme)
       // Admins can customize via /admin/settings/branding
       // Font families - defaults to system fonts, customizable via /admin/settings/branding

@@ -99,7 +99,7 @@ export const AppConfigSchema = z.object({
     logo: z
       .string()
       .min(1, 'Logo path cannot be empty')
-      .default('/images/logo-light.svg')
+      .default('/images/logo-light.png')
       .refine((val: string) => {
         if (val.startsWith('/')) {
           return true;
@@ -171,7 +171,7 @@ export const AppConfigSchema = z.object({
 
     /**
      * Custom favicon (optional)
-     * Falls back to /favicon.svg if not set
+     * Falls back to /favicon.png if not set
      */
     favicon: z
       .string()

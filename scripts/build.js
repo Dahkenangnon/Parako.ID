@@ -384,9 +384,16 @@ async function main() {
       background_color: '#ffffff',
       icons: [
         {
-          src: '/images/logo-icon-light.svg',
-          sizes: 'any',
-          type: 'image/svg+xml',
+          src: '/images/pwa-icon-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any',
+        },
+        {
+          src: '/images/pwa-maskable-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'maskable',
         },
       ],
     };

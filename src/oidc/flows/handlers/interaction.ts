@@ -387,7 +387,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
               logoUri:
                 (client as any).logoUri ||
                 (client as any).logo_uri ||
-                '/images/logo-light.svg',
+                '/images/logo-light.png',
             },
             uid,
             details: prompt.details,
@@ -429,7 +429,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
               clientName:
                 client.clientName || client.client_name || 'Application',
               clientLogo:
-                client.logoUri || client.logo_uri || '/images/logo-light.svg',
+                client.logoUri || client.logo_uri || '/images/logo-light.png',
               accounts: [],
               interactionUid: uid,
               csrfToken: this.sessionManager.get(req, 'csrfToken'),
@@ -457,7 +457,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
             clientName:
               client.clientName || client.client_name || 'Application',
             clientLogo:
-              client.logoUri || client.logo_uri || '/images/logo-light.svg',
+              client.logoUri || client.logo_uri || '/images/logo-light.png',
             accounts,
             interactionUid: uid,
             continueUrl: oidcInteractionUrl,

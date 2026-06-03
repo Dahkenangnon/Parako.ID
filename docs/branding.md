@@ -13,11 +13,11 @@ Customize the look and feel of your Parako.ID instance in the `branding` configu
 {
   "branding": {
     "companyName": "Your Organization",
-    "logo": "/images/logo-light.svg",
+    "logo": "/images/logo-light.png",
     "logoDark": "/images/logo-dark.png",
     "logoIcon": "/images/icon.png",
     "logoIconDark": "/images/icon-dark.png",
-    "favicon": "/images/favicon.ico",
+    "favicon": "/favicon.png",
   },
 }
 ```

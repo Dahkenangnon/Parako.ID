@@ -281,12 +281,12 @@ export class KoaMiddleware implements IKoaMiddleware {
           logo: resolve(config.branding.logo),
           logoDark: resolve(config.branding.logoDark || config.branding.logo),
           logoIcon: resolve(
-            config.branding.logoIcon || '/images/logo-icon-light.svg'
+            config.branding.logoIcon || '/images/logo-icon-light.png'
           ),
           logoIconDark: resolve(
-            config.branding.logoIconDark || '/images/logo-icon-dark.svg'
+            config.branding.logoIconDark || '/images/logo-icon-dark.png'
           ),
-          favicon: resolve(config.branding.favicon || '/favicon.svg'),
+          favicon: resolve(config.branding.favicon || '/favicon.png'),
           colors: config.branding.colors || { light: {}, dark: {} },
           fonts: config.branding.fonts || {},
         },
@@ -479,12 +479,12 @@ export class KoaMiddleware implements IKoaMiddleware {
         },
 
         branding: {
-          logo: '/images/logo-light.svg',
+          logo: '/images/logo-light.png',
           theme: {
             type: 'predefined',
             theme: 'default',
           },
-          favicon: '/favicon.svg',
+          favicon: '/favicon.png',
           colors: { light: {}, dark: {} },
           fonts: {},
         },

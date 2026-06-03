@@ -793,12 +793,12 @@ export class UIMiddleware implements IUIMiddleware {
           tenantConfig.branding.logoDark || tenantConfig.branding.logo
         ),
         logoIcon: resolve(
-          tenantConfig.branding.logoIcon || '/images/logo-icon-light.svg'
+          tenantConfig.branding.logoIcon || '/images/logo-icon-light.png'
         ),
         logoIconDark: resolve(
-          tenantConfig.branding.logoIconDark || '/images/logo-icon-dark.svg'
+          tenantConfig.branding.logoIconDark || '/images/logo-icon-dark.png'
         ),
-        favicon: resolve(tenantConfig.branding.favicon || '/favicon.svg'),
+        favicon: resolve(tenantConfig.branding.favicon || '/favicon.png'),
         colors: tenantConfig.branding.colors || { light: {}, dark: {} },
         fonts: tenantConfig.branding.fonts || {},
       };

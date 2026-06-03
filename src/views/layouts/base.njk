@@ -22,15 +22,15 @@
     {% endif %}
     
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="{{ branding.favicon }}">
-    <link rel="apple-touch-icon" href="{{ branding.favicon }}">
+    <link rel="icon" href="{{ branding.favicon }}">
+    <link rel="apple-touch-icon" href="{{ branding.favicon if branding.favicon and branding.favicon != '/favicon.png' else '/images/apple-touch-icon.png' }}">
     
     <!-- Open Graph Meta Tags -->
     {% set ogTitle = pageTitle and pageTitle | trim != '' 
         and (pageTitle ~ ' | ' ~ app.title) 
         or app.title %}
     {% set ogDescription = metaDescription %}
-    {% set ogImage = branding.logo or '/images/logo-light.svg' %}
+    {% set ogImage = branding.logo or '/images/logo-light.png' %}
     {% set ogUrl = canonical_url or app.url or '' %}
     
     <meta property="og:title" content="{{ ogTitle }}">

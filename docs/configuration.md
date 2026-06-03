@@ -228,9 +228,9 @@ UI appearance and theming. See [Branding](branding.md) for full customization gu
 | Field                               | Type   | Default                   | Description                                 |
 | ----------------------------------- | ------ | ------------------------- | ------------------------------------------- |
 | `companyName`                       | string | `Your Organization`       | Company name (also used as MFA issuer name) |
-| `logo` / `logoDark`                 | string | `/images/logo-*.svg`      | Logo paths for light/dark mode              |
-| `logoIcon` / `logoIconDark`         | string | `/images/logo-icon-*.svg` | Icon logo paths                             |
-| `favicon`                           | string | `/favicon.svg`            | Favicon path                                |
+| `logo` / `logoDark`                 | string | `/images/logo-*.png`      | Logo paths for light/dark mode              |
+| `logoIcon` / `logoIconDark`         | string | `/images/logo-icon-*.png` | Icon logo paths                             |
+| `favicon`                           | string | `/favicon.png`            | Favicon path                                |
 | `fonts.sans` / `.heading` / `.mono` | string | System fonts              | Font family stacks                          |
 | `colors.light.*` / `colors.dark.*`  | string | _(33 tokens each)_        | Theme color hex values                      |
 | `ui.customization`                  | object | `{enabled: false}`        | Custom Nunjucks view template overrides     |

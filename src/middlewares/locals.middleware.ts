@@ -71,12 +71,12 @@ export class LocalsMiddleware implements ILocalsMiddleware {
         logo: resolve(config.branding.logo),
         logoDark: resolve(config.branding.logoDark || config.branding.logo),
         logoIcon: resolve(
-          config.branding.logoIcon || '/images/logo-icon-light.svg'
+          config.branding.logoIcon || '/images/logo-icon-light.png'
         ),
         logoIconDark: resolve(
-          config.branding.logoIconDark || '/images/logo-icon-dark.svg'
+          config.branding.logoIconDark || '/images/logo-icon-dark.png'
         ),
-        favicon: resolve(config.branding.favicon || '/favicon.svg'),
+        favicon: resolve(config.branding.favicon || '/favicon.png'),
         colors: config.branding.colors || { light: {}, dark: {} },
         fonts: config.branding.fonts || {},
       };
@@ -187,11 +187,11 @@ export class LocalsMiddleware implements ILocalsMiddleware {
 
       res.locals.branding = {
         companyName: 'Your Organization',
-        logo: '/images/logo-light.svg',
-        logoDark: '/images/logo-dark.svg',
-        logoIcon: '/images/logo-icon-light.svg',
-        logoIconDark: '/images/logo-icon-dark.svg',
-        favicon: '/favicon.svg',
+        logo: '/images/logo-light.png',
+        logoDark: '/images/logo-dark.png',
+        logoIcon: '/images/logo-icon-light.png',
+        logoIconDark: '/images/logo-icon-dark.png',
+        favicon: '/favicon.png',
         colors: { light: {}, dark: {} },
         fonts: {},
       };

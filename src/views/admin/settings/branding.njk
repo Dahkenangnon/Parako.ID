@@ -202,7 +202,7 @@
                             <!-- Preview -->
                             <div class="relative group">
                                 <div class="w-16 h-16 bg-muted border border-border rounded flex items-center justify-center overflow-hidden">
-                                    {% if config.favicon and config.favicon != '/favicon.ico' and config.favicon != '/favicon.svg' %}
+                                    {% if config.favicon and config.favicon != '/favicon.ico' and config.favicon != '/favicon.png' %}
                                         <img src="{{ config.favicon }}" alt="Favicon" id="preview-favicon" class="max-w-full max-h-full object-contain"/>
                                     {% else %}
                                         <span class="text-muted-foreground text-xs" id="no-favicon-text">Default</span>
@@ -221,7 +221,7 @@
                                     <i data-lucide="upload" class="h-3 w-3 mr-1"></i>
                                     Upload
                                 </button>
-                                <button type="button" id="remove-favicon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.favicon or config.favicon == '/favicon.ico' or config.favicon == '/favicon.svg' %}hidden{% endif %}">
+                                <button type="button" id="remove-favicon-button" class="inline-flex items-center px-2 py-1 border border-border text-xs font-medium text-destructive hover:bg-destructive/10 focus:outline-none focus:ring-2 focus:ring-destructive {% if not config.favicon or config.favicon == '/favicon.ico' or config.favicon == '/favicon.png' %}hidden{% endif %}">
                                     <i data-lucide="trash-2" class="h-3 w-3 mr-1"></i>
                                     Remove
                                 </button>

@@ -51,7 +51,7 @@ const STATIC_PATH_PREFIXES: ReadonlyArray<string> = [
 
 const STATIC_EXACT_PATHS: ReadonlySet<string> = new Set([
   '/favicon.ico',
-  '/favicon.svg',
+  '/favicon.png',
   '/robots.txt',
   '/llms.txt',
   '/manifest.json',

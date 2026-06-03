@@ -141,7 +141,7 @@ export class OIDCClientMerger implements IOIDCClientMerger {
       policyUri: client.metadata.policy_uri,
       tosUri: client.metadata.tos_uri,
       clientUri: client.metadata.client_uri,
-      logoUri: client.metadata.logo_uri || '/images/logo-light.svg',
+      logoUri: client.metadata.logo_uri || '/images/logo-light.png',
     };
   }
 }
