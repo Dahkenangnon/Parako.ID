@@ -40,6 +40,58 @@ import type {
   SecondaryEmailVerification,
 } from '../types/session-data.js';
 
+const KNOWN_SOCIAL_PROVIDERS: readonly SocialProvider[] = [
+  'google',
+  'github',
+  'facebook',
+  'linkedin',
+  'twitter',
+  'microsoft',
+  'apple',
+] as const;
+
+function isKnownSocialProvider(provider: string): provider is SocialProvider {
+  return KNOWN_SOCIAL_PROVIDERS.includes(provider as SocialProvider);
+}
+
+function withSocialRegisterIntent(
+  existing: Partial<SocialRegisterData>,
+  provider: SocialProvider,
+  timestamp: number
+): SocialRegisterData {
+  const intent = {
+    intent: 'register',
+    timestamp,
+  };
+  const next = { ...existing } as SocialRegisterData;
+
+  switch (provider) {
+    case 'google':
+      next.google = intent;
+      break;
+    case 'github':
+      next.github = intent;
+      break;
+    case 'facebook':
+      next.facebook = intent;
+      break;
+    case 'linkedin':
+      next.linkedin = intent;
+      break;
+    case 'twitter':
+      next.twitter = intent;
+      break;
+    case 'microsoft':
+      next.microsoft = intent;
+      break;
+    case 'apple':
+      next.apple = intent;
+      break;
+  }
+
+  return next;
+}
+
 @injectable()
 export class AuthController implements IAuthController {
   constructor(
@@ -4464,37 +4516,29 @@ export class AuthController implements IAuthController {
         );
       }
 
-      // Strict allowlist so the computed key cannot fall outside SocialProvider.
-      const KNOWN_SOCIAL_PROVIDERS = [
-        'google',
-        'github',
-        'facebook',
-        'linkedin',
-        'twitter',
-        'microsoft',
-        'apple',
-      ] as const;
-      if (!KNOWN_SOCIAL_PROVIDERS.includes(provider as never)) {
+      // Strict allowlist so the session update cannot fall outside SocialProvider.
+      if (!isKnownSocialProvider(provider)) {
         this.logger.warn(`Rejected unknown social provider: ${provider}`);
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
         );
       }
-      const safeProvider = provider as (typeof KNOWN_SOCIAL_PROVIDERS)[number];
-      this.sessionManager.set(req, 'socialRegister', {
-        ...(this.sessionManager.get<SocialRegisterData>(
+
+      const timestamp = Date.now();
+      const existingSocialRegister =
+        this.sessionManager.get<Partial<SocialRegisterData>>(
           req,
           'socialRegister'
-        ) || ({} as SocialRegisterData)),
-        [safeProvider]: {
-          intent: 'register',
-          timestamp: Date.now(),
-        },
-      });
+        ) || {};
+      this.sessionManager.set(
+        req,
+        'socialRegister',
+        withSocialRegisterIntent(existingSocialRegister, provider, timestamp)
+      );
 
       this.logger.info(`Social registration intent stored for ${provider}`, {
         provider,
-        timestamp: Date.now(),
+        timestamp,
       });
 
       const authUrl = await this.socialLoginManager.getAuthorizationUrl(

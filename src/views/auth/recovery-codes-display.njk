@@ -21,7 +21,8 @@
                         {% endfor %}
                     </div>
                     {% if backup_codes | length > 2 %}
-                    <p class="text-xs text-muted-foreground text-center mt-2">{{ t('auth.recovery_codes.and_others', {count: backup_codes | length - 2}) }}</p>
+                    {% set remainingCodesCount = (backup_codes | length) - 2 %}
+                    <p class="text-xs text-muted-foreground text-center mt-2">{{ t('auth.recovery_codes.and_others', {count: remainingCodesCount}) }}</p>
                     {% endif %}
                 </div>
 

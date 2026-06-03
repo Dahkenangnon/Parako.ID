@@ -30,7 +30,7 @@ import {
  * Sections that tenants are allowed to customize.
  * Maps section name -> display label.
  */
-const CONFIGURABLE_SECTIONS: Record<string, string> = {
+const CONFIGURABLE_SECTIONS = {
   application: 'Application',
   branding: 'Branding',
   security: 'Security',
@@ -38,12 +38,14 @@ const CONFIGURABLE_SECTIONS: Record<string, string> = {
   oidc: 'OIDC',
   integrations: 'Integrations',
   notifications: 'Notifications',
-};
+} as const;
+
+type ConfigurableSection = keyof typeof CONFIGURABLE_SECTIONS;
 
 /**
  * Section descriptions for the overview page.
  */
-const SECTION_DESCRIPTIONS: Record<string, string> = {
+const SECTION_DESCRIPTIONS: Record<ConfigurableSection, string> = {
   application: 'Name, description, and language preferences',
   branding: 'Company name, logos, theme colors, and typography',
   security: 'Authentication policies, registration, and rate limiting',
@@ -53,6 +55,34 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   notifications:
     'Notification channels, SMS configuration, and user notification preferences',
 };
+
+function isConfigurableSection(
+  section: string
+): section is ConfigurableSection {
+  return Object.prototype.hasOwnProperty.call(CONFIGURABLE_SECTIONS, section);
+}
+
+function buildSectionOverrides(
+  section: ConfigurableSection,
+  sectionData: Record<string, any>
+): Partial<Record<ConfigurableSection, Record<string, any>>> {
+  switch (section) {
+    case 'application':
+      return { application: sectionData };
+    case 'branding':
+      return { branding: sectionData };
+    case 'security':
+      return { security: sectionData };
+    case 'features':
+      return { features: sectionData };
+    case 'oidc':
+      return { oidc: sectionData };
+    case 'integrations':
+      return { integrations: sectionData };
+    case 'notifications':
+      return { notifications: sectionData };
+  }
+}
 
 /**
  * Helper: resolve tenant ID strictly.
@@ -117,14 +147,16 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       // Non-fatal -- show overview without override indicators
     }
 
-    const sections = Object.entries(CONFIGURABLE_SECTIONS).map(
-      ([key, label]) => ({
-        key,
-        label,
-        description: SECTION_DESCRIPTIONS[key] || '',
-        hasOverride: overrides ? key in overrides : false,
-      })
-    );
+    const sections = (
+      Object.entries(CONFIGURABLE_SECTIONS) as Array<
+        [ConfigurableSection, string]
+      >
+    ).map(([key, label]) => ({
+      key,
+      label,
+      description: SECTION_DESCRIPTIONS[key] || '',
+      hasOverride: overrides ? key in overrides : false,
+    }));
 
     res.render('admin/configuration/overview', {
       title: 'Configuration',
@@ -136,7 +168,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   section = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
 
-    if (!CONFIGURABLE_SECTIONS[section]) {
+    if (!isConfigurableSection(section)) {
       this.sessionManager.flash(req).error('Invalid configuration section');
       return res.redirect('/admin/configuration');
     }
@@ -236,7 +268,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   updateSection = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
 
-    if (!CONFIGURABLE_SECTIONS[section]) {
+    if (!isConfigurableSection(section)) {
       this.sessionManager.flash(req).error('Invalid configuration section');
       return res.redirect('/admin/configuration');
     }
@@ -293,13 +325,11 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
       // Re-assert the allowlist for static analysers that cannot trace the
       // earlier CONFIGURABLE_SECTIONS check through the function body.
-      if (
-        !Object.prototype.hasOwnProperty.call(CONFIGURABLE_SECTIONS, section)
-      ) {
+      if (!isConfigurableSection(section)) {
         this.sessionManager.flash(req).error('Invalid configuration section');
         return res.redirect('/admin/configuration');
       }
-      const overrides = { [section]: sectionData };
+      const overrides = buildSectionOverrides(section, sectionData);
 
       const platformConfig =
         this.configManager.getPlatformConfig() as unknown as Record<
@@ -353,7 +383,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
   resetSection = async (req: Request, res: Response): Promise<void> => {
     const { section } = req.params;
 
-    if (!CONFIGURABLE_SECTIONS[section]) {
+    if (!isConfigurableSection(section)) {
       this.sessionManager.flash(req).error('Invalid configuration section');
       return res.redirect('/admin/configuration');
     }

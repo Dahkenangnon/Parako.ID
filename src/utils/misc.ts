@@ -326,7 +326,7 @@ export function formatDateTimeWithMetadata(
       targetDate.getDate()
     );
 
-    let relativeType: FormattedDateTimeResult['relativeType'] = 'full';
+    let relativeType: FormattedDateTimeResult['relativeType'];
     let result = '';
 
     if (options.useRelativeTime !== false) {

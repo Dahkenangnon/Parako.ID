@@ -528,7 +528,6 @@ export class ActivityService implements IActivityService {
       } else if (
         user &&
         typeof user === 'object' &&
-        user !== null &&
         'username' in user &&
         typeof (user as any).username === 'string'
       ) {
@@ -540,7 +539,7 @@ export class ActivityService implements IActivityService {
           ...this.extractUserData(actor),
           actor_type: actor.actor_type || 'user',
         } as IActivity['actor'];
-      } else if (user && !actor) {
+      } else if (user) {
         dto.actor = {
           ...this.extractUserData(user),
           actor_type: 'user',

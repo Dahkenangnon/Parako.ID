@@ -61,16 +61,14 @@ describe('Mongoose Model Tenant Indexes', () => {
       const fieldsMatch = JSON.stringify(idx.fields) === JSON.stringify(fields);
       if (!options) return fieldsMatch;
 
-      let optionsMatch = true;
-      if (options.unique !== undefined)
-        optionsMatch = optionsMatch && idx.options.unique === options.unique;
-      if (options.sparse !== undefined)
-        optionsMatch = optionsMatch && idx.options.sparse === options.sparse;
-      if (options.partialFilterExpression !== undefined)
-        optionsMatch =
-          optionsMatch &&
+      const optionChecks = [
+        options.unique === undefined || idx.options.unique === options.unique,
+        options.sparse === undefined || idx.options.sparse === options.sparse,
+        options.partialFilterExpression === undefined ||
           JSON.stringify(idx.options.partialFilterExpression) ===
-            JSON.stringify(options.partialFilterExpression);
+            JSON.stringify(options.partialFilterExpression),
+      ];
+      const optionsMatch = optionChecks.every(Boolean);
       return fieldsMatch && optionsMatch;
     });
   }
