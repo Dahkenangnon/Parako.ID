@@ -1,10 +1,12 @@
-import { existsSync, statSync, createReadStream } from 'node:fs';
+import { createReadStream, readdirSync, realpathSync, statSync } from 'node:fs';
 import {
   extname,
   isAbsolute,
+  join,
   normalize,
   relative,
   resolve as resolvePath,
+  sep,
 } from 'node:path';
 import type { Request, Response, NextFunction } from 'express';
 import { HARDENING } from '../config/hardening-defaults.js';
@@ -45,25 +47,99 @@ const isWithin = (basePath: string, candidate: string): boolean => {
   return true;
 };
 
+type PrecompressedEncoding = 'br' | 'gzip';
+
+type PrecompressedAsset = {
+  path: string;
+  size: number;
+};
+
+type PrecompressedManifestEntry = {
+  contentType: string;
+  br?: PrecompressedAsset;
+  gzip?: PrecompressedAsset;
+};
+
+const compressedSuffixToEncoding = (
+  filePath: string
+): PrecompressedEncoding | null => {
+  if (filePath.endsWith('.br')) return 'br';
+  if (filePath.endsWith('.gz')) return 'gzip';
+  return null;
+};
+
+const stripCompressedSuffix = (filePath: string): string => {
+  if (filePath.endsWith('.br')) return filePath.slice(0, -3);
+  if (filePath.endsWith('.gz')) return filePath.slice(0, -3);
+  return filePath;
+};
+
+const toUrlPath = (root: string, assetPath: string): string => {
+  const rel = relative(root, assetPath);
+  return `/${rel.split(sep).join('/')}`;
+};
+
+const addPrecompressedAsset = (
+  manifest: Map<string, PrecompressedManifestEntry>,
+  root: string,
+  compressedPath: string
+): void => {
+  const encoding = compressedSuffixToEncoding(compressedPath);
+  if (!encoding || !isWithin(root, compressedPath)) return;
+
+  const assetPath = stripCompressedSuffix(compressedPath);
+  if (!isWithin(root, assetPath)) return;
+
+  const contentType = CONTENT_TYPES[extname(assetPath).toLowerCase()];
+  if (!contentType) return;
+
+  const urlPath = toUrlPath(root, assetPath);
+  const entry = manifest.get(urlPath) ?? { contentType };
+  entry[encoding] = {
+    path: compressedPath,
+    size: statSync(compressedPath).size,
+  };
+  manifest.set(urlPath, entry);
+};
+
+const buildPrecompressedManifest = (
+  root: string
+): Map<string, PrecompressedManifestEntry> => {
+  const manifest = new Map<string, PrecompressedManifestEntry>();
+
+  const walk = (dir: string): void => {
+    if (!isWithin(root, dir)) return;
+
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = join(dir, entry.name);
+      if (!isWithin(root, entryPath)) continue;
+
+      if (entry.isDirectory()) {
+        walk(entryPath);
+        continue;
+      }
+
+      if (entry.isFile()) {
+        addPrecompressedAsset(manifest, root, entryPath);
+      }
+    }
+  };
+
+  walk(root);
+  return manifest;
+};
+
 const sendPrecompressed = (
   res: Response,
-  root: string,
-  filePath: string,
-  encoding: 'br' | 'gzip',
+  asset: PrecompressedAsset,
+  encoding: PrecompressedEncoding,
   contentType: string
 ): void => {
-  // Defense-in-depth: re-validate the suffixed path right before the
-  // FS calls. The suffix (`.br` / `.gz`) is a hardcoded literal, but
-  // re-checking gives CodeQL an unambiguous sanitizer at every sink.
-  if (!isWithin(root, filePath)) {
-    throw new Error('Precompressed file path escaped the public root');
-  }
-  const size = statSync(filePath).size;
   res.setHeader('Content-Encoding', encoding);
   res.setHeader('Content-Type', contentType);
-  res.setHeader('Content-Length', size);
+  res.setHeader('Content-Length', asset.size);
   res.setHeader('Vary', 'Accept-Encoding');
-  createReadStream(filePath).pipe(res);
+  createReadStream(asset.path).pipe(res);
 };
 
 /**
@@ -76,7 +152,8 @@ const sendPrecompressed = (
  * proportionally large heap regions on the request path.
  */
 export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
-  const root = resolvePath(publicRoot);
+  const root = realpathSync(resolvePath(publicRoot));
+  const manifest = buildPrecompressedManifest(root);
   const preferBrotli = HARDENING.static.precompressed.preferBrotli;
 
   return (req: Request, res: Response, next: NextFunction): void => {
@@ -93,6 +170,8 @@ export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
 
     const candidate = resolvePath(root, `.${normalize(req.path)}`);
     if (!isWithin(root, candidate)) return next();
+    const asset = manifest.get(req.path);
+    if (!asset) return next();
 
     const acceptEncoding = req.headers['accept-encoding'];
     const acceptsBr =
@@ -102,11 +181,10 @@ export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
       typeof acceptEncoding === 'string' &&
       acceptsEncoding(acceptEncoding, 'gzip');
 
-    const tryEncoding = (encoding: 'br' | 'gzip'): boolean => {
-      const filePath = `${candidate}.${encoding === 'br' ? 'br' : 'gz'}`;
-      if (!isWithin(root, filePath)) return false;
-      if (!existsSync(filePath)) return false;
-      sendPrecompressed(res, root, filePath, encoding, contentType);
+    const tryEncoding = (encoding: PrecompressedEncoding): boolean => {
+      const compressedAsset = asset[encoding];
+      if (!compressedAsset) return false;
+      sendPrecompressed(res, compressedAsset, encoding, asset.contentType);
       return true;
     };
 
