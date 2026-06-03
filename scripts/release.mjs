@@ -134,6 +134,10 @@ function runInherit(file, args) {
   execFileSync(file, args, { stdio: 'inherit' });
 }
 
+function runSilent(file, args) {
+  execFileSync(file, args, { stdio: 'ignore' });
+}
+
 function isDirty() {
   return git('status', '--porcelain').trim().length > 0;
 }
@@ -146,6 +150,20 @@ function currentBranch() {
   return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
     encoding: 'utf8',
   }).trim();
+}
+
+function resetGeneratedReleaseFiles() {
+  try {
+    runSilent('git', ['restore', '--staged', 'package.json', 'CHANGELOG.md']);
+  } catch {
+    // Ignore cleanup errors so the original release failure remains visible.
+  }
+
+  try {
+    runSilent('git', ['restore', 'package.json', 'CHANGELOG.md']);
+  } catch {
+    // Ignore cleanup errors so the original release failure remains visible.
+  }
 }
 
 function main() {
@@ -169,16 +187,26 @@ function main() {
 
   const prevTag = previousTagFor('v');
 
-  runInherit('npm', ['version', bump, '--no-git-tag-version']);
+  let version;
+  try {
+    runInherit('npm', ['version', bump, '--no-git-tag-version']);
 
-  const version = readVersion('.');
-  const body = generateBody(prevTag);
-  const src = readFileSync('CHANGELOG.md', 'utf8');
-  const stamped = stampChangelog(src, version, body);
-  writeFileSync('CHANGELOG.md', stamped);
+    version = readVersion('.');
+    const body = generateBody(prevTag);
+    const src = readFileSync('CHANGELOG.md', 'utf8');
+    const stamped = stampChangelog(src, version, body);
+    writeFileSync('CHANGELOG.md', stamped);
 
-  runInherit('git', ['add', 'package.json', 'CHANGELOG.md']);
-  runInherit('git', ['commit', '-m', `chore(release): v${version}`]);
+    runInherit('npx', ['prettier', '--write', 'package.json', 'CHANGELOG.md']);
+    runInherit('git', ['add', 'package.json', 'CHANGELOG.md']);
+    runInherit('git', ['commit', '-m', `chore(release): v${version}`]);
+  } catch (error) {
+    resetGeneratedReleaseFiles();
+    process.stderr.write(
+      '\nRelease commit failed. Generated package.json and CHANGELOG.md changes were reset so you can rerun the release command after fixing the reported issue.\n'
+    );
+    throw error;
+  }
 
   if (noPush) {
     process.stdout.write(
