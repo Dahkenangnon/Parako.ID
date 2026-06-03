@@ -16,6 +16,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { URL } from 'node:url';
 import { injectable, inject, optional } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
@@ -28,10 +29,12 @@ import {
 
 /** Redis TTL for stored social callback refs (2 minutes). */
 const REF_TTL_SECONDS = 120;
+const SAFE_SUBDOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const SAFE_PROVIDER_SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 
 export interface OpsSocialCallbackResult {
   success: true;
-  redirectUrl: string;
+  redirectUrl: URL;
 }
 
 export interface OpsSocialCallbackError {
@@ -54,6 +57,24 @@ export interface IOpsRedisClient {
   get(key: string): Promise<string | null>;
   getdel?(key: string): Promise<string | null>;
   del(key: string): Promise<number>;
+}
+
+function toSafeSlug(value: string, pattern: RegExp): string | null {
+  const normalized = value.trim().toLowerCase();
+  return pattern.test(normalized) ? normalized : null;
+}
+
+function parseBaseDomain(deploymentUrl: string): string | null {
+  const baseDomain = extractBaseDomain(deploymentUrl);
+  if (!baseDomain) {
+    return null;
+  }
+
+  try {
+    return new URL(`https://${baseDomain}`).host;
+  } catch {
+    return null;
+  }
 }
 
 @injectable()
@@ -108,11 +129,27 @@ export class OpsSocialCallbackService {
       return { success: false, error: `Invalid state: ${stateResult.error}` };
     }
 
-    const { tenant_id } = stateResult;
+    const tenantId = toSafeSlug(stateResult.tenant_id, SAFE_SUBDOMAIN_LABEL);
+    if (!tenantId) {
+      this.logger.warn('ops_social_callback_invalid_tenant_id', {
+        provider,
+        tenant_id: stateResult.tenant_id,
+      });
+      return { success: false, error: 'Invalid tenant' };
+    }
+
+    const providerSlug = toSafeSlug(provider, SAFE_PROVIDER_SLUG);
+    if (!providerSlug) {
+      this.logger.warn('ops_social_callback_invalid_provider', {
+        provider,
+        tenant_id: tenantId,
+      });
+      return { success: false, error: 'Invalid provider' };
+    }
 
     this.logger.info('ops_social_callback', {
-      provider,
-      tenant_id,
+      provider: providerSlug,
+      tenant_id: tenantId,
       nonce: stateResult.nonce,
     });
 
@@ -120,23 +157,34 @@ export class OpsSocialCallbackService {
     const ref = randomUUID();
     const refKey = `${SOCIAL_REF_REDIS_PREFIX}${ref}`;
     const refData = JSON.stringify({
-      provider,
+      provider: providerSlug,
       code,
-      tenant_id,
+      tenant_id: tenantId,
       timestamp: Date.now(),
     });
 
     await this.redis.set(refKey, refData, 'EX', REF_TTL_SECONDS);
 
     // 3. Build redirect URL back to originating tenant
-    const baseDomain = extractBaseDomain(config.deployment?.url || '');
-    const redirectUrl = `https://${tenant_id}.${baseDomain}/auth/social/${provider}/complete?ref=${ref}`;
+    const baseDomain = parseBaseDomain(config.deployment?.url || '');
+    if (!baseDomain) {
+      this.logger.error('ops_social_callback_invalid_base_domain', {
+        deploymentUrl: config.deployment?.url,
+      });
+      return { success: false, error: 'Service misconfigured' };
+    }
+
+    const redirectUrl = new URL(
+      `/auth/social/${providerSlug}/complete`,
+      `https://${tenantId}.${baseDomain}`
+    );
+    redirectUrl.searchParams.set('ref', ref);
 
     this.logger.info('ops_social_callback_redirect', {
-      provider,
-      tenant_id,
+      provider: providerSlug,
+      tenant_id: tenantId,
       ref,
-      redirectUrl,
+      redirectUrl: redirectUrl.href,
     });
 
     return { success: true, redirectUrl };

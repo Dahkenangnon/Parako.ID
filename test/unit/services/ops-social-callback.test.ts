@@ -120,7 +120,7 @@ describe('OpsSocialCallbackService', () => {
       );
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.redirectUrl).toContain('acme');
+        expect(result.redirectUrl.href).toContain('acme');
       }
     });
 
@@ -156,7 +156,7 @@ describe('OpsSocialCallbackService', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         // UUID v4 pattern in the ref query param
-        expect(result.redirectUrl).toMatch(/ref=[0-9a-f-]{36}/);
+        expect(result.redirectUrl.href).toMatch(/ref=[0-9a-f-]{36}/);
       }
     });
 
@@ -174,7 +174,7 @@ describe('OpsSocialCallbackService', () => {
       );
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.redirectUrl).toMatch(
+        expect(result.redirectUrl.href).toMatch(
           /^https:\/\/acme\.parako\.id\/auth\/social\/github\/complete\?ref=/
         );
       }
@@ -249,6 +249,50 @@ describe('OpsSocialCallbackService', () => {
         'ops_social_callback_no_hmac_secret',
         expect.any(Object)
       );
+    });
+
+    it('rejects unsafe tenant ids before storing callback data', async () => {
+      const { service, redis } = makeService();
+      const state = createHmacState(
+        {
+          tenant_id: 'acme.evil.test',
+          nonce: 'n1',
+          timestamp: Date.now(),
+        },
+        TEST_SECRET
+      );
+
+      const result = await service.handleCallback(
+        'google',
+        'auth-code-123',
+        state
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toMatch(/tenant/i);
+      }
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it('rejects unsafe provider slugs before storing callback data', async () => {
+      const { service, redis } = makeService();
+      const state = createHmacState(
+        { tenant_id: 'acme', nonce: 'n1', timestamp: Date.now() },
+        TEST_SECRET
+      );
+
+      const result = await service.handleCallback(
+        '../google',
+        'auth-code-123',
+        state
+      );
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toMatch(/provider/i);
+      }
+      expect(redis.set).not.toHaveBeenCalled();
     });
 
     it('logs the callback processing', async () => {

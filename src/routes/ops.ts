@@ -52,7 +52,7 @@ export function opsRoutes(
         );
 
         if (result.success === true) {
-          res.redirect(result.redirectUrl);
+          res.redirect(result.redirectUrl.href);
         } else {
           res.status(400).json({ error: result.error });
         }
