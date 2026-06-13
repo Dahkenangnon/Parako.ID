@@ -179,7 +179,7 @@
     "@vitest/ui": "^4.1.8",
     "chokidar": "^4.0.3",
     "cross-env": "^10.1.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "eslint": "^9.36.0",
     "glob": "^11.0.3",
     "husky": "^9.1.7",
