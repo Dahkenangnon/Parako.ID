@@ -131,6 +131,7 @@
     "multer": "^2.1.1",
     "nodemailer": "^8.0.1",
     "nunjucks": "^3.2.4",
+    "on-headers": "^1.1.0",
     "oidc-provider": "^9.8.4",
     "openid-client": "^6.8.4",
     "otplib": "^13.3.0",
