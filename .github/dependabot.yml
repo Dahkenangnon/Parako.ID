@@ -7,6 +7,9 @@ updates:
       day: friday
     target-branch: dev
     open-pull-requests-limit: 10
+    commit-message:
+      prefix: 'build(deps)'
+      prefix-development: 'build(deps)'
     groups:
       production-dependencies:
         dependency-type: production
