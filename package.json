@@ -143,7 +143,7 @@
     "qrcode": "^1.5.4",
     "rate-limit-redis": "^5.0.0",
     "reflect-metadata": "^0.2.2",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "twilio": "^6.0.2",
     "ua-parser-js": "^2.0.10",
     "zod": "^4.4.3"
