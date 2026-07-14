@@ -281,8 +281,7 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
       ...oidcConfiguration,
       jwks,
       adapter: this.adapterBridge.adapter as unknown as
-        | AdapterConstructor
-        | AdapterFactory,
+        AdapterConstructor | AdapterFactory,
     });
 
     // Set proxy in production — before pool insertion so no request sees

@@ -4,10 +4,7 @@ import { type IUser } from '../../../types/user.js';
  * Edit policy for custom identifier fields
  */
 export type CustomIdentifierEditPolicy =
-  | 'admin_only'
-  | 'set_once'
-  | 'editable'
-  | 'full';
+  'admin_only' | 'set_once' | 'editable' | 'full';
 
 /**
  * Custom identifier field configuration

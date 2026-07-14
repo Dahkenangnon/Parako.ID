@@ -107,8 +107,7 @@ export class ProviderService {
         ...oidcConfiguration,
         jwks,
         adapter: this.oidcAdapter.adapter as unknown as
-          | AdapterConstructor
-          | AdapterFactory,
+          AdapterConstructor | AdapterFactory,
       });
 
       if (isProduction) {

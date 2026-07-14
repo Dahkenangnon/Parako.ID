@@ -1613,8 +1613,7 @@ export class UserService implements IUserService {
         (error as any).code === 11000
       ) {
         const keyPattern = (error as any).keyPattern as
-          | Record<string, number>
-          | undefined;
+          Record<string, number> | undefined;
         let friendly: string;
 
         if (keyPattern?.email) {

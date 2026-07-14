@@ -199,8 +199,7 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
       switch (source) {
         case 'header': {
           const headerTenant = req.headers[config.tenant_header] as
-            | string
-            | undefined;
+            string | undefined;
           if (headerTenant) return headerTenant;
           break;
         }

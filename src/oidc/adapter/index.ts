@@ -285,9 +285,7 @@ export class OIDCAdapterBridge {
   }
 
   get session():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -300,9 +298,7 @@ export class OIDCAdapterBridge {
   }
 
   get grant():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -315,9 +311,7 @@ export class OIDCAdapterBridge {
   }
 
   get client():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -330,9 +324,7 @@ export class OIDCAdapterBridge {
   }
 
   get accessToken():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -345,9 +337,7 @@ export class OIDCAdapterBridge {
   }
 
   get refreshToken():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -360,9 +350,7 @@ export class OIDCAdapterBridge {
   }
 
   get interaction():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService {
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'

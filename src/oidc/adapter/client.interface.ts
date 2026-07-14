@@ -18,12 +18,7 @@ export type ApplicationType = 'web' | 'native' | 'spa';
  * Maps to spec-compliant application_type + grant/auth defaults.
  */
 export type ClientPreset =
-  | 'web'
-  | 'spa'
-  | 'native'
-  | 'm2m'
-  | 'device'
-  | 'api_management';
+  'web' | 'spa' | 'native' | 'm2m' | 'device' | 'api_management';
 
 /**
  * Token endpoint authentication method

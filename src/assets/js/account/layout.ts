@@ -454,8 +454,7 @@
       themeOptions.forEach(option => {
         option.addEventListener('click', () => {
           const newTheme = option.getAttribute('data-theme') as
-            | 'light'
-            | 'dark';
+            'light' | 'dark';
           if (newTheme) this.handleMobileThemeChange(newTheme, themeOptions);
         });
       });

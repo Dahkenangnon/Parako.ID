@@ -270,11 +270,9 @@ export function applyComputedDefaults(config: any): any {
   // the tenant's subdomain or custom domain instead of the platform URL.
   // Priority: 1. explicit oidc.issuer_url  2. tenant_domain  3. subdomain
   const explicitIssuerUrl = getNestedValue(result, 'oidc.issuer_url') as
-    | string
-    | undefined;
+    string | undefined;
   const tenantDomain = getNestedValue(result, 'tenant_domain') as
-    | string
-    | undefined;
+    string | undefined;
   const tenantId = tenantContext.getTenantIdSafe();
   const isTenantContext =
     tenantId !== undefined && tenantId !== DEFAULT_TENANT_ID;

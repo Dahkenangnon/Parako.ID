@@ -4,10 +4,7 @@ import type { IUser } from '../../types/user.js';
  * Recovery method types
  */
 export type RecoveryMethod =
-  | 'backup_codes'
-  | 'secondary_email'
-  | 'sms'
-  | 'security_questions';
+  'backup_codes' | 'secondary_email' | 'sms' | 'security_questions';
 
 /**
  * Recovery attempt status

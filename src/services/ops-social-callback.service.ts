@@ -43,8 +43,7 @@ export interface OpsSocialCallbackError {
 }
 
 export type OpsSocialCallbackResponse =
-  | OpsSocialCallbackResult
-  | OpsSocialCallbackError;
+  OpsSocialCallbackResult | OpsSocialCallbackError;
 
 /** Minimal Redis interface — only the commands these services use. */
 export interface IOpsRedisClient {

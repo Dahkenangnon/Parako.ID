@@ -164,10 +164,12 @@ export class RegistrationTokensController {
         throw notFound(`Registration token '${jti}' not found`);
       }
 
-      const adapter = new (AdapterFactory as new (name: string) => {
-        find(id: string): Promise<unknown>;
-        destroy(id: string): Promise<void>;
-      })('InitialAccessToken');
+      const adapter = new (
+        AdapterFactory as new (name: string) => {
+          find(id: string): Promise<unknown>;
+          destroy(id: string): Promise<void>;
+        }
+      )('InitialAccessToken');
       const payload = await adapter.find(jti);
 
       if (!payload) {
@@ -195,10 +197,12 @@ export class RegistrationTokensController {
       const AdapterFactory = (provider as unknown as Record<string, unknown>)
         .Adapter;
       if (AdapterFactory) {
-        const adapter = new (AdapterFactory as new (name: string) => {
-          find(id: string): Promise<unknown>;
-          destroy(id: string): Promise<void>;
-        })('InitialAccessToken');
+        const adapter = new (
+          AdapterFactory as new (name: string) => {
+            find(id: string): Promise<unknown>;
+            destroy(id: string): Promise<void>;
+          }
+        )('InitialAccessToken');
         const existing = await adapter.find(jti);
         if (!existing) {
           throw notFound(`Registration token '${jti}' not found`);

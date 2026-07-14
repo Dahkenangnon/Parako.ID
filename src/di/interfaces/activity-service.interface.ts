@@ -74,13 +74,7 @@ export interface ActivityOptions {
   actor?: ActorInfo;
   target?: {
     target_type?:
-      | 'user'
-      | 'session'
-      | 'client'
-      | 'grant'
-      | 'config'
-      | 'system'
-      | 'none';
+      'user' | 'session' | 'client' | 'grant' | 'config' | 'system' | 'none';
     user_id?: string;
     username?: string;
     email?: string;

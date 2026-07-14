@@ -213,8 +213,7 @@ export function resolveTier1Endpoints(
   // Fallback for unknown providers — use config (Zod-validated URLs only)
   const tokenEndpoint = providerConfig.token_endpoint as string | undefined;
   const userinfoEndpoint = providerConfig.userinfo_endpoint as
-    | string
-    | undefined;
+    string | undefined;
 
   if (tokenEndpoint && userinfoEndpoint) {
     return {
