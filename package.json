@@ -92,8 +92,8 @@
     "parako-id"
   ],
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1004.0",
-    "@aws-sdk/s3-request-presigner": "^3.1004.0",
+    "@aws-sdk/client-s3": "^3.1086.0",
+    "@aws-sdk/s3-request-presigner": "^3.1086.0",
     "@fast-csv/format": "^5.0.7",
     "@fingerprintjs/fingerprintjs": "^3.4.2",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
