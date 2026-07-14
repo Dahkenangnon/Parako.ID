@@ -166,7 +166,7 @@
     "@types/i18n": "^0.13.12",
     "@types/koa": "^3.0.3",
     "@types/multer": "^2.2.0",
-    "@types/node": "^24.3.1",
+    "@types/node": "^24.13.3",
     "@types/nodemailer": "^8.0.1",
     "@types/nunjucks": "^3.2.6",
     "@types/oidc-provider": "^9.5.0",
