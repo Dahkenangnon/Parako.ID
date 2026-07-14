@@ -39,6 +39,17 @@ minimumReleaseAgeExclude:
   - '@aws-sdk/credential-provider-node@3.972.67'
   - '@aws-sdk/s3-request-presigner@3.1086.0'
   - '@types/supertest@7.2.1'
+  - '@typescript-eslint/eslint-plugin@8.64.0'
+  - '@typescript-eslint/parser@8.64.0'
+  - '@typescript-eslint/project-service@8.64.0'
+  - '@typescript-eslint/scope-manager@8.64.0'
+  - '@typescript-eslint/tsconfig-utils@8.64.0'
+  - '@typescript-eslint/type-utils@8.64.0'
+  - '@typescript-eslint/types@8.64.0'
+  - '@typescript-eslint/typescript-estree@8.64.0'
+  - '@typescript-eslint/utils@8.64.0'
+  - '@typescript-eslint/visitor-keys@8.64.0'
+  - typescript-eslint@8.64.0
 
 # Transitive vulnerability remediation — every entry maps a vulnerable package
 # to its patched floor. Keep these constraints aligned with GitHub alerts and
