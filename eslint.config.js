@@ -63,6 +63,9 @@ const restrictedNodeBuiltinImports = NODE_BUILTINS.map(name => ({
 }));
 
 export default tseslint.config(
+  {
+    ignores: ['prisma/generated/**'],
+  },
   ...tseslint.configs.recommended,
   {
     // Node.js backend files
@@ -238,8 +241,10 @@ export default tseslint.config(
       '*.bundle.js',
       '.git/**',
       '.worktrees/**',
+      'parako-id-release/**',
       'parako-id-v*.tar.gz',
       'parako-id-v*.zip',
+      'SHA256SUMS',
       'public/js/**',
       'runtime/ecosystem.config.cjs',
       'runtime/locales/.merged/**',

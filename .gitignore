@@ -34,8 +34,10 @@ yarn-error.log*
 # -------------------------------
 coverage/
 test-results/
+parako-id-release/
 parako-id-v*.tar.gz
 parako-id-v*.zip
+SHA256SUMS
 ssl
 
 # -------------------------------
@@ -75,6 +77,9 @@ runtime/config-backups/*.jsonc
 # i18n generated files
 # -------------------------------
 runtime/locales/.merged/
+
+# Adapter-specific Prisma client (generated during install and release builds)
+prisma/generated/
 
 
 # -------------------------------

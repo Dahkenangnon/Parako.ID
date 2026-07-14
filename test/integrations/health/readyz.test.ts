@@ -10,9 +10,12 @@ import {
 // The /readyz handler is identical to the one mounted by setupHealthEndpoint
 // in src/app.ts. The test rebuilds it with a stub database manager so the
 // suite does not need a real DB connection or the full Application bootstrap.
-function buildReadyzApp(getDbConnected: () => boolean): Express {
+function buildReadyzApp(
+  getDbConnected: () => boolean,
+  pingDb: () => Promise<boolean> = async () => true
+): Express {
   const app = express();
-  const handler: RequestHandler = (_req, res) => {
+  const handler: RequestHandler = async (_req, res) => {
     if (isShuttingDown()) {
       res.status(503).json({
         status: 'shutting_down',
@@ -20,7 +23,7 @@ function buildReadyzApp(getDbConnected: () => boolean): Express {
       });
       return;
     }
-    if (!getDbConnected()) {
+    if (!getDbConnected() || !(await pingDb())) {
       res.status(503).json({
         status: 'db_disconnected',
         timestamp: new Date().toISOString(),
@@ -54,6 +57,16 @@ describe('/readyz readiness probe', () => {
 
   it('returns 503 db_disconnected when DB is offline', async () => {
     const app = buildReadyzApp(() => false);
+    const res = await request(app).get('/readyz');
+    expect(res.status).toBe(503);
+    expect(res.body.status).toBe('db_disconnected');
+  });
+
+  it('returns 503 when the database connection exists but a query fails', async () => {
+    const app = buildReadyzApp(
+      () => true,
+      async () => false
+    );
     const res = await request(app).get('/readyz');
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('db_disconnected');

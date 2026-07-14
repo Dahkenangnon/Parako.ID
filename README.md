@@ -4,25 +4,35 @@
 
 # Parako.ID
 
-**Open-source, self-hosted OIDC/OAuth2 identity infrastructure for teams, SaaS platforms, schools, companies, and institutions that need modern authentication without per-user pricing.**
+> **Identity infrastructure you own.**
+
+Open-source, self-hosted authentication and authorization for teams that need
+standards-based SSO without per-user pricing or surrendering control of their
+identity data.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D24-brightgreen.svg)](https://nodejs.org)
-[![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-orange.svg)](https://pnpm.io)
-[![Releases](https://img.shields.io/github/v/release/Dahkenangnon/Parako.ID?include_prereleases)](https://github.com/Dahkenangnon/Parako.ID/releases)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D24-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
+[![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-F69220.svg?logo=pnpm&logoColor=white)](https://pnpm.io)
+[![Releases](https://img.shields.io/github/v/release/Dahkenangnon/Parako.ID?include_prereleases&label=release)](https://github.com/Dahkenangnon/Parako.ID/releases)
 
-[Website](https://parako.id) · [Docs](https://docs.parako.id) · [Quickstart](https://docs.parako.id/quickstart) · [Releases](https://github.com/Dahkenangnon/Parako.ID/releases)
+[Website](https://parako.id) · [Documentation](./docs/introduction.md) · [Quickstart](./docs/quickstart.md) · [Releases](https://github.com/Dahkenangnon/Parako.ID/releases) · [Security](./SECURITY.md)
 
 > [!WARNING]
-> **Early access - actively developed.** APIs and configuration format may change before v1.0.
+> Parako.ID is early-access software under active development. APIs,
+> configuration, and upgrade contracts may change before v1.0. Evaluate it in
+> a non-production environment before connecting a product.
 
-Parako.ID is an identity provider you deploy and operate yourself. It gives you standards-based SSO, OAuth2/OIDC, MFA, passkeys, social login, device flow, tenant-aware identity, branded login experiences, an admin panel, and a scoped Management API while keeping users, sessions, keys, grants, audit logs, and configuration inside your infrastructure.
+Parako.ID is an OpenID Connect and OAuth 2.0 identity provider for web, mobile,
+API, CLI, and device applications. It combines modern sign-in, tenant-aware
+identity, branded experiences, an administration panel, and production
+lifecycle tooling in one deployment—while users, sessions, keys, grants,
+audit logs, and configuration remain inside infrastructure you control.
 
 It is built on the OpenID Certified [`node-oidc-provider`](https://github.com/panva/node-oidc-provider) library. Parako.ID itself has not undergone OpenID Foundation certification.
 
 ## Why Parako.ID
 
-Managed auth is convenient until user count, data residency, tenant isolation, low-connectivity users, or institution-specific identifiers become business requirements. Parako.ID gives you a standards-based identity server that starts with SQLite, runs on your own Linux host, and can grow into a multi-tenant control plane backed by MongoDB, PostgreSQL, and optional Redis.
+Managed auth is convenient until user count, data residency, tenant isolation, low-connectivity users, or institution-specific identifiers become business requirements. Parako.ID gives you a standards-based identity server that starts with SQLite, runs on your own Linux host, and can grow into a multi-tenant control plane backed by MongoDB, PostgreSQL, and Redis.
 
 | Need                            | What Parako.ID gives you                                                                                    |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -30,7 +40,7 @@ Managed auth is convenient until user count, data residency, tenant isolation, l
 | Own identity data               | Users, password hashes, sessions, JWKS, grants, audit logs, and tenant config stay in your database         |
 | Serve unreliable networks       | Server-rendered login, account, and admin screens built to remain practical on 2G/3G-style links            |
 | Start without database ceremony | SQLite default for local development, evaluation, and small single-process deployments                      |
-| Scale the storage model         | MongoDB or PostgreSQL for production, optional Redis for sessions, OIDC storage, cache, and background jobs |
+| Scale the storage model         | MongoDB or PostgreSQL for production, with Redis-backed sessions, OIDC storage, cache, and background jobs  |
 | Run many organizations          | Tenant isolation, per-tenant branding/config/OIDC provider instances, subdomain or header tenant resolution |
 | Support local identity patterns | Email, phone, username, and custom identifiers such as employee IDs or student matricule numbers            |
 
@@ -78,18 +88,18 @@ Parako.ID is practical for environments where identity systems must work with co
 
 ### Operator-Controlled Deployment
 
-The installer verifies release artifacts, stages application files, preserves runtime data, switches the active release pointer, and gives you `parako update`, `parako rollback`, `parako doctor`, and `parako gc`. It intentionally does not take over your database, migrations, backups, process manager, reverse proxy, TLS, secrets, or production configuration.
+Architecture-specific releases bundle Node.js, production dependencies, migrations, backup encryption tools, an SPDX SBOM, and a compatibility manifest. The installer verifies and atomically activates them; the `parako` CLI manages bootstrap secrets, migrations, encrypted backup/restore, hardened systemd services, health diagnostics, updates, and rollback safety. Application and OIDC settings stay in the admin panel, while your team retains control of the database and Redis services, HTTPS ingress, DNS, monitoring, and off-host backup storage.
 
 ## Built For Operators
 
 Parako.ID is infrastructure you control, not a black-box auth tenant. The application handles identity workflows, OIDC protocol behavior, tenant-aware configuration, admin surfaces, and release staging. You keep ownership of the operational pieces that define your production posture.
 
-| Parako.ID manages                              | You own and control                                |
-| ---------------------------------------------- | -------------------------------------------------- |
-| OIDC/OAuth2 server behavior and auth flows     | Database choice, migrations, backups, and restores |
-| Users, sessions, grants, JWKS, and audit data  | Secrets, environment configuration, and TLS        |
-| Admin UI, platform portal, CLI, Management API | Reverse proxy, DNS, process manager, and scaling   |
-| Release staging, rollback, doctor, and cleanup | Upgrade timing, monitoring, and incident response  |
+| Parako.ID manages                                  | You own and control                                   |
+| -------------------------------------------------- | ----------------------------------------------------- |
+| OIDC/OAuth2 behavior, users, sessions, and grants  | Database and Redis provisioning, access, and scaling  |
+| Admin UI, application configuration, and clients   | Reverse proxy, DNS, certificates, and public ingress  |
+| Signed releases, migrations, and systemd lifecycle | Monitoring, incident response, and upgrade timing     |
+| Encrypted host backup/restore and rollback checks  | Off-host retention, restore drills, and recovery SLOs |
 
 ## What You Can Build With It
 
@@ -108,7 +118,7 @@ Install the latest release on a Linux host:
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-The installer places application files and prints the exact operator next steps. Full production setup lives in the [installer](https://docs.parako.id/installer), [deployment](https://docs.parako.id/deployment), and [configuration](https://docs.parako.id/configuration) docs.
+The installer places a verified self-contained release and installs the `parako` production operator. Follow the [quickstart](./docs/quickstart.md), [installer](./docs/installer.md), and [deployment](./docs/deployment.md) runbooks to configure dependencies, deploy systemd services, and create the first administrator.
 
 For local development:
 
@@ -125,10 +135,11 @@ Open `http://localhost:9007/auth/register`, create the first user, then visit `/
 
 ## Requirements
 
-- Linux x86_64 or aarch64 for the installer path.
-- Node.js >= 24 and pnpm >= 11.
+- Debian 12 or Ubuntu 24.04 on x86_64 or AArch64 for supported release installs.
+- Node.js >= 24 and pnpm >= 11 for source checkouts; releases bundle Node.js.
 - SQLite, MongoDB, or PostgreSQL.
-- Optional Redis for clustered sessions, OIDC storage, cache invalidation, and background jobs.
+- Redis for the supported production lifecycle; local source development can use SQLite without it.
+- An external HTTPS reverse proxy or load balancer for public deployments.
 - Optional SMTP/Twilio/social-provider credentials depending on enabled features.
 
 ## Project Status

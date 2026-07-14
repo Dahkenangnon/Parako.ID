@@ -1,7 +1,8 @@
 {
   "name": "parako.id",
+  "title": "Parako.ID: Identity Infrastructure You Own",
   "version": "0.2.3",
-  "description": "Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 — zero per-user fees",
+  "description": "Open-source, self-hosted identity infrastructure for secure SSO, OIDC/OAuth2, MFA, passkeys, and multi-tenant authentication.",
   "author": {
     "name": "Justin Dah-kenangnon",
     "email": "dah.kenangnon@gmail.com",
@@ -23,13 +24,23 @@
   "files": [
     "dist",
     "public",
-    "runtime",
-    "ecosystem.config.cjs",
+    "runtime/ecosystem.config.cjs",
+    "runtime/locales",
+    "prisma/migrations",
+    "prisma/schema.sqlite.prisma",
+    "prisma/schema.postgresql.prisma",
+    "prisma.config.ts",
+    "prisma.config.pg.ts",
+    ".env.example",
+    "parako-rp.example.json",
     "README.md",
     "LICENSE"
   ],
   "bin": {
+    "admin": "./dist/scripts/manage/admin.js",
     "client": "./dist/scripts/manage/client.js",
+    "database": "./dist/scripts/manage/database.js",
+    "diagnostics": "./dist/scripts/manage/diagnostics.js",
     "keys": "./dist/scripts/manage/keys.js",
     "systemd": "./dist/scripts/manage/systemd.js"
   },
@@ -46,7 +57,7 @@
     "pnpm": ">=11"
   },
   "scripts": {
-    "build": "cross-env NODE_ENV=production node scripts/build.js",
+    "build": "cross-env NODE_ENV=production node scripts/build.js --strict",
     "dev": "node scripts/dev.js",
     "dev:worker": "node --watch-path=dist/src dist/src/worker.js",
     "dev:all": "node scripts/dev.js --with-worker",
@@ -71,13 +82,21 @@
     "verify": "pnpm run lint:check && pnpm run format:check && pnpm run typecheck && pnpm run test:run",
     "clean": "rimraf dist",
     "client": "node dist/scripts/manage/client.js",
+    "admin": "node dist/scripts/manage/admin.js",
+    "database": "node dist/scripts/manage/database.js",
+    "diagnostics": "node dist/scripts/manage/diagnostics.js",
     "keys": "node dist/scripts/manage/keys.js",
     "systemd": "node dist/scripts/manage/systemd.js",
-    "postinstall": "prisma generate --config=prisma.config.ts",
+    "postinstall": "prisma generate --config=prisma.config.ts && prisma generate --config=prisma.config.pg.ts",
     "prepare": "husky",
     "release": "node scripts/release.mjs"
   },
   "keywords": [
+    "identity",
+    "identity-management",
+    "iam",
+    "sso",
+    "self-hosted",
     "oidc",
     "oauth2",
     "openid-connect",
@@ -87,6 +106,9 @@
     "mfa",
     "2fa",
     "totp",
+    "webauthn",
+    "passkeys",
+    "multi-tenant",
     "jwt",
     "jwks",
     "parako-id"
@@ -99,6 +121,7 @@
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
+    "@prisma/client-runtime-utils": "7.8.0",
     "@simplewebauthn/server": "^13.3.2",
     "alpinejs": "^3.15.12",
     "argon2": "^0.44.0",

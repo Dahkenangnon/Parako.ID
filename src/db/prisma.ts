@@ -1,10 +1,48 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { existsSync, mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaPg } from '@prisma/adapter-pg';
 import type { BootstrapConfig } from '../config/schemas/bootstrap-schema.js';
 import { createTenantExtension } from './extensions/tenant.extension.js';
+
+type PrismaClientModule = {
+  PrismaClient: typeof PrismaClient;
+  Prisma: { defineExtension: typeof Prisma.defineExtension };
+};
+let postgresqlClientModule: PrismaClientModule | undefined;
+
+export function findPostgresqlPrismaClient(start: string): string {
+  let current = resolve(start);
+  while (true) {
+    const candidate = join(
+      current,
+      'prisma',
+      'generated',
+      'postgresql',
+      'index.js'
+    );
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) {
+      throw new Error(
+        'Generated PostgreSQL Prisma client is missing. Run pnpm db:generate:pg or use a complete release artifact.'
+      );
+    }
+    current = parent;
+  }
+}
+
+function loadPostgresqlPrismaClient(): PrismaClientModule {
+  if (postgresqlClientModule) return postgresqlClientModule;
+  const start = process.env.PARAKO_ROOT ?? process.cwd();
+  const modulePath = findPostgresqlPrismaClient(start);
+  postgresqlClientModule = createRequire(import.meta.url)(
+    modulePath
+  ) as PrismaClientModule;
+  return postgresqlClientModule;
+}
 
 /**
  * Create a PrismaClient backed by the adapter selected in BootstrapConfig.
@@ -79,13 +117,21 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
       idleTimeoutMillis: 30000,
       ssl: isProduction ? { rejectUnauthorized } : false,
     });
-    const client = new PrismaClient({ adapter: pgAdapter });
+    const { PrismaClient: PostgresqlPrismaClient, Prisma: PostgresqlPrisma } =
+      loadPostgresqlPrismaClient();
+    const client = new PostgresqlPrismaClient({
+      adapter: pgAdapter,
+    }) as unknown as PrismaClient;
 
     // The extension auto-injects tenant_id on writes, filters reads, and
     // executes SET LOCAL app.tenant_id for PostgreSQL RLS (belt-and-suspenders).
     if (config.multiTenancy?.enabled) {
       return client.$extends(
-        createTenantExtension('postgresql', client)
+        createTenantExtension(
+          'postgresql',
+          client,
+          PostgresqlPrisma.defineExtension
+        )
       ) as unknown as PrismaClient;
     }
 

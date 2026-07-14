@@ -19,6 +19,12 @@ export interface IDatabaseConnectionManager {
   isConnected(): boolean;
 
   /**
+   * Executes a lightweight query against the selected database adapter.
+   * Unlike isConnected(), this verifies that the backing database is reachable.
+   */
+  ping(): Promise<boolean>;
+
+  /**
    * Closes database connection
    * @returns Promise that resolves when disconnection is complete
    */

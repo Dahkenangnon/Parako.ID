@@ -2,6 +2,7 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "./generated/postgresql"
 }
 
 // ─── Datasource ───────────────────────────────────────────────────────────────
@@ -137,27 +138,27 @@ model UserWebauthnCredential {
 }
 
 model UserRecovery {
-  id                        String    @id @default(uuid())
-  user_id                   String    @unique
-  enabled                   Boolean   @default(false)
-  methods                   String    @default("[]")
+  id                        String                 @id @default(uuid())
+  user_id                   String                 @unique
+  enabled                   Boolean                @default(false)
+  methods                   String                 @default("[]")
   secondary_email           String?
-  secondary_email_verified  Boolean   @default(false)
+  secondary_email_verified  Boolean                @default(false)
   secondary_email_token     String?
   secondary_email_token_exp DateTime?
   sms_phone_number          String?
-  sms_verified              Boolean   @default(false)
+  sms_verified              Boolean                @default(false)
   sms_code                  String?
   sms_code_exp              DateTime?
   backup_codes_generated_at DateTime?
   backup_codes_expires_at   DateTime?
   sq_setup_at               DateTime?
   sq_last_used_at           DateTime?
-  sq_failed_attempts        Int       @default(0)
+  sq_failed_attempts        Int                    @default(0)
   sq_last_failed_at         DateTime?
   sq_locked_until           DateTime?
-  tenant_id                 String    @default("default")
-  user                      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tenant_id                 String                 @default("default")
+  user                      User                   @relation(fields: [user_id], references: [id], onDelete: Cascade)
   backup_codes              UserBackupCode[]
   security_questions        UserSecurityQuestion[]
 
@@ -270,8 +271,8 @@ model ActivityTarget {
 }
 
 model ActivityDevice {
-  id                      String   @id @default(uuid())
-  activity_id             String   @unique
+  id                      String    @id @default(uuid())
+  activity_id             String    @unique
   fingerprint             String?
   fingerprint_js_id       String?
   browser_name            String?
@@ -303,8 +304,8 @@ model ActivityDevice {
   device_trust_trusted    Boolean?
   device_trust_trusted_at DateTime?
   device_trust_until      DateTime?
-  tenant_id               String   @default("default")
-  activity                Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  tenant_id               String    @default("default")
+  activity                Activity  @relation(fields: [activity_id], references: [id], onDelete: Cascade)
 
   @@index([fingerprint])
   @@index([tenant_id])

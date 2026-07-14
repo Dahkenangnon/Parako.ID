@@ -10,6 +10,7 @@ coverage/
 test-results/
 
 # Generated files
+prisma/generated/
 *.min.js
 *.min.css
 *.bundle.js
@@ -45,8 +46,10 @@ pids
 Thumbs.db
 
 # Release artifacts
+parako-id-release/
 parako-id-v*.tar.gz
 parako-id-v*.zip
+SHA256SUMS
 
 # Git
 .git/

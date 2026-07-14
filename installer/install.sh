@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Parako.ID installer / updater — minimal application release deployer.
+# Parako.ID installer / updater and production lifecycle bootstrap.
 # License: MIT  https://github.com/Dahkenangnon/Parako.ID/blob/main/LICENSE
 # Threat model: docs/installer-security.md
 #
@@ -8,12 +8,11 @@
 #   This installer/updater safely places and updates Parako application files.
 #   It verifies the release artifact, stages it, preserves operator-owned
 #   runtime/config files, and switches the application release pointer.
-#   Infrastructure, database backups, database migrations, process management,
-#   reverse proxy, TLS, secrets, and production configuration remain operator
-#   responsibilities.
+#   The companion parako command manages migrations, backups, and systemd.
+#   Reverse proxy, TLS, and application/OIDC settings remain operator-managed.
 #
 # Prerequisites:
-#   - Linux x86_64 or aarch64.
+#   - Debian 12 or Ubuntu 24.04, x86_64 or aarch64.
 #   - bash >= 4.0 (Alpine: `apk add bash` first).
 #   - GNU coreutils (for `mv -T`) and util-linux (for `flock`).
 #     Alpine: `apk add coreutils util-linux` first.
@@ -77,7 +76,7 @@ trap on_interrupt INT TERM HUP
 # -----------------------------------------------------------------------------
 # §1  Constants
 # -----------------------------------------------------------------------------
-readonly INSTALLER_VERSION="0.2.0"
+readonly INSTALLER_VERSION="0.3.0"
 readonly REPO_OWNER="Dahkenangnon"
 readonly REPO_NAME="Parako.ID"
 readonly GITHUB_API="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}"
@@ -148,6 +147,14 @@ DOWNLOAD_CMD=""
 TAG=""
 RESOLVED_INSTALL_DIR=""
 RUN_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+
+release_architecture() {
+  case "$(uname -m 2>/dev/null || printf unknown)" in
+    x86_64|amd64) printf 'x64' ;;
+    aarch64|arm64) printf 'arm64' ;;
+    *) return 1 ;;
+  esac
+}
 
 # -----------------------------------------------------------------------------
 # §2  Logging + UI (color, label format, redactor)
@@ -267,9 +274,9 @@ Parako.ID installer v${INSTALLER_VERSION}
   It verifies the release artifact, stages it, preserves operator-owned
   runtime/config files, and switches the application release pointer.
 
-  Infrastructure, database backups, database migrations, process management,
-  reverse proxy, TLS, secrets, and production configuration remain OPERATOR
-  responsibilities.
+  After staging, the companion parako command manages bootstrap environment,
+  migrations, encrypted backups, and native systemd services. Reverse proxy,
+  TLS, and application/OIDC settings remain OPERATOR responsibilities.
 
 Common workflows:
   Fresh install (system-wide)
@@ -278,14 +285,14 @@ Common workflows:
   Update to latest stable
     parako update          # or: install.sh --update
 
-  Roll back app files (DOES NOT roll back any DB migration)
+  Safely roll back application files (database restore remains explicit)
     parako rollback        # or: install.sh --rollback
 
 Modes (mutually exclusive):
   (no mode flag)               Fresh install
   --update                     In-place update of an existing install
   --rollback                   Switch current → previous release pointer
-  --doctor                     File/config sanity report (no service/DB/network)
+  --doctor                     Installed-file sanity report
   --gc                         Prune old releases/ (never touches runtime/)
   --uninstall                  Remove this install (preserves runtime/ unless --purge)
 
@@ -326,10 +333,9 @@ Behavior:
   --help                       Show this message
 
 Scope:
-  Application files only. The operator manages database, services, reverse
-  proxy, TLS, OS packages, runtime/.env, runtime/jwks/, and the bootstrap
-  admin. The installer never writes outside the install directory except for
-  the optional /usr/local/bin/parako helper.
+  install.sh only verifies and stages release files. Use parako for bootstrap
+  environment, migrations, encrypted backups, systemd, health, and first-admin
+  activation. Reverse proxy, TLS, and admin-panel configuration are external.
 
 See:
   https://docs.parako.id/installer
@@ -437,7 +443,7 @@ _pf_warn() { print_label "$1" "$2 [${C_YELLOW}WARN${C_RESET}]"; PREFLIGHT_WARN_C
 _pf_fail() { print_label "$1" "$2 [${C_RED}FAIL${C_RESET}]"; PREFLIGHT_FAIL_COUNT=$((PREFLIGHT_FAIL_COUNT + 1)); _log_disk ERROR preflight "$1: $2"; }
 
 check_os_arch() {
-  local kernel arch
+  local kernel arch distro_id="" distro_version=""
   kernel=$(uname -s 2>/dev/null || printf 'unknown')
   arch=$(uname -m 2>/dev/null || printf 'unknown')
   if [ "${kernel}" != "Linux" ]; then
@@ -448,6 +454,14 @@ check_os_arch() {
     x86_64|amd64)   _pf_ok "OS / arch" "Linux ${arch}" ;;
     aarch64|arm64)  _pf_ok "OS / arch" "Linux ${arch}" ;;
     *)              _pf_fail "OS / arch" "Linux ${arch} (supported: x86_64, aarch64)" ;;
+  esac
+  if [ -r /etc/os-release ]; then
+    distro_id=$(. /etc/os-release; printf '%s' "${ID:-}")
+    distro_version=$(. /etc/os-release; printf '%s' "${VERSION_ID:-}")
+  fi
+  case "${distro_id}:${distro_version}" in
+    debian:12|ubuntu:24.04) _pf_ok "Distribution" "${distro_id} ${distro_version}" ;;
+    *) _pf_fail "Distribution" "${distro_id:-unknown} ${distro_version:-unknown} (supported: Debian 12, Ubuntu 24.04)" ;;
   esac
 }
 
@@ -639,9 +653,10 @@ fetch_release_artifacts() {
   TMPDIR_PATH=$(mktemp -d -t parako-XXXXXXXX)
   chmod 0700 "${TMPDIR_PATH}"
 
-  local base_url tarball_name
+  local base_url tarball_name release_arch
   base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${TAG}"
-  tarball_name="parako-id-${TAG}.tar.gz"
+  release_arch=$(release_architecture) || die "unsupported release architecture"
+  tarball_name="parako-id-${TAG}-linux-${release_arch}.tar.gz"
   TARBALL_FILE="${TMPDIR_PATH}/${tarball_name}"
   CHECKSUM_FILE="${TMPDIR_PATH}/SHA256SUMS"
   SIGNATURE_FILE="${TMPDIR_PATH}/${tarball_name}.sig"
@@ -660,14 +675,13 @@ fetch_release_artifacts() {
 
 verify_checksum() {
   [ -n "${CHECKSUM_FILE}" ] && [ -f "${CHECKSUM_FILE}" ] || {
-    log_warn "no SHA256SUMS file; skipping checksum verification"
-    return 0
+    die "SHA256SUMS is required for every installation"
   }
   local expected actual basename
   basename=$(basename "${TARBALL_FILE}")
   expected=$(grep -E "[[:space:]]${basename}\$" "${CHECKSUM_FILE}" | awk '{print $1}')
-  [ -z "${expected}" ] && { log_warn "${basename} not listed in SHA256SUMS; skipping"; return 0; }
-  actual=$(compute_sha256 "${TARBALL_FILE}") || { log_warn "sha256sum/shasum not available; skipping"; return 0; }
+  [ -z "${expected}" ] && die "${basename} is not listed in SHA256SUMS"
+  actual=$(compute_sha256 "${TARBALL_FILE}") || die "sha256sum or shasum is required"
   if [ "${actual}" != "${expected}" ]; then
     die "checksum mismatch: expected ${expected}, got ${actual}"
   fi
@@ -804,8 +818,8 @@ beginning_ritual() {
   print_label "Target version" "${TAG:-?}"
   print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
   printf '\n'
-  printf 'Scope: application files only. Database, services, reverse proxy, TLS,\n'
-  printf 'and runtime configuration remain operator-managed.\n\n'
+  printf 'Scope: verified application artifact staging. The parako companion\n'
+  printf 'handles database, backup, systemd, and health lifecycle afterward.\n\n'
   printf 'Steps:\n'
   printf '  1. Acquire an installer lock at %s/.install-lock.\n' "${RESOLVED_INSTALL_DIR}"
   printf '  2. Stage the release under %s/releases/.staging.%s.$$.\n' "${RESOLVED_INSTALL_DIR}" "${TAG}"
@@ -899,32 +913,30 @@ install_parako_binary() {
 # -----------------------------------------------------------------------------
 print_next_steps_card() {
   local current=$1 previous=${2:-}
-  local releases_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/tag/${current}"
   print_header "Parako.ID ${current} release pointer updated"
   print_label "Install dir"      "${RESOLVED_INSTALL_DIR}"
   print_label "Current release"  "${RESOLVED_INSTALL_DIR}/releases/${current}"
   if [ -n "${previous}" ]; then
     print_label "Previous release" "${RESOLVED_INSTALL_DIR}/releases/${previous}  (kept for rollback)"
   fi
-  print_label "Runtime"          "${RESOLVED_INSTALL_DIR}/runtime          (operator-managed)"
-  printf '\n  Next steps (operator):\n\n'
+  print_label "Runtime"          "${RESOLVED_INSTALL_DIR}/runtime"
+  printf '\n  Production lifecycle:\n\n'
   if [ -z "${previous}" ]; then
-    printf '    1. Create your configuration:\n'
-    printf '         cp %s/current/contrib/.env.sample             %s/runtime/.env\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
-    printf '         cp %s/current/contrib/parako-rp.sample.jsonc  %s/runtime/parako-rp.jsonc\n' "${RESOLVED_INSTALL_DIR}" "${RESOLVED_INSTALL_DIR}"
-    printf '       Generate JWKS only if you use file-backed key storage.\n\n'
+    printf '    1. Create an offline age identity and record its printed recipient:\n'
+    printf '         parako backup-keygen /root/parako-backup.agekey\n\n'
+    printf '    2. Create bootstrap-only configuration (application/OIDC settings stay in admin):\n'
+    printf '         parako config init --url https://id.example.com \\\n'
+    printf '           --adapter postgresql --database-url postgresql://... \\\n'
+    printf '           --backup-recipient age1...\n\n'
+    printf '    3. Provision an external HTTPS reverse proxy, then deploy:\n'
+    printf '         sudo parako deploy\n\n'
+    printf '    4. Create and open the single-use first-admin activation URL:\n'
+    printf '         sudo parako admin bootstrap --email admin@example.com\n\n'
+  else
+    printf '    The release pointer changed. If this command was run directly,\n'
+    printf '    services and migrations were not orchestrated. Use parako update for\n'
+    printf '    future updates; it requires backup, migration, and readiness gates.\n\n'
   fi
-  printf '    %s Apply any database migration listed in the release notes:\n' "$([ -z "${previous}" ] && printf '2.' || printf '1.')"
-  printf '       %s\n\n' "${releases_url}"
-  printf '    %s Back up the database first (pg_dump / mongodump / sqlite3 .backup).\n\n' "$([ -z "${previous}" ] && printf '3.' || printf '2.')"
-  printf '    %s Restart the service via your process manager (systemctl / pm2 / docker compose).\n' "$([ -z "${previous}" ] && printf '4.' || printf '3.')"
-  printf '       Reference unit / ecosystem at %s/current/contrib/.\n\n' "${RESOLVED_INSTALL_DIR}"
-  printf '    %s Verify health with your application probe.\n\n' "$([ -z "${previous}" ] && printf '5.' || printf '4.')"
-  printf '    %s Roll back application files with:\n' "$([ -z "${previous}" ] && printf '6.' || printf '5.')"
-  printf '         parako rollback              # previous release\n'
-  printf '         parako rollback --to vX.Y.Z  # specific release\n'
-  printf '       Database migrations are not reversed automatically — apply the reverse\n'
-  printf '       migration manually before restarting on the older release.\n\n'
 }
 
 # -----------------------------------------------------------------------------
@@ -972,7 +984,114 @@ _extract_to_staging() {
     || die "tar extraction failed"
   [ -f "${STAGING_DIR}/dist/src/index.js" ] \
     || die "smoke check failed: dist/src/index.js missing in extracted release"
+  validate_staged_release
   log_ok "extraction smoke-checked"
+}
+
+validate_staged_release() {
+  local node_bin="${STAGING_DIR}/node/bin/node"
+  local manifest="${STAGING_DIR}/release-manifest.json"
+  local expected_arch expected_version
+  expected_arch=$(release_architecture) || die "unsupported release architecture"
+  expected_version="${TAG#v}"
+
+  [ -x "${node_bin}" ] || die "release is missing its bundled Node.js runtime"
+  [ -x "${STAGING_DIR}/tools/age/age" ] \
+    || die "release is missing its bundled age encryption tool"
+  [ -f "${manifest}" ] || die "release is missing release-manifest.json"
+  [ -d "${STAGING_DIR}/prisma/migrations/sqlite" ] \
+    || die "release is missing SQLite migrations"
+  [ -d "${STAGING_DIR}/prisma/migrations/postgresql" ] \
+    || die "release is missing PostgreSQL migrations"
+  [ -f "${STAGING_DIR}/node_modules/@prisma/client/index.js" ] \
+    || die "release is missing its SQLite Prisma client"
+  [ -f "${STAGING_DIR}/prisma/generated/postgresql/index.js" ] \
+    || die "release is missing its PostgreSQL Prisma client"
+
+  "${node_bin}" -e '
+    const crypto = require("node:crypto");
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const [file, expectedVersion, expectedArch, releaseRoot] = process.argv.slice(1);
+    const m = JSON.parse(fs.readFileSync(file, "utf8"));
+    const failures = [];
+    const filesRecursively = directory => fs
+      .readdirSync(directory, { withFileTypes: true })
+      .flatMap(entry => {
+        const target = path.join(directory, entry.name);
+        return entry.isDirectory() ? filesRecursively(target) : [target];
+      })
+      .sort();
+    const hashDirectory = directory => {
+      const digest = crypto.createHash("sha256");
+      for (const entry of filesRecursively(directory)) {
+        digest.update(path.relative(directory, entry));
+        digest.update("\0");
+        digest.update(fs.readFileSync(entry));
+        digest.update("\0");
+      }
+      return digest.digest("hex");
+    };
+    const hashFile = target => crypto
+      .createHash("sha256")
+      .update(fs.readFileSync(target))
+      .digest("hex");
+    if (m.schemaVersion !== 1) failures.push("unsupported schemaVersion");
+    if (m.product !== "parako.id") failures.push("unexpected product");
+    if (m.version !== expectedVersion) failures.push("version mismatch");
+    if (m.platform?.os !== "linux") failures.push("OS mismatch");
+    if (m.platform?.architecture !== expectedArch) failures.push("architecture mismatch");
+    if (m.runtime?.node?.bundled !== true) failures.push("Node.js runtime is not declared bundled");
+    const expectedClients = {
+      sqlite: "node_modules/@prisma/client/index.js",
+      postgresql: "prisma/generated/postgresql/index.js",
+    };
+    for (const [adapter, expectedPath] of Object.entries(expectedClients)) {
+      const clientPath = m.runtime?.databaseClients?.[adapter]?.path;
+      if (clientPath !== expectedPath) {
+        failures.push(`${adapter} Prisma client contract missing`);
+      } else {
+        const resolvedClient = path.resolve(releaseRoot, clientPath);
+        if (!resolvedClient.startsWith(path.resolve(releaseRoot) + path.sep)) {
+          failures.push(`${adapter} Prisma client path escapes release root`);
+        } else if (!fs.existsSync(resolvedClient)) {
+          failures.push(`${adapter} Prisma client missing`);
+        }
+      }
+    }
+    if (!m.migrations?.sqlite?.sha256 || !m.migrations?.postgresql?.sha256) {
+      failures.push("migration checksums missing");
+    }
+    for (const adapter of ["sqlite", "postgresql"]) {
+      const migration = m.migrations?.[adapter];
+      if (migration?.path && migration?.sha256) {
+        const directory = path.resolve(releaseRoot, migration.path);
+        if (!directory.startsWith(path.resolve(releaseRoot) + path.sep)) {
+          failures.push(`${adapter} migration path escapes release root`);
+        } else if (hashDirectory(directory) !== migration.sha256) {
+          failures.push(`${adapter} migration checksum mismatch`);
+        }
+      }
+    }
+    if (m.services?.redis?.required !== true) failures.push("Redis contract missing");
+    const sbom = m.supplyChain?.sbom;
+    if (!sbom?.path || !sbom?.sha256) {
+      failures.push("SBOM checksum missing");
+    } else {
+      const sbomPath = path.resolve(releaseRoot, sbom.path);
+      if (!sbomPath.startsWith(path.resolve(releaseRoot) + path.sep)) {
+        failures.push("SBOM path escapes release root");
+      } else if (hashFile(sbomPath) !== sbom.sha256) {
+        failures.push("SBOM checksum mismatch");
+      }
+    }
+    if (failures.length) {
+      console.error(failures.join("; "));
+      process.exit(1);
+    }
+  ' "${manifest}" "${expected_version}" "${expected_arch}" "${STAGING_DIR}" \
+    || die "release manifest compatibility validation failed"
+  log_ok "release manifest verified (v${expected_version}, linux-${expected_arch})"
 }
 
 _promote_staging() {
@@ -1029,6 +1148,8 @@ install_main() {
   if [ ! -d "${RESOLVED_INSTALL_DIR}" ]; then
     if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
       mkdir -p "${RESOLVED_INSTALL_DIR}"
+    elif mkdir -p "${RESOLVED_INSTALL_DIR}" 2>/dev/null; then
+      log_info "created ${RESOLVED_INSTALL_DIR} as $(id -un)"
     elif command -v sudo >/dev/null 2>&1; then
       log_info "creating ${RESOLVED_INSTALL_DIR} (sudo)"
       sudo mkdir -p "${RESOLVED_INSTALL_DIR}"
@@ -1418,8 +1539,8 @@ plan_main() {
   print_label "Target version" "${target}"
   print_label "Install dir"    "${RESOLVED_INSTALL_DIR}"
   printf '\n'
-  printf '  Scope: application files only. Runtime, database, services, reverse\n'
-  printf '  proxy, and TLS remain operator-managed.\n\n'
+  printf '  Scope: verified application artifact staging. parako handles the\n'
+  printf '  production database and service lifecycle after installation.\n\n'
   printf '  Would resolve %s, download + cosign-verify the artifact, stage it under\n' "${target}"
   printf '    %s/releases/.staging.<tag>.$$\n' "${RESOLVED_INSTALL_DIR}"
   printf '  then atomically swap %s/current.\n' "${RESOLVED_INSTALL_DIR}"

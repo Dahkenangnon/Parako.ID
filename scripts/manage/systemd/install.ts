@@ -37,6 +37,11 @@ async function preflight(config: SystemdConfig): Promise<void> {
     process.exit(1);
   }
 
+  if (!fs.existsSync(config.runtimeDirectory)) {
+    log.error(`Runtime directory "${config.runtimeDirectory}" does not exist.`);
+    process.exit(1);
+  }
+
   // envFile is allowed to be missing on first boot but warn the operator
   if (!fs.existsSync(config.envFile)) {
     log.warning(

@@ -17,7 +17,7 @@ teardown() {
 @test "install.sh --help exits 0 and includes the version line" {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
-  echo "${output}" | grep -q "Parako.ID installer v0.2.0"
+  echo "${output}" | grep -q "Parako.ID installer v0.3.0"
 }
 
 @test "install.sh --help advertises only the surviving flags" {
@@ -33,7 +33,7 @@ teardown() {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
   echo "${output}" | grep -q "OPERATOR"
-  echo "${output}" | grep -q "process management"
+  echo "${output}" | grep -q "service lifecycle"
   echo "${output}" | grep -q "reverse proxy"
 }
 
@@ -106,7 +106,7 @@ teardown() {
 @test "parako.sh --help exits 0 and lists the surviving verbs" {
   run bash "${PARAKO_SH}" --help
   [ "${status}" -eq 0 ]
-  for verb in version paths doctor update rollback gc; do
+  for verb in version paths config db admin backup restore service deploy health diag doctor update rollback gc; do
     echo "${output}" | grep -q -E "^[[:space:]]+${verb}\\b" \
       || { echo "parako.sh --help missing verb: ${verb}"; return 1; }
   done

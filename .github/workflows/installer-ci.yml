@@ -46,12 +46,12 @@ jobs:
           checkbashisms installer/install.sh || true
           checkbashisms installer/parako.sh || true
 
-      - name: Acceptance grep — no banned tool calls in installer code
+      - name: Acceptance grep — low-level installer does not operate services or databases
         run: |
           set -euo pipefail
           # The installer must not invoke service / DB / proxy / package tooling.
           if grep -nE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
-               installer/install.sh installer/parako.sh \
+               installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE '\bprintf .*' \
              | grep -vE 'printf [^|]*\((systemctl|pm2|docker)' \
@@ -61,7 +61,7 @@ jobs:
             exit 1
           fi
           if grep -nE '(apt-get install|yum install|apk add )' \
-               installer/install.sh installer/parako.sh \
+               installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'die ' \
              | grep -vE '_pf_(fail|warn|ok)' \
@@ -71,7 +71,7 @@ jobs:
             exit 1
           fi
           if grep -nE 'pnpm (install|db:)' \
-               installer/install.sh installer/parako.sh \
+               installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'printf .*' ; then
             echo "::error::installer code contains pnpm install/db: invocation (above)" >&2
@@ -106,9 +106,9 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          V="0.0.0-ci.${SHA:0:8}"
+          V=$(node -p "require('./package.json').version")
           bash scripts/release.sh "$V" --verbose
-          ls -la "parako-id-v${V}.tar.gz" SHA256SUMS
+          ls -la "parako-id-v${V}-linux-x64.tar.gz" SHA256SUMS
           echo "version=${V}" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -127,10 +127,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
-          - ubuntu:22.04
           - ubuntu:24.04
           - debian:12
-          - alpine:3.19
     container:
       image: ${{ matrix.os }}
     env:
@@ -149,9 +147,6 @@ jobs:
               apt-get update -qq
               apt-get install -y -qq bash bats curl ca-certificates openssl tar coreutils util-linux
               ;;
-            alpine:*)
-              apk add --no-cache bash bats curl ca-certificates openssl tar coreutils util-linux
-              ;;
           esac
           bash --version | head -n1
           bats --version
@@ -164,7 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FIX_TAR="$(pwd)/fixture/parako-id-v${FIX_VERSION}.tar.gz"
+          FIX_TAR="$(pwd)/fixture/parako-id-v${FIX_VERSION}-linux-x64.tar.gz"
           FIX_SUMS="$(pwd)/fixture/SHA256SUMS"
           bash installer/install.sh \
             --dir /opt/parako-id \
@@ -185,7 +180,7 @@ jobs:
           [[ "$(readlink /opt/parako-id/current)" == /opt/parako-id/releases/* ]]
           [[ "$(readlink "/opt/parako-id/releases/v${FIX_VERSION}/runtime")" == ../../runtime ]]
 
-      - name: Doctor reports the install (no service / DB / network)
+      - name: Doctor reports the install
         run: bash installer/install.sh --doctor --dir /opt/parako-id --no-color
 
       - name: --gc preview with --keep 1 (nothing to delete on single-release install)

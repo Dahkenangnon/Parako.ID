@@ -7,7 +7,7 @@ order: 3
 
 ## Updating Parako.ID
 
-`parako update` is a release-pointer switcher; database migrations, service restart, backups, and health checks are operator-owned. The full operator runbook (read notes → backup → dry-run → apply → migrate → restart → verify → rollback) lives in [Upgrades](upgrades.md). Source-install upgrades follow the manual procedure in [Install from Source](installer-from-source.md).
+`parako update` validates Redis, creates the required encrypted pre-update backup, verifies and activates the new release, applies shipped migrations, restarts app and worker, and requires readiness to pass. Database restore remains explicit. Follow the recovery decisions in [Upgrades and rollback](upgrades.md). Source-install upgrades use the manual procedure in [Install from Source](installer-from-source.md).
 
 > **Warning:** `parako rollback` reverts application files only. Database migrations are not reversed.
 
@@ -65,20 +65,23 @@ psql -d parako -c "VACUUM ANALYZE;"
 # Check table sizes
 psql -d parako -c "SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) FROM pg_catalog.pg_statio_user_tables ORDER BY pg_total_relation_size(relid) DESC;"
 
-# Run pending migrations
-pnpm db:migrate:deploy
+# Inspect and apply shipped migrations on a release install
+sudo parako db status
+sudo parako db migrate
 ```
 
 ### SQLite
 
-SQLite maintenance is minimal. For backup, see [SQLite Backup with Litestream](litestream.md).
+SQLite maintenance is minimal. Release installs should use `sudo parako backup`;
+see [SQLite Backup with Litestream](litestream.md) for optional continuous
+replication.
 
 ```bash
 # Check database integrity
-sqlite3 data/parako.db "PRAGMA integrity_check;"
+sqlite3 /opt/parako-id/runtime/data/parako.db "PRAGMA integrity_check;"
 
 # Check database size
-ls -lh data/parako.db
+ls -lh /opt/parako-id/runtime/data/parako.db
 ```
 
 ## Logging
@@ -87,13 +90,13 @@ Parako.ID uses Pino for structured JSON logging in production and pretty-printed
 
 ### Configuration
 
-| Variable                                  | Default | Description                                                   |
-| ----------------------------------------- | ------- | ------------------------------------------------------------- |
-| `SECURITY_LOGGING_ENABLED`                | `true`  | Enable logging                                                |
-| `SECURITY_LOGGING_LEVEL`                  | `info`  | Log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
-| `SECURITY_LOGGING_PRETTY_PRINT`           | `true`  | Pretty-print (development only)                               |
-| `SECURITY_LOGGING_FILE_LOGGING_ENABLED`   | `true`  | Write logs to files                                           |
-| `SECURITY_LOGGING_FILE_LOGGING_DIRECTORY` | `logs`  | Log directory                                                 |
+| Variable                                  | Default          | Description                                                   |
+| ----------------------------------------- | ---------------- | ------------------------------------------------------------- |
+| `SECURITY_LOGGING_ENABLED`                | `true`           | Enable logging                                                |
+| `SECURITY_LOGGING_LEVEL`                  | `info`           | Log level: `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
+| `SECURITY_LOGGING_PRETTY_PRINT`           | `false`          | Pretty-print (development only)                               |
+| `SECURITY_LOGGING_FILE_LOGGING_ENABLED`   | `false`          | Write logs to files instead of relying on stdout collection   |
+| `SECURITY_LOGGING_FILE_LOGGING_DIRECTORY` | `./runtime/logs` | Mutable log directory                                         |
 
 ### Log Levels
 
@@ -109,19 +112,10 @@ Parako.ID uses Pino for structured JSON logging in production and pretty-printed
 ### Viewing Logs
 
 ```bash
-# PM2 logs
-pm2 logs                         # All logs
-pm2 logs parako-id               # Application only
-pm2 logs parako-id-worker        # Worker only
-pm2 monit                        # PM2 monitoring dashboard
-
-# Systemd logs
-journalctl -u parako-id -f
-journalctl -u parako-id-worker -f
-
-# Log files
-tail -f logs/pm2_output.log
-tail -f logs/pm2_error.log
+sudo parako service logs
+sudo parako service logs --worker --since '1 hour ago'
+sudo journalctl -u parako-id.service -f
+sudo journalctl -u parako-id-worker.service -f
 ```
 
 In production, set `SECURITY_LOGGING_PRETTY_PRINT=false` to output JSON for log aggregation tools (ELK, Datadog, etc.).
@@ -147,23 +141,15 @@ Enable the built-in Prometheus metrics endpoint:
 
 Scrape `https://your-parako.example.com/metrics` with Prometheus.
 
-### PM2 Monitoring
-
-```bash
-# Real-time process monitoring
-pm2 monit
-
-# Process list with CPU/memory
-pm2 list
-```
-
 ### Health Check
 
-The Management API provides a health check endpoint:
+Use liveness and readiness separately, and run the dependency diagnostic after
+maintenance:
 
 ```bash
-curl https://your-parako.example.com/api/v1/stats/health \
-  -H "Authorization: Bearer API_TOKEN"
+curl --fail https://your-parako.example.com/health
+curl --fail https://your-parako.example.com/readyz
+sudo parako diag
 ```
 
 ## Activity Audit Log

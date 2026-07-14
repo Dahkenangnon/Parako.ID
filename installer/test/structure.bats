@@ -54,7 +54,7 @@ load helpers
 }
 
 # -----------------------------------------------------------------------------
-# install.sh — minimal-deployer scope (functions that MUST exist)
+# install.sh — verified release deployer (functions that MUST exist)
 # -----------------------------------------------------------------------------
 
 @test "install.sh defines install_main" {
@@ -91,6 +91,12 @@ load helpers
 
 @test "install.sh defines write_parako_state" {
   grep -qE '^write_parako_state\(\)' "${INSTALLER_SH}"
+}
+
+@test "install.sh validates architecture-bound release manifests" {
+  grep -qE '^release_architecture\(\)' "${INSTALLER_SH}"
+  grep -qE '^validate_staged_release\(\)' "${INSTALLER_SH}"
+  grep -q 'release-manifest.json' "${INSTALLER_SH}"
 }
 
 # -----------------------------------------------------------------------------
@@ -195,7 +201,7 @@ load helpers
 }
 
 # -----------------------------------------------------------------------------
-# parako.sh — strict-mode + minimal command surface
+# parako.sh — strict mode + production lifecycle surface
 # -----------------------------------------------------------------------------
 
 @test "parako.sh has valid bash syntax" {
@@ -213,26 +219,33 @@ load helpers
   [ "${status}" -eq 0 ]
 }
 
-@test "parako.sh defines version, paths, doctor, update, rollback, gc" {
-  for verb in cmd_version cmd_paths cmd_doctor cmd_update cmd_rollback cmd_gc; do
+@test "parako.sh defines release, config, DB, backup, service, and health commands" {
+  for verb in cmd_version cmd_paths cmd_doctor cmd_update cmd_rollback cmd_gc cmd_config cmd_db cmd_backup cmd_restore cmd_service cmd_health cmd_diag cmd_deploy cmd_admin; do
     grep -qE "^${verb}\\(\\)" "${PARAKO_SH}" \
       || { echo "missing ${verb} in parako.sh"; return 1; }
   done
 }
 
-@test "parako.sh does NOT define start/stop/restart/status/logs/config/migrate/backup/restore/diag" {
-  for verb in cmd_start cmd_stop cmd_restart cmd_status cmd_logs cmd_config cmd_migrate cmd_backup cmd_restore cmd_diag cmd_shell; do
-    if grep -qE "^${verb}\\(\\)" "${PARAKO_SH}"; then
-      echo "${verb} should be absent from parako.sh"
-      return 1
-    fi
-  done
+@test "parako.sh keeps reverse proxy and TLS out of scope" {
+  ! grep -qE '^cmd_(nginx|proxy|tls|certbot)\(\)' "${PARAKO_SH}"
+}
+
+@test "parako.sh requires encrypted backups before updates" {
+  grep -A25 -E '^cmd_update\(\)' "${PARAKO_SH}" | grep -q 'cmd_backup'
+}
+
+@test "parako.sh exposes one-time administrator activation" {
+  grep -q 'run_bundled_cli admin bootstrap' "${PARAKO_SH}"
 }
 
 @test "parako.sh delegates update/rollback/gc to install.sh" {
   grep -q 'run_installer --update'   "${PARAKO_SH}"
   grep -q 'run_installer --rollback' "${PARAKO_SH}"
   grep -q 'run_installer --gc'       "${PARAKO_SH}"
+}
+
+@test "parako.sh keeps SQLite data outside immutable releases" {
+  grep -Fq 'STORAGE_SQLITE_PATH "${install_dir}/runtime/data/parako.db"' "${PARAKO_SH}"
 }
 
 @test "parako.sh INSTALLER_URL is HTTPS get.parako.id (default)" {
