@@ -16,6 +16,13 @@ allowBuilds:
   '@swc/core': true # Native SWC bindings for fast TS transpile
   msgpackr-extract: true # Native msgpack codec for prisma-studio caching
   sharp: true # Native libvips bindings used for image variant generation
+
+# Nunjucks 3's optional watcher peer is pinned to Chokidar 3, but its watch
+# integration uses the stable watch() API and is smoke-tested with Chokidar 5.
+peerDependencyRules:
+  allowedVersions:
+    'nunjucks>chokidar': '5'
+
 minimumReleaseAgeExclude:
   - oidc-provider@9.9.1
   - '@xhmikosr/decompress@10.2.1'

@@ -806,10 +806,18 @@ export function showSubcommandHelp(moduleInfo: {
   icon: string;
   description: string;
   version: string;
-  examples: Array<{ command: string; description: string }>;
-  features?: Array<{ icon: string; title: string; description: string }>;
-  quickStart?: Array<{ command: string; description: string; time?: string }>;
-  tips?: string[];
+  examples: ReadonlyArray<{ command: string; description: string }>;
+  features?: ReadonlyArray<{
+    icon: string;
+    title: string;
+    description: string;
+  }>;
+  quickStart?: ReadonlyArray<{
+    command: string;
+    description: string;
+    time?: string;
+  }>;
+  tips?: readonly string[];
   fileInfo?: { configFile?: string; backupDir?: string; logFile?: string };
 }): void {
   console.log('');
