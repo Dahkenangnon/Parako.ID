@@ -171,8 +171,8 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(chokidar@4.0.3)
       oidc-provider:
-        specifier: ^9.8.4
-        version: 9.8.4
+        specifier: ^9.9.1
+        version: 9.9.1
       on-headers:
         specifier: ^1.1.0
         version: 1.1.0
@@ -4531,8 +4531,8 @@ packages:
   ohash@2.0.11:
     resolution: {integrity: sha512-RdR9FQrFwNBNXAr4GixM8YaRZRJ5PUWbKYbE5eOsrwAjJW0q2REGcf79oYPsLyskQCZG1PLN+S/K1V00joZAoQ==}
 
-  oidc-provider@9.8.4:
-    resolution: {integrity: sha512-i8qe+wvhUQ7BSj6DxssIFAdpREouuqK91j2jGdAN78NIxTB5rxvU4ZniXELhUHIM4mzABeSGlp5wE6WTa8CY1Q==}
+  oidc-provider@9.9.1:
+    resolution: {integrity: sha512-2kvtykfLu3FJSzaIStg8Dz58/pLtAwI3j/vLdy7KXJBDuJJAEgZhOSWklc+MTjKBLlQjeFwBXpKoE0Pf23pnIQ==}
 
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
@@ -10438,7 +10438,7 @@ snapshots:
 
   ohash@2.0.11: {}
 
-  oidc-provider@9.8.4:
+  oidc-provider@9.9.1:
     dependencies:
       '@koa/cors': 5.0.0
       '@koa/router': 15.5.0(koa@3.2.1)
