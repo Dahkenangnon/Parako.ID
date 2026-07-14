@@ -63,8 +63,8 @@ importers:
         specifier: ^5.0.7
         version: 5.0.7
       '@fingerprintjs/fingerprintjs':
-        specifier: ^3.4.2
-        version: 3.4.2
+        specifier: ^5.2.0
+        version: 5.2.0
       '@prisma/adapter-better-sqlite3':
         specifier: ^7.8.0
         version: 7.8.0
@@ -896,8 +896,8 @@ packages:
   '@fast-csv/format@5.0.7':
     resolution: {integrity: sha512-VdypoRxv7PF+LsyPouTMKdB0d76hync+gLpgdNqfqVK44MsgW4oiCJSdrki2FisWT7v2QGUYDHjp4L7w5oO6gw==}
 
-  '@fingerprintjs/fingerprintjs@3.4.2':
-    resolution: {integrity: sha512-3Ncze6JsJpB7BpYhqIgvBpfvEX1jsEKrad5hQBpyRQxtoAp6hx3+R46zqfsuQG4D9egQZ+xftQ0u4LPFMB7Wmg==}
+  '@fingerprintjs/fingerprintjs@5.2.0':
+    resolution: {integrity: sha512-j+2nInkwCQNTJcNhOjvkGM/nLRTuGJTC6xai4quqvUpjob2ssrGwBZjS7k55nOmKvge7qvJT2nS3i/IRvQSTQA==}
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
@@ -6440,9 +6440,7 @@ snapshots:
     dependencies:
       lodash.escaperegexp: 4.1.2
 
-  '@fingerprintjs/fingerprintjs@3.4.2':
-    dependencies:
-      tslib: 2.8.1
+  '@fingerprintjs/fingerprintjs@5.2.0': {}
 
   '@hexagon/base64@1.1.28': {}
 

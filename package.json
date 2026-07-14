@@ -95,7 +95,7 @@
     "@aws-sdk/client-s3": "^3.1086.0",
     "@aws-sdk/s3-request-presigner": "^3.1086.0",
     "@fast-csv/format": "^5.0.7",
-    "@fingerprintjs/fingerprintjs": "^3.4.2",
+    "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
