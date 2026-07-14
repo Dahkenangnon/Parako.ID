@@ -247,20 +247,20 @@ importers:
         specifier: ^2.4.8
         version: 2.4.8
       '@types/cookie-parser':
-        specifier: ^1.4.8
-        version: 1.4.9(@types/express@5.0.3)
+        specifier: ^1.4.10
+        version: 1.4.10(@types/express@5.0.6)
       '@types/cors':
         specifier: ^2.8.17
         version: 2.8.19
       '@types/express':
-        specifier: ^5.0.3
-        version: 5.0.3
+        specifier: ^5.0.6
+        version: 5.0.6
       '@types/express-session':
-        specifier: ^1.18.1
-        version: 1.18.2
+        specifier: ^1.19.0
+        version: 1.19.0
       '@types/hpp':
-        specifier: ^0.2.6
-        version: 0.2.6
+        specifier: ^0.2.7
+        version: 0.2.7
       '@types/i18n':
         specifier: ^0.13.12
         version: 0.13.12
@@ -292,8 +292,8 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
       '@types/qrcode':
-        specifier: ^1.5.5
-        version: 1.5.5
+        specifier: ^1.5.6
+        version: 1.5.6
       '@types/supertest':
         specifier: ^7.2.0
         version: 7.2.0
@@ -2162,8 +2162,8 @@ packages:
   '@types/conventional-commits-parser@5.0.1':
     resolution: {integrity: sha512-7uz5EHdzz2TqoMfV7ee61Egf5y6NkcO4FB/1iCCQnbeiI1F3xzv3vK5dBCXUCLQgGYS+mUeigK1iKQzvED+QnQ==}
 
-  '@types/cookie-parser@1.4.9':
-    resolution: {integrity: sha512-tGZiZ2Gtc4m3wIdLkZ8mkj1T6CEHb35+VApbL2T14Dew8HA7c+04dmKqsKRNC+8RJPm16JEK0tFSwdZqubfc4g==}
+  '@types/cookie-parser@1.4.10':
+    resolution: {integrity: sha512-B4xqkqfZ8Wek+rCOeRxsjMS9OgvzebEzzLYw7NHYuvzb7IdxOkI0ZHGgeEBX4PUM7QGVvNSK60T3OvWj3YfBRg==}
     peerDependencies:
       '@types/express': '*'
 
@@ -2188,11 +2188,17 @@ packages:
   '@types/express-session@1.18.2':
     resolution: {integrity: sha512-k+I0BxwVXsnEU2hV77cCobC08kIsn4y44C3gC0b46uxZVMaXA04lSPgRLR/bSL2w0t0ShJiG8o4jPzRG/nscFg==}
 
+  '@types/express-session@1.19.0':
+    resolution: {integrity: sha512-GbypG0bog68UbOq2tSAp7SclvCUm3ha1uDi58OPRGK1NfRvCIu7Gz0M7fTGtpNG1T9a29GpuurQj9zEcT/lMXQ==}
+
   '@types/express@5.0.3':
     resolution: {integrity: sha512-wGA0NX93b19/dZC1J18tKWVIYWyyF2ZjT9vin/NRu0qzzvfVzWjs04iq2rQ3H65vCTQYlRqs3YHfY7zjdV+9Kw==}
 
-  '@types/hpp@0.2.6':
-    resolution: {integrity: sha512-6gn1RuHA1/XFCVCqCkSV+AWy07YwtGg4re4SHhLMoiARTg9XlrbYMtVR+Uvws0VlERXzzcA+1UYvxEV6O+sgPg==}
+  '@types/express@5.0.6':
+    resolution: {integrity: sha512-sKYVuV7Sv9fbPIt/442koC7+IIwK5olP1KWeD88e/idgoJqDm3JV/YUiPwkoKK92ylff2MGxSz1CSjsXelx0YA==}
+
+  '@types/hpp@0.2.7':
+    resolution: {integrity: sha512-YSQBkTwZepklRez0wgsljeewMytGNKgBAZR1YbmE0X49+elqkZ+fr/gvB407wL9Dl7a/Kv3W04yJueRmEHytBw==}
 
   '@types/http-assert@1.5.6':
     resolution: {integrity: sha512-TTEwmtjgVbYAzZYWyeHPrrtWnfVkm8tQkP8P21uQifPgMRgjrow3XDEYqucuC8SKZJT7pUnhU/JymvjggxO9vw==}
@@ -2251,8 +2257,8 @@ packages:
   '@types/pg@8.20.0':
     resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
 
-  '@types/qrcode@1.5.5':
-    resolution: {integrity: sha512-CdfBi/e3Qk+3Z/fXYShipBT13OJ2fDO2Q2w5CIP5anLTLIndQG9z6P1cnm+8zCWSpm5dnxMFd/uREtb0EXuQzg==}
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
   '@types/qs@6.14.0':
     resolution: {integrity: sha512-eOunJqu0K1923aExK6y8p6fsihYEn/BYuQ4g0CxAAgFc4b/ZLN4CrsRZ55srTdqoiLzU2B2evC+apEIxprEzkQ==}
@@ -2268,6 +2274,9 @@ packages:
 
   '@types/serve-static@1.15.8':
     resolution: {integrity: sha512-roei0UY3LhpOJvjbIP6ZZFngyLKl5dskOtDhxY5THRSpO+ZI+nzJ+m5yUMzGrp89YRa7lvknKkMYjqQFGwA7Sg==}
+
+  '@types/serve-static@2.2.0':
+    resolution: {integrity: sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ==}
 
   '@types/superagent@8.1.9':
     resolution: {integrity: sha512-pTVjI73witn+9ILmoJdajHGW2jkSaOzhiFYF1Rd3EQ94kymLqB9PjD9ISg7WaALC7+dCHT0FGe9T2LktLq/3GQ==}
@@ -7618,9 +7627,9 @@ snapshots:
     dependencies:
       '@types/node': 24.3.1
 
-  '@types/cookie-parser@1.4.9(@types/express@5.0.3)':
+  '@types/cookie-parser@1.4.10(@types/express@5.0.6)':
     dependencies:
-      '@types/express': 5.0.3
+      '@types/express': 5.0.6
 
   '@types/cookiejar@2.1.5': {}
 
@@ -7650,13 +7659,23 @@ snapshots:
     dependencies:
       '@types/express': 5.0.3
 
+  '@types/express-session@1.19.0':
+    dependencies:
+      '@types/express': 5.0.3
+
   '@types/express@5.0.3':
     dependencies:
       '@types/body-parser': 1.19.6
       '@types/express-serve-static-core': 5.0.7
       '@types/serve-static': 1.15.8
 
-  '@types/hpp@0.2.6':
+  '@types/express@5.0.6':
+    dependencies:
+      '@types/body-parser': 1.19.6
+      '@types/express-serve-static-core': 5.0.7
+      '@types/serve-static': 2.2.0
+
+  '@types/hpp@0.2.7':
     dependencies:
       '@types/express': 5.0.3
 
@@ -7732,7 +7751,7 @@ snapshots:
       pg-protocol: 1.15.0
       pg-types: 2.2.0
 
-  '@types/qrcode@1.5.5':
+  '@types/qrcode@1.5.6':
     dependencies:
       '@types/node': 24.3.1
 
@@ -7754,6 +7773,11 @@ snapshots:
       '@types/http-errors': 2.0.5
       '@types/node': 24.3.1
       '@types/send': 0.17.5
+
+  '@types/serve-static@2.2.0':
+    dependencies:
+      '@types/http-errors': 2.0.5
+      '@types/node': 24.3.1
 
   '@types/superagent@8.1.9':
     dependencies:
