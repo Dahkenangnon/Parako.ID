@@ -1,6 +1,8 @@
 export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
+    // Dependabot bodies contain advisory and comparison URLs that cannot be wrapped.
+    'body-max-line-length': [0],
     'scope-enum': [
       2,
       'always',
