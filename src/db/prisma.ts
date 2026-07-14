@@ -3,7 +3,6 @@ import { dirname } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
 import type { BootstrapConfig } from '../config/schemas/bootstrap-schema.js';
 import { createTenantExtension } from './extensions/tenant.extension.js';
 
@@ -72,7 +71,7 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
     const isProduction = process.env.NODE_ENV === 'production';
     const rejectUnauthorized =
       process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false';
-    const pool = new Pool({
+    const pgAdapter = new PrismaPg({
       connectionString: config.storage.postgresql!.url,
       // Per-worker pool. Total connections = max × PM2 instances.
       // Adjust for your DB limits (e.g. max: 5 with 4 workers = 20).
@@ -80,7 +79,7 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
       idleTimeoutMillis: 30000,
       ssl: isProduction ? { rejectUnauthorized } : false,
     });
-    const client = new PrismaClient({ adapter: new PrismaPg(pool) });
+    const client = new PrismaClient({ adapter: pgAdapter });
 
     // The extension auto-injects tenant_id on writes, filters reads, and
     // executes SET LOCAL app.tenant_id for PostgreSQL RLS (belt-and-suspenders).
