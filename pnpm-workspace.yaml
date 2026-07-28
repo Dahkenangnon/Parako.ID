@@ -28,6 +28,14 @@ minimumReleaseAgeExclude:
   - ua-parser-js@2.0.10
   - undici@8.5.0
   - vite@8.0.16
+  - '@hono/node-server@2.0.10'
+  - axios@1.18.0
+  - body-parser@2.3.0
+  - brace-expansion@5.0.8
+  - fast-uri@3.1.4
+  - mongoose@9.7.4
+  - sharp@0.35.3
+  - valibot@1.4.2
 
 # Transitive vulnerability remediation — every entry maps a vulnerable package
 # to its patched floor. Keep these constraints aligned with GitHub alerts and
@@ -47,19 +55,19 @@ overrides:
   picomatch@4: '>=4.0.4'
   flatted: '>=3.4.2'
   file-type: '>=21.3.1'
-  brace-expansion@1: '>=1.1.13 <2'
-  brace-expansion@2: '>=2.0.2 <3'
-  brace-expansion@4: '>=5.0.6'
-  brace-expansion@5: '>=5.0.6'
+  brace-expansion@1: '>=5.0.8 <6'
+  brace-expansion@2: '>=5.0.8 <6'
+  brace-expansion@4: '>=5.0.8 <6'
+  brace-expansion@5: '>=5.0.8 <6'
   rollup: '>=4.59.0'
   postcss: '>=8.5.10'
   ajv@6: '>=6.14.0 <7'
   ajv@8: '>=8.18.0'
-  axios: '>=1.16.0'
-  fast-uri: '>=3.1.2'
+  axios: '>=1.18.0 <2'
+  fast-uri: '>=3.1.4 <4'
   fast-xml-builder: '>=1.1.7'
   fast-xml-parser: '>=5.5.6'
-  '@hono/node-server': '>=1.19.13'
+  '@hono/node-server': '>=2.0.10 <3'
   follow-redirects: '>=1.15.12'
   ip-address: '>=10.1.1'
   nodemailer: '>=9.0.1 <10'
@@ -76,3 +84,5 @@ overrides:
   multer: '>=2.2.0 <3'
   piscina: '>=4.9.3 <5'
   ua-parser-js: '>=2.0.10 <3'
+  body-parser: '>=2.3.0 <3'
+  valibot: '>=1.4.2 <2'
