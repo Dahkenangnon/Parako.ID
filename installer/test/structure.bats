@@ -231,7 +231,7 @@ load helpers
 }
 
 @test "parako.sh requires encrypted backups before updates" {
-  grep -A25 -E '^cmd_update\(\)' "${PARAKO_SH}" | grep -q 'cmd_backup'
+  sed -n '/^cmd_update() {/,/^}/p' "${PARAKO_SH}" | grep -q 'cmd_backup'
 }
 
 @test "parako.sh exposes one-time administrator activation" {

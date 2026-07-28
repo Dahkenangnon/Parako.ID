@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           # The installer must not invoke service / DB / proxy / package tooling.
-          if grep -nE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
+          if grep -HnE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE '\bprintf .*' \
@@ -60,7 +60,7 @@ jobs:
             echo "::error::installer code contains a banned tool call (above)" >&2
             exit 1
           fi
-          if grep -nE '(apt-get install|yum install|apk add )' \
+          if grep -HnE '(apt-get install|yum install|apk add )' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'die ' \
@@ -70,7 +70,7 @@ jobs:
             echo "::error::installer code contains a package-manager install call (above)" >&2
             exit 1
           fi
-          if grep -nE 'pnpm (install|db:)' \
+          if grep -HnE 'pnpm (install|db:)' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'printf .*' ; then
@@ -91,7 +91,7 @@ jobs:
       fixture_version: ${{ steps.build.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
       - name: Install pnpm
@@ -110,7 +110,7 @@ jobs:
           bash scripts/release.sh "$V" --verbose
           ls -la "parako-id-v${V}-linux-x64.tar.gz" SHA256SUMS
           echo "version=${V}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: parako-fixture
           path: |

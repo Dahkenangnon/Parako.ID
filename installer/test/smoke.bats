@@ -33,8 +33,8 @@ teardown() {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
   echo "${output}" | grep -q "OPERATOR"
-  echo "${output}" | grep -q "service lifecycle"
-  echo "${output}" | grep -q "reverse proxy"
+  echo "${output}" | grep -q "native systemd services"
+  echo "${output}" | grep -q "Reverse proxy"
 }
 
 @test "install.sh --plan does NOT create INSTALL_DIR" {
