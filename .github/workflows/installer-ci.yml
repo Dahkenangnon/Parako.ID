@@ -50,7 +50,7 @@ jobs:
         run: |
           set -euo pipefail
           # The installer must not invoke service / DB / proxy / package tooling.
-          if grep -nE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
+          if grep -HnE '(^|[^[:alnum:]_-])(systemctl|pm2|pg_dump|mongodump|certbot|nginx -t)([[:space:]]|$)' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE '\bprintf .*' \
@@ -60,7 +60,7 @@ jobs:
             echo "::error::installer code contains a banned tool call (above)" >&2
             exit 1
           fi
-          if grep -nE '(apt-get install|yum install|apk add )' \
+          if grep -HnE '(apt-get install|yum install|apk add )' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'die ' \
@@ -70,7 +70,7 @@ jobs:
             echo "::error::installer code contains a package-manager install call (above)" >&2
             exit 1
           fi
-          if grep -nE 'pnpm (install|db:)' \
+          if grep -HnE 'pnpm (install|db:)' \
                installer/install.sh \
              | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
              | grep -vE 'printf .*' ; then
