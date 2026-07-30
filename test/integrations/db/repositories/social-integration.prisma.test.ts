@@ -18,15 +18,11 @@ let prisma: PrismaClient;
 let repo: PrismaSocialIntegrationRepository;
 
 beforeAll(async () => {
-  execFileSync(
-    PRISMA_BIN,
-    ['db', 'push', '--config=prisma.config.ts', '--accept-data-loss'],
-    {
-      env: { ...process.env, DATABASE_URL: `file:${TEST_DB}` },
-      stdio: 'pipe',
-      cwd: process.cwd(),
-    }
-  );
+  execFileSync(PRISMA_BIN, ['db', 'push', '--config=prisma.config.ts'], {
+    env: { ...process.env, DATABASE_URL: `file:${TEST_DB}` },
+    stdio: 'pipe',
+    cwd: process.cwd(),
+  });
   const adapter = new PrismaBetterSqlite3({ url: `file:${TEST_DB}` });
   prisma = new PrismaClient({ adapter });
   repo = new PrismaSocialIntegrationRepository(prisma);
