@@ -106,8 +106,7 @@ export default function LoadExistingGrant(logger: ILogger) {
         return grant;
       } else if (grantId) {
         const grant = (await ctx.oidc.provider.Grant.find(grantId)) as
-          | Grant
-          | undefined;
+          Grant | undefined;
 
         // If grant doesn't exist, return undefined
         if (!grant) {

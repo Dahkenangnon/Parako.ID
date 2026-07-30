@@ -14,6 +14,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VERSION=""
 DRY_RUN="false"
 VERBOSE="false"
+RELEASE_ARCH=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -152,7 +153,7 @@ validate_environment() {
     log_step "Environment Validation"
     
     # Check required tools
-    local required_tools=("node" "pnpm" "tar" "zip")
+    local required_tools=("node" "pnpm" "tar" "zip" "curl" "sha256sum")
     for tool in "${required_tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             log_error "$tool is required but not installed"
@@ -161,16 +162,32 @@ validate_environment() {
     done
 
     # Check Node.js version
-    local node_version=$(node --version | sed 's/v//')
-    local node_major=$(echo "$node_version" | cut -d. -f1)
-    if [[ $node_major -lt 22 ]]; then
-        log_error "Node.js version $node_version detected. Minimum required version is 22.x"
+    local node_version node_major
+    node_version=$(node --version | sed 's/v//')
+    node_major=$(echo "$node_version" | cut -d. -f1)
+    if [[ $node_major -lt 24 ]]; then
+        log_error "Node.js version $node_version detected. Minimum required version is 24.x"
         exit 1
     fi
 
+    case "$(node -p 'process.arch')" in
+        x64) RELEASE_ARCH="x64" ;;
+        arm64) RELEASE_ARCH="arm64" ;;
+        *) log_error "Unsupported release architecture: $(node -p 'process.arch')"; exit 1 ;;
+    esac
+
+    local package_version
+    package_version=$(node -p "require('./package.json').version")
+    if [[ "$package_version" != "$VERSION" ]]; then
+        log_error "Release version $VERSION does not match package.json $package_version"
+        exit 1
+    fi
+    export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$PROJECT_ROOT" log -1 --pretty=%ct)}"
+
     # Check pnpm version (project requires pnpm 11+)
-    local pnpm_version=$(pnpm --version)
-    local pnpm_major=$(echo "$pnpm_version" | cut -d. -f1)
+    local pnpm_version pnpm_major
+    pnpm_version=$(pnpm --version)
+    pnpm_major=$(echo "$pnpm_version" | cut -d. -f1)
     if [[ $pnpm_major -lt 11 ]]; then
         log_error "pnpm version $pnpm_version detected. Minimum required version is 11.x"
         exit 1
@@ -270,21 +287,20 @@ build_project() {
     export NODE_ENV=production
     export CI=true
 
-    # Verify required build tools are available by checking versions.
-    # pnpm exec runs the locally-installed binary whether it lives in
-    # dependencies or devDependencies.
+    # Verify required build tools from the local dependency tree. Tailwind v4
+    # treats `--version` as a build invocation, so read package metadata rather
+    # than emitting a full stylesheet into release logs.
     log_info "Verifying build tools..."
 
-    # Check TypeScript (in devDependencies)
-    pnpm exec tsc --version || { log_error "TypeScript not found"; exit 1; }
-    log_info "TypeScript version: $(pnpm exec tsc --version)"
-
-    # Check TailwindCSS (in devDependencies)
-    pnpm exec tailwindcss --version || { log_error "TailwindCSS not found"; exit 1; }
-    log_info "TailwindCSS version: $(pnpm exec tailwindcss --version)"
+    local typescript_version tailwind_version
+    typescript_version=$(node -p "require('./node_modules/typescript/package.json').version") \
+        || { log_error "TypeScript not found"; exit 1; }
+    tailwind_version=$(node -p "require('./node_modules/tailwindcss/package.json').version") \
+        || { log_error "TailwindCSS not found"; exit 1; }
+    log_info "TypeScript version: $typescript_version"
+    log_info "TailwindCSS version: $tailwind_version"
 
     # Build with error handling and validation using package.json build script.
-    # Note: This includes lint:check and test:run which require dev dependencies.
     log_info "Running complete build process..."
     pnpm run build || { log_error "Build process failed"; exit 1; }
     
@@ -299,7 +315,10 @@ validate_build_output() {
     # Critical path validation (must match scripts/build.js output)
     local critical_paths=(
         "dist/src/index.js"
+        "dist/scripts/manage/admin.js"
         "dist/scripts/manage/client.js"
+        "dist/scripts/manage/database.js"
+        "dist/scripts/manage/diagnostics.js"
         "dist/scripts/manage/keys.js"
         "dist/scripts/manage/systemd.js"
     )
@@ -315,6 +334,9 @@ validate_build_output() {
     # Test CLI functionality
     log_info "Testing CLI scripts..."
     node dist/scripts/manage/client.js --help > /dev/null || { log_error "Client CLI failed"; exit 1; }
+    node dist/scripts/manage/admin.js --help > /dev/null || { log_error "Admin CLI failed"; exit 1; }
+    node dist/scripts/manage/database.js --help > /dev/null || { log_error "Database CLI failed"; exit 1; }
+    node dist/scripts/manage/diagnostics.js --help > /dev/null || { log_error "Diagnostics CLI failed"; exit 1; }
     node dist/scripts/manage/keys.js --help > /dev/null || { log_error "Keys CLI failed"; exit 1; }
     
     log_success "Build validation completed"
@@ -335,6 +357,7 @@ create_production_package() {
     fi
 
     # Create release directory
+    rm -rf "$release_dir"
     mkdir -p "$release_dir"
     
     # Copy built application
@@ -367,6 +390,9 @@ create_production_package() {
     cp package.json "$release_dir/"
     cp pnpm-lock.yaml "$release_dir/" || { log_error "Failed to copy pnpm-lock.yaml"; exit 1; }
     cp pnpm-workspace.yaml "$release_dir/" || { log_error "Failed to copy pnpm-workspace.yaml"; exit 1; }
+    cp -r prisma "$release_dir/"
+    cp prisma.config.ts prisma.config.pg.ts "$release_dir/"
+    cp release-manifest.schema.json "$release_dir/"
     # ecosystem.config.cjs now lives under runtime/ and is copied along with the
     # rest of the runtime tree below (no separate cp needed).
     cp README.md "$release_dir/"
@@ -451,6 +477,9 @@ create_production_package() {
             repository: pkg.repository,
             bugs: pkg.bugs,
             funding: pkg.funding,
+            // Keep Corepack on the same verified pnpm release after this
+            // manifest is moved into the isolated staging directory.
+            packageManager: pkg.packageManager,
             main: pkg.main,
             bin: pkg.bin,
             engines: pkg.engines,
@@ -461,17 +490,20 @@ create_production_package() {
                 // 'start' runs node directly; operators wire their own
                 // supervisor (systemd / pm2 / docker) and call this if they
                 // want, but the installer never invokes it.
-                'start': 'node --experimental-specifier-resolution=node dist/src/index.js',
+                'start': './node/bin/node --experimental-specifier-resolution=node dist/src/index.js',
                 // 'client', 'keys', 'systemd' remain for operator ad-hoc use.
                 // The installer does NOT call any of them.
-                'client': 'node dist/scripts/manage/client.js',
-                'keys': 'node dist/scripts/manage/keys.js',
-                'systemd': 'node dist/scripts/manage/systemd.js',
+                'client': './node/bin/node dist/scripts/manage/client.js',
+                'admin': './node/bin/node dist/scripts/manage/admin.js',
+                'database': './node/bin/node dist/scripts/manage/database.js',
+                'diagnostics': './node/bin/node dist/scripts/manage/diagnostics.js',
+                'keys': './node/bin/node dist/scripts/manage/keys.js',
+                'systemd': './node/bin/node dist/scripts/manage/systemd.js',
                 // DB management scripts remain for operator ad-hoc use. The
                 // installer does NOT call them; release notes tell operators
                 // when and how to run migrations.
-                'db:push': 'prisma db push --config=prisma.config.ts --accept-data-loss',
-                'db:migrate:deploy': 'prisma migrate deploy --config=prisma.config.pg.ts'
+                'db:migrate': './node/bin/node dist/scripts/manage/database.js migrate',
+                'db:migrate:status': './node/bin/node dist/scripts/manage/database.js status'
             },
             dependencies: pkg.dependencies || {},
             devDependencies: {},
@@ -484,15 +516,103 @@ create_production_package() {
     log_success "Production package structure created"
 }
 
+bundle_node_runtime() {
+    log_step "Bundling Node.js Runtime"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "Would download and verify Node.js $(node --version) for linux-$RELEASE_ARCH"
+        return
+    fi
+
+    local node_version node_dist_arch archive_name base_url temp_dir expected
+    node_version=$(node -p 'process.versions.node')
+    case "$RELEASE_ARCH" in
+        x64) node_dist_arch="x64" ;;
+        arm64) node_dist_arch="arm64" ;;
+        *) log_error "Unsupported Node.js architecture: $RELEASE_ARCH"; exit 1 ;;
+    esac
+    archive_name="node-v${node_version}-linux-${node_dist_arch}.tar.xz"
+    base_url="https://nodejs.org/dist/v${node_version}"
+    temp_dir=$(mktemp -d -t parako-node-XXXXXXXX)
+
+    curl --proto '=https' --tlsv1.2 -fsSLo "$temp_dir/$archive_name" "$base_url/$archive_name"
+    curl --proto '=https' --tlsv1.2 -fsSLo "$temp_dir/SHASUMS256.txt" "$base_url/SHASUMS256.txt"
+    expected=$(awk -v name="$archive_name" '$2 == name { print $1 }' "$temp_dir/SHASUMS256.txt")
+    [[ -n "$expected" ]] || { log_error "Node.js checksum entry missing for $archive_name"; exit 1; }
+    [[ "$(sha256sum "$temp_dir/$archive_name" | awk '{print $1}')" == "$expected" ]] \
+        || { log_error "Node.js runtime checksum mismatch"; exit 1; }
+
+    mkdir -p "$PROJECT_ROOT/parako-id-release/node"
+    tar -xJf "$temp_dir/$archive_name" -C "$PROJECT_ROOT/parako-id-release/node" --strip-components=1
+    "$PROJECT_ROOT/parako-id-release/node/bin/node" --version \
+        | grep -qx "v${node_version}" \
+        || { log_error "Bundled Node.js runtime smoke check failed"; exit 1; }
+    rm -rf "$temp_dir"
+    log_success "Bundled verified Node.js v${node_version} for linux-${RELEASE_ARCH}"
+}
+
+bundle_age_runtime() {
+    log_step "Bundling age Encryption"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "Would download and verify age v1.3.1 for linux-$RELEASE_ARCH"
+        return
+    fi
+
+    local age_arch checksum archive_name temp_dir
+    case "$RELEASE_ARCH" in
+        x64)
+            age_arch="amd64"
+            checksum="bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377" ;;
+        arm64)
+            age_arch="arm64"
+            checksum="c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a" ;;
+        *) log_error "Unsupported age architecture: $RELEASE_ARCH"; exit 1 ;;
+    esac
+    archive_name="age-v1.3.1-linux-${age_arch}.tar.gz"
+    temp_dir=$(mktemp -d -t parako-age-XXXXXXXX)
+    curl --proto '=https' --tlsv1.2 -fsSLo "$temp_dir/$archive_name" \
+        "https://github.com/FiloSottile/age/releases/download/v1.3.1/$archive_name"
+    [[ "$(sha256sum "$temp_dir/$archive_name" | awk '{print $1}')" == "$checksum" ]] \
+        || { log_error "age checksum mismatch"; exit 1; }
+    mkdir -p "$PROJECT_ROOT/parako-id-release/tools/age"
+    tar -xzf "$temp_dir/$archive_name" \
+        -C "$PROJECT_ROOT/parako-id-release/tools/age" --strip-components=1
+    "$PROJECT_ROOT/parako-id-release/tools/age/age" --version \
+        | grep -q '1.3.1' || { log_error "age smoke check failed"; exit 1; }
+    rm -rf "$temp_dir"
+    log_success "Bundled verified age v1.3.1 for linux-$RELEASE_ARCH"
+}
+
+create_release_manifest() {
+    log_step "Creating Release Manifest"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "Would create release-manifest.json for linux-$RELEASE_ARCH"
+        return
+    fi
+    node "$PROJECT_ROOT/scripts/create-release-manifest.mjs" \
+        "$PROJECT_ROOT/parako-id-release" "$VERSION" "$RELEASE_ARCH"
+    log_success "Release compatibility manifest created"
+}
+
+create_release_sbom() {
+    log_step "Creating SPDX SBOM"
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "Would create SBOM.spdx.json"
+        return
+    fi
+    node "$PROJECT_ROOT/scripts/create-sbom.mjs" "$PROJECT_ROOT/parako-id-release"
+    log_success "SPDX dependency SBOM created"
+}
+
 install_production_dependencies() {
     log_step "Installing Production Dependencies"
-    
-    cd "$PROJECT_ROOT/parako-id-release"
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "Would run: pnpm install --prod --no-frozen-lockfile"
         return
     fi
+
+    cd "$PROJECT_ROOT/parako-id-release"
 
     # Install production dependencies. The release package.json is a
     # stripped-down version of the source one (devDependencies removed),
@@ -505,8 +625,24 @@ install_production_dependencies() {
         exit 1;
     }
 
+    # The source checkout's generated SQLite client lives under node_modules
+    # and is intentionally not copied into the staging tree. Generate both
+    # supported clients against the production dependency graph so a release
+    # can never ship Prisma's ungenerated placeholder package.
+    pnpm exec prisma generate --config=prisma.config.ts || {
+        log_error "SQLite Prisma client generation failed";
+        exit 1;
+    }
+    pnpm exec prisma generate --config=prisma.config.pg.ts || {
+        log_error "PostgreSQL Prisma client generation failed";
+        exit 1;
+    }
+
     # Verify production dependencies
-    if [[ ! -d "node_modules" ]] || [[ ! -f "pnpm-lock.yaml" ]]; then
+    if [[ ! -d "node_modules" ]] \
+        || [[ ! -f "pnpm-lock.yaml" ]] \
+        || [[ ! -f "node_modules/@prisma/client/index.js" ]] \
+        || [[ ! -f "prisma/generated/postgresql/index.js" ]]; then
         log_error "Production dependencies validation failed"
         exit 1
     fi
@@ -521,19 +657,21 @@ install_production_dependencies() {
 
 optimize_package() {
     log_step "Optimizing Package Size"
-    
-    cd "$PROJECT_ROOT/parako-id-release"
-    
+
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "Would optimize package by removing unnecessary files"
         return
     fi
 
+    cd "$PROJECT_ROOT/parako-id-release"
+
     # Optimize package size
     log_info "Removing unnecessary files..."
-    find node_modules -name "*.md" -type f -delete 2>/dev/null || true
-    find node_modules -name "*.txt" -type f -delete 2>/dev/null || true
-    find node_modules -name "LICENSE*" -type f -delete 2>/dev/null || true
+    # Keep LICENSE, NOTICE, COPYRIGHT, and attribution files. They are part of
+    # the distributable's legal and supply-chain record.
+    find node_modules -name "*.md" -type f \
+        ! -iname "license*" ! -iname "notice*" ! -iname "copyright*" \
+        -delete 2>/dev/null || true
     find node_modules -name "CHANGELOG*" -type f -delete 2>/dev/null || true
     find node_modules -name "HISTORY*" -type f -delete 2>/dev/null || true
     find node_modules -name "*.d.ts" -type f -delete 2>/dev/null || true
@@ -572,6 +710,15 @@ validate_production_package() {
     [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && missing=1
     [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && missing=1
     [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && missing=1
+    [[ ! -f "parako-id-release/prisma.config.ts" ]]               && missing=1
+    [[ ! -d "parako-id-release/prisma/migrations/sqlite" ]]       && missing=1
+    [[ ! -d "parako-id-release/prisma/migrations/postgresql" ]]   && missing=1
+    [[ ! -f "parako-id-release/node_modules/@prisma/client/index.js" ]] && missing=1
+    [[ ! -f "parako-id-release/prisma/generated/postgresql/index.js" ]] && missing=1
+    [[ ! -x "parako-id-release/node/bin/node" ]]                   && missing=1
+    [[ ! -x "parako-id-release/tools/age/age" ]]                   && missing=1
+    [[ ! -f "parako-id-release/release-manifest.json" ]]          && missing=1
+    [[ ! -f "parako-id-release/SBOM.spdx.json" ]]                 && missing=1
     if [[ "$missing" -eq 1 ]]; then
         log_error "Production package validation failed"
         log_error "Missing:"
@@ -585,6 +732,15 @@ validate_production_package() {
         [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && log_error "  - contrib/parako.sh (parako operator binary)"
         [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && log_error "  - contrib/.env.sample (operator env sample)"
         [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && log_error "  - contrib/parako-rp.sample.jsonc (operator RP sample)"
+        [[ ! -f "parako-id-release/prisma.config.ts" ]]               && log_error "  - prisma.config.ts"
+        [[ ! -d "parako-id-release/prisma/migrations/sqlite" ]]       && log_error "  - SQLite migrations"
+        [[ ! -d "parako-id-release/prisma/migrations/postgresql" ]]   && log_error "  - PostgreSQL migrations"
+        [[ ! -f "parako-id-release/node_modules/@prisma/client/index.js" ]] && log_error "  - SQLite Prisma client"
+        [[ ! -f "parako-id-release/prisma/generated/postgresql/index.js" ]] && log_error "  - PostgreSQL Prisma client"
+        [[ ! -x "parako-id-release/node/bin/node" ]]                   && log_error "  - bundled Node.js runtime"
+        [[ ! -x "parako-id-release/tools/age/age" ]]                   && log_error "  - bundled age runtime"
+        [[ ! -f "parako-id-release/release-manifest.json" ]]          && log_error "  - release-manifest.json"
+        [[ ! -f "parako-id-release/SBOM.spdx.json" ]]                 && log_error "  - SBOM.spdx.json"
         exit 1
     fi
 
@@ -628,14 +784,27 @@ validate_production_package() {
     
     # Verify only production dependencies are installed
     cd parako-id-release
-    local prod_deps=$(node -e "const pkg=require('./package.json'); console.log(Object.keys(pkg.dependencies||{}).length);")
-    local installed_deps=$(find node_modules -maxdepth 1 -type d | wc -l)
+    local prod_deps installed_deps
+    prod_deps=$(node -e "const pkg=require('./package.json'); console.log(Object.keys(pkg.dependencies||{}).length);")
+    installed_deps=$(find node_modules -maxdepth 1 -type d | wc -l)
     log_info "Production dependencies: $prod_deps"
     log_info "Installed dependencies: $((installed_deps - 1))" # -1 for node_modules itself
     
-    # Test CLI with bundled dependencies
-    node dist/scripts/manage/client.js --help > /dev/null || { log_error "Client CLI test failed with bundled dependencies"; exit 1; }
-    node dist/scripts/manage/keys.js --help > /dev/null || { log_error "Keys CLI test failed"; exit 1; }
+    # Test CLI with bundled dependencies. The installed operator invokes these
+    # through the atomic `current` symlink, so reproduce that path and assert
+    # actual help output (a skipped entrypoint otherwise exits successfully).
+    ./node/bin/node dist/scripts/manage/client.js --help > /dev/null || { log_error "Client CLI test failed with bundled dependencies"; exit 1; }
+    ./node/bin/node dist/scripts/manage/keys.js --help > /dev/null || { log_error "Keys CLI test failed"; exit 1; }
+    local cli_smoke_failed=0
+    ln -s . .current-smoke
+    ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/admin.js --help \
+        | grep -q 'Usage: parako-admin' || { log_error "Admin CLI symlink test failed"; cli_smoke_failed=1; }
+    ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/database.js --help \
+        | grep -q 'Usage: parako-database' || { log_error "Database CLI symlink test failed"; cli_smoke_failed=1; }
+    ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/diagnostics.js --help \
+        | grep -q 'Usage: parako-diagnostics' || { log_error "Diagnostics CLI symlink test failed"; cli_smoke_failed=1; }
+    rm .current-smoke
+    [[ "$cli_smoke_failed" -eq 1 ]] && exit 1
     cd ..
     
     log_success "Production package validation completed"
@@ -647,7 +816,7 @@ create_release_archives() {
     
     cd "$PROJECT_ROOT"
     
-    local artifact_name="parako-id-v$VERSION"
+    local artifact_name="parako-id-v$VERSION-linux-$RELEASE_ARCH"
     
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "Would create archives:"
@@ -658,8 +827,13 @@ create_release_archives() {
     fi
 
     # Create compressed archives
-    tar -czf "$artifact_name.tar.gz" parako-id-release/
-    zip -r "$artifact_name.zip" parako-id-release/
+    find parako-id-release -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+    tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+        -cf - parako-id-release/ | gzip -n > "$artifact_name.tar.gz"
+    (
+        cd parako-id-release
+        find . -print | LC_ALL=C sort | zip -q -X "../$artifact_name.zip" -@
+    )
 
     # Verify archive integrity
     tar -tzf "$artifact_name.tar.gz" > /dev/null || { log_error "Tar archive corrupted"; exit 1; }
@@ -708,6 +882,10 @@ main() {
     validate_build_output
     create_production_package
     install_production_dependencies
+    bundle_node_runtime
+    bundle_age_runtime
+    create_release_sbom
+    create_release_manifest
     optimize_package
     validate_production_package
     create_release_archives
@@ -715,7 +893,7 @@ main() {
     
     log_success "Build and release process completed successfully!"
     log_info "Version: $VERSION"
-    log_info "Artifacts: parako-id-v$VERSION.tar.gz, parako-id-v$VERSION.zip"
+    log_info "Artifacts: parako-id-v$VERSION-linux-$RELEASE_ARCH.tar.gz, parako-id-v$VERSION-linux-$RELEASE_ARCH.zip"
 }
 
 # Script entry point

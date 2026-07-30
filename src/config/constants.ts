@@ -666,8 +666,7 @@ function _buildDefaultFullConfig(): AppConfig {
       multi_tenancy: {
         enabled: false,
         extraction_priority: ['header', 'subdomain'] as (
-          | 'header'
-          | 'subdomain'
+          'header' | 'subdomain'
         )[],
         tenant_header: 'x-tenant-id',
         provider_pool: {

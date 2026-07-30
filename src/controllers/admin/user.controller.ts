@@ -869,9 +869,7 @@ export class AdminUsersController implements IAdminUsersController {
 
     for (const field of ciFields) {
       const slotKey = `custom_identifier_${field.slot}` as
-        | 'custom_identifier_1'
-        | 'custom_identifier_2'
-        | 'custom_identifier_3';
+        'custom_identifier_1' | 'custom_identifier_2' | 'custom_identifier_3';
       const rawValue = bodyRecord[slotKey];
 
       // Create: only set when a value is provided; Update: also clear when

@@ -1,465 +1,221 @@
 ---
 title: 'Deployment'
-subtitle: 'Deploy Parako.ID to production with PM2, systemd, and nginx'
+subtitle: 'Supported production topology and operations runbook'
 category: 'DevOps'
 order: 1
 ---
 
-> **Operator-run procedure.** Everything on this page — PM2 / systemd setup, nginx vhost, TLS / certbot, `.env` secrets, database provisioning, backups — is done by the operator. The Parako.ID installer (`install.sh` / `parako update`) only places and updates application files; it does not configure your supervisor, proxy, TLS, secrets, or database. See [Installer](installer.md) for the installer's scope.
+The supported release deployment uses the verified installer, the `parako`
+operator CLI, and native systemd services. The CLI owns release files,
+bootstrap secrets, migrations, encrypted backup/restore, app and worker
+lifecycle, and local dependency checks.
 
-## Pre-Deployment Checklist
+The operator still owns the database and Redis servers, DNS, HTTPS ingress,
+certificates, monitoring, off-host backup storage, and incident response.
+Application and OIDC configuration stays in the admin panel.
 
-Before deploying to production, verify these items:
+## Production topology
 
-- [ ] All secrets generated and set in `.env` (`ENCRYPTION_KEY`, `JWT_SECRET`, `COOKIE_SECRET_*`, etc.)
-- [ ] `DEPLOYMENT_ENVIRONMENT=production`
-- [ ] `DEPLOYMENT_URL` set to your public HTTPS URL
-- [ ] Database configured and accessible (MongoDB or PostgreSQL for production)
-- [ ] Redis configured (if using Redis for OIDC storage or sessions)
-- [ ] JWKS keys generated (`pnpm keys generate`)
-- [ ] SMTP configured for email delivery
-- [ ] Cookie `secure` set to `true` (requires HTTPS)
-- [ ] `USE_FILE_CONFIG=false` (use database config in production)
-- [ ] Nginx or reverse proxy configured with SSL
+```text
+Internet
+   |
+HTTPS reverse proxy / load balancer   (operator managed)
+   |
+127.0.0.1:9007
+   |
+parako-id.service ---------------- database
+   |                                  |
+parako-id-worker.service ---------- Redis
+```
 
-## Database Setup
+Do not expose port 9007 directly to the internet. Terminate TLS at a maintained
+reverse proxy or load balancer and forward the original host, scheme, and
+client address.
 
-### MongoDB
+## Support boundary
+
+| Layer           | Required production choice                                                       |
+| --------------- | -------------------------------------------------------------------------------- |
+| Host            | Debian 12 or Ubuntu 24.04, x64 or arm64                                          |
+| Runtime         | Node.js bundled in the release                                                   |
+| Database        | PostgreSQL recommended; MongoDB supported; SQLite for one-process small installs |
+| Queue/pub-sub   | Redis is required                                                                |
+| Process manager | systemd units installed by `parako deploy`                                       |
+| Ingress         | External HTTPS reverse proxy/load balancer                                       |
+| Configuration   | Bootstrap in `runtime/.env`; application/OIDC in admin panel                     |
+
+PostgreSQL deployments should use a dedicated non-superuser role, encrypted
+connections, restricted network access, and automated server-side backups. The
+shipped baseline enables and forces row-level policies on tenant-scoped tables.
+Do not grant the application role `BYPASSRLS`.
+
+## Host preparation
+
+Provision a database and Redis before installing Parako.ID. Also install the
+database client tools needed by backup and restore:
+
+| Adapter    | Required host tools                                          |
+| ---------- | ------------------------------------------------------------ |
+| SQLite     | None beyond the bundled application dependencies             |
+| PostgreSQL | `pg_dump` and `pg_restore` matching the server major version |
+| MongoDB    | `mongodump` and `mongorestore`                               |
+
+Allow the host to connect outbound to the release host during online updates,
+or use the documented offline artifacts. Ensure NTP/time synchronization is
+healthy because OIDC tokens, activation links, and signatures are time-bound.
+
+## Install and configure
 
 ```bash
-# Install MongoDB (Ubuntu/Debian)
-sudo apt install -y mongodb-org
-sudo systemctl enable mongod
-sudo systemctl start mongod
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 
-# Verify connection
-mongosh "mongodb://localhost:27017/parako"
+sudo parako backup-keygen /root/parako-backup-identity.txt
+
+sudo parako config init \
+  --url https://auth.example.com \
+  --adapter postgresql \
+  --database-url 'postgresql://parako:password@db.example.com/parako' \
+  --redis-host redis.example.com \
+  --redis-port 6379 \
+  --backup-recipient 'age1...'
 ```
 
-Set in `.env`:
+`config init` writes `/opt/parako-id/runtime/.env` with mode `0600`, generates
+bootstrap secrets, and sets database/Redis connectivity. Deployment keeps it
+root-owned and grants only the service group read access. It does not replace
+the admin-panel configuration model.
+
+For an existing schema created with `prisma db push`, baseline only after
+verifying it already matches the release:
 
 ```bash
-STORAGE_ADAPTER=mongodb
-STORAGE_MONGODB_URI=mongodb://localhost:27017/parako
+sudo parako db baseline --confirm-existing-schema
 ```
 
-### PostgreSQL
+Fresh databases do not need that command.
+
+## HTTPS reverse proxy
+
+Configure the public proxy to:
+
+- terminate TLS with a certificate covering the deployment hostname;
+- forward to `http://127.0.0.1:9007`;
+- preserve `Host`;
+- set `X-Forwarded-Proto https` and a trustworthy client-address header;
+- allow the request/response sizes and timeouts required by login and admin
+  flows;
+- pass WebSocket upgrade headers if enabled by future features;
+- never cache authentication, token, user-info, admin, or callback responses.
+
+Set the public URL passed to `config init` to the exact HTTPS origin clients
+will use. For nginx examples, see
+[`docs/reference/nginx-vhost-examples/`](reference/nginx-vhost-examples/).
+
+The proxy trust setting itself remains part of application configuration in the
+admin panel.
+
+## Deploy
 
 ```bash
-# Install PostgreSQL (Ubuntu/Debian)
-sudo apt install -y postgresql postgresql-contrib
-sudo systemctl enable postgresql
-
-# Create database and user
-sudo -u postgres psql -c "CREATE USER parako WITH PASSWORD 'your_password';"
-sudo -u postgres psql -c "CREATE DATABASE parako OWNER parako;"
+sudo parako deploy
+sudo parako diag
 ```
 
-Set in `.env`:
+Deployment performs these gates in order:
+
+1. Validate the bootstrap environment and secret file mode.
+2. Connect to Redis and require `PONG`.
+3. Apply all shipped database migrations.
+4. Create the unprivileged service user and restrictive filesystem ownership.
+5. Install hardened app and worker systemd units.
+6. Start both units and require each to remain active.
+7. Require the loopback `/readyz` database probe to succeed.
+
+The units use the release’s bundled Node.js runtime. Immutable releases are
+root-owned; only `/opt/parako-id/runtime` is writable by the service user.
+
+## Create the first administrator
 
 ```bash
-STORAGE_ADAPTER=postgresql
-STORAGE_POSTGRESQL_URL=postgresql://parako:your_password@localhost:5432/parako
+sudo parako admin bootstrap --email admin@example.com
 ```
 
-Run migrations:
+Open the printed single-use activation URL over the configured HTTPS origin.
+After setting the password, finish application and OIDC client configuration in
+the admin panel. The CLI refuses to replace an activated administrator.
+
+Multi-tenant platform bootstrap has additional role and hostname requirements;
+see [Multi-Tenancy](multi-tenancy.md).
+
+## Health and monitoring
+
+| Endpoint or command        | Meaning                                                |
+| -------------------------- | ------------------------------------------------------ |
+| `GET /health`              | Process liveness; does not restart-loop on a DB outage |
+| `GET /readyz`              | Readiness backed by a real database query              |
+| `GET /health?deep=true`    | Deep health alias for readiness                        |
+| `sudo parako diag`         | DB migrations, Redis, systemd, and local HTTP check    |
+| `sudo parako service logs` | App and worker journal output                          |
+
+Use `/health` as a liveness probe and `/readyz` as a readiness/load-balancer
+probe. Alert separately on app unit state, worker unit state, Redis, database,
+certificate expiry, disk space, backup age, error rate, and login latency.
+
+## Backups
 
 ```bash
-pnpm db:generate:pg
-pnpm db:migrate:deploy
+sudo parako backup
 ```
 
-### Redis
+The backup includes database data plus runtime uploads and key material, then
+encrypts it to the configured `age` recipient. Copy the `.age` file and its
+checksum to separate durable storage. The private identity must not live only
+on the Parako.ID host.
+
+Define and test recovery objectives. At minimum, rehearse an isolated restore
+before first product traffic and after material database changes:
 
 ```bash
-# Install Redis (Ubuntu/Debian)
-sudo apt install -y redis-server
-sudo systemctl enable redis-server
-
-# Set password (recommended)
-sudo sed -i 's/# requirepass foobared/requirepass your_redis_password/' /etc/redis/redis.conf
-sudo systemctl restart redis-server
+sudo parako restore /path/to/backup.tar.gz.age \
+  --identity /root/parako-backup-identity.txt \
+  --yes
+sudo parako diag
 ```
 
-Set in `.env`:
+## Operations
 
 ```bash
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_password
+sudo parako service status
+sudo parako service logs --since '1 hour ago'
+sudo parako service restart
+sudo parako db status
+sudo parako update --plan --version vX.Y.Z
+sudo parako update --version vX.Y.Z
 ```
 
-## PM2 Deployment
-
-PM2 is the default process manager. Parako.ID ships a pre-configured `runtime/ecosystem.config.cjs` (operator-tunable; never overwritten on upgrade — see [upgrades](./upgrades.md)).
-
-### Build and Start
-
-```bash
-# Build for production
-pnpm build
-
-# Start with PM2
-pnpm start
-```
-
-This starts two processes:
-
-- **parako-id** — Main application (cluster mode, multiple instances)
-- **parako-id-worker** — Background worker (fork mode, single instance)
-
-### PM2 Configuration Options
-
-Customize PM2 behavior via environment variables:
-
-| Variable                | Default     | Description                            |
-| ----------------------- | ----------- | -------------------------------------- |
-| `APP_NAME`              | `parako-id` | PM2 process name                       |
-| `PORT`                  | `9007`      | Server port                            |
-| `PM2_INSTANCES`         | `max`       | Number of instances (`max` = all CPUs) |
-| `PM2_MAX_MEMORY`        | `1G`        | Max memory before restart (app)        |
-| `PM2_WORKER_MAX_MEMORY` | `512M`      | Max memory before restart (worker)     |
-| `PM2_UID`               | —           | Run as specific user (optional)        |
-| `PM2_GID`               | —           | Run as specific group (optional)       |
-
-**SQLite constraint:** When using SQLite, you must set `PM2_INSTANCES=1`. SQLite does not support concurrent writes from multiple processes.
-
-### PM2 Commands
-
-```bash
-pnpm start                           # Start all processes
-pnpm restart                         # Restart all processes
-pm2 stop runtime/ecosystem.config.cjs  # Stop all processes
-pm2 logs                             # View all logs
-pm2 logs parako-id                   # Application logs only
-pm2 logs parako-id-worker            # Worker logs only
-pm2 monit                            # PM2 monitoring dashboard
-```
-
-### Graceful Restart
-
-PM2 is configured for zero-downtime restarts:
-
-- `wait_ready: true` — Waits for the process to signal readiness before routing traffic
-- `listen_timeout: 30000` — 30 seconds to become ready
-- `kill_timeout: 10000` — 10 seconds to gracefully shut down
-- `shutdown_with_message: true` — Sends shutdown message to the process
-
-## Systemd Deployment
-
-Use systemd as an alternative to PM2 for tighter OS integration.
-
-### Install Services
-
-```bash
-# Preview generated unit files
-pnpm systemd generate
-
-# Install (requires sudo)
-sudo pnpm systemd install
-
-# Start services
-sudo systemctl start parako-id
-
-# Enable on boot
-sudo systemctl enable parako-id
-```
-
-### Manage Services
-
-```bash
-# Status
-pnpm systemd status
-
-# Logs (tail both services live; Ctrl-C to stop)
-pnpm systemd logs
-
-# Worker only / time-windowed
-pnpm systemd logs --worker
-pnpm systemd logs --since "1 hour ago"
-
-# Restart both services (main + worker)
-sudo pnpm systemd restart
-
-# Uninstall
-sudo pnpm systemd uninstall
-```
-
-### Customizing Resource Limits
-
-Override the default memory caps when generating or installing:
-
-```bash
-sudo pnpm systemd install \
-  --memory-app 2G \
-  --memory-worker 512M
-```
-
-Defaults are `1G` for the main app and `512M` for the worker.
-
-### Safe Re-installs
-
-`pnpm systemd install` validates that the service user, working directory, and environment file are present before writing unit files. If existing unit files differ from what would be written, it shows a diff and refuses to overwrite — pass `--force` to apply. Identical content is a safe no-op (no `daemon-reload`).
-
-### Security Hardening
-
-Generated systemd units include:
-
-- `NoNewPrivileges=yes`
-- `ProtectSystem=strict`
-- `PrivateTmp=yes`
-- Resource limits matching PM2 configuration
-- Worker bound to main service via `BindsTo`
-
-See [CLI Tools](cli-tools.md) for all systemd command options.
-
-## Nginx Reverse Proxy
-
-Place nginx in front of Parako.ID for SSL termination and static asset caching.
-
-### Basic Configuration
-
-```nginx
-upstream parako {
-    server 127.0.0.1:9007;
-    keepalive 64;
-}
-
-server {
-    listen 80;
-    server_name auth.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name auth.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/auth.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/auth.example.com/privkey.pem;
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Proxy settings
-    location / {
-        proxy_pass http://parako;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 90s;
-    }
-
-    # Static assets
-    location /css/ {
-        proxy_pass http://parako;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location /js/ {
-        proxy_pass http://parako;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-Set `deployment.server.proxy: true` in your Parako.ID configuration to trust proxy headers.
-
-## SSL/TLS
-
-### Let's Encrypt with Certbot
-
-```bash
-# Install Certbot
-sudo apt install -y certbot python3-certbot-nginx
-
-# Issue certificate
-sudo certbot --nginx -d auth.example.com
-
-# Auto-renewal (Certbot adds a cron job automatically)
-sudo certbot renew --dry-run
-```
-
-### Secure Cookie Configuration
-
-Once HTTPS is configured, enable secure cookies:
-
-```jsonc
-{
-  "deployment": {
-    "cookies": {
-      "defaults": {
-        "secure": true,
-        "sameSite": "lax",
-      },
-    },
-  },
-}
-```
-
-## Multi-Tenancy Infrastructure
-
-When running Parako.ID in multi-tenant mode, you need wildcard DNS, a wildcard SSL certificate, and an nginx configuration that routes all tenant subdomains to the same upstream.
-
-### Domain Architecture
-
-Multi-tenancy uses a three-tier subdomain model under your base domain:
-
-| Subdomain                     | Tenant       | Purpose                                                        |
-| ----------------------------- | ------------ | -------------------------------------------------------------- |
-| `_ops.auth.example.com`       | `_ops`       | Health probes, metrics, social OAuth callback relay            |
-| `_platforms.auth.example.com` | `_platforms` | Master tenant — login, admin panel, cross-tenant management    |
-| `*.auth.example.com`          | Per-tenant   | Tenant-specific OIDC endpoints (e.g., `acme.auth.example.com`) |
-
-Parako.ID resolves the tenant internally by extracting the subdomain from the `Host` header. Nginx does not need per-tenant `server` blocks — a single block handles all traffic.
-
-### DNS Setup
-
-Create three DNS records pointing to your VPS:
-
-```
-_ops.auth.example.com         A    <VPS_IP>
-_platforms.auth.example.com   A    <VPS_IP>
-*.auth.example.com            A    <VPS_IP>
-```
-
-The wildcard record (`*`) covers all tenant subdomains. The explicit `_ops` and `_platforms` records are required because most DNS providers do not match wildcard records against explicitly defined subdomains.
-
-### SSL Certificates
-
-A single wildcard certificate covers all three tiers:
-
-```bash
-# Using DNS challenge (required for wildcard certs)
-sudo certbot certonly --dns-<plugin> \
-  -d "auth.example.com" \
-  -d "*.auth.example.com"
-```
-
-Replace `<plugin>` with your DNS provider's Certbot plugin (e.g., `cloudflare`, `route53`, `digitalocean`). The HTTP challenge cannot issue wildcard certificates.
-
-### Nginx Configuration
-
-A single `server` block handles all tenant subdomains, `_ops`, and `_platforms`:
-
-```nginx
-upstream parako {
-    server 127.0.0.1:9007;
-    keepalive 64;
-}
-
-server {
-    listen 80;
-    server_name *.auth.example.com _ops.auth.example.com _platforms.auth.example.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name *.auth.example.com _ops.auth.example.com _platforms.auth.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/auth.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/auth.example.com/privkey.pem;
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-
-    # Proxy settings
-    location / {
-        proxy_pass http://parako;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 90s;
-    }
-
-    # Static assets
-    location /css/ {
-        proxy_pass http://parako;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location /js/ {
-        proxy_pass http://parako;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-This replaces the single-tenant nginx block from the [Nginx Reverse Proxy](#nginx-reverse-proxy) section. The key differences are the wildcard `server_name` and the wildcard SSL certificate paths.
-
-Set `deployment.server.proxy: true` in your Parako.ID configuration to trust proxy headers.
-
-For application-level multi-tenancy configuration (extraction strategies, provider pool, per-tenant overrides), see [Multi-Tenancy](multi-tenancy.md).
-
-### Bootstrap Admin
-
-On first startup with multi-tenancy enabled, create the initial platform admin using shell-scoped exports (never in `.env` for production):
-
-```bash
-export PARAKO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
-export PARAKO_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
-pnpm start
-```
-
-After logging in at `_platforms.<domain>`, create a permanent admin account, then close the shell session. See [Multi-Tenancy — Special Tenants](multi-tenancy.md#special-tenants) for details.
-
-## Environment-Specific Settings
-
-### Production Checklist
-
-```bash
-# .env (production)
-DEPLOYMENT_ENVIRONMENT=production
-DEPLOYMENT_URL=https://auth.example.com
-DEPLOYMENT_SERVER_PORT=9007
-
-STORAGE_ADAPTER=postgresql
-STORAGE_POSTGRESQL_URL=postgresql://parako:password@localhost:5432/parako
-
-OIDC_STORAGE_ADAPTER=redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_PASSWORD=your_redis_password
-
-ENCRYPTION_KEY=<64-char-hex>
-JWT_SECRET=<64-char-hex>
-COOKIE_SECRET_1=<64-char-hex>
-COOKIE_SECRET_2=<64-char-hex>
-HMAC_SECRET=<64-char-hex>
-PAIRWISE_SALT=<32-char-hex>
-
-USE_FILE_CONFIG=false
-
-SECURITY_LOGGING_LEVEL=info
-SECURITY_LOGGING_PRETTY_PRINT=false
-SECURITY_LOGGING_FILE_LOGGING_ENABLED=true
-```
+Review [Upgrades and rollback](upgrades.md) before every production change.
+Keep at least the current and previous application release until the rollback
+window closes.
+
+## Go-live checklist
+
+- [ ] Signed release installed on a supported OS/architecture.
+- [ ] Dedicated database credentials and network restrictions applied.
+- [ ] Redis authentication/network restrictions applied.
+- [ ] HTTPS proxy passes external smoke tests and does not cache auth traffic.
+- [ ] `parako diag` passes.
+- [ ] First admin activation completed and bearer URL destroyed.
+- [ ] Application and OIDC settings reviewed in the admin panel.
+- [ ] Test client completes authorization code with PKCE.
+- [ ] Email delivery, MFA, and recovery paths tested as applicable.
+- [ ] Encrypted backup copied off-host and isolated restore tested.
+- [ ] Liveness, readiness, worker, DB, Redis, disk, certificate, and backup alerts enabled.
+- [ ] Upgrade, rollback, restore, and incident owners documented.
 
 ## See also
 
 - [Installer](installer.md)
+- [parako CLI](parako-cli.md)
+- [Upgrades and rollback](upgrades.md)
 - [Configuration](configuration.md)
-- [Installer Security](installer-security.md)
-- [Multi-Tenancy](multi-tenancy.md)
 - [Troubleshooting](troubleshooting.md)

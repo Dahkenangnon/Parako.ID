@@ -4,6 +4,8 @@ import {
   SYSTEM_TENANTS,
 } from '../../multi-tenancy/tenant-context.js';
 
+type DefineExtension = typeof Prisma.defineExtension;
+
 /**
  * Strict slug format for tenant IDs.
  * Only lowercase alphanumeric, hyphens, underscores. 1-63 chars.
@@ -18,6 +20,35 @@ const TENANT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
  * - Settings: Global platform config, shared by all tenants.
  */
 export const TENANT_EXCLUDED_MODELS = new Set(['Tenant', 'Settings']);
+
+function prismaDelegateName(model: string): string {
+  return `${model.charAt(0).toLowerCase()}${model.slice(1)}`;
+}
+
+/**
+ * Execute a tenant-scoped operation in the same transaction as SET LOCAL.
+ * Running SET LOCAL on a pooled connection before a separate query would not
+ * protect that query and could make RLS deny legitimate non-default tenants.
+ */
+export async function executePostgresqlTenantQuery(
+  rawClient: PrismaClient,
+  model: string,
+  operation: string,
+  args: unknown,
+  tenantId: string
+): Promise<unknown> {
+  return rawClient.$transaction(async transaction => {
+    await transaction.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
+    const delegate = (transaction as any)[prismaDelegateName(model)];
+    const method = delegate?.[operation];
+    if (typeof method !== 'function') {
+      throw new Error(
+        `[tenant-extension] Unsupported Prisma operation: ${model}.${operation}`
+      );
+    }
+    return method.call(delegate, args);
+  });
+}
 
 /**
  * Operations that receive a `data` payload where tenant_id should be injected.
@@ -64,9 +95,10 @@ const FILTER_OPERATIONS = new Set([
  */
 export function createTenantExtension(
   adapter: 'sqlite' | 'postgresql',
-  rawClient?: PrismaClient
+  rawClient?: PrismaClient,
+  defineExtension: DefineExtension = Prisma.defineExtension
 ) {
-  return Prisma.defineExtension({
+  return defineExtension({
     name: 'tenant-isolation',
     query: {
       $allModels: {
@@ -98,12 +130,6 @@ export function createTenantExtension(
             throw new Error(
               `[tenant-extension] Invalid tenant ID format: ${tenantId.slice(0, 64)}`
             );
-          }
-
-          // For PostgreSQL: SET LOCAL for RLS (belt-and-suspenders).
-          // Uses $executeRaw with tagged template for parameterized safety.
-          if (adapter === 'postgresql' && rawClient) {
-            await rawClient.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`;
           }
 
           if (WRITE_OPERATIONS.has(operation)) {
@@ -143,6 +169,16 @@ export function createTenantExtension(
           if (FILTER_OPERATIONS.has(operation)) {
             const a = args as any;
             a.where = { ...a.where, tenant_id: tenantId };
+          }
+
+          if (adapter === 'postgresql' && rawClient) {
+            return executePostgresqlTenantQuery(
+              rawClient,
+              model,
+              operation,
+              args,
+              tenantId
+            );
           }
 
           return query(args);

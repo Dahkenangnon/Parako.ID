@@ -18,13 +18,7 @@ export interface IActivityActor {
  */
 export interface IActivityTarget {
   target_type:
-    | 'user'
-    | 'session'
-    | 'client'
-    | 'grant'
-    | 'config'
-    | 'system'
-    | 'none';
+    'user' | 'session' | 'client' | 'grant' | 'config' | 'system' | 'none';
   user_id?: string;
   username?: string;
   email?: string;

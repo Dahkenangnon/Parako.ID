@@ -1,136 +1,137 @@
 ---
 title: 'parako CLI'
-subtitle: 'The parako operator binary installed alongside Parako.ID at /usr/local/bin/parako'
-category: 'Guides'
-order: 3
+subtitle: 'Production deployment, backup, update, and service management'
+category: 'DevOps'
+order: 2
 ---
 
-`parako` is a thin app-files helper that introspects the install layout and delegates upgrade / rollback / gc to `install.sh`. It never starts, stops, restarts, or configures services; never runs database migrations or backups; never touches nginx, TLS, or secrets — those remain operator-owned. Operator runbook: [Upgrades](upgrades.md).
+`parako` is installed with a verified release. It operates the standard
+`/opt/parako-id` layout and uses only the runtime and tools bundled with that
+release. Set `PARAKO_INSTALL_DIR` when using a different installation path.
 
-## Verbs
+Application and OIDC configuration is intentionally outside this CLI and stays
+in the admin panel. DNS, TLS, and reverse-proxy configuration are also external.
 
-| Verb                                      | Purpose                                                             | Delegates to                                   |
-| ----------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
-| `parako version`                          | Print helper + app + previous-release versions                      | reads `current/package.json` + `.parako-state` |
-| `parako paths`                            | Print resolved install paths                                        | reads `.parako-state`                          |
-| `parako doctor [--json]`                  | File / config sanity (no service, no DB, no network)                | `install.sh --doctor`                          |
-| `parako update [--version vX.Y.Z]`        | App-files update; atomic symlink swap                               | `install.sh --update`                          |
-| `parako rollback [--to vX.Y.Z]`           | Re-aim `current` to a prior release                                 | `install.sh --rollback`                        |
-| `parako gc [--keep N] [--yes]`            | Prune old `releases/v*/`; never touches `runtime/`                  | `install.sh --gc`                              |
-| `parako clean-stale`                      | Auto-remove stale `current.tmp.*` symlinks left by a crashed run    | `install.sh --clean-stale --doctor`            |
-| `parako self-update [--force]`            | Refresh the parako helper itself (prefers contrib/, falls back URL) | none (atomic local replace)                    |
-| `parako uninstall [--purge] [--keep-bin]` | Remove the install; preserves `runtime/` unless `--purge`           | `install.sh --uninstall`                       |
-| `parako --help`                           | Help text                                                           | —                                              |
+## Command summary
 
-## `parako version`
+| Command                                                      | Purpose                                                   |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| `parako version`                                             | Show helper, installer, current, and previous versions    |
+| `parako paths`                                               | Show resolved release and runtime paths                   |
+| `parako config init ...`                                     | Create a bootstrap-only production `.env` and secrets     |
+| `parako config check\|path`                                  | Validate or locate the bootstrap environment              |
+| `parako db status\|migrate`                                  | Inspect or apply shipped database migrations              |
+| `parako db baseline --confirm-existing-schema`               | Adopt a matching schema previously created with `db push` |
+| `parako admin bootstrap --email EMAIL`                       | Issue a single-use first-admin activation URL             |
+| `parako backup-keygen FILE`                                  | Create an `age` identity and print its public recipient   |
+| `parako backup [--recipient AGE]`                            | Create an encrypted database/runtime backup               |
+| `parako restore FILE --identity FILE --yes`                  | Explicitly restore a compatible encrypted backup          |
+| `parako service install\|start\|stop\|restart\|status\|logs` | Manage native systemd app and worker units                |
+| `parako deploy [--user USER]`                                | Validate, migrate, install, start, and verify             |
+| `parako health`                                              | Query local `/readyz`                                     |
+| `parako diag`                                                | Check database, Redis, systemd, and HTTP readiness        |
+| `parako update [--version vX.Y.Z]`                           | Back up, update, migrate, restart, and verify             |
+| `parako rollback [--to vX.Y.Z]`                              | Revert application files after a DB compatibility check   |
+| `parako doctor`                                              | Inspect release layout and bootstrap file presence        |
+| `parako gc [--keep N] [--yes]`                               | Prune inactive releases, never runtime data               |
+| `parako clean-stale`                                         | Remove abandoned temporary release pointers               |
+| `parako self-update [--force]`                               | Refresh only the helper binary                            |
+| `parako uninstall [--purge]`                                 | Remove releases; preserve runtime unless purged           |
 
-```text
-== parako
-  parako helper          0.2.0
-  install dir            /opt/parako-id
-  current release        v0.2.0
-  previous release       <none>
-  app version            0.2.0
-```
-
-## `parako paths`
-
-```text
-== Parako.ID paths
-  install dir            /opt/parako-id
-  current symlink        /opt/parako-id/current
-  current target         /opt/parako-id/releases/v0.2.0
-  runtime                /opt/parako-id/runtime
-  env file               /opt/parako-id/runtime/.env
-  jwks dir               /opt/parako-id/runtime/jwks
-  logs dir               /opt/parako-id/runtime/logs
-  releases dir           /opt/parako-id/releases
-  state file             /opt/parako-id/.parako-state
-```
-
-Wire your supervisor (systemd `WorkingDirectory`, PM2 `cwd`, docker-compose volume) at `/opt/parako-id/current`.
-
-## `parako doctor`
-
-```text
-== Parako.ID doctor
-  Install dir            /opt/parako-id
-  Current release        v0.2.0
-  Previous               <none>
-  Version                0.2.0
-  Installed at           20260603T103244Z
-  dist/src/index.js ...  present [OK]
-  runtime/.env .......   missing (copy from current/contrib/.env.sample) [WARN]
-  runtime/jwks/jwks.json absent [INFO] (only required for file-backed key storage)
-  Releases on disk ...   1
-```
-
-`--json` emits the same data for scripting. Doctor does not probe `systemctl`, `pm2`, `curl /health`, or any database client.
-
-## `parako update`
+## Configure and deploy
 
 ```bash
-parako update                     # latest stable
-parako update --version v0.2.1    # pin
-parako update --plan              # no network, no writes
-parako update --dry-run           # download + cosign verify, no writes
+sudo parako backup-keygen /root/parako-backup-identity.txt
+
+sudo parako config init \
+  --url https://auth.example.com \
+  --adapter postgresql \
+  --database-url 'postgresql://parako:password@db/parako' \
+  --redis-host redis \
+  --redis-port 6379 \
+  --backup-recipient 'age1...'
+
+sudo parako config check
+sudo parako deploy
+sudo parako diag
 ```
 
-The atomic pointer swap leaves your `runtime/` untouched and your service running on the old code paths until you restart. See [Upgrades](upgrades.md) for the full operator runbook.
+`config init` generates the bootstrap secrets used to start the server. It sets
+`USE_FILE_CONFIG=false`; application and OIDC settings are then managed through
+the database-backed admin panel.
 
-## `parako rollback`
+`deploy` requires root because it creates the service account, installs systemd
+units, fixes restrictive ownership, and controls services. It checks Redis
+before activation, applies database migrations, requires both app and worker to
+be active, and requires `/readyz` to return success.
+
+## First administrator
+
+After migrations succeed:
 
 ```bash
-parako rollback                   # previous release
-parako rollback --to v0.1.5       # specific release on disk
+sudo parako admin bootstrap --email admin@example.com
 ```
 
-> **Warning:** Application files revert, but database migrations are NOT reversed. See the [Upgrades → Rollback](upgrades.md#rollback) decision tree.
+The URL contains a bearer credential. It is printed once, stored only as a
+SHA-256 hash in the database, expires, and is invalidated when the password is
+set. If an activated administrator already exists, the command refuses to
+replace it.
 
-## `parako gc`
+## Backups and restores
 
 ```bash
-parako gc                          # preview
-parako gc --keep 3 --yes           # apply, retain N from the deletable set
+sudo parako backup
+sudo parako restore /opt/parako-id/runtime/backups/parako-....tar.gz.age \
+  --identity /root/parako-backup-identity.txt \
+  --yes
 ```
 
-Two releases are always protected (current and previous, per `.parako-state`); `--keep N` (default 3) retains N more from `releases/v*/` sorted by mtime. GC never touches `runtime/`.
+Backups are encrypted before being written to their final file. They contain
+the selected database plus runtime uploads and key material. The restore path
+rejects absolute/traversal paths and symbolic links, stops services, confirms
+the database adapter matches, and requires explicit `--yes`.
 
-## `parako uninstall`
+Bootstrap secrets are not restored unless `--restore-secrets` is also passed.
+Keep the `age` identity off-host and periodically test restores on an isolated
+host.
+
+PostgreSQL requires `pg_dump`/`pg_restore`; MongoDB requires
+`mongodump`/`mongorestore`. The release bundles `age`, not database vendor tools.
+
+## Updates and rollback
 
 ```bash
-parako uninstall                 # remove releases/, current, .parako-state; also removes /usr/local/bin/parako
-parako uninstall --keep-bin      # same, but preserves the parako helper binary
-parako uninstall --purge         # also wipes runtime/ (operator data — requires explicit `yes` confirmation)
+sudo parako update --version vX.Y.Z
+sudo parako rollback                 # previous application release
+sudo parako rollback --to vX.Y.Z
 ```
 
-By default `parako uninstall` keeps `runtime/` (operator data — `.env`, JWKS, uploads). Pass `--purge` for a complete wipe.
+Update always creates an encrypted backup first. If migration or readiness
+fails, services remain stopped and the CLI prints recovery guidance. Database
+restore is never automatic.
 
-## `parako self-update`
+Rollback changes the application pointer only. It checks migration status
+against the older release before restarting. If the schema is incompatible,
+services remain stopped until the matching backup is explicitly restored.
+
+## Diagnostics and logs
 
 ```bash
-parako self-update               # refresh from contrib/parako.sh (cosign-verified) or get.parako.id
-parako self-update --force       # reinstall even if version matches
-parako self-update --from-url <URL>   # explicit fetch URL (HTTPS only)
+sudo parako diag
+sudo parako service status
+sudo parako service logs --since '1 hour ago'
+sudo parako health
 ```
 
-`parako self-update` updates **only** the parako helper binary at `/usr/local/bin/parako` (or `~/.local/bin/parako` for non-root installs). For application updates, use `parako update`.
+`doctor` is file-oriented and works even when services are absent. `diag` is the
+production dependency check and expects a configured database, Redis, systemd,
+and a running HTTP service.
 
-Source priority:
+## Safety properties
 
-1. `<install>/current/contrib/parako.sh` if an install exists (already cosign-verified at install time).
-2. `https://get.parako.id/parako.sh` otherwise (TLS-only trust).
-
-## `parako clean-stale`
-
-```bash
-parako clean-stale
-```
-
-Removes any `current.tmp.*` symlink left over by a crashed installer run, then runs `parako doctor`. Safe to run anytime — acquires the installer lock first so it cannot race with a concurrent install.
-
-## See also
-
-- [Installer](installer.md)
-- [Upgrades](upgrades.md)
-- [Installer Security](installer-security.md)
+- Releases are immutable and activated by an atomic `current` symlink swap.
+- Concurrent installer mutation is blocked with a file lock.
+- Runtime data survives update, rollback, and normal uninstall.
+- Migration failures and partial app/worker activation fail closed.
+- The systemd service cannot write into immutable release directories.

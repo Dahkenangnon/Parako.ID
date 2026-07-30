@@ -10,8 +10,8 @@ const stubLogger = {
   debug: vi.fn(),
 } as unknown as ILogger;
 
-function makeManager(): DatabaseConnectionManager {
-  return new DatabaseConnectionManager(stubLogger);
+function makeManager(prisma: any = null): DatabaseConnectionManager {
+  return new DatabaseConnectionManager(stubLogger, prisma);
 }
 
 describe('DatabaseConnectionManager', () => {
@@ -56,6 +56,43 @@ describe('DatabaseConnectionManager', () => {
 
       await mgr.connect();
       expect(mgr.isConnected()).toBe(true);
+    });
+
+    it('ping() executes a real query for sqlite and postgresql adapters', async () => {
+      const prisma = {
+        $queryRawUnsafe: vi.fn().mockResolvedValue([{ '1': 1 }]),
+      };
+      const mgr = makeManager(prisma);
+      mgr.initializeWithBootstrapConfig({
+        deployment: { environment: 'development', server: { port: 9007 } },
+        storage: { adapter: 'sqlite', sqlite: { path: './data/test.db' } },
+      } as any);
+
+      await mgr.connect();
+
+      await expect(mgr.ping()).resolves.toBe(true);
+      expect(prisma.$queryRawUnsafe).toHaveBeenCalledWith('SELECT 1');
+    });
+
+    it('ping() returns false when the database query fails', async () => {
+      const prisma = {
+        $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('offline')),
+      };
+      const mgr = makeManager(prisma);
+      mgr.initializeWithBootstrapConfig({
+        deployment: { environment: 'development', server: { port: 9007 } },
+        storage: {
+          adapter: 'postgresql',
+          postgresql: { url: 'postgresql://localhost/test' },
+        },
+      } as any);
+
+      await mgr.connect();
+
+      await expect(mgr.ping()).resolves.toBe(false);
+      expect(stubLogger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Database health check failed')
+      );
     });
   });
 

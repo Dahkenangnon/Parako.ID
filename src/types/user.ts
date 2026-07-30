@@ -133,10 +133,7 @@ export interface IUser extends IBaseModel {
   recovery?: {
     enabled: boolean;
     methods: (
-      | 'backup_codes'
-      | 'secondary_email'
-      | 'sms'
-      | 'security_questions'
+      'backup_codes' | 'secondary_email' | 'sms' | 'security_questions'
     )[];
     lockout?: {
       locked: boolean;

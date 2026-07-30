@@ -214,7 +214,7 @@ export class MongooseUserRepository
             recovery: undefined,
           },
         },
-        { new: true }
+        { returnDocument: 'after' }
       )
       .lean()
       .exec();

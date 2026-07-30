@@ -272,10 +272,12 @@ export async function addClientInteractive(): Promise<void> {
     }
 
     const defaultScopes = selectedType.defaults.scope
-      ? selectedType.defaults.scope.split(' ').filter(s => s.trim())
+      ? selectedType.defaults.scope.split(' ').filter((s: string) => s.trim())
       : [];
     const additionalScopes = additionalConfig.additionalScopes
-      ? additionalConfig.additionalScopes.split(' ').filter(s => s.trim())
+      ? additionalConfig.additionalScopes
+          .split(' ')
+          .filter((s: string) => s.trim())
       : [];
     const allScopes = [...new Set([...defaultScopes, ...additionalScopes])]; // Remove duplicates using Set
     const finalScope = allScopes.join(' ');

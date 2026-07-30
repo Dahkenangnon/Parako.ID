@@ -453,9 +453,7 @@ class AdminSettingsManager {
     }
 
     const field = document.getElementById(fieldId) as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | null;
+      HTMLInputElement | HTMLTextAreaElement | null;
     const button = field?.parentElement?.querySelector('button');
 
     if (!field || !button) {
@@ -580,9 +578,7 @@ class AdminSettingsManager {
     }
 
     const field = document.getElementById(fieldId) as
-      | HTMLInputElement
-      | HTMLTextAreaElement
-      | null;
+      HTMLInputElement | HTMLTextAreaElement | null;
     const button = field?.parentElement?.querySelector('button');
 
     if (!field || !button) {

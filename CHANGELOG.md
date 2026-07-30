@@ -2,9 +2,23 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) with sections derived from Conventional Commit types (`feat` → Features, `fix` → Bug Fixes, `perf` → Performance, `refactor` → Refactor). Maintenance-only commits (`chore`, `ci`, `style`, `test`, `docs`, `build`, `revert`) are intentionally omitted from release notes — see the GitHub commit history for the full record.
 
-Releases are cut by the maintainer with `pnpm release <patch|minor|major>` on `main`, which regenerates the section below from the git log and commits `chore(release): vX.Y.Z` locally. Pushing that commit triggers an auto-tag workflow and a CI build that attaches signed artifacts to the [GitHub Releases page](https://github.com/Dahkenangnon/Parako.ID/releases).
+Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, reviewed through the normal branch protections, and merged to `main`. After every release gate passes, `pnpm release:tag -- vX.Y.Z --push` verifies the clean protected branch, package and changelog versions, remote state, and then pushes the immutable tag that starts publication.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-07-30
+
+### Features
+
+- add a commit-pinned Git source installer with immutable releases, atomic activation, rollback, and runtime-preserving lifecycle operations
+- add a mode-aware `parako` operator workflow for native and Git distributions
+- ship signed x64 and arm64 native release artifacts with SPDX SBOM and release manifests
+
+### Bug Fixes
+
+- require stable release-tag identities for Cosign verification and make publication tag-only
+- preserve SQLite data and operator-managed Redis defaults across both distribution methods
+- consolidate vulnerable transitive dependencies and close the remaining Dependabot update backlog
 
 ## [0.2.3] - 2026-06-03
 

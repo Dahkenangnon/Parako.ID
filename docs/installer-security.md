@@ -47,7 +47,7 @@ Each release of Parako.ID publishes the SHA256 of `install.sh` in the release no
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/install.sh
 
 # Get the expected SHA256 from the release notes
-# (look for: "Installer SHA256: <value>" in the v0.2.0 release on GitHub)
+# (look for: "Native installer SHA256: <value>" in the v0.3.0 release on GitHub)
 EXPECTED="<value from release notes>"
 
 # Compare
@@ -79,35 +79,41 @@ The trust root of this chain is the inlined SHA256 constant. **When the maintain
 
 ## Release verification
 
-For each Parako.ID release v0.2.0+, the CI workflow `release.yml` signs three artifacts via cosign keyless:
+For each Parako.ID release, the CI workflow `release.yml` signs every executable
+or trust-root asset via Cosign keyless:
 
-- `parako-id-v${V}.tar.gz` → `parako-id-v${V}.tar.gz.sig` + `.pem`
-- `parako-id-v${V}.zip` → `parako-id-v${V}.zip.sig` + `.pem`
+- each architecture-specific `parako-id-v${V}-linux-${ARCH}.tar.gz` and `.zip`
+  archive → a matching `.sig` + `.pem`
 - `SHA256SUMS` → `SHA256SUMS.sig` + `.pem`
+- `install.sh` and `install-git.sh` → a matching `.sig` + `.pem`
+
+The standalone per-architecture SBOM and release manifest are authenticated by
+their entries in the signed `SHA256SUMS` file.
 
 The cosign certificate identity is bound to the workflow path:
 
 ```
---certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*'
+--certificate-identity-regexp '^https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
 ```
 
-This regex means: only signatures produced by the `release.yml` workflow in the Parako.ID repo (on any branch/tag) verify. A signature from any other workflow, or any other repo, is rejected.
+This regex accepts only signatures produced by this repository's `release.yml`
+workflow on a stable semantic-version tag. Branch and pull-request identities are rejected.
 
 You can verify a Parako.ID release independently:
 
 ```bash
-gh release download v0.2.0 \
-  -p 'parako-id-v0.2.0.tar.gz' \
-  -p 'parako-id-v0.2.0.tar.gz.sig' \
-  -p 'parako-id-v0.2.0.tar.gz.pem'
+gh release download v0.3.0 \
+  -p 'parako-id-v0.3.0-linux-x64.tar.gz' \
+  -p 'parako-id-v0.3.0-linux-x64.tar.gz.sig' \
+  -p 'parako-id-v0.3.0-linux-x64.tar.gz.pem'
 
 cosign verify-blob \
-  --signature parako-id-v0.2.0.tar.gz.sig \
-  --certificate parako-id-v0.2.0.tar.gz.pem \
-  --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
+  --signature parako-id-v0.3.0-linux-x64.tar.gz.sig \
+  --certificate parako-id-v0.3.0-linux-x64.tar.gz.pem \
+  --certificate-identity 'https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@refs/tags/v0.3.0' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  parako-id-v0.2.0.tar.gz
+  parako-id-v0.3.0-linux-x64.tar.gz
 ```
 
 Expected output: `Verified OK`.

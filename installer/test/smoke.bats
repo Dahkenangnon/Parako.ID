@@ -17,7 +17,7 @@ teardown() {
 @test "install.sh --help exits 0 and includes the version line" {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
-  echo "${output}" | grep -q "Parako.ID installer v0.2.0"
+  echo "${output}" | grep -q "Parako.ID installer v0.3.0"
 }
 
 @test "install.sh --help advertises only the surviving flags" {
@@ -33,8 +33,8 @@ teardown() {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
   echo "${output}" | grep -q "OPERATOR"
-  echo "${output}" | grep -q "process management"
-  echo "${output}" | grep -q "reverse proxy"
+  echo "${output}" | grep -q "native systemd services"
+  echo "${output}" | grep -q "Reverse proxy"
 }
 
 @test "install.sh --plan does NOT create INSTALL_DIR" {
@@ -100,13 +100,33 @@ teardown() {
 }
 
 # -----------------------------------------------------------------------------
+# install-git.sh
+# -----------------------------------------------------------------------------
+
+@test "install-git.sh --help exposes the stable source-install contract" {
+  run bash "${GIT_INSTALLER_SH}" --help
+  [ "${status}" -eq 0 ]
+  for flag in --ref --repository --dir --owner --plan --non-interactive; do
+    echo "${output}" | grep -q -- "${flag}" \
+      || { echo "install-git.sh --help missing flag: ${flag}"; return 1; }
+  done
+}
+
+@test "install-git.sh rejects moving branch refs before any network call" {
+  run bash "${GIT_INSTALLER_SH}" --ref main --owner nobody --plan
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q "stable vX.Y.Z tag or full commit SHA"
+  test ! -d "${INSTALL_DIR}"
+}
+
+# -----------------------------------------------------------------------------
 # parako.sh
 # -----------------------------------------------------------------------------
 
 @test "parako.sh --help exits 0 and lists the surviving verbs" {
   run bash "${PARAKO_SH}" --help
   [ "${status}" -eq 0 ]
-  for verb in version paths doctor update rollback gc; do
+  for verb in version paths config db admin backup restore service deploy health diag doctor update rollback gc; do
     echo "${output}" | grep -q -E "^[[:space:]]+${verb}\\b" \
       || { echo "parako.sh --help missing verb: ${verb}"; return 1; }
   done

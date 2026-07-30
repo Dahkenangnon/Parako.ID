@@ -5,6 +5,7 @@ import type { IDatabaseConnectionManager } from '../di/interfaces/database-conne
 import { TYPES } from '../di/types.js';
 import { tenantPlugin } from './plugins/tenant.plugin.js';
 import type { BootstrapConfig } from '../config/types.js';
+import type { PrismaClient } from '@prisma/client';
 
 @injectable()
 export default class DatabaseConnectionManager implements IDatabaseConnectionManager {
@@ -13,7 +14,10 @@ export default class DatabaseConnectionManager implements IDatabaseConnectionMan
   private initializationError: Error | null = null;
   private config: BootstrapConfig;
 
-  constructor(@inject(TYPES.Logger) private logger: ILogger) {
+  constructor(
+    @inject(TYPES.Logger) private logger: ILogger,
+    @inject(TYPES.PrismaClient) private readonly prisma: PrismaClient | null
+  ) {
     // Config will be set via initializeWithBootstrapConfig
     this.config = {} as BootstrapConfig;
   }
@@ -151,6 +155,29 @@ export default class DatabaseConnectionManager implements IDatabaseConnectionMan
       return this.isInitialized;
     }
     return this.isInitialized && mongoose.connection.readyState === 1;
+  }
+
+  /** Verify the selected backing store with an actual round trip. */
+  async ping(): Promise<boolean> {
+    if (!this.isConnected()) return false;
+
+    try {
+      if (this.config.storage?.adapter === 'mongodb') {
+        const db = mongoose.connection.db;
+        if (!db) return false;
+        const result = await db.command({ ping: 1 });
+        return result.ok === 1;
+      }
+
+      if (!this.prisma) return false;
+      await this.prisma.$queryRawUnsafe('SELECT 1');
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Database health check failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
   }
 
   /**

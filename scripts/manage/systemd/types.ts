@@ -1,6 +1,7 @@
 export interface SystemdConfig {
   user: string;
   workingDirectory: string;
+  runtimeDirectory: string;
   envFile: string;
   nodePath: string;
   serviceName: string;

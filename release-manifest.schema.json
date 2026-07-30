@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://parako.id/schemas/release-manifest-v1.json",
+  "title": "Parako.ID release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "product",
+    "version",
+    "tag",
+    "artifactFormat",
+    "platform",
+    "runtime",
+    "migrations",
+    "services",
+    "configuration",
+    "supplyChain",
+    "build"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "product": { "const": "parako.id" },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+" },
+    "artifactFormat": { "const": "parako-id-linux-v1" },
+    "platform": {
+      "type": "object",
+      "required": ["os", "architecture", "supportedDistributions"],
+      "properties": {
+        "os": { "const": "linux" },
+        "architecture": { "enum": ["x64", "arm64"] },
+        "supportedDistributions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "node",
+        "applicationEntrypoint",
+        "workerEntrypoint",
+        "databaseClients",
+        "tools"
+      ],
+      "properties": {
+        "databaseClients": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sqlite", "postgresql"],
+          "properties": {
+            "sqlite": {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "node_modules/@prisma/client/index.js" }
+              }
+            },
+            "postgresql": {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "prisma/generated/postgresql/index.js" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "migrations": { "type": "object" },
+    "services": { "type": "object" },
+    "configuration": { "type": "object" },
+    "supplyChain": { "type": "object" },
+    "build": { "type": "object" }
+  }
+}

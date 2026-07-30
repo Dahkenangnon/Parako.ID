@@ -82,6 +82,17 @@ export async function promptForConfig(): Promise<SystemdConfig> {
     },
     {
       type: 'input',
+      name: 'runtimeDirectory',
+      message: 'Mutable runtime directory:',
+      default: `${rootDir}/runtime`,
+      validate: (input: string) => {
+        if (!input) return 'Runtime directory is required';
+        if (!input.startsWith('/')) return 'Must be an absolute path';
+        return true;
+      },
+    },
+    {
+      type: 'input',
       name: 'nodePath',
       message: 'Node.js binary path:',
       default: defaultNodePath,
@@ -103,15 +114,16 @@ export async function promptForConfig(): Promise<SystemdConfig> {
 export function getConfigFromFlags(
   options: Record<string, string>
 ): SystemdConfig | null {
-  const { user, dir, envFile, nodePath } = options;
+  const { user, dir, runtimeDir, envFile, nodePath } = options;
 
-  if (!user || !dir || !envFile || !nodePath) {
+  if (!user || !dir || !runtimeDir || !envFile || !nodePath) {
     return null;
   }
 
   return {
     user,
     workingDirectory: dir,
+    runtimeDirectory: runtimeDir,
     envFile,
     nodePath,
     serviceName: options.name || SERVICE_NAME,
@@ -142,6 +154,8 @@ User=${config.user}
 WorkingDirectory=${config.workingDirectory}
 EnvironmentFile=${config.envFile}
 Environment=NODE_ENV=production
+Environment=PARAKO_ROOT=${config.workingDirectory}
+ExecStartPre=${config.nodePath} dist/scripts/manage/database.js status
 ExecStart=${config.nodePath} ${NODE_ARGS} ${APP_SCRIPT}
 Restart=on-failure
 RestartSec=3
@@ -160,8 +174,18 @@ TasksMax=4096
 # Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
+ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=${config.workingDirectory}
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0077
+ReadWritePaths=${config.runtimeDirectory}
 
 # Logging
 StandardOutput=journal
@@ -184,6 +208,7 @@ User=${config.user}
 WorkingDirectory=${config.workingDirectory}
 EnvironmentFile=${config.envFile}
 Environment=NODE_ENV=production
+Environment=PARAKO_ROOT=${config.workingDirectory}
 ExecStart=${config.nodePath} ${NODE_ARGS} ${WORKER_SCRIPT}
 Restart=on-failure
 RestartSec=5
@@ -202,8 +227,18 @@ TasksMax=1024
 # Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
+ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=${config.workingDirectory}
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0077
+ReadWritePaths=${config.runtimeDirectory}
 
 # Logging
 StandardOutput=journal

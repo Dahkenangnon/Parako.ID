@@ -140,8 +140,7 @@ export const createSocialIntegrationModel = (): SocialIntegrationModel => {
 
   // Instance method to get decrypted tokens
   SocialIntegrationSchema.methods.getDecryptedTokens = function ():
-    | DecryptedTokenData
-    | undefined {
+    DecryptedTokenData | undefined {
     if (!this.tokens) {
       return undefined;
     }

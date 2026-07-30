@@ -11,7 +11,7 @@ Authoritative end-user reference: [docs/installer.md](../docs/installer.md). Thr
 | `install.sh` | The installer / updater / rollback / doctor / gc, served at `get.parako.id`.                                                              |
 | `parako.sh`  | The operator binary, shipped inside the release tarball at `contrib/parako.sh` and installed by the installer to `/usr/local/bin/parako`. |
 | `index.html` | Landing page at `get.parako.id`.                                                                                                          |
-| `test/`      | ShellCheck + Bats lint + multi-OS smoke matrix (Ubuntu 22 / 24, Debian 12, Alpine 3.19).                                                  |
+| `test/`      | ShellCheck + Bats lint + multi-OS smoke matrix (Ubuntu 24.04/26.04 and Debian 12/13).                                                     |
 
 ## Excluded from release tarballs
 

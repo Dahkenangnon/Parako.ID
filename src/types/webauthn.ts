@@ -7,11 +7,7 @@
  * Authenticator transport types as defined by W3C WebAuthn spec
  */
 export type AuthenticatorTransportType =
-  | 'usb'
-  | 'ble'
-  | 'nfc'
-  | 'internal'
-  | 'hybrid';
+  'usb' | 'ble' | 'nfc' | 'internal' | 'hybrid';
 
 /**
  * Device type indicating whether credential is synced or device-bound

@@ -10,29 +10,17 @@ export interface IOIDCAdapterBridge {
   initialize(): Promise<void>;
   get adapter(): AdapterFactory;
   get session():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get grant():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get client():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get accessToken():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get refreshToken():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get interaction():
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService;
+    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get adapterType(): 'mongodb' | 'redis' | 'sqlite' | 'postgresql';
   get isInitialized(): boolean;
   effectiveOidcAdapter(): 'mongodb' | 'redis' | 'sqlite' | 'postgresql';

@@ -1,77 +1,93 @@
 ---
 title: 'Quickstart'
-subtitle: 'Get Parako.ID running in five minutes'
+subtitle: 'Run locally or deploy a verified production release'
 category: 'Getting Started'
 order: 2
 ---
 
-Two paths land you on a working Parako.ID. Choose the one that matches your goal.
+## Local development
 
-| Path                        | Audience                        | Time                        |
-| --------------------------- | ------------------------------- | --------------------------- |
-| [From source](#from-source) | Contributors, local development | ~3 minutes                  |
-| [Installer](#installer)     | Operators deploying to a host   | ~5 minutes + operator setup |
-
-## Prerequisites
-
-Linux x86_64 or aarch64, Node.js ≥ 24, pnpm ≥ 11. Enable pnpm via Corepack:
-
-```bash
-corepack enable && corepack prepare pnpm@11 --activate
-```
-
-## From source
+Prerequisites are Node.js 24 or later and pnpm 11 or later.
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd Parako.ID
 pnpm install
-cp .env.example .env
+cp .env.example runtime/.env
 pnpm db:push
 pnpm dev
 ```
 
-JWKS keys are generated automatically on first start and stored in the database. The server listens on `http://localhost:9007`.
+The development server listens on `http://localhost:9007`. Development may use
+SQLite and local Redis. Do not copy development secrets into production.
 
-> **Important:** `.env` ships with development defaults. Production secrets and database choices live in [Configuration](configuration.md).
+## Production host
 
-## Installer
+Supported hosts are Debian 12/13 or Ubuntu 24.04/26.04 on x86_64 or AArch64.
+Install and secure local Redis before deployment; Parako.ID expects it at
+`127.0.0.1:6379` by default but does not manage it. SQLite is the default
+database and needs no database server. Provision PostgreSQL or MongoDB only
+when you choose one and have a complete working URI. DNS and an external HTTPS
+reverse proxy remain operator-owned.
+
+Install the signed release:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-The installer verifies the release via cosign (Sigstore) and places files under `/opt/parako-id/`. It does not configure your supervisor, database, TLS, or secrets — see [Installer](installer.md) for the full contract.
+This verified native path is recommended. Operators who require local source
+builds can instead use the [commit-pinned Git installer](installer-from-source.md).
+Both methods use the same `parako` deployment and lifecycle commands.
 
-> **Important:** The installer prints a next-steps card on completion. Complete those steps before starting the service.
+Create an offline backup identity and keep a second protected copy away from
+the server:
 
-Operator steps after install:
+```bash
+sudo parako backup-keygen /root/parako-backup-identity.txt
+```
 
-1. Create `/opt/parako-id/runtime/.env` from `/opt/parako-id/current/contrib/.env.sample` and fill in your DB / Redis / secrets.
-2. Wire your process manager to `/opt/parako-id/current` (sample PM2 ecosystem ships at `current/contrib/ecosystem.config.cjs.sample`; nginx examples at [`docs/reference/nginx-vhost-examples/`](reference/nginx-vhost-examples/)).
-3. Apply any database migration named in the release notes.
-4. Start your service.
-5. Probe `http://localhost:9007/health`.
+Create the bootstrap environment. Replace the recipient with the public value
+printed by `backup-keygen`:
 
-The `parako` operator binary is on `PATH`; see [parako CLI](parako-cli.md) for the verb reference and [Upgrades](upgrades.md) for the upgrade runbook.
+```bash
+sudo parako config init \
+  --url https://auth.example.com \
+  --backup-recipient 'age1...'
+```
 
-## Create your first admin
+Apply migrations, install the hardened app and worker systemd units, start
+them, and verify local readiness:
 
-Open `http://localhost:9007/auth/register` and create an account. Promote that user to `admin` via the admin panel or by editing the user record directly. See [Admin Panel](admin-panel.md).
+```bash
+sudo parako deploy
+sudo parako diag
+```
 
-## Register your first OIDC client
+Create the first administrator:
 
-Use the admin panel at `/admin/oidc-clients` — the wizard collects client type, redirect URIs, and scopes, then prints the `client_id` and `client_secret`. Store the secret immediately; it is encrypted at rest and not retrievable afterward.
+```bash
+sudo parako admin bootstrap --email admin@example.com
+```
 
-See [OIDC Clients](oidc-clients.md) for the full client model and presets, or [CLI Tools](cli-tools.md) for `pnpm client add` (file-based single-tenant only).
+Open the printed single-use HTTPS activation URL, choose a strong password,
+then use the admin panel to complete application settings and register the
+first OIDC client. Parako.ID configuration is managed through the admin panel;
+the CLI only maintains the bootstrap environment and production lifecycle.
 
-## Test the OIDC flow
+## Before connecting a product
 
-Walk through an end-to-end authorization-code + PKCE exchange against your local Parako.ID in [Integrating Your App](integrating-your-app.md#authorization-code-flow).
+- Verify the public issuer and callback URLs through the HTTPS proxy.
+- Run an authorization-code with PKCE flow from a non-production test client.
+- Confirm email delivery and account recovery.
+- Create `sudo parako backup`, copy it off-host, and test an isolated restore.
+- Connect monitoring to `/health` for liveness and `/readyz` for readiness.
+- Record the service, database, Redis, proxy, and certificate on-call runbook.
 
 ## See also
 
 - [Installer](installer.md)
-- [Configuration](configuration.md)
+- [Production deployment](deployment.md)
+- [parako CLI](parako-cli.md)
+- [Upgrades and rollback](upgrades.md)
 - [Integrating Your App](integrating-your-app.md)
-- [Troubleshooting](troubleshooting.md)

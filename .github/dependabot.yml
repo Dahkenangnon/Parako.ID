@@ -16,6 +16,16 @@ updates:
       development-dependencies:
         dependency-type: development
 
+    ignore:
+      # Keep compiler tooling within the versions supported by the Node 24
+      # runtime and typescript-eslint. Revisit these when the runtime moves.
+      - dependency-name: '@types/node'
+        update-types:
+          - version-update:semver-major
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

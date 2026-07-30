@@ -163,10 +163,9 @@ export class Application implements IApplication {
         const deep = req.query.deep === 'true';
 
         if (!deep) {
-          // Liveness: fast in-memory check (is the process up?)
-          const dbOk = this.databaseConnectionManager.isConnected();
-          res.status(dbOk ? 200 : 503).json({
-            status: dbOk ? 'ok' : 'degraded',
+          // Liveness only reports whether this process can serve HTTP.
+          res.status(200).json({
+            status: 'ok',
             timestamp: new Date().toISOString(),
           });
           return;
@@ -176,24 +175,14 @@ export class Application implements IApplication {
         const timeoutMs = 3_000;
         try {
           const dbConnected = this.databaseConnectionManager.isConnected();
-          // For deep check, also verify we can reach the DB instance
-          let dbReachable = false;
-          if (dbConnected) {
-            try {
-              const result = await Promise.race([
-                (async () => {
-                  this.databaseConnectionManager.getDB();
-                  return true;
-                })(),
+          const dbReachable = dbConnected
+            ? await Promise.race([
+                this.databaseConnectionManager.ping(),
                 new Promise<false>(resolve =>
                   setTimeout(() => resolve(false), timeoutMs)
                 ),
-              ]);
-              dbReachable = result;
-            } catch {
-              dbReachable = false;
-            }
-          }
+              ])
+            : false;
 
           const ok = dbConnected && dbReachable;
           res.status(ok ? 200 : 503).json({
@@ -223,7 +212,7 @@ export class Application implements IApplication {
     this.app.get(
       '/readyz',
       healthLimiter as unknown as express.RequestHandler,
-      (_req, res) => {
+      async (_req, res) => {
         if (isShuttingDown()) {
           res.status(503).json({
             status: 'shutting_down',
@@ -231,7 +220,15 @@ export class Application implements IApplication {
           });
           return;
         }
-        if (!this.databaseConnectionManager.isConnected()) {
+        const databaseReady =
+          this.databaseConnectionManager.isConnected() &&
+          (await Promise.race([
+            this.databaseConnectionManager.ping(),
+            new Promise<false>(resolve =>
+              setTimeout(() => resolve(false), 3_000)
+            ),
+          ]));
+        if (!databaseReady) {
           res.status(503).json({
             status: 'db_disconnected',
             timestamp: new Date().toISOString(),

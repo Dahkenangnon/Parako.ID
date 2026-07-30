@@ -5,10 +5,9 @@
  * correctly injects tenant_id on writes and filters on reads.
  *
  * NOTE: All tenantContext.run() callbacks use `async () => await ...` because
- * Prisma's better-sqlite3 driver adapter (synchronous) can lose ALS context
- * when a sync callback returns a Promise. This is a known Prisma issue
- * (see prisma/prisma#25984). In production with @prisma/adapter-pg, the
- * standard `() => promise` pattern works correctly.
+ * Prisma clients return lazy promises, so the operation must be awaited before
+ * the AsyncLocalStorage callback exits. Returning the lazy promise and awaiting
+ * it outside the callback can execute it in the default tenant context.
  *
  * NOTE: SET LOCAL for PostgreSQL RLS cannot be tested with SQLite.
  * Those paths are tested via the extension's internal branching and

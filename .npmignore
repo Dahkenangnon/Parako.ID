@@ -1,0 +1,19 @@
+# Defense in depth for npm packaging. The package.json `files` allowlist is
+# authoritative; these rules prevent mutable operator data from being shipped
+# if that allowlist is broadened later.
+runtime/.env
+runtime/.tmp-uploads/
+runtime/config-backups/
+runtime/data/
+runtime/jwks/
+runtime/locales/.merged/
+runtime/logs/
+runtime/uploads/
+runtime/views/
+runtime/parako*.jsonc
+
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
