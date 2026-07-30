@@ -83,6 +83,19 @@ read_state_field() {
   grep -E "^${field}=" "${file}" | head -n1 | cut -d= -f2-
 }
 
+install_mode() {
+  local install_dir=$1 mode
+  mode=$(read_state_field "${install_dir}" INSTALL_MODE 2>/dev/null || printf native)
+  case "${mode}" in
+    native|git) printf '%s' "${mode}" ;;
+    *) die "unsupported INSTALL_MODE in ${install_dir}/.parako-state: ${mode}" ;;
+  esac
+}
+
+command_major() {
+  "$1" --version 2>/dev/null | head -n1 | sed -E 's/[^0-9]*([0-9]+).*/\1/'
+}
+
 read_current_target() {
   local install_dir=$1
   if [ -L "${install_dir}/current" ]; then
@@ -101,14 +114,16 @@ require_install_dir() {
 }
 
 operator_node() {
-  local install_dir=$1 bundled="$1/current/node/bin/node"
-  if [ -x "${bundled}" ]; then
+  local install_dir=$1 bundled="$1/current/node/bin/node" node_bin
+  if [ "$(install_mode "${install_dir}")" = "native" ]; then
+    [ -x "${bundled}" ] || die "native release is missing bundled Node.js: ${bundled}"
     printf '%s' "${bundled}"
-  elif command -v node >/dev/null 2>&1; then
-    command -v node
-  else
-    die "this release has no bundled Node.js runtime and node is not on PATH"
+    return
   fi
+  command -v node >/dev/null 2>&1 || die "Git installations require host Node.js >=24"
+  node_bin=$(command -v node)
+  [ "$(command_major "${node_bin}")" -ge 24 ] || die "Git installations require host Node.js >=24"
+  printf '%s' "${node_bin}"
 }
 
 run_bundled_cli() {
@@ -196,6 +211,51 @@ run_installer() {
   fi
 }
 
+locate_git_installer() {
+  local install_dir candidate
+  if install_dir=$(find_install_dir 2>/dev/null); then
+    candidate="${install_dir}/current/contrib/install-git.sh"
+    if [ -r "${candidate}" ]; then printf '%s' "${candidate}"; return 0; fi
+    candidate="${install_dir}/current/installer/install-git.sh"
+    if [ -r "${candidate}" ]; then printf '%s' "${candidate}"; return 0; fi
+  fi
+  candidate="$(dirname "$0")/install-git.sh"
+  if [ -r "${candidate}" ]; then printf '%s' "${candidate}"; return 0; fi
+  return 1
+}
+
+run_git_installer() {
+  local installer install_dir
+  local injected=()
+  installer=$(locate_git_installer 2>/dev/null) \
+    || die "install-git.sh is missing from the active Git release"
+  install_dir=$(require_install_dir)
+  if [[ " $* " != *" --dir "* ]]; then injected+=(--dir "${install_dir}"); fi
+  if [[ " $* " != *" --owner "* ]]; then
+    local owner
+    owner=$(read_state_field "${install_dir}" INSTALL_OWNER 2>/dev/null || true)
+    [ -z "${owner}" ] || injected+=(--owner "${owner}")
+  fi
+  if [[ " $* " != *" --repository "* ]]; then
+    local repository
+    repository=$(read_state_field "${install_dir}" GIT_REPOSITORY 2>/dev/null || true)
+    case "${repository}" in
+      https://*|ssh://*|git@*:*) injected+=(--repository "${repository}") ;;
+    esac
+  fi
+  bash "${installer}" "${injected[@]}" "$@"
+}
+
+run_distribution_installer() {
+  local install_dir
+  install_dir=$(require_install_dir)
+  if [ "$(install_mode "${install_dir}")" = "git" ]; then
+    run_git_installer "$@"
+  else
+    run_installer "$@"
+  fi
+}
+
 # -----------------------------------------------------------------------------
 # Commands
 # -----------------------------------------------------------------------------
@@ -209,6 +269,7 @@ cmd_version() {
     print_header "parako"
     print_kv "parako helper"   "${PARAKO_VERSION}"
     print_kv "install dir"     "${install_dir}"
+    print_kv "install mode"    "$(install_mode "${install_dir}")"
     print_kv "current release" "${current_target:-<none>}"
     print_kv "previous release" "${previous:-<none>}"
     print_kv "app version"     "${pkg_version}"
@@ -225,6 +286,7 @@ cmd_paths() {
     || die "no Parako.ID install dir found; set PARAKO_INSTALL_DIR or run the installer first"
   print_header "Parako.ID paths"
   print_kv "install dir"       "${install_dir}"
+  print_kv "install mode"      "$(install_mode "${install_dir}")"
   print_kv "current symlink"   "${install_dir}/current"
   if [ -L "${install_dir}/current" ]; then
     print_kv "current target"  "$(readlink -f "${install_dir}/current")"
@@ -240,7 +302,18 @@ cmd_paths() {
 }
 
 cmd_doctor() {
-  run_installer --doctor "$@"
+  run_distribution_installer --doctor "$@"
+}
+
+validate_database_uri() {
+  local adapter=$1 value=$2 pattern
+  case "${adapter}" in
+    postgresql) pattern="^postgres(ql)?://[^/?#[:space:]]+/[^/?#[:space:]]+([?#].*)?$" ;;
+    mongodb) pattern="^mongodb(\\+srv)?://[^/?#[:space:]]+/[^/?#[:space:]]+([?#].*)?$" ;;
+    *) return 0 ;;
+  esac
+  [[ "${value}" =~ ${pattern} ]] \
+    || die "--database-url must be a complete ${adapter} URI with a host and database name"
 }
 
 cmd_config_init() {
@@ -275,6 +348,7 @@ cmd_config_init() {
     postgresql:postgresql://*|postgresql:postgres://*|mongodb:mongodb://*|mongodb:mongodb+srv://*|sqlite:) ;;
     *) die "--database-url scheme does not match ${adapter}" ;;
   esac
+  validate_database_uri "${adapter}" "${database_url}"
   case "${redis_host}" in ''|*[!a-zA-Z0-9._:-]*) die "--redis-host contains unsupported characters" ;; esac
   case "${redis_port}" in ''|*[!0-9]*) die "--redis-port must be an integer" ;; esac
   [ "${redis_port}" -ge 1 ] && [ "${redis_port}" -le 65535 ] \
@@ -364,14 +438,24 @@ cmd_config_check() {
 
 age_binary() {
   local install_dir=$1 binary="$1/current/tools/age/age"
-  [ -x "${binary}" ] || die "bundled age binary is missing: ${binary}"
-  printf '%s' "${binary}"
+  if [ "$(install_mode "${install_dir}")" = "native" ]; then
+    [ -x "${binary}" ] || die "bundled age binary is missing: ${binary}"
+    printf '%s' "${binary}"
+  else
+    command -v age >/dev/null 2>&1 || die "Git installations require host age"
+    command -v age
+  fi
 }
 
 age_keygen_binary() {
   local install_dir=$1 binary="$1/current/tools/age/age-keygen"
-  [ -x "${binary}" ] || die "bundled age-keygen binary is missing: ${binary}"
-  printf '%s' "${binary}"
+  if [ "$(install_mode "${install_dir}")" = "native" ]; then
+    [ -x "${binary}" ] || die "bundled age-keygen binary is missing: ${binary}"
+    printf '%s' "${binary}"
+  else
+    command -v age-keygen >/dev/null 2>&1 || die "Git installations require host age-keygen"
+    command -v age-keygen
+  fi
 }
 
 cmd_backup_keygen() {
@@ -609,8 +693,9 @@ service_user() {
 }
 
 prepare_service_permissions() {
-  local install_dir=$1 user=$2 target
+  local install_dir=$1 user=$2 target mode
   require_root
+  mode=$(install_mode "${install_dir}")
   if ! id -u "${user}" >/dev/null 2>&1; then
     useradd --system --home-dir "${install_dir}" --shell /usr/sbin/nologin "${user}" \
       || die "could not create service user ${user}"
@@ -625,8 +710,10 @@ prepare_service_permissions() {
   chown -R "root:${user}" "${target}"
   find "${target}" -type d -exec chmod 0750 {} +
   find "${target}" -type f -exec chmod 0640 {} +
-  chmod 0750 "${target}/node/bin/node"
-  chmod 0750 "${target}/tools/age/age" "${target}/tools/age/age-keygen"
+  if [ "${mode}" = "native" ]; then
+    chmod 0750 "${target}/node/bin/node"
+    chmod 0750 "${target}/tools/age/age" "${target}/tools/age/age-keygen"
+  fi
   chmod 0750 "${install_dir}" "${install_dir}/releases" "${install_dir}/runtime"
 }
 
@@ -642,10 +729,12 @@ cmd_service() {
       require_root
       cmd_config_check
       prepare_service_permissions "${install_dir}" "${user}"
+      local node_path
+      node_path=$(operator_node "${install_dir}")
       run_bundled_cli systemd install --user "${user}" \
         --dir "${install_dir}/current" --runtime-dir "${install_dir}/runtime" \
         --env-file "${install_dir}/runtime/.env" \
-        --node-path "${install_dir}/current/node/bin/node" --force ;;
+        --node-path "${node_path}" --force ;;
     start)
       require_root
       systemctl enable --now parako-id.service parako-id-worker.service ;;
@@ -750,7 +839,7 @@ cmd_update() {
     return 0
   fi
   if [ "${preview}" = "dry-run" ]; then
-    run_installer --update "${pass[@]}"
+    run_distribution_installer --update "${pass[@]}"
     return
   fi
   cmd_config_check
@@ -761,7 +850,7 @@ cmd_update() {
     was_active=1
     systemctl stop parako-id-worker.service parako-id.service
   fi
-  if ! run_installer --update "${pass[@]}"; then
+  if ! run_distribution_installer --update "${pass[@]}"; then
     log_err "release update failed before migration"
     [ "${was_active}" -eq 0 ] || systemctl start parako-id.service parako-id-worker.service
     return 1
@@ -818,7 +907,7 @@ cmd_rollback() {
     was_active=1
     systemctl stop parako-id-worker.service parako-id.service
   fi
-  run_installer --rollback "${pass[@]}"
+  run_distribution_installer --rollback "${pass[@]}"
   local user
   user=$(service_user)
   if id -u "${user}" >/dev/null 2>&1; then
@@ -846,7 +935,7 @@ cmd_gc() {
       *) pass+=("$1"); shift ;;
     esac
   done
-  run_installer --gc "${pass[@]}"
+  run_distribution_installer --gc "${pass[@]}"
 }
 
 cmd_uninstall() {
@@ -858,11 +947,19 @@ cmd_uninstall() {
       *) pass+=("$1"); shift ;;
     esac
   done
-  run_installer --uninstall "${pass[@]}"
+  run_distribution_installer --uninstall "${pass[@]}"
 }
 
 cmd_clean_stale() {
-  run_installer --clean-stale --doctor "$@"
+  local install_dir
+  install_dir=$(require_install_dir)
+  if [ "$(install_mode "${install_dir}")" = "native" ]; then
+    run_installer --clean-stale --doctor "$@"
+    return
+  fi
+  require_root
+  find "${install_dir}" -maxdepth 1 -type l -name 'current.tmp.*' -delete
+  run_git_installer --doctor "$@"
 }
 
 cmd_self_update() {

@@ -173,6 +173,7 @@ load helpers
 
 @test "install.sh enforces preflight OS/arch check" {
   grep -qE '^check_os_arch\(\)' "${INSTALLER_SH}"
+  grep -qF 'debian:12|debian:13|ubuntu:24.04|ubuntu:26.04' "${INSTALLER_SH}"
 }
 
 @test "install.sh checks for GNU mv -T support" {
@@ -238,10 +239,10 @@ load helpers
   grep -q 'run_bundled_cli admin bootstrap' "${PARAKO_SH}"
 }
 
-@test "parako.sh delegates update/rollback/gc to install.sh" {
-  grep -q 'run_installer --update'   "${PARAKO_SH}"
-  grep -q 'run_installer --rollback' "${PARAKO_SH}"
-  grep -q 'run_installer --gc'       "${PARAKO_SH}"
+@test "parako.sh delegates update/rollback/gc through the recorded distribution mode" {
+  grep -q 'run_distribution_installer --update'   "${PARAKO_SH}"
+  grep -q 'run_distribution_installer --rollback' "${PARAKO_SH}"
+  grep -q 'run_distribution_installer --gc'       "${PARAKO_SH}"
 }
 
 @test "parako.sh keeps SQLite data outside immutable releases" {
@@ -250,4 +251,50 @@ load helpers
 
 @test "parako.sh INSTALLER_URL is HTTPS get.parako.id (default)" {
   grep -q 'INSTALLER_URL.*https://get.parako.id' "${PARAKO_SH}"
+}
+
+@test "install-git.sh has strict shell safety" {
+  run assert_syntax "${GIT_INSTALLER_SH}"
+  [ "${status}" -eq 0 ]
+  run assert_strict_mode "${GIT_INSTALLER_SH}"
+  [ "${status}" -eq 0 ]
+  run assert_inherit_errexit "${GIT_INSTALLER_SH}"
+  [ "${status}" -eq 0 ]
+  run assert_umask_0077 "${GIT_INSTALLER_SH}"
+  [ "${status}" -eq 0 ]
+  run assert_no_eval "${GIT_INSTALLER_SH}"
+  [ "${status}" -eq 0 ]
+}
+
+@test "install-git.sh permits only stable tags or full commit SHAs" {
+  grep -q 'stable vX.Y.Z tag or full commit SHA' "${GIT_INSTALLER_SH}"
+  grep -q '\[0-9a-fA-F\]{40}' "${GIT_INSTALLER_SH}"
+  ! grep -q 'git checkout' "${GIT_INSTALLER_SH}"
+}
+
+@test "install-git.sh uses pinned immutable build and activation gates" {
+  for fn in sync_mirror resolve_commit build_release activate_release write_state; do
+    grep -qE "^${fn}\\(\\)" "${GIT_INSTALLER_SH}" \
+      || { echo "missing ${fn}"; return 1; }
+  done
+  grep -q 'git --git-dir=.* archive' "${GIT_INSTALLER_SH}"
+  grep -q 'pnpm install --frozen-lockfile' "${GIT_INSTALLER_SH}"
+  grep -q 'pnpm audit --prod --audit-level high' "${GIT_INSTALLER_SH}"
+  grep -q 'pnpm run build' "${GIT_INSTALLER_SH}"
+  grep -q 'pnpm prune --prod' "${GIT_INSTALLER_SH}"
+  grep -q 'mv -Tf' "${GIT_INSTALLER_SH}"
+}
+
+@test "install-git.sh keeps mirror access unprivileged and rejects tag rewrites" {
+  local mirror_functions
+  mirror_functions=$(sed -n "/^sync_mirror() {/,/^}/p; /^resolve_commit() {/,/^}/p" "${GIT_INSTALLER_SH}")
+  ! grep -qE "^[[:space:]]+git --git-dir" <<<"${mirror_functions}"
+  grep -q "chown.*INSTALL_DIR}/runtime" "${GIT_INSTALLER_SH}"
+  grep -Fq "refs/tags/*:refs/tags/*" "${GIT_INSTALLER_SH}"
+  ! grep -Fq "+refs/tags/*:refs/tags/*" "${GIT_INSTALLER_SH}"
+}
+
+@test "both installers persist an explicit distribution mode" {
+  grep -q "INSTALL_MODE=native" "${INSTALLER_SH}"
+  grep -q "INSTALL_MODE=git" "${GIT_INSTALLER_SH}"
 }

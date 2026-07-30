@@ -118,7 +118,7 @@ Install the latest release on a Linux host:
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-The installer places a verified self-contained release and installs the `parako` production operator. Follow the [quickstart](./docs/quickstart.md), [installer](./docs/installer.md), and [deployment](./docs/deployment.md) runbooks to configure dependencies, deploy systemd services, and create the first administrator.
+The installer places a verified self-contained release and installs the `parako` production operator. A separate [commit-pinned Git distribution](./docs/installer-from-source.md) provides the same immutable layout and lifecycle for source-build environments. The signed native release remains the recommended default. Follow the [quickstart](./docs/quickstart.md), [installer](./docs/installer.md), and [deployment](./docs/deployment.md) runbooks to configure dependencies, deploy systemd services, and create the first administrator.
 
 For local development:
 
@@ -135,10 +135,10 @@ Open `http://localhost:9007/auth/register`, create the first user, then visit `/
 
 ## Requirements
 
-- Debian 12 or Ubuntu 24.04 on x86_64 or AArch64 for supported release installs.
+- Debian 12/13 or Ubuntu 24.04/26.04 on x86_64 or AArch64.
 - Node.js >= 24 and pnpm >= 11 for source checkouts; releases bundle Node.js.
-- SQLite, MongoDB, or PostgreSQL.
-- Redis for the supported production lifecycle; local source development can use SQLite without it.
+- SQLite by default, or a complete working MongoDB/PostgreSQL URI supplied by the operator.
+- Operator-managed Redis, defaulting to `127.0.0.1:6379`.
 - An external HTTPS reverse proxy or load balancer for public deployments.
 - Optional SMTP/Twilio/social-provider credentials depending on enabled features.
 

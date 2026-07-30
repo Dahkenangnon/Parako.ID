@@ -6,10 +6,10 @@ order: 4
 ---
 
 `parako update` is the production upgrade transaction. It validates the current
-configuration and Redis, creates an encrypted backup, downloads and verifies an
-architecture-specific release, stops services, atomically switches the release
-pointer, applies shipped migrations, restarts app and worker, and requires
-readiness to pass.
+configuration and Redis, creates an encrypted backup, stages either a verified
+architecture-specific native release or an exact Git tag/commit build, stops
+services, atomically switches the release pointer, applies shipped migrations,
+restarts app and worker, and requires readiness to pass.
 
 Database restore is intentionally never automatic.
 
@@ -29,13 +29,20 @@ sudo parako update --plan --version vX.Y.Z
 sudo parako update --dry-run --version vX.Y.Z
 ```
 
-`--plan` makes no network calls or writes. `--dry-run` downloads and verifies
-the release but does not activate it.
+`--plan` makes no network calls or writes. For native installs, `--dry-run`
+downloads and verifies the release without activation; Git installs treat it
+as the same no-network plan preview.
 
 ## Upgrade
 
 ```bash
 sudo parako update --version vX.Y.Z
+```
+
+For a Git installation, a full commit SHA is also accepted:
+
+```bash
+sudo parako update --ref 0123456789abcdef0123456789abcdef01234567
 ```
 
 Do not independently restart services while this command holds the installer
@@ -82,6 +89,8 @@ sudo parako diag
 sudo parako rollback
 # or
 sudo parako rollback --to vX.Y.Z
+# Git installations use a full SHA when selecting an explicit target:
+sudo parako rollback --to 0123456789abcdef0123456789abcdef01234567
 ```
 
 Rollback switches application files only; it never guesses how to reverse data
@@ -125,5 +134,5 @@ GC preserves the active and previous releases and never deletes `runtime/` or
 backup files. Move backups to separate durable storage and apply an independent
 retention policy there.
 
-Source checkouts are upgraded manually and are not eligible for installer
-pointer updates. See [Install from Source](installer-from-source.md).
+Git installations use the same encrypted-backup, pointer, migration, readiness,
+rollback, and retention transaction. See [Install from Source](installer-from-source.md).

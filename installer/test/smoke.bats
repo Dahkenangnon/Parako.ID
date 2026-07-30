@@ -100,6 +100,26 @@ teardown() {
 }
 
 # -----------------------------------------------------------------------------
+# install-git.sh
+# -----------------------------------------------------------------------------
+
+@test "install-git.sh --help exposes the stable source-install contract" {
+  run bash "${GIT_INSTALLER_SH}" --help
+  [ "${status}" -eq 0 ]
+  for flag in --ref --repository --dir --owner --plan --non-interactive; do
+    echo "${output}" | grep -q -- "${flag}" \
+      || { echo "install-git.sh --help missing flag: ${flag}"; return 1; }
+  done
+}
+
+@test "install-git.sh rejects moving branch refs before any network call" {
+  run bash "${GIT_INSTALLER_SH}" --ref main --owner nobody --plan
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q "stable vX.Y.Z tag or full commit SHA"
+  test ! -d "${INSTALL_DIR}"
+}
+
+# -----------------------------------------------------------------------------
 # parako.sh
 # -----------------------------------------------------------------------------
 

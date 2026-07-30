@@ -2,15 +2,12 @@
 /**
  * Release helper — bumps the root package.json version, stamps a new
  * dated section into CHANGELOG.md from the git log, commits both
- * changes, and (by default) pushes the commit to the current branch's
- * remote.
+ * changes, and optionally pushes that preparation commit for review.
  *
- * This script does NOT tag and does NOT build artifacts. Both are
- * owned by .github/workflows/release.yml: it detects the
- * `chore(release): vX.Y.Z` head-commit subject on `main`, creates and
- * pushes the matching `vX.Y.Z` tag, builds the release artifacts via
- * scripts/release.sh, and publishes the GitHub Release with the
- * matching CHANGELOG section as its body.
+ * This script never tags or publishes. After the release commit is reviewed,
+ * merged to protected main, and all gates pass, `pnpm release:tag -- vX.Y.Z
+ * --push` performs the guarded immutable-tag operation. Only that tag push
+ * starts .github/workflows/release.yml publication.
  *
  *   Usage:  pnpm release <patch|minor|major> [--no-push]
  *
@@ -213,7 +210,7 @@ function main() {
       `\nCommitted chore(release): v${version} locally (no push).\n` +
         `  Review: git show HEAD\n` +
         `  Push:   git push origin ${currentBranch()}\n` +
-        `\nThe release.yml workflow fires on the chore(release) commit push.\n`
+        `\nThis commit does not publish. Merge it through review, then use the guarded release:tag helper on main.\n`
     );
     return;
   }
@@ -224,8 +221,8 @@ function main() {
   );
   runInherit('git', ['push', 'origin', branch]);
   process.stdout.write(
-    `\nReleased v${version} (commit pushed).\n` +
-      `Watch the workflow at: https://github.com/Dahkenangnon/Parako.ID/actions\n`
+    `\nPushed the v${version} preparation commit for review. No tag or release was created.\n` +
+      `After merge and protected checks, run: pnpm release:tag -- v${version} --push\n`
   );
 }
 

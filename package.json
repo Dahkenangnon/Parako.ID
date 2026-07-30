@@ -1,7 +1,7 @@
 {
   "name": "parako.id",
   "title": "Parako.ID: Identity Infrastructure You Own",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Open-source, self-hosted identity infrastructure for secure SSO, OIDC/OAuth2, MFA, passkeys, and multi-tenant authentication.",
   "author": {
     "name": "Justin Dah-kenangnon",
@@ -89,7 +89,8 @@
     "systemd": "node dist/scripts/manage/systemd.js",
     "postinstall": "prisma generate --config=prisma.config.ts && prisma generate --config=prisma.config.pg.ts",
     "prepare": "husky",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "release:tag": "node scripts/tag-release.mjs"
   },
   "keywords": [
     "identity",

@@ -9,12 +9,7 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to (re)release without the v prefix (e.g. 0.1.1). Leave empty to skip the release job.'
-        required: false
-        type: string
+  workflow_dispatch: {}
 
 jobs:
   # Quality gates run for branches, pull requests, and release tags.
@@ -180,13 +175,7 @@ jobs:
   release-build:
     name: Release build (${{ matrix.arch }})
     needs: [ci, adapter-matrix]
-    if: |
-      needs.ci.result == 'success' &&
-      needs.adapter-matrix.result == 'success' &&
-      (
-        startsWith(github.ref, 'refs/tags/v') ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
-      )
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -217,23 +206,33 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Resolve release version
         id: extract
         env:
           REF_NAME: ${{ github.ref_name }}
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="$DISPATCH_VERSION"
-          else
-            VERSION="${REF_NAME#v}"
-          fi
+          VERSION="${REF_NAME#v}"
           if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Invalid release version: $VERSION"
             exit 1
           fi
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          [ "$VERSION" = "$PACKAGE_VERSION" ] || {
+            echo "::error::Tag v$VERSION does not match package.json $PACKAGE_VERSION"
+            exit 1
+          }
+          grep -q "^## \[$VERSION\] - " CHANGELOG.md || {
+            echo "::error::CHANGELOG.md has no $VERSION release section"
+            exit 1
+          }
+          [ "$(git rev-list -n1 "$REF_NAME")" = "$(git rev-parse HEAD)" ] || {
+            echo "::error::Release tag does not point to checked-out HEAD"
+            exit 1
+          }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build release artifact
@@ -264,7 +263,7 @@ jobs:
             cosign verify-blob \
               --signature "$file.sig" \
               --certificate "$file.pem" \
-              --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
+              --certificate-identity "https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@${GITHUB_REF}" \
               --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
               "$file"
           done
@@ -305,19 +304,13 @@ jobs:
         id: extract
         env:
           REF_NAME: ${{ github.ref_name }}
-          DISPATCH_VERSION: ${{ github.event.inputs.version }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            VERSION="$DISPATCH_VERSION"
-          else
-            VERSION="${REF_NAME#v}"
-          fi
+          VERSION="${REF_NAME#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download architecture artifacts
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           pattern: release-*
           merge-multiple: true
@@ -328,7 +321,20 @@ jobs:
         run: |
           set -euo pipefail
           cp ../installer/install.sh ./install.sh
-          sha256sum parako-id-v*.tar.gz parako-id-v*.zip | sort -k2 > SHA256SUMS
+          cp ../installer/install-git.sh ./install-git.sh
+          shopt -s nullglob
+          for ARCH in x64 arm64; do
+            ARCHIVES=(parako-id-v*-linux-"$ARCH".tar.gz)
+            [ "${#ARCHIVES[@]}" -eq 1 ] || { echo "::error::expected one $ARCH archive"; exit 1; }
+            ARCHIVE=${ARCHIVES[0]}
+            tar -xOf "$ARCHIVE" parako-id-release/SBOM.spdx.json > "SBOM-linux-$ARCH.spdx.json"
+            tar -xOf "$ARCHIVE" parako-id-release/release-manifest.json > "release-manifest-linux-$ARCH.json"
+          done
+          sha256sum parako-id-v*.tar.gz parako-id-v*.zip \
+            install.sh install-git.sh SBOM-linux-*.spdx.json \
+            release-manifest-linux-*.json | sort -k2 > SHA256SUMS
+          test "$(grep -c 'SBOM-linux-' SHA256SUMS)" -eq 2
+          test "$(grep -c 'release-manifest-linux-' SHA256SUMS)" -eq 2
           test "$(grep -c '\.tar\.gz$' SHA256SUMS)" -eq 2
           test "$(grep -c '\.zip$' SHA256SUMS)" -eq 2
 
@@ -349,19 +355,21 @@ jobs:
           cosign verify-blob \
             --signature SHA256SUMS.sig \
             --certificate SHA256SUMS.pem \
-            --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
+            --certificate-identity "https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@${GITHUB_REF}" \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
             SHA256SUMS
-          cosign sign-blob --yes \
-            --output-signature install.sh.sig \
-            --output-certificate install.sh.pem \
-            install.sh
-          cosign verify-blob \
-            --signature install.sh.sig \
-            --certificate install.sh.pem \
-            --certificate-identity-regexp 'https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*' \
-            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-            install.sh
+          for installer in install.sh install-git.sh; do
+            cosign sign-blob --yes \
+              --output-signature "$installer.sig" \
+              --output-certificate "$installer.pem" \
+              "$installer"
+            cosign verify-blob \
+              --signature "$installer.sig" \
+              --certificate "$installer.pem" \
+              --certificate-identity "https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@${GITHUB_REF}" \
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+              "$installer"
+          done
 
       - name: Extract changelog body
         env:
@@ -371,12 +379,14 @@ jobs:
       - name: Append installer integrity
         run: |
           set -euo pipefail
-          INSTALLER_SHA=$(sha256sum installer/install.sh | awk '{print $1}')
+          NATIVE_INSTALLER_SHA=$(sha256sum release-assets/install.sh | awk '{print $1}')
+          GIT_INSTALLER_SHA=$(sha256sum release-assets/install-git.sh | awk '{print $1}')
           {
             printf '\n## Installer integrity\n\n'
-            printf 'Verify the downloaded installer before running it.\n\n'
+            printf 'Verify the downloaded installer and its Cosign signature before running it.\n\n'
             printf '```\n'
-            printf 'Installer SHA256: %s  installer/install.sh\n' "$INSTALLER_SHA"
+            printf 'Native installer SHA256: %s  install.sh\n' "$NATIVE_INSTALLER_SHA"
+            printf 'Git installer SHA256:    %s  install-git.sh\n' "$GIT_INSTALLER_SHA"
             printf '```\n'
           } >> RELEASE_BODY.md
 
@@ -390,19 +400,16 @@ jobs:
             echo "::error::Release v$V already exists and is immutable"
             exit 1
           fi
-          if git rev-parse "refs/tags/v$V" >/dev/null 2>&1; then
-            TAG_COMMIT=$(git rev-list -n1 "v$V")
-            HEAD_COMMIT=$(git rev-parse HEAD)
-            [ "$TAG_COMMIT" = "$HEAD_COMMIT" ] || {
-              echo "::error::Tag v$V points to $TAG_COMMIT, not $HEAD_COMMIT"
-              exit 1
-            }
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email 'github-actions[bot]@users.noreply.github.com'
-            git tag -a -m "release: v$V" "v$V"
-            git push origin "v$V"
-          fi
+          git rev-parse "refs/tags/v$V" >/dev/null 2>&1 || {
+            echo "::error::Tag v$V is required; this workflow never creates tags"
+            exit 1
+          }
+          TAG_COMMIT=$(git rev-list -n1 "v$V")
+          HEAD_COMMIT=$(git rev-parse HEAD)
+          [ "$TAG_COMMIT" = "$HEAD_COMMIT" ] || {
+            echo "::error::Tag v$V points to $TAG_COMMIT, not $HEAD_COMMIT"
+            exit 1
+          }
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8 # v2.3.2
@@ -424,3 +431,8 @@ jobs:
             release-assets/install.sh
             release-assets/install.sh.sig
             release-assets/install.sh.pem
+            release-assets/install-git.sh
+            release-assets/install-git.sh.sig
+            release-assets/install-git.sh.pem
+            release-assets/SBOM-linux-*.spdx.json
+            release-assets/release-manifest-linux-*.json
