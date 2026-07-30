@@ -24,7 +24,7 @@ export interface PasswordVerificationResult {
  */
 @injectable()
 export class PasswordUtils implements IPasswordUtils {
-  private static readonly ARGON2_OPTIONS: argon2.Options = {
+  private static readonly ARGON2_OPTIONS: argon2.HashOptions = {
     type: argon2.argon2id,
     memoryCost: 19_456, // 19 MiB
     timeCost: 2,
