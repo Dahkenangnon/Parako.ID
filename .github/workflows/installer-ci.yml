@@ -33,17 +33,20 @@ jobs:
       - name: Syntax check bash -n
         run: |
           bash -n installer/install.sh
+          bash -n installer/install-git.sh
           bash -n installer/parako.sh
 
       - name: ShellCheck warning level fatal
         run: |
           shellcheck -S warning installer/install.sh
+          shellcheck -S warning installer/install-git.sh
           shellcheck -S warning installer/parako.sh
 
       - name: Checkbashisms informational
         continue-on-error: true
         run: |
           checkbashisms installer/install.sh || true
+          checkbashisms installer/install-git.sh || true
           checkbashisms installer/parako.sh || true
 
       - name: Acceptance grep — low-level installer does not operate services or databases
@@ -81,6 +84,23 @@ jobs:
 
       - name: Structure bats — function/flag presence + absence assertions
         run: bats installer/test/structure.bats
+
+  git-source:
+    name: Git source lifecycle
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Install Bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats
+      - name: Git installer lifecycle acceptance
+        run: bats installer/test/git-installer.bats installer/test/operator-config.bats
 
   fixture:
     name: Build fixture tarball
@@ -128,7 +148,9 @@ jobs:
       matrix:
         os:
           - ubuntu:24.04
+          - ubuntu:26.04
           - debian:12
+          - debian:13
     container:
       image: ${{ matrix.os }}
     env:

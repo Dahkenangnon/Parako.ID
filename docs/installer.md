@@ -12,19 +12,20 @@ verifies the signed artifact and checksum before atomically activating it.
 
 ## Supported hosts
 
-| Component        | Supported contract                            |
-| ---------------- | --------------------------------------------- |
-| OS               | Debian 12 or Ubuntu 24.04                     |
-| CPU              | x86_64 (`x64`) or AArch64 (`arm64`)           |
-| Database         | SQLite, PostgreSQL, or MongoDB                |
-| Required service | Redis                                         |
-| Service manager  | systemd through the `parako` CLI              |
-| Public ingress   | External HTTPS reverse proxy or load balancer |
+| Component        | Supported contract                                       |
+| ---------------- | -------------------------------------------------------- |
+| OS               | Debian 12/13 or Ubuntu 24.04/26.04                       |
+| CPU              | x86_64 (`x64`) or AArch64 (`arm64`)                      |
+| Database         | SQLite by default; PostgreSQL or MongoDB by complete URI |
+| Required service | Operator-managed Redis; local default `127.0.0.1:6379`   |
+| Service manager  | systemd through the `parako` CLI                         |
+| Public ingress   | External HTTPS reverse proxy or load balancer            |
 
 SQLite is appropriate for one application process and small deployments.
 PostgreSQL is the recommended production database and is required for
-PostgreSQL-backed multi-tenancy. Provision the database, Redis, DNS, reverse
-proxy, and TLS before the first public use.
+PostgreSQL-backed multi-tenancy. Parako.ID never installs or administers Redis
+or an external database. Provision those services, DNS, reverse proxy, and TLS
+before the first public use.
 
 ## Install
 
@@ -48,6 +49,15 @@ Application and OIDC settings remain database-backed and are managed in the
 admin panel. `parako` does not edit those settings. It also never configures
 DNS, an HTTPS reverse proxy, certificates, or the database/Redis servers.
 
+## Distribution choice
+
+The signed native release is recommended for standard VPS and partner-demo
+deployments. It minimizes target-host tooling and verifies the complete
+architecture artifact. Environments that require a local source build can use
+the separate [commit-pinned Git installer](installer-from-source.md). Both
+methods create the same immutable release/runtime layout and use the same
+mode-aware `parako` lifecycle commands.
+
 ## First deployment
 
 Generate and store an `age` identity somewhere separate from the server:
@@ -62,16 +72,19 @@ environment, then deploy:
 ```bash
 sudo parako config init \
   --url https://auth.example.com \
-  --adapter postgresql \
-  --database-url 'postgresql://parako:password@db.example.com/parako' \
-  --redis-host redis.example.com \
-  --redis-port 6379 \
   --backup-recipient 'age1...'
 
 sudo parako deploy
 sudo parako diag
 sudo parako admin bootstrap --email admin@example.com
 ```
+
+That default uses SQLite at `/opt/parako-id/runtime/data/parako.db` and expects
+operator-managed Redis at `127.0.0.1:6379`. For PostgreSQL or MongoDB, add
+`--adapter postgresql|mongodb --database-url '<complete-working-uri>'`. For an
+operator-provided remote Redis service, add `--redis-host` and `--redis-port`.
+The installer does not create, repair, secure, back up, or upgrade those
+external services.
 
 Open the single-use HTTPS activation URL printed by the final command and set
 the administrator password. Then configure the application and OIDC clients in

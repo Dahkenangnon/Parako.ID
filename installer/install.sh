@@ -89,7 +89,7 @@ readonly MIN_DISK_BYTES=2147483648  # 2 GiB
 readonly COSIGN_VERSION="2.4.1"
 readonly COSIGN_SHA256_LINUX_AMD64="8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b"
 readonly COSIGN_SHA256_LINUX_ARM64="3b2e2e3854d0356c45fe6607047526ccd04742d20bd44afb5be91fa2a6e7cb4a"
-readonly COSIGN_CERT_IDENTITY_REGEX='https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@.*'
+readonly COSIGN_CERT_IDENTITY_REGEX='^https://github\.com/Dahkenangnon/Parako\.ID/\.github/workflows/release\.yml@refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 readonly COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'
 
 # Runtime subtrees the installer is allowed to copy out of the tarball into
@@ -460,8 +460,12 @@ check_os_arch() {
     distro_version=$(. /etc/os-release; printf '%s' "${VERSION_ID:-}")
   fi
   case "${distro_id}:${distro_version}" in
-    debian:12|ubuntu:24.04) _pf_ok "Distribution" "${distro_id} ${distro_version}" ;;
-    *) _pf_fail "Distribution" "${distro_id:-unknown} ${distro_version:-unknown} (supported: Debian 12, Ubuntu 24.04)" ;;
+    debian:12|debian:13|ubuntu:24.04|ubuntu:26.04)
+      _pf_ok "Distribution" "${distro_id} ${distro_version}"
+      ;;
+    *)
+      _pf_fail "Distribution" "${distro_id:-unknown} ${distro_version:-unknown} (supported: Debian 12/13, Ubuntu 24.04/26.04)"
+      ;;
   esac
 }
 
@@ -853,6 +857,7 @@ write_parako_state() {
   local state_tmp="${state_file}.tmp.$$"
   {
     printf '# Parako.ID installer state — no secrets, safe to read.\n'
+    printf 'INSTALL_MODE=native\n'
     printf 'INSTALL_DIR=%s\n'       "${RESOLVED_INSTALL_DIR}"
     printf 'VERSION=%s\n'           "${version}"
     printf 'PREVIOUS_VERSION=%s\n'  "${previous}"

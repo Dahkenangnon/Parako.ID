@@ -7,7 +7,7 @@ order: 3
 
 ## Updating Parako.ID
 
-`parako update` validates Redis, creates the required encrypted pre-update backup, verifies and activates the new release, applies shipped migrations, restarts app and worker, and requires readiness to pass. Database restore remains explicit. Follow the recovery decisions in [Upgrades and rollback](upgrades.md). Source-install upgrades use the manual procedure in [Install from Source](installer-from-source.md).
+`parako update` validates Redis, creates the required encrypted pre-update backup, verifies the native artifact or builds the exact trusted Git ref, activates the new immutable release, applies shipped migrations, restarts app and worker, and requires readiness to pass. Database restore remains explicit. Follow the recovery decisions in [Upgrades and rollback](upgrades.md). Both supported distribution methods use this same lifecycle.
 
 > **Warning:** `parako rollback` reverts application files only. Database migrations are not reversed.
 

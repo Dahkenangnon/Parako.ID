@@ -23,14 +23,22 @@ SQLite and local Redis. Do not copy development secrets into production.
 
 ## Production host
 
-Supported hosts are Debian 12 or Ubuntu 24.04 on x86_64 or AArch64. Provision
-Redis, a database, DNS, and an external HTTPS reverse proxy first.
+Supported hosts are Debian 12/13 or Ubuntu 24.04/26.04 on x86_64 or AArch64.
+Install and secure local Redis before deployment; Parako.ID expects it at
+`127.0.0.1:6379` by default but does not manage it. SQLite is the default
+database and needs no database server. Provision PostgreSQL or MongoDB only
+when you choose one and have a complete working URI. DNS and an external HTTPS
+reverse proxy remain operator-owned.
 
 Install the signed release:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
+
+This verified native path is recommended. Operators who require local source
+builds can instead use the [commit-pinned Git installer](installer-from-source.md).
+Both methods use the same `parako` deployment and lifecycle commands.
 
 Create an offline backup identity and keep a second protected copy away from
 the server:
@@ -45,10 +53,6 @@ printed by `backup-keygen`:
 ```bash
 sudo parako config init \
   --url https://auth.example.com \
-  --adapter postgresql \
-  --database-url 'postgresql://parako:password@db.example.com/parako' \
-  --redis-host redis.example.com \
-  --redis-port 6379 \
   --backup-recipient 'age1...'
 ```
 
