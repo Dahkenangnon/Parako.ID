@@ -14,8 +14,14 @@ export function isStableTag(tag) {
   return STABLE_TAG.test(tag);
 }
 
+export function normalizeCommandOutput(output) {
+  return output == null ? '' : String(output).trim();
+}
+
 function run(file, args, options = {}) {
-  return execFileSync(file, args, { encoding: 'utf8', ...options }).trim();
+  return normalizeCommandOutput(
+    execFileSync(file, args, { encoding: 'utf8', ...options })
+  );
 }
 
 function fail(message) {
