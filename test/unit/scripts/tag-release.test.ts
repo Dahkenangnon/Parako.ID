@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { isStableTag } from '../../../scripts/tag-release.mjs';
+import {
+  isStableTag,
+  normalizeCommandOutput,
+} from '../../../scripts/tag-release.mjs';
+
+describe('normalizeCommandOutput', () => {
+  it('treats inherited stdio output as empty instead of throwing', () => {
+    expect(normalizeCommandOutput(null)).toBe('');
+    expect(normalizeCommandOutput('  value  ')).toBe('value');
+  });
+});
 
 describe('isStableTag', () => {
   it('accepts stable semantic release tags', () => {
