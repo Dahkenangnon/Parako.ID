@@ -35,6 +35,24 @@
  * @version 1.0.0
  * @author Parako.ID Team
  */
+export function setResetPasswordFormLocked(
+  form: HTMLFormElement,
+  submitButton: HTMLButtonElement,
+  locked: boolean
+): void {
+  submitButton.disabled = locked;
+  submitButton.style.opacity = locked ? '0.6' : '1';
+  submitButton.style.cursor = locked ? 'not-allowed' : 'pointer';
+  submitButton.style.pointerEvents = locked ? 'none' : 'auto';
+
+  form.style.pointerEvents = locked ? 'none' : 'auto';
+  if (locked) {
+    form.classList.add('form-disabled');
+  } else {
+    form.classList.remove('form-disabled');
+  }
+}
+
 // Self-contained module to prevent type collisions
 (function () {
   'use strict';
@@ -576,26 +594,8 @@
         clearTimeout(this.submissionTimeout);
       }
 
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.style.opacity = '0.6';
-        this.submitButton.style.cursor = 'not-allowed';
-        this.submitButton.style.pointerEvents = 'none';
-      }
-
-      const inputs = this.form?.querySelectorAll('input, select, textarea');
-      inputs?.forEach(input => {
-        const element = input as HTMLInputElement;
-        element.disabled = true;
-        element.style.opacity = '0.6';
-        element.style.cursor = 'not-allowed';
-        element.style.pointerEvents = 'none';
-      });
-
-      // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
+      if (this.form && this.submitButton) {
+        setResetPasswordFormLocked(this.form, this.submitButton, true);
       }
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
@@ -618,29 +618,9 @@
         this.submissionTimeout = null;
       }
 
-      // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
+      if (this.form && this.submitButton) {
+        setResetPasswordFormLocked(this.form, this.submitButton, false);
         this.submitButton.innerHTML = this.getTranslation('resetPassword');
-        this.submitButton.style.opacity = '1';
-        this.submitButton.style.cursor = 'pointer';
-        this.submitButton.style.pointerEvents = 'auto';
-      }
-
-      // Re-enable all form inputs
-      const inputs = this.form?.querySelectorAll('input, select, textarea');
-      inputs?.forEach(input => {
-        const element = input as HTMLInputElement;
-        element.disabled = false;
-        element.style.opacity = '1';
-        element.style.cursor = 'text';
-        element.style.pointerEvents = 'auto';
-      });
-
-      // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
       }
     }
 
@@ -656,6 +636,8 @@
   }
 
   // Auto-initialize when DOM is ready
+  if (typeof document === 'undefined') return;
+
   document.addEventListener('DOMContentLoaded', () => {
     const dataElement = document.getElementById('___RESET_PASSWORD_STATE___');
 

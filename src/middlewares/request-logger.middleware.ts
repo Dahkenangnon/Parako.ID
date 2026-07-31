@@ -19,6 +19,18 @@ function shouldSkip(path: string): boolean {
   return SKIP_PREFIXES.some(prefix => path.startsWith(prefix));
 }
 
+const SENSITIVE_QUERY_PARAMETER =
+  /([?&])(token|code|id_token|access_token|refresh_token|client_secret|password)=([^&#]*)/gi;
+
+/** Redact bearer credentials before request URLs are written to logs. */
+export function redactSensitiveQueryParams(originalUrl: string): string {
+  return originalUrl.replace(
+    SENSITIVE_QUERY_PARAMETER,
+    (_match, separator: string, parameter: string) =>
+      `${separator}${parameter}=[REDACTED]`
+  );
+}
+
 /**
  * Request logging middleware
  *
@@ -70,7 +82,7 @@ export class RequestLoggerMiddleware {
       const logData = {
         requestId,
         method: req.method,
-        url: req.originalUrl,
+        url: redactSensitiveQueryParams(req.originalUrl),
         statusCode: res.statusCode,
         duration: `${durationMs}ms`,
         ip: req.ip,

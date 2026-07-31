@@ -16,7 +16,7 @@ import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import type { ISocialLoginManager } from '../../../di/interfaces/social-login-manager.interface.js';
 import type { IUploadMiddleware } from '../../../di/interfaces/upload-middleware.interface.js';
 import type { KoaContextWithOIDC } from 'oidc-provider';
-import { resolveBrandingUrl } from '../../../utils/views.js';
+import { configureNunjucks, resolveBrandingUrl } from '../../../utils/views.js';
 
 /**
  * Koa Middleware Service
@@ -73,6 +73,7 @@ export class KoaMiddleware implements IKoaMiddleware {
         this.configManager.getConfig().deployment.environment !== 'production',
     });
 
+    configureNunjucks(nunjucksEnv);
     this.addNunjucksFilters(nunjucksEnv);
     return nunjucksEnv;
   }
