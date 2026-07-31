@@ -6,6 +6,12 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-31
+
+### Bug Fixes
+
+- preserve native runtime executables ([ae1a3f9](https://github.com/Dahkenangnon/Parako.ID/commit/ae1a3f994a3f064ed2fbaa3fde723914e62dfa97))
+
 ## [0.3.1] - 2026-07-31
 
 ### Bug Fixes
