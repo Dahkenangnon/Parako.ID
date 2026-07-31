@@ -6,6 +6,12 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-31
+
+### Bug Fixes
+
+- adapt redis session commands ([089516a](https://github.com/Dahkenangnon/Parako.ID/commit/089516a7119436cfd3d3c138381e53440bb24186))
+
 ## [0.3.4] - 2026-07-31
 
 ### Bug Fixes
