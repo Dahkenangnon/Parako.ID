@@ -1,7 +1,7 @@
 {
   "name": "parako.id",
   "title": "Parako.ID: Identity Infrastructure You Own",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Open-source, self-hosted identity infrastructure for secure SSO, OIDC/OAuth2, MFA, passkeys, and multi-tenant authentication.",
   "author": {
     "name": "Justin Dah-kenangnon",

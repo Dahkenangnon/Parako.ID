@@ -6,6 +6,12 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-31
+
+### Bug Fixes
+
+- validate pull requests targeting dev ([d7730ff](https://github.com/Dahkenangnon/Parako.ID/commit/d7730ffd42c6e1bb56e9f152c2f5a36a14bed36b))
+
 ## [0.3.0] - 2026-07-30
 
 ### Features
