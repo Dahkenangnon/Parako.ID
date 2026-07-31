@@ -6,6 +6,12 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-31
+
+### Bug Fixes
+
+- honor runtime sqlite path in prisma cli ([6b0ea7b](https://github.com/Dahkenangnon/Parako.ID/commit/6b0ea7bbe67125783898309288d0bdf2e1c280ee))
+
 ## [0.3.3] - 2026-07-31
 
 ### Bug Fixes
