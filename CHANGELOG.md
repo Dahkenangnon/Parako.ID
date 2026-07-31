@@ -6,6 +6,12 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-31
+
+### Bug Fixes
+
+- support sqlite native deployment ([5827af2](https://github.com/Dahkenangnon/Parako.ID/commit/5827af24174c834c758bd17af7d396c4e19ae568))
+
 ## [0.3.2] - 2026-07-31
 
 ### Bug Fixes
