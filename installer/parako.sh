@@ -15,6 +15,8 @@ PARAKO_VERSION="0.3.2"
 INSTALLER_URL="${PARAKO_INSTALLER_URL:-https://get.parako.id}"
 DEFAULT_INSTALL_DIR_ROOT="/opt/parako-id"
 DEFAULT_INSTALL_DIR_USER="${HOME:-/tmp}/parako-id"
+READINESS_MAX_ATTEMPTS=30
+READINESS_POLL_INTERVAL_SECONDS=2
 TEMP_WORKDIR=""
 
 cleanup_temp_workdir() {
@@ -797,6 +799,22 @@ check_health() {
   curl --silent --show-error --fail --max-time 5 "${url}"
 }
 
+wait_for_readiness() {
+  local max_attempts=${READINESS_MAX_ATTEMPTS}
+  local interval_seconds=${READINESS_POLL_INTERVAL_SECONDS} attempt
+
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+    if check_health >/dev/null 2>&1; then
+      return 0
+    fi
+    if [ "${attempt}" -lt "${max_attempts}" ]; then
+      log_info "waiting for application readiness (${attempt}/${max_attempts})"
+      sleep "${interval_seconds}"
+    fi
+  done
+  return 1
+}
+
 cmd_deploy() {
   require_root
   cmd_config_check
@@ -805,20 +823,15 @@ cmd_deploy() {
   cmd_db migrate
   cmd_service install "$@"
   cmd_service start
-  local attempt
-  for attempt in 1 2 3 4 5; do
-    if check_health; then
-      printf '\n'
-      if ! systemctl is-active --quiet parako-id.service \
-          || ! systemctl is-active --quiet parako-id-worker.service; then
-        systemctl stop parako-id-worker.service parako-id.service 2>/dev/null || true
-        die "application or worker service is not active after deployment; both services were stopped"
-      fi
-      log_ok "Parako.ID is deployed and ready"
-      return 0
+  if wait_for_readiness; then
+    if ! systemctl is-active --quiet parako-id.service \
+        || ! systemctl is-active --quiet parako-id-worker.service; then
+      systemctl stop parako-id-worker.service parako-id.service 2>/dev/null || true
+      die "application or worker service is not active after deployment; both services were stopped"
     fi
-    sleep 2
-  done
+    log_ok "Parako.ID is deployed and ready"
+    return 0
+  fi
   cmd_service status || true
   systemctl stop parako-id-worker.service parako-id.service 2>/dev/null || true
   die "deployment readiness did not pass; both services were stopped; inspect parako service logs"
@@ -878,21 +891,16 @@ cmd_update() {
   fi
   if [ "${was_active}" -eq 1 ]; then
     systemctl start parako-id.service parako-id-worker.service
-    local attempt
-    for attempt in 1 2 3 4 5; do
-      if check_health >/dev/null; then
-        if ! systemctl is-active --quiet parako-id-worker.service; then
-          systemctl stop parako-id-worker.service parako-id.service
-          log_err "updated worker service is not active; both services were stopped"
-          log_err "Use 'parako service logs'; restore is always explicit."
-          return 1
-        fi
-        log_ok "update completed and readiness passed"
-        return 0
+    if wait_for_readiness; then
+      if ! systemctl is-active --quiet parako-id-worker.service; then
+        systemctl stop parako-id-worker.service parako-id.service
+        log_err "updated worker service is not active; both services were stopped"
+        log_err "Use 'parako service logs'; restore is always explicit."
+        return 1
       fi
-      log_info "waiting for updated service readiness (${attempt}/5)"
-      sleep 2
-    done
+      log_ok "update completed and readiness passed"
+      return 0
+    fi
     systemctl stop parako-id-worker.service parako-id.service
     log_err "updated service failed readiness and was stopped"
     log_err "Use 'parako service logs'; restore is always explicit."

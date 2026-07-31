@@ -44,6 +44,17 @@ function loadPostgresqlPrismaClient(): PrismaClientModule {
   return postgresqlClientModule;
 }
 
+/** Resolve SQLite paths from the application root, not the launcher's cwd. */
+export function resolveSqliteDatabasePath(
+  configuredPath: string,
+  root: string = process.env.PARAKO_ROOT ?? process.cwd()
+): string {
+  const pathWithoutScheme = configuredPath.startsWith('file:')
+    ? configuredPath.slice('file:'.length)
+    : configuredPath;
+  return resolve(root, pathWithoutScheme);
+}
+
 /**
  * Create a PrismaClient backed by the adapter selected in BootstrapConfig.
  * SQLite → better-sqlite3 adapter  (default / dev / self-hosted, single-tenant only)
@@ -60,7 +71,9 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
   if (adapter === 'sqlite') {
     // SQLite is always single-tenant (boot guard prevents multi-tenancy + SQLite).
     // No tenant extension applied — all data operates under DEFAULT_TENANT_ID.
-    const dbPath = config.storage.sqlite?.path ?? './runtime/data/parako.db';
+    const dbPath = resolveSqliteDatabasePath(
+      config.storage.sqlite?.path ?? './runtime/data/parako.db'
+    );
     mkdirSync(dirname(dbPath), { recursive: true });
     const sqliteAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
     const client = new PrismaClient({ adapter: sqliteAdapter });

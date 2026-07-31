@@ -5,6 +5,8 @@ import { AbstractConfigProvider } from './abstract.js';
 import { SettingsService } from '../../services/settings.service.js';
 import { getDefaultFullConfig } from '../constants.js';
 import { TYPES } from '../../di/types.js';
+import type { IConfigProvider } from '../../di/interfaces/config-provider.interface.js';
+import type { BootstrapConfig } from '../schemas/bootstrap-schema.js';
 import {
   validateNonBootstrapConfig,
   stripBootstrapFields,
@@ -37,10 +39,18 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
   private changeStream: any = null; // MongoDB change stream
   private usingChangeStreams = false;
 
-  constructor(@inject(TYPES.SettingsService) settingsService: SettingsService) {
+  constructor(
+    @inject(TYPES.SettingsService) settingsService: SettingsService,
+    @inject(TYPES.BootstrapConfigProvider)
+    bootstrapProvider: IConfigProvider<BootstrapConfig>
+  ) {
     super();
     this.settingsService = settingsService;
-    this.startCacheMonitoring();
+    const storageAdapter = bootstrapProvider.getConfigValue(
+      'storage.adapter',
+      'sqlite'
+    );
+    this.startCacheMonitoring(storageAdapter);
   }
 
   /**
@@ -208,7 +218,15 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * Start monitoring database for configuration changes
    * Tries to use MongoDB Change Streams first, falls back to polling if unavailable
    */
-  private startCacheMonitoring(): void {
+  private startCacheMonitoring(storageAdapter: string): void {
+    if (storageAdapter !== 'mongodb') {
+      console.info(
+        `Using polling-based configuration monitoring for ${storageAdapter} storage`
+      );
+      this.startPollingMonitoring();
+      return;
+    }
+
     if (this.supportsChangeStreams()) {
       console.info(
         'Attempting to use MongoDB Change Streams for config monitoring...'

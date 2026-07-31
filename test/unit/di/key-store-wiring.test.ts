@@ -109,12 +109,55 @@ describe('KeyStore DI Wiring', () => {
       removeDir: vi.fn(),
       readFile: vi.fn(),
     });
+    container
+      .bind(TYPES.AdapterBundle)
+      .toConstantValue({ kind: 'mongoose' } as any);
     container.bind(TYPES.JwksKeyModel).toConstantValue({} as any);
 
     container.load(oidcModule);
 
     const keyStore = container.get(TYPES.KeyStore);
     expect(keyStore).toBeInstanceOf(DBKeyStore);
+  });
+
+  it('uses Prisma JWKS persistence without requiring a Mongoose model', async () => {
+    const { oidcModule } = await import('../../../src/di/modules/oidc.module');
+    const container = new Container();
+
+    container.bind(TYPES.ConfigManager).toConstantValue({
+      getConfig: () => ({
+        security: {
+          key_store: { type: 'database' },
+          secrets: { jwt_secret: 'x'.repeat(32) },
+        },
+      }),
+      getConfigSection: vi.fn(),
+      isLoaded: () => true,
+      subscribe: vi.fn(),
+    });
+    container.bind(TYPES.Logger).toConstantValue({
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      getLogger: vi.fn(),
+      child: vi.fn(),
+      flush: vi.fn(),
+      shutdown: vi.fn(),
+    });
+    container
+      .bind(TYPES.AdapterBundle)
+      .toConstantValue({ kind: 'prisma' } as any);
+    container.bind(TYPES.PrismaClient).toConstantValue({
+      jwksKey: { count: vi.fn().mockResolvedValue(1) },
+    } as any);
+
+    container.load(oidcModule);
+
+    const keyStore = container.get<any>(TYPES.KeyStore);
+    await expect(keyStore.initialize()).resolves.toBeUndefined();
   });
 
   it('should bind DBKeyStore by default (no explicit type)', async () => {
@@ -163,6 +206,9 @@ describe('KeyStore DI Wiring', () => {
       removeDir: vi.fn(),
       readFile: vi.fn(),
     });
+    container
+      .bind(TYPES.AdapterBundle)
+      .toConstantValue({ kind: 'mongoose' } as any);
     container.bind(TYPES.JwksKeyModel).toConstantValue({} as any);
 
     container.load(oidcModule);

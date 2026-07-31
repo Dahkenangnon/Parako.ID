@@ -84,6 +84,8 @@ jobs:
 
       - name: Structure bats — function/flag presence + absence assertions
         run: bats installer/test/structure.bats
+      - name: Operator lifecycle regression
+        run: bash installer/test/operator-lifecycle.sh
 
   git-source:
     name: Git source lifecycle

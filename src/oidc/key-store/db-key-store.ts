@@ -13,7 +13,12 @@ import {
   encryptJWK,
   decryptJWK,
 } from '../../utils/key-encryption.js';
-import type { JwksKeyModel, IJwksKey } from '../../models/jwks-key.model.js';
+import type { JwksKeyModel } from '../../models/jwks-key.model.js';
+import type {
+  IJwksKeyRepository,
+  JwksKeyRecord,
+} from './jwks-key.repository.js';
+import { MongooseJwksKeyRepository } from './mongoose-jwks-key.repository.js';
 
 const DEFAULT_TENANT = 'default';
 
@@ -23,7 +28,7 @@ const MIN_ROTATION_INTERVAL_MS = 60_000; // 1 minute
 /**
  * Database-backed IKeyStore implementation.
  *
- * Stores JWKS keys in MongoDB (via Mongoose model) with private key
+ * Stores JWKS keys through the selected database adapter with private key
  * material encrypted at rest using AES-256-GCM derived from jwt_secret.
  *
  * Supports two-phase rotation per node-oidc-provider recommendations:
@@ -34,21 +39,25 @@ const MIN_ROTATION_INTERVAL_MS = 60_000; // 1 minute
 export class DBKeyStore implements IKeyStore {
   private derivedKey: Buffer | null = null;
   private lastRotationAt: Date | null = null;
+  private readonly repository: IJwksKeyRepository;
 
   constructor(
     @inject(TYPES.Logger) private readonly logger: ILogger,
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager,
-    @inject(TYPES.JwksKeyModel) private readonly jwksKeyModel: JwksKeyModel
-  ) {}
+    @inject(TYPES.JwksKeyModel)
+    persistence: IJwksKeyRepository | JwksKeyModel
+  ) {
+    this.repository =
+      'countCurrent' in persistence
+        ? persistence
+        : new MongooseJwksKeyRepository(persistence);
+  }
 
   async initialize(tenantId?: string): Promise<void> {
     const tenant = tenantId ?? DEFAULT_TENANT;
     this.ensureDerivedKey();
 
-    const count = await this.jwksKeyModel.countDocuments({
-      tenant_id: tenant,
-      status: { $in: ['active', 'expiring'] },
-    });
+    const count = await this.repository.countCurrent(tenant);
 
     if (count === 0) {
       this.logger.info('No keys found in database, generating initial keyset', {
@@ -66,13 +75,11 @@ export class DBKeyStore implements IKeyStore {
     const tenant = tenantId ?? DEFAULT_TENANT;
     const key = this.getDerivedKey();
 
-    const docs = await this.jwksKeyModel
-      .find({ tenant_id: tenant, status: { $in: ['active', 'expiring'] } })
-      .lean();
+    const docs = await this.repository.findCurrent(tenant);
 
     this.sortByPromotionGroup(docs);
 
-    const keys = docs.map((doc: IJwksKey) =>
+    const keys = docs.map((doc: JwksKeyRecord) =>
       decryptJWK(doc.encrypted_private_key, key)
     );
     return { keys };
@@ -81,13 +88,11 @@ export class DBKeyStore implements IKeyStore {
   async getPublicJWKS(tenantId?: string): Promise<{ keys: JsonWebKey[] }> {
     const tenant = tenantId ?? DEFAULT_TENANT;
 
-    const docs = await this.jwksKeyModel
-      .find({ tenant_id: tenant, status: { $in: ['active', 'expiring'] } })
-      .lean();
+    const docs = await this.repository.findCurrent(tenant);
 
     this.sortByPromotionGroup(docs);
 
-    const keys = docs.map((doc: IJwksKey) => {
+    const keys = docs.map((doc: JwksKeyRecord) => {
       const pub =
         typeof doc.public_key === 'string'
           ? JSON.parse(doc.public_key)
@@ -110,10 +115,7 @@ export class DBKeyStore implements IKeyStore {
     await this.generateAndStoreKeys(tenant, false);
 
     // Move old active → expiring
-    await this.jwksKeyModel.updateMany(
-      { tenant_id: tenant, status: 'active', promoted: { $ne: false } },
-      { $set: { status: 'expiring' as KeyStatus, rotated_at: new Date() } }
-    );
+    await this.repository.markPromotedActiveExpiring(tenant, new Date());
 
     this.lastRotationAt = new Date();
     this.logger.info('Key rotation phase 1 completed (keys unpromoted)', {
@@ -124,15 +126,7 @@ export class DBKeyStore implements IKeyStore {
   async promoteKeys(tenantId?: string): Promise<number> {
     const tenant = tenantId ?? DEFAULT_TENANT;
 
-    const result = await this.jwksKeyModel.updateMany(
-      { tenant_id: tenant, status: 'active', promoted: false },
-      { $set: { promoted: true } }
-    );
-
-    const count =
-      typeof result === 'object' && result !== null && 'modifiedCount' in result
-        ? (result as { modifiedCount: number }).modifiedCount
-        : 0;
+    const count = await this.repository.promoteUnpromotedActive(tenant);
 
     if (count > 0) {
       this.logger.info(`Promoted ${count} keys to signing priority`, {
@@ -151,19 +145,7 @@ export class DBKeyStore implements IKeyStore {
 
     const cutoff = new Date(Date.now() - overlapSeconds * 1000);
 
-    const result = await this.jwksKeyModel.updateMany(
-      {
-        tenant_id: tenant,
-        status: 'expiring',
-        rotated_at: { $exists: true, $lt: cutoff },
-      },
-      { $set: { status: 'retired' as KeyStatus } }
-    );
-
-    const modifiedCount =
-      typeof result === 'object' && result !== null && 'modifiedCount' in result
-        ? (result as { modifiedCount: number }).modifiedCount
-        : 0;
+    const modifiedCount = await this.repository.retireExpired(tenant, cutoff);
 
     if (modifiedCount > 0) {
       this.logger.info(`Retired ${modifiedCount} expired keys`, {
@@ -178,12 +160,9 @@ export class DBKeyStore implements IKeyStore {
     const tenant = tenantId ?? DEFAULT_TENANT;
     const key = this.getDerivedKey();
 
-    const docs = await this.jwksKeyModel
-      .find({ tenant_id: tenant })
-      .sort({ created_at: -1 })
-      .lean();
+    const docs = await this.repository.findAll(tenant);
 
-    return docs.map((doc: IJwksKey) => ({
+    return docs.map((doc: JwksKeyRecord) => ({
       kid: doc.kid,
       alg: doc.alg,
       use: doc.use,
@@ -206,10 +185,7 @@ export class DBKeyStore implements IKeyStore {
     const intervalDays =
       config.security?.key_store?.rotation_interval_days ?? 90;
 
-    const newest = await this.jwksKeyModel
-      .findOne({ tenant_id: tenant, status: 'active' })
-      .sort({ created_at: -1 })
-      .lean();
+    const newest = await this.repository.findNewestActive(tenant);
 
     if (!newest) return true; // No active keys → definitely needs rotation
 
@@ -227,8 +203,8 @@ export class DBKeyStore implements IKeyStore {
    *   Group 1: active + unpromoted (verification only)
    *   Group 2: expiring            (verification only)
    */
-  private sortByPromotionGroup(docs: IJwksKey[]): void {
-    docs.sort((a: IJwksKey, b: IJwksKey) => {
+  private sortByPromotionGroup(docs: JwksKeyRecord[]): void {
+    docs.sort((a: JwksKeyRecord, b: JwksKeyRecord) => {
       const aPromoted = a.promoted !== false;
       const bPromoted = b.promoted !== false;
       const groupA =
@@ -288,17 +264,7 @@ export class DBKeyStore implements IKeyStore {
     ];
     const key = this.getDerivedKey();
 
-    const newDocs: Array<{
-      kid: string;
-      alg: string;
-      use: string;
-      status: KeyStatus;
-      promoted: boolean;
-      encrypted_private_key: string;
-      public_key: Record<string, unknown>;
-      tenant_id: string;
-      created_at: Date;
-    }> = [];
+    const newDocs: JwksKeyRecord[] = [];
 
     for (const alg of algorithms) {
       const keyPair = await jose.generateKeyPair(alg, { extractable: true });
@@ -330,7 +296,7 @@ export class DBKeyStore implements IKeyStore {
       });
     }
 
-    await this.jwksKeyModel.insertMany(newDocs);
+    await this.repository.insertMany(newDocs);
     this.logger.info(`Generated ${newDocs.length} keys`, {
       algorithms,
       tenantId,

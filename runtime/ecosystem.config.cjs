@@ -24,6 +24,9 @@
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
+const path = require('node:path');
+
+const rootDir = path.resolve(__dirname, '..');
 const appName = process.env.APP_NAME || 'parako-id';
 
 const config = {
@@ -32,6 +35,7 @@ const config = {
       name: appName,
       script: './dist/src/index.js',
       interpreter: 'node',
+      cwd: rootDir,
 
       // Cluster mode for zero-downtime reloads and load balancing
       exec_mode: 'cluster',
@@ -65,6 +69,7 @@ const config = {
         NODE_ENV: 'production',
         PORT: process.env.PORT || 9007,
         APP_NAME: appName,
+        PARAKO_ROOT: rootDir,
       },
 
       // Security: run as non-root if configured
@@ -78,6 +83,7 @@ const config = {
       name: `${appName}-worker`,
       script: './dist/src/worker.js',
       interpreter: 'node',
+      cwd: rootDir,
 
       exec_mode: 'fork',
       instances: 1,
@@ -104,6 +110,7 @@ const config = {
       env: {
         NODE_ENV: 'production',
         APP_NAME: `${appName}-worker`,
+        PARAKO_ROOT: rootDir,
       },
 
       ...(process.env.PM2_UID && { uid: process.env.PM2_UID }),

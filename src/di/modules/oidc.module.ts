@@ -3,8 +3,12 @@ import { TYPES } from '../types.js';
 
 import { FileKeyStore } from '../../oidc/key-store/file-key-store.js';
 import { DBKeyStore } from '../../oidc/key-store/db-key-store.js';
+import { MongooseJwksKeyRepository } from '../../oidc/key-store/mongoose-jwks-key.repository.js';
+import { PrismaJwksKeyRepository } from '../../oidc/key-store/prisma-jwks-key.repository.js';
 import type { IKeyStore } from '../interfaces/key-store.interface.js';
 import type { IConfigManager } from '../interfaces/config-manager.interface.js';
+import type { AdapterBundle } from '../loaders/adapter-loader.js';
+import type { PrismaClient } from '@prisma/client';
 
 import { Account } from '../../oidc/specs/account.js';
 import { OIDCUtils } from '../../oidc/utils.js';
@@ -69,10 +73,18 @@ export const oidcModule: ContainerModule = new ContainerModule(
           );
         }
 
+        const bundle = context.get<AdapterBundle>(TYPES.AdapterBundle);
+        const repository =
+          bundle.kind === 'prisma'
+            ? new PrismaJwksKeyRepository(
+                context.get<PrismaClient>(TYPES.PrismaClient)
+              )
+            : new MongooseJwksKeyRepository(context.get(TYPES.JwksKeyModel));
+
         return new DBKeyStore(
           context.get(TYPES.Logger),
           configManager,
-          context.get(TYPES.JwksKeyModel)
+          repository
         );
       })
       .inSingletonScope();
