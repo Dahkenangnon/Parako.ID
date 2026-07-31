@@ -7,8 +7,14 @@ vi.mock('node:child_process', () => ({
 const { execFileSync } = await import('node:child_process');
 const execFileSyncMock = vi.mocked(execFileSync);
 
-const { parseSubject, generateBody, stampChangelog, previousTagFor, REMOTE } =
-  await import('../../../scripts/release.mjs');
+const {
+  parseSubject,
+  generateBody,
+  stampChangelog,
+  stampOperatorVersion,
+  previousTagFor,
+  REMOTE,
+} = await import('../../../scripts/release.mjs');
 
 describe('parseSubject', () => {
   it('parses type with scope', () => {
@@ -184,6 +190,20 @@ describe('stampChangelog', () => {
     expect(out).toContain('* prior');
     expect(out).toContain('* new');
     expect(out.indexOf('* new')).toBeLessThan(out.indexOf('* prior'));
+  });
+});
+
+describe('stampOperatorVersion', () => {
+  it('synchronizes the packaged helper with the release version', () => {
+    const src = '#!/usr/bin/env bash\nPARAKO_VERSION="0.3.1"\nmain "$@"\n';
+
+    expect(stampOperatorVersion(src, '0.3.2')).toBe(
+      '#!/usr/bin/env bash\nPARAKO_VERSION="0.3.2"\nmain "$@"\n'
+    );
+  });
+
+  it('rejects an operator script without a version marker', () => {
+    expect(() => stampOperatorVersion('#!/bin/sh\n', '0.3.2')).toThrow();
   });
 });
 

@@ -811,6 +811,76 @@ validate_production_package() {
     log_success "Security validation passed - no sensitive files found"
 }
 
+smoke_test_read_only_database() {
+    log_step "Testing Read-Only Release Database Runtime"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "Would migrate and inspect SQLite with the release tree read-only"
+        return
+    fi
+
+    cd "$PROJECT_ROOT"
+
+    local release_dir="$PROJECT_ROOT/parako-id-release"
+    local runtime_dir schema_engine smoke_failed=0
+    runtime_dir=$(mktemp -d -t parako-release-runtime-XXXXXXXX)
+
+    schema_engine=$(find "$release_dir/node_modules" -type f \
+        -name 'schema-engine-*' -perm /0111 -print -quit)
+    if [[ -z "$schema_engine" ]]; then
+        rm -rf "$runtime_dir"
+        log_error "Executable Prisma schema engine is missing from the production package"
+        exit 1
+    fi
+
+    # Apply the exact permission normalization used before systemd starts the
+    # service. This caught the v0.3.1 regression where a blanket chmod removed
+    # the bundled Prisma schema engine's executable bit.
+    bash -c 'source "$1"; normalize_release_permissions "$2"' \
+        _ "$release_dir/contrib/parako.sh" "$release_dir"
+
+    if ! env \
+        PARAKO_ROOT="$release_dir" \
+        PARAKO_ENV_FILE="$runtime_dir/missing.env" \
+        STORAGE_ADAPTER=sqlite \
+        STORAGE_SQLITE_PATH="$runtime_dir/parako.db" \
+        DATABASE_URL="file:$runtime_dir/parako.db" \
+        "$release_dir/node/bin/node" \
+        "$release_dir/dist/scripts/manage/database.js" migrate; then
+        rm -rf "$runtime_dir"
+        log_error "Bundled Prisma migration smoke test failed"
+        exit 1
+    fi
+
+    # ProtectSystem=strict only grants runtime/ as writable. Removing write
+    # permission here proves that migration status does not attempt to repair,
+    # download, or rewrite a native engine inside the signed release tree.
+    chmod -R a-w "$release_dir"
+    if ! env \
+        PARAKO_ROOT="$release_dir" \
+        PARAKO_ENV_FILE="$runtime_dir/missing.env" \
+        STORAGE_ADAPTER=sqlite \
+        STORAGE_SQLITE_PATH="$runtime_dir/parako.db" \
+        DATABASE_URL="file:$runtime_dir/parako.db" \
+        "$release_dir/node/bin/node" \
+        "$release_dir/dist/scripts/manage/database.js" status; then
+        smoke_failed=1
+    fi
+
+    # Restore deterministic artifact modes even when the read-only check fails.
+    chmod -R u+w "$release_dir"
+    bash -c 'source "$1"; normalize_release_permissions "$2"' \
+        _ "$release_dir/contrib/parako.sh" "$release_dir"
+    rm -rf "$runtime_dir"
+
+    if [[ "$smoke_failed" -eq 1 ]]; then
+        log_error "Prisma status attempted to mutate or could not execute from the read-only release"
+        exit 1
+    fi
+
+    log_success "Bundled Prisma works with the release tree read-only"
+}
+
 create_release_archives() {
     log_step "Creating Release Archives"
     
@@ -888,6 +958,7 @@ main() {
     create_release_manifest
     optimize_package
     validate_production_package
+    smoke_test_read_only_database
     create_release_archives
     cleanup
     

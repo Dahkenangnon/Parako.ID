@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Release helper — bumps the root package.json version, stamps a new
- * dated section into CHANGELOG.md from the git log, commits both
- * changes, and optionally pushes that preparation commit for review.
+ * dated section into CHANGELOG.md from the git log, synchronizes the
+ * packaged operator helper version, commits the generated changes, and
+ * optionally pushes that preparation commit for review.
  *
  * This script never tags or publishes. After the release commit is reviewed,
  * merged to protected main, and all gates pass, `pnpm release:tag -- vX.Y.Z
@@ -127,6 +128,19 @@ export function stampChangelog(src, version, body) {
   return src.replace(marker, block);
 }
 
+const OPERATOR_VERSION_RE = /^PARAKO_VERSION="[^"]+"$/m;
+const RELEASE_FILES = ['package.json', 'CHANGELOG.md', 'installer/parako.sh'];
+
+export function stampOperatorVersion(src, version) {
+  if (!OPERATOR_VERSION_RE.test(src)) {
+    throw new Error(
+      'installer/parako.sh has no PARAKO_VERSION marker to synchronize'
+    );
+  }
+
+  return src.replace(OPERATOR_VERSION_RE, `PARAKO_VERSION="${version}"`);
+}
+
 function runInherit(file, args) {
   execFileSync(file, args, { stdio: 'inherit' });
 }
@@ -151,13 +165,13 @@ function currentBranch() {
 
 function resetGeneratedReleaseFiles() {
   try {
-    runSilent('git', ['restore', '--staged', 'package.json', 'CHANGELOG.md']);
+    runSilent('git', ['restore', '--staged', ...RELEASE_FILES]);
   } catch {
     // Ignore cleanup errors so the original release failure remains visible.
   }
 
   try {
-    runSilent('git', ['restore', 'package.json', 'CHANGELOG.md']);
+    runSilent('git', ['restore', ...RELEASE_FILES]);
   } catch {
     // Ignore cleanup errors so the original release failure remains visible.
   }
@@ -193,14 +207,17 @@ function main() {
     const src = readFileSync('CHANGELOG.md', 'utf8');
     const stamped = stampChangelog(src, version, body);
     writeFileSync('CHANGELOG.md', stamped);
+    const operatorPath = resolve('installer/parako.sh');
+    const operatorSrc = readFileSync(operatorPath, 'utf8');
+    writeFileSync(operatorPath, stampOperatorVersion(operatorSrc, version));
 
     runInherit('npx', ['prettier', '--write', 'package.json', 'CHANGELOG.md']);
-    runInherit('git', ['add', 'package.json', 'CHANGELOG.md']);
+    runInherit('git', ['add', ...RELEASE_FILES]);
     runInherit('git', ['commit', '-m', `chore(release): v${version}`]);
   } catch (error) {
     resetGeneratedReleaseFiles();
     process.stderr.write(
-      '\nRelease commit failed. Generated package.json and CHANGELOG.md changes were reset so you can rerun the release command after fixing the reported issue.\n'
+      '\nRelease commit failed. Generated release files were reset so you can rerun the release command after fixing the reported issue.\n'
     );
     throw error;
   }

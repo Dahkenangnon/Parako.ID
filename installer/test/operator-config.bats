@@ -76,3 +76,24 @@ setup() {
   grep -q '^STORAGE_ADAPTER=mongodb$' "${INSTALL_DIR}/runtime/.env"
   grep -q '^STORAGE_MONGODB_URI=mongodb://' "${INSTALL_DIR}/runtime/.env"
 }
+
+@test "release permission normalization preserves packaged executables" {
+  local release_dir="${BATS_TEST_TMPDIR}/release-permissions"
+  mkdir -p "${release_dir}/node_modules/@prisma/engines"
+  printf '#!/bin/sh\nexit 0\n' \
+    >"${release_dir}/node_modules/@prisma/engines/schema-engine-linux"
+  printf 'module.exports = {}\n' >"${release_dir}/app.js"
+  chmod 0755 "${release_dir}/node_modules/@prisma/engines/schema-engine-linux"
+  chmod 0664 "${release_dir}/app.js"
+
+  run bash -c '
+    source "$1"
+    normalize_release_permissions "$2"
+    stat -c "%a" "$2/node_modules/@prisma/engines/schema-engine-linux"
+    stat -c "%a" "$2/app.js"
+  ' _ "${PARAKO_SH}" "${release_dir}"
+
+  [ "${status}" -eq 0 ]
+  [ "${lines[0]}" = "750" ]
+  [ "${lines[1]}" = "640" ]
+}

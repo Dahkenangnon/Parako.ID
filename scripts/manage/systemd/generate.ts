@@ -147,6 +147,8 @@ Documentation=https://docs.parako.id
 After=network.target
 # Auto-detected dependencies — uncomment if services are on this host
 # After=mongod.service redis-server.service postgresql.service
+StartLimitBurst=10
+StartLimitIntervalSec=300
 
 [Service]
 Type=simple
@@ -159,8 +161,6 @@ ExecStartPre=${config.nodePath} dist/scripts/manage/database.js status
 ExecStart=${config.nodePath} ${NODE_ARGS} ${APP_SCRIPT}
 Restart=on-failure
 RestartSec=3
-StartLimitBurst=10
-StartLimitIntervalSec=300
 
 # Graceful shutdown
 TimeoutStopSec=10
@@ -201,6 +201,8 @@ Description=Parako.ID Worker - Background Jobs
 Documentation=https://docs.parako.id
 After=${serviceName}.service
 BindsTo=${serviceName}.service
+StartLimitBurst=10
+StartLimitIntervalSec=300
 
 [Service]
 Type=simple
@@ -212,8 +214,6 @@ Environment=PARAKO_ROOT=${config.workingDirectory}
 ExecStart=${config.nodePath} ${NODE_ARGS} ${WORKER_SCRIPT}
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=10
-StartLimitIntervalSec=300
 
 # Graceful shutdown
 TimeoutStopSec=10

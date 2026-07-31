@@ -692,6 +692,17 @@ service_user() {
   printf '%s' "${configured:-parako}"
 }
 
+normalize_release_permissions() {
+  local target=$1
+
+  # Normalize the signed artifact without erasing its executable contract.
+  # Prisma's schema engine, bundled runtimes, and native helpers must remain
+  # executable when the release is later mounted read-only by systemd.
+  find "${target}" -type d -exec chmod 0750 {} +
+  find "${target}" -type f ! -perm /0111 -exec chmod 0640 {} +
+  find "${target}" -type f -perm /0111 -exec chmod 0750 {} +
+}
+
 prepare_service_permissions() {
   local install_dir=$1 user=$2 target mode
   require_root
@@ -708,8 +719,7 @@ prepare_service_permissions() {
   fi
   chown "root:${user}" "${install_dir}" "${install_dir}/releases"
   chown -R "root:${user}" "${target}"
-  find "${target}" -type d -exec chmod 0750 {} +
-  find "${target}" -type f -exec chmod 0640 {} +
+  normalize_release_permissions "${target}"
   if [ "${mode}" = "native" ]; then
     chmod 0750 "${target}/node/bin/node"
     chmod 0750 "${target}/tools/age/age" "${target}/tools/age/age-keygen"
@@ -1141,4 +1151,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -48,4 +48,16 @@ describe('systemd unit generation', () => {
     expect(units.app).toContain('ProtectHome=yes');
     expect(units.worker).toContain('ReadWritePaths=/opt/parako-id/runtime');
   });
+
+  it('places restart rate limits in the systemd Unit section', () => {
+    const units = generateUnitFiles(config);
+
+    for (const unit of [units.app, units.worker]) {
+      const [unitSection, serviceSection] = unit.split('[Service]');
+      expect(unitSection).toContain('StartLimitBurst=10');
+      expect(unitSection).toContain('StartLimitIntervalSec=300');
+      expect(serviceSection).not.toContain('StartLimitBurst=10');
+      expect(serviceSection).not.toContain('StartLimitIntervalSec=300');
+    }
+  });
 });
