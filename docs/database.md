@@ -33,7 +33,7 @@ SQLite requires no external database server. Data is stored in a single file.
 
 ```bash
 STORAGE_ADAPTER=sqlite
-STORAGE_SQLITE_PATH=./data/parako.db
+STORAGE_SQLITE_PATH=./runtime/data/parako.db
 ```
 
 ### Setup
