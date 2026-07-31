@@ -22,6 +22,7 @@ import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.in
 import { TYPES } from '../di/types.js';
 import { PrismaSessionStore } from './prisma-session-store.js';
 import { encryptValue, decryptValue, isEncrypted } from './encryption.js';
+import { createConnectRedisClientAdapter } from './connect-redis-client.js';
 
 /**
  * Fields that contain sensitive data and should be encrypted at rest
@@ -2066,7 +2067,7 @@ export class SessionManager implements ISessionManager {
     this.sessionPrefix = sessionPrefix;
 
     this.store = new RedisStore({
-      client: redisClient,
+      client: createConnectRedisClientAdapter(redisClient),
       prefix: sessionPrefix,
       ttl: this.options.ttl,
     });
