@@ -74,11 +74,28 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
       // No logger available in this handler, so we silently ignore logging errors
     }
 
+    const status =
+      typeof err.statusCode === 'number' && err.statusCode >= 400
+        ? err.statusCode
+        : typeof err.status === 'number' && err.status >= 400
+          ? err.status
+          : 500;
+
     if (err.name === 'account_selection_required') {
-      return res.render(this.viewResolver.views.auth.oidc.error, {
-        errorType: 'account_selection_required',
+      return res
+        .status(status)
+        .render(this.viewResolver.views.auth.oidc.error, {
+          errorType: 'account_selection_required',
+          errorMessage:
+            'No accounts are available for selection. Please sign in first.',
+        });
+    }
+
+    if (err instanceof oidcErrors.SessionNotFound) {
+      return res.status(400).render(this.viewResolver.views.auth.oidc.error, {
+        errorType: 'expired_session',
         errorMessage:
-          'No accounts are available for selection. Please sign in first.',
+          'This authorization session has expired or was already used. Please restart sign-in from the application.',
       });
     }
 
@@ -97,7 +114,7 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
         ? rawMessage.slice(0, 500) // Limit message length
         : 'An error occurred during the authentication process.';
 
-    res.render(this.viewResolver.views.auth.oidc.error, {
+    res.status(status).render(this.viewResolver.views.auth.oidc.error, {
       errorType,
       errorMessage,
     });

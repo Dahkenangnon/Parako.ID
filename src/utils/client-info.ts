@@ -171,7 +171,10 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
         return null;
       }
 
-      let parsedData: ClientDeviceInfos;
+      let parsedData: ClientDeviceInfos & {
+        visitorId?: string;
+        visitorIdSource?: 'fingerprintjs' | 'fallback';
+      };
       let encodingUsed: 'json' | 'base64' = 'json';
 
       try {
@@ -197,6 +200,16 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
           return null;
         }
       }
+
+      // The browser collector historically emitted camelCase fields while the
+      // server-side model uses snake_case. Accept both during the transition
+      // and return one canonical representation to downstream consumers.
+      const { visitorId, visitorIdSource, ...canonicalData } = parsedData;
+      parsedData = {
+        ...canonicalData,
+        visitor_id: canonicalData.visitor_id || visitorId || '',
+        visitor_id_source: canonicalData.visitor_id_source || visitorIdSource,
+      };
 
       const validationResult = this.validateDeviceInfo(parsedData);
       if (!validationResult.isValid) {
