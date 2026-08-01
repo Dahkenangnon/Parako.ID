@@ -11,6 +11,7 @@ import type { ISessionManager } from '../../../di/interfaces/session-manager.int
 import type { INotificationService } from '../../../di/interfaces/notification-service.interface.js';
 import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
+import { allowFormActionRedirectOrigin } from '../../../utils/content-security-policy.js';
 
 /**
  * OIDC Interaction Handler
@@ -48,6 +49,17 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
     try {
       const interactionDetails = await provider.interactionDetails(req, res);
       const { uid, prompt, params, session } = interactionDetails;
+
+      const contentSecurityPolicy = res.getHeader('Content-Security-Policy');
+      if (typeof contentSecurityPolicy === 'string') {
+        res.setHeader(
+          'Content-Security-Policy',
+          allowFormActionRedirectOrigin(
+            contentSecurityPolicy,
+            params.redirect_uri
+          )
+        );
+      }
 
       const client: Client = (await provider.Client.find(
         params.client_id as string

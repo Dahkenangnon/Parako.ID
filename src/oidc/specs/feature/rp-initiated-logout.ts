@@ -2,6 +2,7 @@ import type { IConfigManager } from '../../../di/interfaces/config-manager.inter
 import { KoaContextWithOIDC } from 'oidc-provider';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 import type { IViewResolver } from '../../../di/interfaces/view-resolver.interface.js';
+import { allowFormActionRedirectOrigin } from '../../../utils/content-security-policy.js';
 /**
  * Factory function to create RP-initiated logout configuration
  * @param configManager - Configuration manager instance
@@ -30,6 +31,17 @@ export default function RpInitiatedLogout(
       const currentYear = new Date().getFullYear();
 
       const locale = oidcUtils.getLocale(ctx);
+
+      const contentSecurityPolicy = ctx.response.get('Content-Security-Policy');
+      if (contentSecurityPolicy) {
+        ctx.set(
+          'Content-Security-Policy',
+          allowFormActionRedirectOrigin(
+            contentSecurityPolicy,
+            ctx.oidc.params?.post_logout_redirect_uri
+          )
+        );
+      }
 
       await ctx.render(viewResolver.views.auth.oidc.logout, {
         form,
