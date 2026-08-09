@@ -3,7 +3,7 @@ import {
   validateEnvVars,
   PARAKO_ENV_SPECS,
   type EnvVarSpec,
-} from '../../../src/utils/env-validator';
+} from '../../../src/utils/env-validator.js';
 
 describe('validateEnvVars', () => {
   const savedEnv = { ...process.env };
@@ -131,10 +131,13 @@ describe('validateEnvVars', () => {
       expect(spec1).toBeDefined();
       expect(spec2).toBeDefined();
       expect(spec1!.validator).toBeDefined();
+      expect(spec2!.validator).toBeDefined();
       // Valid: 16+ chars
       expect(spec1!.validator!('a'.repeat(16))).toBe(true);
+      expect(spec2!.validator!('b'.repeat(16))).toBe(true);
       // Invalid: too short
       expect(spec1!.validator!('short')).toBe(false);
+      expect(spec2!.validator!('short')).toBe(false);
     });
 
     it('should have a JWT_SECRET spec with length validator', () => {

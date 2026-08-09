@@ -158,15 +158,69 @@ describe('MetricsService', () => {
   });
 
   describe('error containment', () => {
-    it('record methods never throw even when counters are corrupted', () => {
-      const { service } = createService();
-      // Force counter to null to simulate corruption
-      (service as any).tokenIssuedCounter = null;
+    it.each([
+      [
+        'token issued',
+        'tokenIssuedCounter',
+        (service: MetricsService) =>
+          service.recordTokenIssued('authorization_code'),
+      ],
+      [
+        'token error',
+        'tokenErrorCounter',
+        (service: MetricsService) =>
+          service.recordTokenError('grant', 'authorization_code'),
+      ],
+      [
+        'login attempt',
+        'loginAttemptCounter',
+        (service: MetricsService) =>
+          service.recordLoginAttempt('error', 'email'),
+      ],
+      [
+        'federation login',
+        'federationLoginCounter',
+        (service: MetricsService) =>
+          service.recordFederationLogin('github', 'failure'),
+      ],
+      [
+        'request duration',
+        'httpDurationHistogram',
+        (service: MetricsService) =>
+          service.recordRequestDuration('GET', '/health', 500, 0.05),
+      ],
+      [
+        'JWKS rotation',
+        'jwksRotationCounter',
+        (service: MetricsService) =>
+          service.recordJwksRotation('rotate', 'failure'),
+      ],
+      [
+        'OIDC interaction',
+        'oidcInteractionCounter',
+        (service: MetricsService) =>
+          service.recordOidcInteraction('login', 'error'),
+      ],
+    ] as const)(
+      'contains and reports a %s recorder failure',
+      (_name, field, record) => {
+        const { service, logger } = createService();
+        const fail = vi.fn(() => {
+          throw field === 'tokenIssuedCounter'
+            ? new Error('counter failed')
+            : 'counter failed';
+        });
+        Object.defineProperty(service, field, {
+          value: { inc: fail, observe: fail },
+        });
 
-      expect(() =>
-        service.recordTokenIssued('authorization_code')
-      ).not.toThrow();
-    });
+        expect(() => record(service)).not.toThrow();
+        expect(logger.debug).toHaveBeenCalledWith(
+          expect.stringMatching(/^metrics: failed to record /),
+          { error: 'counter failed' }
+        );
+      }
+    );
   });
 
   describe('Prometheus output format', () => {
@@ -336,6 +390,24 @@ describe('label sanitization in metrics', () => {
     expect(metrics).toContain('method="other"');
     expect(metrics).not.toContain('PROPFIND');
   });
+
+  it('collapses an unknown JWKS rotation phase to "other"', async () => {
+    const { service } = createService();
+    service.recordJwksRotation('attacker-controlled-phase', 'failure');
+
+    const metrics = await service.getMetrics();
+    expect(metrics).toContain('phase="other"');
+    expect(metrics).not.toContain('attacker-controlled-phase');
+  });
+
+  it('collapses an unknown OIDC interaction prompt to "other"', async () => {
+    const { service } = createService();
+    service.recordOidcInteraction('attacker-controlled-prompt', 'started');
+
+    const metrics = await service.getMetrics();
+    expect(metrics).toContain('prompt="other"');
+    expect(metrics).not.toContain('attacker-controlled-prompt');
+  });
 });
 
 describe('normalizeRoute', () => {
@@ -363,6 +435,12 @@ describe('normalizeRoute', () => {
 
   it('preserves static route paths', () => {
     expect(normalizeRoute('/api/v1/users')).toBe('/api/v1/users');
+  });
+
+  it('removes query strings and fragments from route labels', () => {
+    expect(
+      normalizeRoute('/authorize?client_id=secret-client#callback-fragment')
+    ).toBe('/authorize');
   });
 
   it('handles multiple dynamic segments', () => {

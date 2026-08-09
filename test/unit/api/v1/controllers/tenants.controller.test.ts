@@ -4,6 +4,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { TenantsController } from '../../../../../src/api/v1/controllers/tenants.controller.js';
 import type { TenantsControllerDeps } from '../../../../../src/api/v1/controllers/tenants.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
+import { ConflictError as PlatformConflictError } from '../../../../../src/errors/platform.errors.js';
+import type { ITenantSettingsOverride } from '../../../../../src/types/tenant-settings-override.js';
 
 // Helpers
 
@@ -68,6 +70,19 @@ const sampleTenant2 = {
   domain: 'globex.example.com',
   status: 'active',
 };
+
+function savedTenantOverride(
+  overrides: Partial<ITenantSettingsOverride> = {}
+): ITenantSettingsOverride {
+  return {
+    tenant_id: sampleTenant._id,
+    key: 'parako_config',
+    version: '1.0.0',
+    _version: 1,
+    is_active: true,
+    ...overrides,
+  };
+}
 
 // Tests
 
@@ -198,9 +213,37 @@ describe('api/v1/controllers/TenantsController', () => {
       );
     });
 
-    it('should convert duplicate slug error to 409 conflict', async () => {
+    it.each([
+      ['MongoDB', 11000],
+      ['Prisma', 'P2002'],
+      ['PostgreSQL', '23505'],
+      ['SQLite UNIQUE', 'SQLITE_CONSTRAINT_UNIQUE'],
+      ['SQLite PRIMARY KEY', 'SQLITE_CONSTRAINT_PRIMARYKEY'],
+    ])(
+      'converts %s uniqueness code to 409 conflict',
+      async (_adapter, code) => {
+        vi.mocked(deps.platformAdminService.createTenant).mockRejectedValue(
+          Object.assign(new Error('persistence conflict'), { code })
+        );
+
+        const req = createMockRequest({
+          body: { slug: 'acme-corp', display_name: 'Acme Corporation' },
+        });
+        const res = createMockResponse();
+        const next = createMockNext();
+
+        await controller.create(req, res, next);
+
+        expect(next).toHaveBeenCalledWith(expect.any(ApiError));
+        const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
+        expect(error.status).toBe(409);
+        expect(error.detail).toContain('acme-corp');
+      }
+    );
+
+    it('converts the platform domain conflict to 409', async () => {
       vi.mocked(deps.platformAdminService.createTenant).mockRejectedValue(
-        Object.assign(new Error('duplicate key'), { code: 11000 })
+        new PlatformConflictError('Tenant already exists')
       );
 
       const req = createMockRequest({
@@ -214,25 +257,24 @@ describe('api/v1/controllers/TenantsController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(409);
-      expect(error.detail).toContain('acme-corp');
     });
 
-    it('should convert "already exists" error to 409 conflict', async () => {
+    it('does not misclassify an unrelated message containing duplicate', async () => {
+      const failure = new Error('duplicate audit delivery failed');
       vi.mocked(deps.platformAdminService.createTenant).mockRejectedValue(
-        new Error('Tenant already exists')
+        failure
       );
 
-      const req = createMockRequest({
-        body: { slug: 'acme-corp', display_name: 'Acme Corporation' },
-      });
-      const res = createMockResponse();
       const next = createMockNext();
+      await controller.create(
+        createMockRequest({
+          body: { slug: 'acme-corp', display_name: 'Acme Corporation' },
+        }),
+        createMockResponse(),
+        next
+      );
 
-      await controller.create(req, res, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(ApiError));
-      const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
-      expect(error.status).toBe(409);
+      expect(next).toHaveBeenCalledWith(failure);
     });
 
     it('should propagate unexpected service errors via next()', async () => {
@@ -303,7 +345,7 @@ describe('api/v1/controllers/TenantsController', () => {
       });
 
       const overrides = {
-        branding: { logo_url: 'https://example.com/logo.png' },
+        branding: { logo: 'https://example.com/logo.png' },
       };
       vi.mocked(
         deps.tenantSettingsOverrideService!.loadOverrides
@@ -385,6 +427,21 @@ describe('api/v1/controllers/TenantsController', () => {
         deps.tenantSettingsOverrideService!.loadOverrides
       ).toHaveBeenCalledWith('uuid-123');
     });
+
+    it('should fall back to the tenant slug when no database ID is exposed', async () => {
+      vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
+        slug: 'acme-corp',
+        display_name: 'Acme',
+      });
+
+      const req = createMockRequest({ params: { slug: 'acme-corp' } });
+
+      await controller.getConfig(req, createMockResponse(), createMockNext());
+
+      expect(
+        deps.tenantSettingsOverrideService!.loadOverrides
+      ).toHaveBeenCalledWith('acme-corp');
+    });
   });
 
   // updateConfig
@@ -394,14 +451,16 @@ describe('api/v1/controllers/TenantsController', () => {
         ...sampleTenant,
       });
 
-      const updatedConfig = { primary_color: '#ff0000' };
+      const updatedConfig = savedTenantOverride({
+        branding: { companyName: 'Acme' },
+      });
       vi.mocked(
         deps.tenantSettingsOverrideService!.saveOverrides
       ).mockResolvedValue(updatedConfig);
 
       const req = createMockRequest({
         params: { slug: 'acme-corp', section: 'branding' },
-        body: { primary_color: '#ff0000' },
+        body: { companyName: 'Acme' },
       });
       const res = createMockResponse();
       const next = createMockNext();
@@ -410,8 +469,8 @@ describe('api/v1/controllers/TenantsController', () => {
 
       expect(
         deps.tenantSettingsOverrideService!.saveOverrides
-      ).toHaveBeenCalledWith(sampleTenant._id, 'branding', {
-        primary_color: '#ff0000',
+      ).toHaveBeenCalledWith(sampleTenant._id, {
+        branding: { companyName: 'Acme' },
       });
       expect(res.status).toHaveBeenCalledWith(200);
 
@@ -425,7 +484,7 @@ describe('api/v1/controllers/TenantsController', () => {
       });
       vi.mocked(
         deps.tenantSettingsOverrideService!.saveOverrides
-      ).mockResolvedValue({});
+      ).mockResolvedValue(savedTenantOverride());
 
       const req = createMockRequest({
         params: { slug: 'acme-corp', section: 'branding' },
@@ -440,6 +499,52 @@ describe('api/v1/controllers/TenantsController', () => {
         'Tenant config updated',
         expect.objectContaining({ slug: 'acme-corp', section: 'branding' })
       );
+    });
+
+    it('should reject an unknown section before saving overrides', async () => {
+      vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
+        ...sampleTenant,
+      });
+      const next = createMockNext();
+
+      await controller.updateConfig(
+        createMockRequest({
+          params: { slug: 'acme-corp', section: 'database' },
+          body: { url: 'sqlite:///tmp/other.db' },
+        }),
+        createMockResponse(),
+        next
+      );
+
+      expect(
+        deps.tenantSettingsOverrideService!.saveOverrides
+      ).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(ApiError));
+      const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
+      expect(error.status).toBe(400);
+      expect(error.type).toBe('urn:parako:error:section-not-allowed');
+    });
+
+    it('should fall back to the tenant slug when saving without a database ID', async () => {
+      vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
+        slug: 'acme-corp',
+        display_name: 'Acme',
+      });
+
+      await controller.updateConfig(
+        createMockRequest({
+          params: { slug: 'acme-corp', section: 'branding' },
+          body: { theme: 'dark' },
+        }),
+        createMockResponse(),
+        createMockNext()
+      );
+
+      expect(
+        deps.tenantSettingsOverrideService!.saveOverrides
+      ).toHaveBeenCalledWith('acme-corp', {
+        branding: { theme: 'dark' },
+      });
     });
 
     it('should call next with 404 when tenant is not found', async () => {

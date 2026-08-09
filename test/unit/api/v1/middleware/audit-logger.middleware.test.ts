@@ -8,7 +8,7 @@ import {
 // Helpers
 
 function createMockReqRes() {
-  let finishCallback: (() => void) | null = null;
+  const responseCallbacks = new Map<string, () => void>();
 
   const req: any = {
     method: 'GET',
@@ -28,11 +28,16 @@ function createMockReqRes() {
   const res: any = {
     statusCode: 200,
     on: vi.fn((event: string, cb: () => void) => {
-      if (event === 'finish') finishCallback = cb;
+      responseCallbacks.set(event, cb);
     }),
   };
 
-  return { req, res, triggerFinish: () => finishCallback?.() };
+  return {
+    req,
+    res,
+    triggerFinish: () => responseCallbacks.get('finish')?.(),
+    triggerClose: () => responseCallbacks.get('close')?.(),
+  };
 }
 
 function createDeps(
@@ -44,6 +49,7 @@ function createDeps(
     },
     logger: {
       debug: vi.fn(),
+      warn: vi.fn(),
     },
     ...overrides,
   };
@@ -94,8 +100,8 @@ describe('api/v1/middleware/audit-logger', () => {
     );
   });
 
-  // 3. Activity includes method, path, status_code, duration_ms, client_id
-  it('should include method, path, status_code, duration_ms, and scope in metadata', () => {
+  // 3. Activity includes request details in the persisted target payload
+  it('stores method, path, status, duration, and scope in target.entity_data', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
     const next = vi.fn();
@@ -106,9 +112,17 @@ describe('api/v1/middleware/audit-logger', () => {
     const call = (deps.activityService.info as ReturnType<typeof vi.fn>).mock
       .calls[0];
     const options = call[3] as Record<string, unknown>;
-    const metadata = options.metadata as Record<string, unknown>;
+    const target = options.target as {
+      target_type: string;
+      entity_name: string;
+      entity_data: Record<string, unknown>;
+    };
 
-    expect(metadata).toEqual(
+    expect(target).toMatchObject({
+      target_type: 'system',
+      entity_name: 'management_api_request',
+    });
+    expect(target.entity_data).toEqual(
       expect.objectContaining({
         method: 'GET',
         path: '/api/v1/users',
@@ -116,8 +130,9 @@ describe('api/v1/middleware/audit-logger', () => {
         scope: 'parako:users:read',
       })
     );
-    expect(typeof metadata.duration_ms).toBe('number');
-    expect(metadata.duration_ms).toBeGreaterThanOrEqual(0);
+    expect(typeof target.entity_data.duration_ms).toBe('number');
+    expect(target.entity_data.duration_ms).toBeGreaterThanOrEqual(0);
+    expect(options).not.toHaveProperty('metadata');
   });
 
   // 4. Handles missing req.apiAuth
@@ -176,6 +191,104 @@ describe('api/v1/middleware/audit-logger', () => {
         path: '/api/v1/users',
         status: 200,
         client_id: 'test-client',
+      })
+    );
+  });
+
+  it('does not throw when the audit sink fails after the response finishes', () => {
+    const auditFailure = new Error('audit sink unavailable');
+    deps.activityService.info = vi.fn(() => {
+      throw auditFailure;
+    });
+    const middleware = createApiAuditLogger(deps);
+    const { req, res, triggerFinish } = createMockReqRes();
+    const next = vi.fn();
+
+    middleware(req, res, next);
+
+    expect(triggerFinish).not.toThrow();
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      'Failed to record API audit activity',
+      {
+        method: 'GET',
+        path: '/api/v1/users',
+        status: 200,
+        client_id: 'test-client',
+      }
+    );
+    expect(deps.logger.debug).toHaveBeenCalledWith(
+      'API request completed',
+      expect.objectContaining({
+        method: 'GET',
+        path: '/api/v1/users',
+        status: 200,
+      })
+    );
+  });
+
+  it('records an aborted request when the response closes before finishing', () => {
+    const middleware = createApiAuditLogger(deps);
+    const { req, res, triggerClose } = createMockReqRes();
+    const next = vi.fn();
+
+    middleware(req, res, next);
+    triggerClose();
+
+    expect(deps.activityService.info).toHaveBeenCalledOnce();
+    const options = (deps.activityService.info as ReturnType<typeof vi.fn>).mock
+      .calls[0][3] as {
+      target: { entity_data: Record<string, unknown> };
+    };
+    expect(options.target.entity_data.completion).toBe('aborted');
+  });
+
+  it('records only once when close follows a normal finish event', () => {
+    const middleware = createApiAuditLogger(deps);
+    const { req, res, triggerFinish, triggerClose } = createMockReqRes();
+    const next = vi.fn();
+
+    middleware(req, res, next);
+    triggerFinish();
+    triggerClose();
+
+    expect(deps.activityService.info).toHaveBeenCalledOnce();
+    const options = (deps.activityService.info as ReturnType<typeof vi.fn>).mock
+      .calls[0][3] as {
+      target: { entity_data: Record<string, unknown> };
+    };
+    expect(options.target.entity_data.completion).toBe('finished');
+  });
+
+  it('uses the authenticated identity captured before downstream handlers run', () => {
+    const middleware = createApiAuditLogger(deps);
+    const { req, res, triggerFinish } = createMockReqRes();
+    const next = vi.fn(() => {
+      req.apiAuth.client_id = 'tampered-client';
+      req.apiAuth.scope = 'parako:platform:write';
+      req.method = 'DELETE';
+      req.path = '/api/v1/tampered';
+    });
+
+    middleware(req, res, next);
+    triggerFinish();
+
+    expect(deps.activityService.info).toHaveBeenCalledWith(
+      'api_request',
+      'GET /api/v1/users 200',
+      null,
+      expect.objectContaining({
+        client_id: 'test-client',
+        actor: {
+          actor_type: 'service',
+          actor_id: 'test-client',
+        },
+        target: expect.objectContaining({
+          entity_data: expect.objectContaining({
+            method: 'GET',
+            path: '/api/v1/users',
+            scope: 'parako:users:read',
+          }),
+        }),
       })
     );
   });

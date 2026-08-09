@@ -9,14 +9,50 @@
  * - Discovery URLs (op_policy_uri, etc.) use tenant base URL
  * - WebAuthn rp_id uses custom domain hostname when available
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
 } from '../../../src/multi-tenancy/tenant-context.js';
-import { applyComputedDefaults } from '../../../src/config/computed-fields.js';
+import {
+  applyComputedDefaults,
+  generateSecureSecret,
+  getHostnameFromUrl,
+  isComputedField,
+} from '../../../src/config/computed-fields.js';
 
-function makeBaseConfig(overrides: Record<string, unknown> = {}) {
+describe('computed field utilities', () => {
+  it('generates hex-encoded cryptographic secrets at default and custom lengths', () => {
+    expect(generateSecureSecret()).toMatch(/^[a-f0-9]{128}$/);
+    expect(generateSecureSecret(3)).toMatch(/^[a-f0-9]{6}$/);
+  });
+
+  it('extracts URL hostnames and safely falls back for invalid URLs', () => {
+    expect(getHostnameFromUrl('https://auth.example.com:8443/path')).toBe(
+      'auth.example.com'
+    );
+    expect(getHostnameFromUrl('not a URL')).toBe('localhost');
+  });
+
+  it('classifies generated, derived, and operator-provided fields', () => {
+    expect(isComputedField('security.secrets.jwt_secret')).toEqual({
+      isComputed: true,
+      type: 'auto-generated',
+    });
+    expect(isComputedField('oidc.issuer')).toEqual({
+      isComputed: true,
+      type: 'derived',
+    });
+    expect(isComputedField('deployment.url')).toEqual({
+      isComputed: false,
+      type: 'user-provided',
+    });
+  });
+});
+
+function makeBaseConfig(
+  overrides: Record<string, unknown> = {}
+): Record<string, any> {
   return {
     deployment: {
       url: 'https://parako.id',
@@ -244,6 +280,21 @@ describe('applyComputedDefaults — OIDC issuer derivation', () => {
 
       expect(result.oidc.issuer).toBe('https://acme.parako.id/auth/oidc');
     });
+
+    it('normalizes a trailing deployment slash for an HTTP tenant issuer', () => {
+      const config = makeBaseConfig({
+        deployment: { url: 'http://parako.id/' },
+      });
+
+      const result = tenantContext.run('acme', () =>
+        applyComputedDefaults(config)
+      );
+
+      expect(result.oidc.issuer).toBe('http://acme.parako.id/oidc/v1');
+      expect(result.oidc.discovery.op_policy_uri).toBe(
+        'http://acme.parako.id/privacy'
+      );
+    });
   });
 });
 
@@ -263,5 +314,107 @@ describe('applyComputedDefaults — auto-generated secrets (unchanged behavior)'
     const result = applyComputedDefaults(config);
 
     expect(result.security.secrets.jwt_secret).toBe('existing-secret');
+  });
+
+  it('regenerates missing array/null secrets but preserves and warns on corruption', () => {
+    const config = makeBaseConfig();
+    config.security.secrets = {
+      cookie_secrets: [],
+      hmac_secret: null,
+      jwt_secret: '',
+    } as any;
+    config.oidc.secrets = { pairwise_salt: 'existing-salt' } as any;
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = applyComputedDefaults(config);
+
+    expect(result.security.secrets.jwt_secret).toBe('');
+    expect(result.security.secrets.cookie_secrets).toHaveLength(2);
+    expect(result.security.secrets.cookie_secrets[0]).toMatch(
+      /^[a-f0-9]{128}$/
+    );
+    expect(result.security.secrets.hmac_secret).toMatch(/^[a-f0-9]{128}$/);
+    expect(result.oidc.secrets.pairwise_salt).toBe('existing-salt');
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Empty string for secret "security.secrets.jwt_secret"'
+      )
+    );
+
+    warning.mockRestore();
+  });
+
+  it('applies safe naming defaults without inventing URLs when deployment URL is absent', () => {
+    const config = {
+      oidc: { secrets: { pairwise_salt: 'pairwise' } },
+      security: {
+        authentication: {
+          multi_factor: { totp: {}, webauthn: {} },
+        },
+        secrets: {
+          cookie_secrets: ['cookie'],
+          hmac_secret: 'hmac',
+          jwt_secret: 'jwt',
+        },
+      },
+    };
+
+    const result = applyComputedDefaults(config);
+
+    expect(result.oidc).not.toHaveProperty('issuer');
+    expect(result).not.toHaveProperty('integrations');
+    expect(result.security.authentication.multi_factor.totp.issuer_name).toBe(
+      'Parako.ID'
+    );
+    expect(result.security.authentication.multi_factor.webauthn.rp_name).toBe(
+      'Parako.ID'
+    );
+    expect(
+      result.security.authentication.multi_factor.webauthn
+    ).not.toHaveProperty('rp_id');
+  });
+
+  it('preserves operator-provided URLs and MFA relying-party values', () => {
+    const config = makeBaseConfig();
+    config.oidc.discovery = {
+      op_policy_uri: 'https://legal.example/privacy',
+      op_tos_uri: 'https://legal.example/terms',
+      service_documentation: 'https://docs.example',
+    } as any;
+    config.integrations.urls = {
+      contact: 'https://support.example',
+      privacy_policy: 'https://legal.example/privacy',
+      terms_of_service: 'https://legal.example/terms',
+      website: 'https://www.example',
+    } as any;
+    config.security.authentication.multi_factor = {
+      totp: { issuer_name: 'Custom issuer' },
+      webauthn: { rp_id: 'login.example', rp_name: 'Custom RP' },
+    } as any;
+
+    const result = applyComputedDefaults(config);
+
+    expect(result.oidc.discovery).toEqual(config.oidc.discovery);
+    expect(result.integrations.urls).toEqual(config.integrations.urls);
+    expect(result.security.authentication.multi_factor).toEqual(
+      config.security.authentication.multi_factor
+    );
+  });
+
+  it('replaces legacy MFA placeholders with current branding and hostname', () => {
+    const config = makeBaseConfig({
+      branding: { companyName: 'Example Corp' },
+    });
+    config.security.authentication.multi_factor = {
+      totp: { issuer_name: 'OIDC Provider' },
+      webauthn: { rp_id: 'localhost', rp_name: 'OIDC Provider' },
+    } as any;
+
+    const result = applyComputedDefaults(config);
+
+    expect(result.security.authentication.multi_factor).toEqual({
+      totp: { issuer_name: 'Example Corp' },
+      webauthn: { rp_id: 'parako.id', rp_name: 'Example Corp' },
+    });
   });
 });

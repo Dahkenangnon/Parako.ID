@@ -10,7 +10,9 @@ import { verifyHmacState } from '../../../src/utils/hmac-state.js';
 
 const PLATFORM_CLIENT_ID = 'platform-google-client-id';
 const TENANT_CLIENT_ID = 'tenant-acme-google-client-id';
+// gitleaks:allow -- deterministic unit-test OAuth client fixture.
 const TENANT_CLIENT_SECRET = 'tenant-acme-google-client-secret';
+// gitleaks:allow -- deterministic unit-test HMAC fixture.
 const HMAC_SECRET = 'test-hmac-secret-for-tier-detection-32chars!!';
 const BASE_DOMAIN = 'parako.id';
 
@@ -86,6 +88,18 @@ describe('Social Provider Tier Detection', () => {
       };
       const tier = await detectTier('google', overrides);
       expect(tier).toBe('tier1');
+    });
+
+    it('returns tier1 when tenant override has a whitespace-only client_id', async () => {
+      const overrides = {
+        features: {
+          social_providers: {
+            google: { client_id: '   ' },
+          },
+        },
+      };
+
+      expect(await detectTier('google', overrides)).toBe('tier1');
     });
 
     it('returns tier2 when tenant override has client_id for the provider', async () => {

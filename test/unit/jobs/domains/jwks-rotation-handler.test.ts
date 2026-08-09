@@ -19,6 +19,7 @@ function createMockKeyStore() {
     rotate: vi.fn().mockResolvedValue(undefined),
     promoteKeys: vi.fn().mockResolvedValue(3),
     retireExpiredKeys: vi.fn().mockResolvedValue(0),
+    retireKey: vi.fn().mockResolvedValue(false),
     initialize: vi.fn(),
     getJWKS: vi.fn(),
     getPublicJWKS: vi.fn(),
@@ -300,6 +301,45 @@ describe('JWKS rotation handler', () => {
     expect(mockKeyStore.rotate).toHaveBeenCalledWith(undefined);
     expect(mockKeyStore.promoteKeys).toHaveBeenCalledWith(undefined);
     expect(mockKeyStore.retireExpiredKeys).toHaveBeenCalledWith(undefined);
+  });
+
+  it('rejects malformed rotation payloads before using the key store', async () => {
+    const mockKeyStore = createMockKeyStore();
+    const { jwksRotationHandler } =
+      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
+
+    await expect(
+      jwksRotationHandler(
+        { type: 'process', name: 'wrong-task' },
+        vi.fn(),
+        mockKeyStore,
+        mockLogger
+      )
+    ).rejects.toThrow('Invalid JWKS rotation job data');
+
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid JWKS rotation job data'),
+      {
+        component: 'jwks-rotation',
+        data: { type: 'process', name: 'wrong-task' },
+      }
+    );
+    expect(mockKeyStore.needsRotation).not.toHaveBeenCalled();
+  });
+
+  it('rethrows non-Error failures even when no logger is configured', async () => {
+    const mockKeyStore = createMockKeyStore();
+    mockKeyStore.needsRotation.mockRejectedValue('redis unavailable');
+    const { jwksRotationHandler } =
+      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
+
+    await expect(
+      jwksRotationHandler(
+        { type: 'process', name: 'jwks-rotation' },
+        vi.fn(),
+        mockKeyStore
+      )
+    ).rejects.toBe('redis unavailable');
   });
 });
 

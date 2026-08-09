@@ -69,6 +69,11 @@ describe('urlSchema', () => {
   it('rejects an ftp scheme', () => {
     expect(urlSchema.safeParse('ftp://example.com').success).toBe(false);
   });
+
+  it('reports a malformed URL as a validation failure without throwing', () => {
+    expect(() => urlSchema.safeParse('not a url')).not.toThrow();
+    expect(urlSchema.safeParse('not a url').success).toBe(false);
+  });
 });
 
 describe('pageSchema', () => {

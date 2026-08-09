@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { resolveEnvVars } from '../../../src/utils/env-interpolation';
+import { resolveEnvVars } from '../../../src/utils/env-interpolation.js';
 
 describe('resolveEnvVars', () => {
   const savedEnv = { ...process.env };

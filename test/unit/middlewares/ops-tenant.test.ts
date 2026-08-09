@@ -94,6 +94,24 @@ describe('OpsTenantMiddleware', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(404);
     });
+
+    it.each([
+      '/health/',
+      '/healthcheck',
+      '/metrics/prometheus',
+      '/social/Google/callback',
+      '/social/1google/callback',
+      '/social/google/callback/',
+    ])('rejects whitelist lookalike path %s with 404', path => {
+      const req = mockReq({ method: 'GET', path });
+      const res = mockRes();
+
+      middleware.handler(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.body).toEqual({ error: 'Not found' });
+    });
   });
 
   describe('HTTP method enforcement', () => {

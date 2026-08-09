@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -6,6 +6,10 @@ import {
 } from '../../../src/multi-tenancy/tenant-context.js';
 
 describe('TenantContext', () => {
+  beforeEach(() => {
+    tenantContext.disableStrictMode();
+  });
+
   describe('getTenantId()', () => {
     it('returns DEFAULT_TENANT_ID when no context is active', () => {
       expect(tenantContext.getTenantId()).toBe(DEFAULT_TENANT_ID);
@@ -123,6 +127,32 @@ describe('TenantContext', () => {
       tenantContext.run('store-test', () => {
         const store = tenantContext.getStore();
         expect(store).toEqual({ tenantId: 'store-test' });
+      });
+    });
+  });
+
+  describe('strict mode', () => {
+    it('reports whether strict tenant resolution is enabled', () => {
+      expect(tenantContext.isStrictMode()).toBe(false);
+
+      tenantContext.enableStrictMode();
+
+      expect(tenantContext.isStrictMode()).toBe(true);
+    });
+
+    it('rejects tenant-dependent work outside an active context', () => {
+      tenantContext.enableStrictMode();
+
+      expect(() => tenantContext.getTenantId()).toThrow(
+        'No active tenant context in strict mode'
+      );
+    });
+
+    it('still resolves the active tenant while strict mode is enabled', () => {
+      tenantContext.enableStrictMode();
+
+      tenantContext.run('strict-tenant', () => {
+        expect(tenantContext.getTenantId()).toBe('strict-tenant');
       });
     });
   });

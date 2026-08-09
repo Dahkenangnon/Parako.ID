@@ -84,29 +84,28 @@ describe('Tenant Mongoose Model', () => {
       expect(displayNamePath.isRequired).toBe(true);
     });
 
-    it('rejects invalid status values via schema validation', () => {
+    it('rejects invalid status values via schema validation', async () => {
       const doc = new TenantModel({
         slug: 'test',
         display_name: 'Test',
         status: 'invalid_status',
       });
-      const error = doc.validateSync();
-      expect(error).toBeDefined();
-      expect(error!.errors.status).toBeDefined();
+      await expect(doc.validate()).rejects.toMatchObject({
+        errors: { status: expect.anything() },
+      });
     });
 
-    it('accepts all valid status values', () => {
+    it('accepts all valid status values', async () => {
       for (const status of TenantStatusValues) {
         const doc = new TenantModel({
           slug: `test-${status}`,
           display_name: 'Test',
           status,
         });
-        const error = doc.validateSync();
-        expect(
-          error?.errors.status,
+        await expect(
+          doc.validate(),
           `status "${status}" should be valid`
-        ).toBeUndefined();
+        ).resolves.toBeUndefined();
       }
     });
   });

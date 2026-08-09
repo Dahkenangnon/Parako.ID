@@ -203,6 +203,19 @@ describe('bootstrapMasterTenant', () => {
         bootstrapMasterTenant(container, logger, config)
       ).rejects.toThrow('Connection refused');
     });
+
+    it('propagates non-Error repository rejections unchanged', async () => {
+      const tenantRepo = createMockTenantRepo(false);
+      (tenantRepo.create as ReturnType<typeof vi.fn>).mockRejectedValue(
+        'storage unavailable'
+      );
+      const container = createContainer(tenantRepo);
+      const config = makeBootstrapConfig();
+
+      await expect(
+        bootstrapMasterTenant(container, logger, config)
+      ).rejects.toBe('storage unavailable');
+    });
   });
 
   describe('bootstrap admin seeding', () => {
@@ -299,6 +312,28 @@ describe('bootstrapMasterTenant', () => {
       await expect(
         bootstrapMasterTenant(container, logger, config)
       ).resolves.not.toThrow();
+    });
+
+    it('propagates non-duplicate admin creation failures', async () => {
+      const tenantRepo = createMockTenantRepo(true);
+      const userRepo = createMockUserRepo(false);
+      const failure = new Error('Database write failed');
+      (userRepo.create as ReturnType<typeof vi.fn>).mockRejectedValue(failure);
+      const passwordUtils = createMockPasswordUtils();
+      const container = createContainer(tenantRepo, userRepo, passwordUtils);
+      const config = makeBootstrapConfig({
+        email: 'admin@example.com',
+        password: 'securepass123',
+      });
+
+      await expect(
+        bootstrapMasterTenant(container, logger, config)
+      ).rejects.toBe(failure);
+
+      expect(logger.debug).not.toHaveBeenCalledWith(
+        'bootstrap_admin_created_by_another_worker',
+        expect.anything()
+      );
     });
   });
 });

@@ -85,6 +85,7 @@ describe('api/v1/controllers/StatsController', () => {
       vi.mocked(deps.userService.count!).mockResolvedValue(150);
       vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(10);
       vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockResolvedValue({
+        total: 10,
         active: 8,
       });
       vi.mocked(
@@ -123,11 +124,31 @@ describe('api/v1/controllers/StatsController', () => {
       );
     });
 
+    it('should use one authoritative client statistics snapshot', async () => {
+      vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(10);
+      vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockResolvedValue({
+        total: 11,
+        active: 8,
+        inactive: 3,
+      });
+
+      const res = createMockResponse();
+
+      await controller.overview(createMockRequest(), res, createMockNext());
+
+      expect(deps.oidcAdapter.client.countClients).not.toHaveBeenCalled();
+      expect(vi.mocked(res.json).mock.calls[0][0].data.clients).toEqual({
+        total: 11,
+        active: 8,
+        inactive: 3,
+      });
+    });
+
     it('should handle individual section failures gracefully', async () => {
       vi.mocked(deps.userService.count!).mockRejectedValue(
         new Error('User DB down')
       );
-      vi.mocked(deps.oidcAdapter.client.countClients).mockRejectedValue(
+      vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockRejectedValue(
         new Error('Client DB down')
       );
       vi.mocked(
@@ -245,6 +266,25 @@ describe('api/v1/controllers/StatsController', () => {
       );
     });
 
+    it('should report an unhealthy OIDC adapter when its probe fails', async () => {
+      const oidcError = new Error('OIDC adapter down');
+      vi.mocked(deps.oidcAdapter.client.countClients).mockRejectedValue(
+        oidcError
+      );
+      const res = createMockResponse();
+
+      await controller.health(createMockRequest(), res, createMockNext());
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(vi.mocked(res.json).mock.calls[0][0].data.checks.oidc).toEqual({
+        status: 'unhealthy',
+        message: 'OIDC adapter connection failed',
+      });
+      expect(deps.logger.error).toHaveBeenCalledWith(oidcError, {
+        check: 'oidc',
+      });
+    });
+
     it('should fall back to findWithPagination when count is not available', async () => {
       const depsWithout = createMockDeps();
       delete (depsWithout.userService as any).count;
@@ -280,6 +320,25 @@ describe('api/v1/controllers/StatsController', () => {
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data.status).toBe('degraded');
       expect(jsonCall.data.checks.config.status).toBe('unhealthy');
+    });
+
+    it('should report an unhealthy config check when loading throws', async () => {
+      const configError = new Error('Configuration unavailable');
+      vi.mocked(deps.configManager.getConfig).mockImplementation(() => {
+        throw configError;
+      });
+      const res = createMockResponse();
+
+      await controller.health(createMockRequest(), res, createMockNext());
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(vi.mocked(res.json).mock.calls[0][0].data.checks.config).toEqual({
+        status: 'unhealthy',
+        message: 'Configuration check failed',
+      });
+      expect(deps.logger.error).toHaveBeenCalledWith(configError, {
+        check: 'config',
+      });
     });
 
     it('should report unknown database status when no probe method is available', async () => {

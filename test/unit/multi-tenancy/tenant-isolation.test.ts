@@ -82,27 +82,20 @@ describe('Tenant Isolation — Infrastructure', () => {
       expect(dirB).toContain('globex');
     });
 
-    it('sanitizes tenant IDs with path traversal characters', () => {
-      // Dots, slashes, and other dangerous chars are stripped
-      const dir = tenantContext.run('../../../etc', () =>
-        getTenantTempDir('/base', 'avatars')
-      );
-
-      // After sanitization, '../../../etc' → 'etc'
-      expect(dir).not.toContain('..');
-      expect(dir).toContain('etc');
-      expect(dir).toBe(path.resolve('/base/runtime/.tmp-uploads/etc/avatars'));
+    it('rejects tenant IDs with path traversal characters', () => {
+      expect(() =>
+        tenantContext.run('../../../etc', () =>
+          getTenantTempDir('/base', 'avatars')
+        )
+      ).toThrow('Invalid tenant ID for upload path');
     });
 
-    it('sanitizes tenant IDs with special characters', () => {
-      const dir = tenantContext.run('acme@corp!#$', () =>
-        getTenantTempDir('/base', 'avatars')
-      );
-
-      // Only alphanumeric, hyphens, and underscores survive
-      expect(dir).toContain('acmecorp');
-      expect(dir).not.toContain('@');
-      expect(dir).not.toContain('!');
+    it('rejects non-canonical tenant IDs instead of changing their identity', () => {
+      expect(() =>
+        tenantContext.run('acme@corp!#$', () =>
+          getTenantTempDir('/base', 'avatars')
+        )
+      ).toThrow('Invalid tenant ID for upload path');
     });
   });
 

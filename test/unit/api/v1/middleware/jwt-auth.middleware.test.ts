@@ -138,6 +138,26 @@ describe('api/v1/middleware/jwt-auth', () => {
       expect(typeof apiAuth.iat).toBe('number');
       expect(apiAuth.exp).toBeGreaterThan(apiAuth.iat);
     });
+
+    it('should record the verified Management API audience from an audience array', async () => {
+      const deps = createDeps();
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await new jose.SignJWT({
+        client_id: 'my-client',
+        scope: 'parako:clients:read',
+      })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .setIssuer(TEST_ISSUER)
+        .setAudience(['urn:other:resource', EXPECTED_AUDIENCE])
+        .sign(rsaPrivateKey);
+      const req = createMockRequest(`Bearer ${token}`);
+
+      await middleware(req as any, createMockResponse() as any, vi.fn());
+
+      expect((req as any).apiAuth.aud).toBe(EXPECTED_AUDIENCE);
+    });
   });
 
   // 2. Missing Authorization header
@@ -469,6 +489,42 @@ describe('api/v1/middleware/jwt-auth', () => {
       // getPublicJWKS should have been called exactly once
       expect(deps.keyStore.getPublicJWKS).toHaveBeenCalledTimes(1);
     });
+
+    it('should evict the oldest tenant verifier when the cache reaches capacity', async () => {
+      const getPublicJWKS = vi.fn().mockResolvedValue({ keys: [rsaPublicJWK] });
+      const token = await signToken(
+        { client_id: 'cache-client', scope: 'parako:clients:read' },
+        rsaPrivateKey
+      );
+      const middlewares = Array.from({ length: 101 }, (_, index) =>
+        createJwtAuthMiddleware(
+          createDeps({
+            keyStore: { getPublicJWKS },
+            getTenantId: () => `tenant-${index}`,
+          })
+        )
+      );
+
+      for (const middleware of middlewares) {
+        const next = vi.fn();
+        await middleware(
+          createMockRequest(`Bearer ${token}`) as any,
+          createMockResponse() as any,
+          next
+        );
+        expect(next).toHaveBeenCalledOnce();
+      }
+
+      expect(getPublicJWKS).toHaveBeenCalledTimes(101);
+
+      await middlewares[0](
+        createMockRequest(`Bearer ${token}`) as any,
+        createMockResponse() as any,
+        vi.fn()
+      );
+
+      expect(getPublicJWKS).toHaveBeenCalledTimes(102);
+    });
   });
 
   // 12. Cache invalidation via clearJwksCache
@@ -507,6 +563,106 @@ describe('api/v1/middleware/jwt-auth', () => {
 
   // Edge cases
   describe('edge cases', () => {
+    it('should reject a signed token with a non-string scope without throwing', async () => {
+      const deps = createDeps();
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await signToken(
+        { client_id: 'my-client', scope: 42 },
+        rsaPrivateKey
+      );
+      const req = createMockRequest(`Bearer ${token}`);
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      await expect(
+        middleware(req as any, res as any, next)
+      ).resolves.toBeUndefined();
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: ERROR_TYPES.TOKEN_INVALID,
+          status: 401,
+        })
+      );
+    });
+
+    it('should reject a signed access token without an expiration', async () => {
+      const deps = createDeps();
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await signToken(
+        { client_id: 'my-client', scope: 'parako:clients:read' },
+        rsaPrivateKey,
+        { noExpiry: true }
+      );
+      const req = createMockRequest(`Bearer ${token}`);
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      await middleware(req as any, res as any, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: ERROR_TYPES.TOKEN_INVALID,
+          status: 401,
+        })
+      );
+    });
+
+    it('should reject a signed token with a non-string client identifier', async () => {
+      const deps = createDeps();
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await signToken(
+        { client_id: 42, scope: 'parako:clients:read' },
+        rsaPrivateKey
+      );
+      const req = createMockRequest(`Bearer ${token}`);
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      await middleware(req as any, res as any, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: ERROR_TYPES.TOKEN_INVALID,
+          status: 401,
+        })
+      );
+    });
+
+    it('should reject a signed access token without an issued-at time', async () => {
+      const deps = createDeps();
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await new jose.SignJWT({
+        client_id: 'my-client',
+        scope: 'parako:clients:read',
+      })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setExpirationTime('1h')
+        .setIssuer(TEST_ISSUER)
+        .setAudience(EXPECTED_AUDIENCE)
+        .sign(rsaPrivateKey);
+      const req = createMockRequest(`Bearer ${token}`);
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      await middleware(req as any, res as any, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: ERROR_TYPES.TOKEN_INVALID,
+          status: 401,
+        })
+      );
+    });
+
     it('should handle keyStore.getPublicJWKS failure gracefully', async () => {
       const deps = createDeps({
         keyStore: {
@@ -535,6 +691,30 @@ describe('api/v1/middleware/jwt-auth', () => {
           type: ERROR_TYPES.TOKEN_INVALID,
           status: 401,
         })
+      );
+    });
+
+    it('should safely log a non-Error key-store rejection', async () => {
+      const deps = createDeps({
+        keyStore: {
+          getPublicJWKS: vi.fn().mockRejectedValue('key store offline'),
+        },
+      });
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await signToken(
+        { client_id: 'my-client', scope: 'parako:clients:read' },
+        rsaPrivateKey
+      );
+
+      await middleware(
+        createMockRequest(`Bearer ${token}`) as any,
+        createMockResponse() as any,
+        vi.fn()
+      );
+
+      expect(deps.logger.warn).toHaveBeenCalledWith(
+        'Failed to load JWKS for tenant',
+        expect.objectContaining({ error: 'key store offline' })
       );
     });
 

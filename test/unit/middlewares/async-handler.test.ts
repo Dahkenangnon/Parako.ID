@@ -58,6 +58,24 @@ describe('asyncHandler', () => {
     expect(forwarded.operation).toBe('inner.op');
   });
 
+  it('does not overwrite a requestId already attached to the error', async () => {
+    const err = new Error('boom') as Error & { requestId?: string };
+    err.requestId = 'originating-request';
+    const handler = asyncHandler('op.test', () => Promise.reject(err));
+    const next: NextFunction = vi.fn();
+
+    handler(
+      makeReq({ requestId: 'current-request' } as Partial<Request>),
+      {} as Response,
+      next
+    );
+    await new Promise(r => setImmediate(r));
+
+    const forwarded = (next as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][0] as Error & { requestId?: string };
+    expect(forwarded.requestId).toBe('originating-request');
+  });
+
   it('does not attach requestId when none is present on req', async () => {
     const err = new Error('boom');
     const handler = asyncHandler('op.x', () => Promise.reject(err));

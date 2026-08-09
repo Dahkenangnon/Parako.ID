@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { findPostgresqlPrismaClient } from '../../../src/db/prisma.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  checkDatabaseHealth,
+  findPostgresqlPrismaClient,
+} from '../../../src/db/prisma.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -32,5 +35,24 @@ describe('PostgreSQL Prisma client discovery', () => {
     expect(() => findPostgresqlPrismaClient(root)).toThrow(
       'Generated PostgreSQL Prisma client is missing'
     );
+  });
+});
+
+describe('checkDatabaseHealth', () => {
+  it('returns true after a successful round trip', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{ result: 1 }]);
+
+    await expect(
+      checkDatabaseHealth({ $queryRaw: queryRaw } as any)
+    ).resolves.toBe(true);
+    expect(queryRaw).toHaveBeenCalledOnce();
+  });
+
+  it('returns false when the database round trip fails', async () => {
+    const queryRaw = vi.fn().mockRejectedValue(new Error('offline'));
+
+    await expect(
+      checkDatabaseHealth({ $queryRaw: queryRaw } as any)
+    ).resolves.toBe(false);
   });
 });

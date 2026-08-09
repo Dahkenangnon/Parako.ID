@@ -1,117 +1,161 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueueManager } from '../../../../src/jobs/processing/queue-manager.js';
 
-// Mock bullmq
-vi.mock('bullmq', () => {
-  const mockQueue = {
-    name: 'test-queue',
-    getJobCounts: vi.fn().mockResolvedValue({
-      waiting: 1,
-      active: 2,
-      completed: 10,
-      failed: 0,
-      delayed: 0,
-    }),
-    pause: vi.fn().mockResolvedValue(undefined),
-    resume: vi.fn().mockResolvedValue(undefined),
-    obliterate: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn().mockResolvedValue(undefined),
-  };
-
-  return {
-    Queue: vi.fn().mockImplementation(function Queue() {
-      return { ...mockQueue };
-    }),
-  };
-});
-
-const mockLogger = {
+const logger = {
   info: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   debug: vi.fn(),
-  trace: vi.fn(),
-  fatal: vi.fn(),
-  child: vi.fn(),
-  getLogger: vi.fn(),
-  flush: vi.fn(),
-  shutdown: vi.fn(),
 };
+
+function createQueue(counts: Record<string, number | undefined> = {}) {
+  return {
+    getJobCounts: vi.fn().mockResolvedValue(counts),
+    close: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
 describe('QueueManager', () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
   });
 
-  it('registerQueue() and getQueue() store and retrieve a queue', async () => {
-    const { QueueManager } =
-      await import('../../../../src/jobs/processing/queue-manager.js');
+  it('registers queues and exposes their names and instances', () => {
+    const manager = new QueueManager(logger as never);
+    const first = createQueue();
+    const second = createQueue();
 
-    const mgr = new QueueManager(mockLogger);
-    const { Queue } = await import('bullmq');
-    const queue = new Queue('test');
+    manager.registerQueue('first', first as never);
+    manager.registerQueue('second', second as never);
 
-    mgr.registerQueue('test', queue);
-    expect(mgr.getQueue('test')).toBe(queue);
+    expect(manager.getQueue('first')).toBe(first);
+    expect(manager.getQueue('missing')).toBeUndefined();
+    expect(manager.getQueueNames()).toEqual(['first', 'second']);
+    expect(logger.debug).toHaveBeenCalledWith('Queue registered: first', {
+      component: 'QueueManager',
+    });
   });
 
-  it('getQueueNames() returns all registered queue names', async () => {
-    const { QueueManager } =
-      await import('../../../../src/jobs/processing/queue-manager.js');
+  it('warns and exposes the replacement when a queue name is registered twice', () => {
+    const manager = new QueueManager(logger as never);
+    const original = createQueue();
+    const replacement = createQueue();
 
-    const mgr = new QueueManager(mockLogger);
-    const { Queue } = await import('bullmq');
+    manager.registerQueue('duplicate', original as never);
+    manager.registerQueue('duplicate', replacement as never);
 
-    mgr.registerQueue('a', new Queue('a'));
-    mgr.registerQueue('b', new Queue('b'));
-
-    expect(mgr.getQueueNames()).toEqual(['a', 'b']);
-  });
-
-  it('getStats() returns job counts for all registered queues', async () => {
-    const { QueueManager } =
-      await import('../../../../src/jobs/processing/queue-manager.js');
-
-    const mgr = new QueueManager(mockLogger);
-    const { Queue } = await import('bullmq');
-    const queue = new Queue('test');
-
-    mgr.registerQueue('test', queue);
-
-    const stats = await mgr.getStats();
-    expect(stats).toHaveProperty('test');
-    expect(stats.test.active).toBe(2);
-    expect(stats.test.waiting).toBe(1);
-  });
-
-  it('closeAll() closes all registered queues and clears the registry', async () => {
-    const { QueueManager } =
-      await import('../../../../src/jobs/processing/queue-manager.js');
-
-    const mgr = new QueueManager(mockLogger);
-    const { Queue } = await import('bullmq');
-    const queue = new Queue('test');
-
-    mgr.registerQueue('test', queue);
-    await mgr.closeAll();
-
-    expect(queue.close).toHaveBeenCalled();
-    expect(mgr.getQueueNames()).toEqual([]);
-  });
-
-  it('logs a warning when replacing an already-registered queue', async () => {
-    const { QueueManager } =
-      await import('../../../../src/jobs/processing/queue-manager.js');
-
-    const mgr = new QueueManager(mockLogger);
-    const { Queue } = await import('bullmq');
-
-    mgr.registerQueue('dup', new Queue('dup'));
-    mgr.registerQueue('dup', new Queue('dup'));
-
-    expect(mockLogger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('already registered'),
-      expect.any(Object)
+    expect(manager.getQueue('duplicate')).toBe(replacement);
+    expect(manager.getQueueNames()).toEqual(['duplicate']);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Queue "duplicate" already registered, replacing',
+      { component: 'QueueManager' }
     );
+  });
+
+  it('collects all requested counts and defaults missing BullMQ counters to zero', async () => {
+    const manager = new QueueManager(logger as never);
+    const complete = createQueue({
+      waiting: 1,
+      active: 2,
+      completed: 3,
+      failed: 4,
+      delayed: 5,
+    });
+    const sparse = createQueue({ waiting: undefined });
+    manager.registerQueue('complete', complete as never);
+    manager.registerQueue('sparse', sparse as never);
+
+    await expect(manager.getStats()).resolves.toEqual({
+      complete: { waiting: 1, active: 2, completed: 3, failed: 4, delayed: 5 },
+      sparse: { waiting: 0, active: 0, completed: 0, failed: 0, delayed: 0 },
+    });
+    expect(complete.getJobCounts).toHaveBeenCalledWith(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed'
+    );
+  });
+
+  it('continues collecting stats and logs Error and non-Error failures', async () => {
+    const manager = new QueueManager(logger as never);
+    const errorQueue = createQueue();
+    const stringQueue = createQueue();
+    const healthyQueue = createQueue({ active: 1 });
+    errorQueue.getJobCounts.mockRejectedValue(new Error('redis down'));
+    stringQueue.getJobCounts.mockRejectedValue('connection gone');
+    manager.registerQueue('error-queue', errorQueue as never);
+    manager.registerQueue('string-queue', stringQueue as never);
+    manager.registerQueue('healthy-queue', healthyQueue as never);
+
+    await expect(manager.getStats()).resolves.toEqual({
+      'healthy-queue': {
+        waiting: 0,
+        active: 1,
+        completed: 0,
+        failed: 0,
+        delayed: 0,
+      },
+    });
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to get stats for queue "error-queue": redis down',
+      { component: 'QueueManager' }
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to get stats for queue "string-queue": connection gone',
+      { component: 'QueueManager' }
+    );
+  });
+
+  it('closes every queue, clears the registry, and logs clean shutdown', async () => {
+    const manager = new QueueManager(logger as never);
+    const first = createQueue();
+    const second = createQueue();
+    manager.registerQueue('first', first as never);
+    manager.registerQueue('second', second as never);
+
+    await manager.closeAll();
+
+    expect(first.close).toHaveBeenCalledOnce();
+    expect(second.close).toHaveBeenCalledOnce();
+    expect(manager.getQueueNames()).toEqual([]);
+    expect(logger.warn).not.toHaveBeenCalledWith(
+      'Some queues failed to close cleanly',
+      expect.anything()
+    );
+    expect(logger.info).toHaveBeenCalledWith('All queues closed', {
+      component: 'QueueManager',
+    });
+  });
+
+  it('continues closing queues and reports Error and non-Error failures', async () => {
+    const manager = new QueueManager(logger as never);
+    const errorQueue = createQueue();
+    const stringQueue = createQueue();
+    const healthyQueue = createQueue();
+    errorQueue.close.mockRejectedValue(new Error('close failed'));
+    stringQueue.close.mockRejectedValue('connection gone');
+    manager.registerQueue('error-queue', errorQueue as never);
+    manager.registerQueue('string-queue', stringQueue as never);
+    manager.registerQueue('healthy-queue', healthyQueue as never);
+
+    await manager.closeAll();
+
+    expect(healthyQueue.close).toHaveBeenCalledOnce();
+    expect(manager.getQueueNames()).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Some queues failed to close cleanly',
+      {
+        component: 'QueueManager',
+        errors: [
+          { name: 'error-queue', error: 'close failed' },
+          { name: 'string-queue', error: 'connection gone' },
+        ],
+      }
+    );
+    expect(logger.info).toHaveBeenCalledWith('All queues closed', {
+      component: 'QueueManager',
+    });
   });
 });

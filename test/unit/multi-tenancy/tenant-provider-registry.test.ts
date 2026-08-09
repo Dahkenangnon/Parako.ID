@@ -12,7 +12,17 @@
  * - shutdown() clears pool and timers
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import type { Provider, Configuration } from 'oidc-provider';
+
+const mocks = vi.hoisted(() => ({
+  updateProviderJWKS: vi.fn(),
+}));
+
+vi.mock('../../../src/oidc/provider-keystore-updater.js', () => ({
+  updateProviderJWKS: mocks.updateProviderJWKS,
+}));
+
+import { Provider, type Configuration } from 'oidc-provider';
+import * as jose from 'jose';
 import type { ILogger } from '../../../src/di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../../src/di/interfaces/config-manager.interface.js';
 import type { IOIDCConfig } from '../../../src/di/interfaces/oidc-config.interface.js';
@@ -25,6 +35,7 @@ import {
   TenantProviderRegistry,
   type ProviderFactory,
 } from '../../../src/multi-tenancy/tenant-provider-registry.js';
+import { DEFAULT_TENANT_ID } from '../../../src/multi-tenancy/tenant-context.js';
 
 function createMockLogger(): ILogger {
   return {
@@ -42,7 +53,8 @@ function createMockConfigManager(
     path: string;
     url: string;
     environment: string;
-    redis_prefix: string;
+    redis_prefix: string | null;
+    multi_tenancy_enabled: boolean;
     max_size: number;
     idle_ttl_ms: number;
     cleanup_interval_ms: number;
@@ -54,6 +66,7 @@ function createMockConfigManager(
     url = 'https://parako.id',
     environment = 'development',
     redis_prefix = 'parako',
+    multi_tenancy_enabled = true,
     max_size = 50,
     idle_ttl_ms = 1_800_000,
     cleanup_interval_ms = 60_000,
@@ -65,7 +78,7 @@ function createMockConfigManager(
       deployment: { url, environment, redis_prefix },
       features: {
         multi_tenancy: {
-          enabled: true,
+          enabled: multi_tenancy_enabled,
           provider_pool: { max_size, idle_ttl_ms, cleanup_interval_ms },
         },
       },
@@ -81,6 +94,7 @@ function createMockOidcConfig(): IOIDCConfig {
       claims: {},
     } as Configuration),
     getJwks: vi.fn().mockResolvedValue({ keys: [{ kty: 'RSA', kid: 'test' }] }),
+    initializeResourceServers: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -109,6 +123,7 @@ function createMockKeyStore(): IKeyStore {
     rotate: vi.fn().mockResolvedValue(undefined),
     promoteKeys: vi.fn().mockResolvedValue(0),
     retireExpiredKeys: vi.fn().mockResolvedValue(0),
+    retireKey: vi.fn().mockResolvedValue(false),
     listKeys: vi.fn().mockResolvedValue([]),
     needsRotation: vi.fn().mockResolvedValue(false),
   };
@@ -120,6 +135,11 @@ function createMockPubsub(): IRedisPubSubService {
     publish: vi.fn().mockResolvedValue(undefined),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    publishForTenant: vi.fn().mockResolvedValue(undefined),
+    subscribeForTenant: vi.fn(),
+    unsubscribeForTenant: vi.fn(),
+    psubscribe: vi.fn(),
+    punsubscribe: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
     disconnect: vi.fn().mockResolvedValue(undefined),
   };
@@ -204,6 +224,7 @@ describe('TenantProviderRegistry', () => {
   ]);
 
   beforeEach(() => {
+    mocks.updateProviderJWKS.mockReset();
     logger = createMockLogger();
     configManager = createMockConfigManager();
     oidcConfig = createMockOidcConfig();
@@ -229,6 +250,29 @@ describe('TenantProviderRegistry', () => {
 
   afterEach(() => {
     registry.shutdown();
+  });
+
+  describe('construction', () => {
+    it('supports timer handles without Node unref()', () => {
+      const interval = vi
+        .spyOn(globalThis, 'setInterval')
+        .mockReturnValueOnce(1 as unknown as NodeJS.Timeout);
+      const portableRegistry = new TenantProviderRegistry(
+        logger,
+        configManager,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+
+      expect(interval).toHaveBeenCalledOnce();
+      portableRegistry.shutdown();
+      interval.mockRestore();
+    });
   });
 
   describe('getProvider()', () => {
@@ -259,6 +303,44 @@ describe('TenantProviderRegistry', () => {
       expect((provider as any).issuer).toBe('https://globex.parako.id/oidc/v1');
     });
 
+    it('uses the configured issuer origin when deployment URL is blank', async () => {
+      const fallbackRegistry = new TenantProviderRegistry(
+        logger,
+        createMockConfigManager({ url: '' }),
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+
+      const provider = await fallbackRegistry.getProvider('acme');
+
+      expect((provider as any).issuer).toBe('https://acme.parako.id/oidc/v1');
+      fallbackRegistry.shutdown();
+    });
+
+    it('uses the standard OIDC path when the configured path is blank', async () => {
+      const fallbackRegistry = new TenantProviderRegistry(
+        logger,
+        createMockConfigManager({ path: '' }),
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+
+      const provider = await fallbackRegistry.getProvider('acme');
+
+      expect((provider as any).issuer).toBe('https://acme.parako.id/oidc/v1');
+      fallbackRegistry.shutdown();
+    });
+
     it('returns cached Provider on subsequent calls (same reference)', async () => {
       const first = await registry.getProvider('acme');
       const second = await registry.getProvider('acme');
@@ -280,6 +362,55 @@ describe('TenantProviderRegistry', () => {
       expect(adapterBridge.initialize).toHaveBeenCalled();
     });
 
+    it('loads database resource servers before provider construction', async () => {
+      const lifecycle: string[] = [];
+      vi.mocked(oidcConfig.getConfig).mockImplementation(() => {
+        lifecycle.push('config');
+        return { features: {}, claims: {} } as Configuration;
+      });
+      vi.mocked(oidcConfig.initializeResourceServers).mockImplementation(
+        async () => {
+          lifecycle.push('resource-servers');
+        }
+      );
+      vi.mocked(providerFactory).mockImplementation((issuer: string) => {
+        lifecycle.push('provider');
+        return { issuer, proxy: false } as unknown as Provider;
+      });
+
+      await registry.getProvider('acme');
+
+      expect(oidcConfig.initializeResourceServers).toHaveBeenCalledOnce();
+      expect(lifecycle).toEqual(['config', 'resource-servers', 'provider']);
+    });
+
+    it('enables trusted proxy handling before configuring a production provider', async () => {
+      const productionConfig = createMockConfigManager({
+        environment: 'production',
+      });
+      const productionRegistry = new TenantProviderRegistry(
+        logger,
+        productionConfig,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+      const configurator = vi.fn(async (provider: Provider) => {
+        expect(provider.proxy).toBe(true);
+      });
+      productionRegistry.setProviderConfigurator(configurator);
+
+      const provider = await productionRegistry.getProvider('acme');
+
+      expect(provider.proxy).toBe(true);
+      expect(configurator).toHaveBeenCalledOnce();
+      productionRegistry.shutdown();
+    });
+
     it('fetches tenant-scoped JWKS (not default tenant keys)', async () => {
       await registry.getProvider('acme');
 
@@ -287,9 +418,186 @@ describe('TenantProviderRegistry', () => {
       // NOT oidcConfig.getJwks() which would return default tenant keys
       expect(keyStore.getJWKS).toHaveBeenCalledWith('acme');
     });
+
+    it('uses the real provider factory when no override is injected', async () => {
+      const { privateKey } = await jose.generateKeyPair('RS256', {
+        extractable: true,
+      });
+      const jwk = await jose.exportJWK(privateKey);
+      jwk.use = 'sig';
+      jwk.alg = 'RS256';
+      jwk.kid = await jose.calculateJwkThumbprint(jwk as jose.JWK, 'sha256');
+      vi.mocked(keyStore.getJWKS).mockResolvedValue({
+        keys: [jwk as JsonWebKey],
+      });
+      vi.mocked(oidcConfig.getConfig).mockReturnValue({
+        features: { devInteractions: { enabled: false } },
+      } as Configuration);
+      const realRegistry = new TenantProviderRegistry(
+        logger,
+        configManager,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any
+      );
+
+      const provider = await realRegistry.getProvider('acme');
+
+      expect(provider).toBeInstanceOf(Provider);
+      realRegistry.shutdown();
+    });
+  });
+
+  describe('reloadProviderJWKS()', () => {
+    it('does not read keys for a tenant without a cached provider', async () => {
+      await registry.reloadProviderJWKS('acme');
+
+      expect(keyStore.getJWKS).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalledWith(
+        'tenant_provider_jwks_reloaded',
+        expect.anything()
+      );
+    });
+
+    it('hot-reloads tenant-scoped keys into a cached provider', async () => {
+      const provider = await registry.getProvider('acme');
+      vi.mocked(keyStore.getJWKS).mockClear();
+      vi.mocked(keyStore.getJWKS).mockResolvedValue({
+        keys: [
+          { kty: 'RSA', kid: 'rotated-key' },
+          { kty: 'EC', kid: 'promoted-key' },
+        ],
+      });
+
+      await registry.reloadProviderJWKS('acme');
+
+      expect(keyStore.getJWKS).toHaveBeenCalledWith('acme');
+      expect(mocks.updateProviderJWKS).toHaveBeenCalledWith(provider, {
+        keys: [
+          { kty: 'RSA', kid: 'rotated-key' },
+          { kty: 'EC', kid: 'promoted-key' },
+        ],
+      });
+      expect(logger.info).toHaveBeenCalledWith(
+        'tenant_provider_jwks_reloaded',
+        { tenantId: 'acme', keyCount: 2 }
+      );
+    });
+
+    it('contains tenant key-store failures without replacing the cached provider', async () => {
+      const provider = await registry.getProvider('acme');
+      vi.mocked(keyStore.getJWKS).mockRejectedValueOnce(
+        new Error('tenant key store unavailable')
+      );
+
+      await expect(
+        registry.reloadProviderJWKS('acme')
+      ).resolves.toBeUndefined();
+
+      expect(registry.has('acme')).toBe(true);
+      expect(await registry.getProvider('acme')).toBe(provider);
+      expect(mocks.updateProviderJWKS).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        'tenant_provider_jwks_reload_failed',
+        {
+          tenantId: 'acme',
+          error: 'tenant key store unavailable',
+        }
+      );
+    });
+
+    it('normalizes non-Error tenant key-store failures', async () => {
+      await registry.getProvider('acme');
+      vi.mocked(keyStore.getJWKS).mockRejectedValueOnce('key store offline');
+
+      await registry.reloadProviderJWKS('acme');
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'tenant_provider_jwks_reload_failed',
+        {
+          tenantId: 'acme',
+          error: 'key store offline',
+        }
+      );
+    });
+  });
+
+  describe('tenant JWKS Pub/Sub', () => {
+    it('reloads only the tenant whose rotation channel fires', async () => {
+      const provider = await registry.getProvider('acme');
+      vi.mocked(keyStore.getJWKS).mockClear();
+      mocks.updateProviderJWKS.mockClear();
+      const rotationSubscription = vi
+        .mocked(pubsub.subscribe)
+        .mock.calls.find(([channel]) => channel === 'parako:acme:jwks:rotated');
+
+      expect(rotationSubscription).toBeDefined();
+      rotationSubscription?.[1]({});
+
+      await vi.waitFor(() => {
+        expect(keyStore.getJWKS).toHaveBeenCalledWith('acme');
+        expect(mocks.updateProviderJWKS).toHaveBeenCalledWith(
+          provider,
+          expect.any(Object)
+        );
+      });
+      expect(logger.info).toHaveBeenCalledWith('tenant_jwks_rotation_event', {
+        tenantId: 'acme',
+        phase: 'rotated',
+      });
+    });
+
+    it('reloads only the tenant whose promotion channel fires', async () => {
+      const provider = await registry.getProvider('globex');
+      vi.mocked(keyStore.getJWKS).mockClear();
+      mocks.updateProviderJWKS.mockClear();
+      const promotionSubscription = vi
+        .mocked(pubsub.subscribe)
+        .mock.calls.find(
+          ([channel]) => channel === 'parako:globex:jwks:promoted'
+        );
+
+      expect(promotionSubscription).toBeDefined();
+      promotionSubscription?.[1]({});
+
+      await vi.waitFor(() => {
+        expect(keyStore.getJWKS).toHaveBeenCalledWith('globex');
+        expect(mocks.updateProviderJWKS).toHaveBeenCalledWith(
+          provider,
+          expect.any(Object)
+        );
+      });
+      expect(logger.info).toHaveBeenCalledWith('tenant_jwks_promotion_event', {
+        tenantId: 'globex',
+        phase: 'promoted',
+      });
+    });
   });
 
   describe('Redis activity tracking', () => {
+    it('creates and caches providers when activity Redis is unavailable', async () => {
+      const noRedisRegistry = new TenantProviderRegistry(
+        logger,
+        configManager,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        null,
+        providerFactory
+      );
+
+      const provider = await noRedisRegistry.getProvider('acme');
+
+      expect(provider).toBeDefined();
+      expect(noRedisRegistry.has('acme')).toBe(true);
+      noRedisRegistry.shutdown();
+    });
+
     it('records activity on getProvider() - first call', async () => {
       await registry.getProvider('acme');
 
@@ -313,6 +621,31 @@ describe('TenantProviderRegistry', () => {
         'PX',
         expect.any(Number)
       );
+    });
+
+    it('uses the canonical Redis prefix when none is configured', async () => {
+      const fallbackConfig = createMockConfigManager({ redis_prefix: null });
+      const fallbackRegistry = new TenantProviderRegistry(
+        logger,
+        fallbackConfig,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+
+      await fallbackRegistry.getProvider('acme');
+
+      expect(redis.set).toHaveBeenCalledWith(
+        'parako:acme:activity',
+        expect.any(String),
+        'PX',
+        expect.any(Number)
+      );
+      fallbackRegistry.shutdown();
     });
   });
 
@@ -494,6 +827,32 @@ describe('TenantProviderRegistry', () => {
   });
 
   describe('error handling', () => {
+    it('explains how to resolve a missing default tenant', async () => {
+      const emptyRepo = createMockTenantRepo();
+      const freshRegistry = new TenantProviderRegistry(
+        logger,
+        configManager,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        emptyRepo,
+        redis as any,
+        providerFactory
+      );
+
+      const error = await freshRegistry
+        .getProvider(DEFAULT_TENANT_ID)
+        .catch(reason => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toContain('No tenant resolved');
+      expect(error.message).toContain('Use a subdomain');
+      expect(error.message).toContain('x-tenant-id');
+
+      freshRegistry.shutdown();
+    });
+
     it('throws when tenant not found in repository', async () => {
       await expect(registry.getProvider('unknown-corp')).rejects.toThrow(
         /tenant.*not found/i
@@ -536,6 +895,23 @@ describe('TenantProviderRegistry', () => {
       const provider = await registry.getProvider('acme');
       expect(provider).toBeDefined();
       expect(logger.warn).toHaveBeenCalled();
+    });
+
+    it('normalizes a non-Error Redis activity rejection', async () => {
+      redis.set.mockRejectedValue('redis offline');
+
+      const provider = await registry.getProvider('acme');
+
+      expect(provider).toBeDefined();
+      await vi.waitFor(() => {
+        expect(logger.warn).toHaveBeenCalledWith(
+          'tenant_activity_record_failed',
+          expect.objectContaining({
+            tenantId: 'acme',
+            error: 'redis offline',
+          })
+        );
+      });
     });
 
     it('LRU eviction followed by factory failure does not restore evicted provider', async () => {
@@ -585,6 +961,33 @@ describe('TenantProviderRegistry', () => {
   });
 
   describe('idle eviction timer', () => {
+    it('does not schedule provider eviction in single-tenant mode', async () => {
+      vi.useFakeTimers();
+      const singleTenantConfig = createMockConfigManager({
+        multi_tenancy_enabled: false,
+        idle_ttl_ms: 1000,
+        cleanup_interval_ms: 100,
+      });
+      const singleTenantRegistry = new TenantProviderRegistry(
+        logger,
+        singleTenantConfig,
+        oidcConfig,
+        adapterBridge,
+        keyStore,
+        pubsub,
+        tenantRepo,
+        redis as any,
+        providerFactory
+      );
+
+      await singleTenantRegistry.getProvider('acme');
+      vi.advanceTimersByTime(5000);
+
+      expect(singleTenantRegistry.has('acme')).toBe(true);
+      singleTenantRegistry.shutdown();
+      vi.useRealTimers();
+    });
+
     it('evicts providers that exceed the idle TTL', async () => {
       vi.useFakeTimers();
 

@@ -158,12 +158,11 @@ function makeMockConfigManager(
 
 function makeService(repo?: ITenantSettingsOverrideRepository) {
   const r = repo ?? makeMockRepo();
+  const logger = makeMockLogger();
   return {
-    service: new TenantSettingsOverrideService(
-      r as any,
-      makeMockLogger() as any
-    ),
+    service: new TenantSettingsOverrideService(r as any, logger as any),
     repo: r,
+    logger,
   };
 }
 
@@ -285,6 +284,19 @@ describe('TenantSettingsOverrideService', () => {
       ).rejects.toThrow('No valid override fields provided');
     });
 
+    it('rejects an allowed section when field filtering removes every value', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          security: { secrets: { jwt_secret: 'must-not-be-overridden' } },
+        } as any)
+      ).rejects.toThrow(
+        'No valid override fields provided after field-level filtering'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('saves all 7 whitelisted sections including notifications', async () => {
       const { service, repo } = makeService();
 
@@ -388,6 +400,78 @@ describe('TenantSettingsOverrideService', () => {
       // client_id should NOT be encrypted
       expect(savedData.features.social_providers.google.client_id).toBe(
         'google-id'
+      );
+    });
+
+    it('preserves the existing encrypted secret for a masked form value', async () => {
+      const repo = makeMockRepo();
+      (repo.findActive as ReturnType<typeof vi.fn>).mockResolvedValue(
+        makeOverrideDoc({
+          integrations: {
+            email: { smtp_password: 'encrypted:existing-password' },
+          } as any,
+        })
+      );
+      const { service } = makeService(repo);
+      const { ensureEncrypted } =
+        await import('../../../src/utils/encryption.js');
+
+      await service.saveOverrides('acme', {
+        integrations: {
+          email: {
+            smtp_password: TenantSettingsOverrideService.MASKED_SENTINEL,
+          },
+        } as any,
+      });
+
+      const savedData = (repo.save as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      expect(savedData.integrations.email.smtp_password).toBe(
+        'encrypted:existing-password'
+      );
+      expect(ensureEncrypted).not.toHaveBeenCalled();
+    });
+
+    it('does not persist a masked sentinel when no existing secret is available', async () => {
+      const { service, repo } = makeService();
+      const { ensureEncrypted } =
+        await import('../../../src/utils/encryption.js');
+
+      await service.saveOverrides('acme', {
+        integrations: {
+          email: {
+            smtp_password: TenantSettingsOverrideService.MASKED_SENTINEL,
+          },
+        } as any,
+      });
+
+      const savedData = (repo.save as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      expect(savedData.integrations.email.smtp_password).toBeUndefined();
+      expect(ensureEncrypted).not.toHaveBeenCalled();
+    });
+
+    it('fails closed instead of storing plaintext when encryption fails', async () => {
+      const { service, repo, logger } = makeService();
+      const { ensureEncrypted } =
+        await import('../../../src/utils/encryption.js');
+      vi.mocked(ensureEncrypted).mockImplementationOnce(() => {
+        throw new Error('encryption unavailable');
+      });
+
+      await expect(
+        service.saveOverrides('acme', {
+          integrations: {
+            email: { smtp_password: 'plaintext-secret' },
+          } as any,
+        })
+      ).rejects.toThrow(
+        "Failed to encrypt sensitive tenant setting 'integrations.email.smtp_password'"
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to encrypt sensitive tenant setting 'integrations.email.smtp_password'",
+        { error: 'Error: encryption unavailable' }
       );
     });
 
@@ -642,6 +726,18 @@ describe('TenantSettingsOverrideService', () => {
       expect(result).toEqual({});
     });
 
+    it('uses an unknown tenant label when stripping outside tenant context', () => {
+      const { service, logger } = makeService();
+
+      expect(
+        service.stripDisallowedFields({ deployment: { url: 'unsafe' } })
+      ).toEqual({});
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Stripped disallowed tenant override field: deployment.url',
+        { tenantId: 'unknown' }
+      );
+    });
+
     it('preserves array-valued fields', () => {
       const { service } = makeService();
       const result = service.stripDisallowedFields(
@@ -692,6 +788,54 @@ describe('TenantSettingsOverrideService', () => {
   });
 
   describe('enforceConstraints()', () => {
+    it('leaves values unchanged when matching platform constraints are absent', () => {
+      const { service } = makeService();
+      const incoming = {
+        security: {
+          authentication: {
+            multi_factor: { enabled: false },
+            session: { idle_timeout_minutes: 30 },
+          },
+        },
+      };
+
+      const { result, violations } = service.enforceConstraints(incoming, {});
+
+      expect(result).toEqual(incoming);
+      expect(violations).toEqual([]);
+    });
+
+    it.each([
+      ['not-a-number', 60],
+      [30, 'not-a-number'],
+    ])(
+      'does not coerce invalid numeric ceiling values %#',
+      (tenantValue, platformValue) => {
+        const { service } = makeService();
+        const { result, violations } = service.enforceConstraints(
+          {
+            security: {
+              authentication: {
+                session: { idle_timeout_minutes: tenantValue },
+              },
+            },
+          },
+          {
+            security: {
+              authentication: {
+                session: { idle_timeout_minutes: platformValue },
+              },
+            },
+          }
+        );
+
+        expect(
+          result.security.authentication.session.idle_timeout_minutes
+        ).toBe(tenantValue);
+        expect(violations).toEqual([]);
+      }
+    );
+
     it('clamps session.idle_timeout_minutes to ceiling', () => {
       const platformConfig =
         makeMockConfigManager().getConfig() as unknown as Record<string, any>;

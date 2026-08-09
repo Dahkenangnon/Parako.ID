@@ -90,6 +90,30 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
   let mockSocialLogin: ReturnType<typeof createMockHandler>;
   let mockSocialCb: ReturnType<typeof createMockHandler>;
   let mockError: ReturnType<typeof createMockHandler>;
+  let mockConfigManager: {
+    getConfig: ReturnType<typeof vi.fn>;
+    subscribe: ReturnType<typeof vi.fn>;
+  };
+  let mockSessionManager: {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    flash: ReturnType<typeof vi.fn>;
+  };
+  let mockUserService: { findByUsername: ReturnType<typeof vi.fn> };
+  let mockMfaUtils: { getEnabledMethods: ReturnType<typeof vi.fn> };
+  let mockViewResolver: {
+    views: {
+      auth: {
+        oidc: { mfa_select: string; mfa_no_fallback: string };
+      };
+    };
+  };
+  let mockLogger: {
+    info: ReturnType<typeof vi.fn>;
+    error: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+    debug: ReturnType<typeof vi.fn>;
+  };
 
   function createMockProviderService(
     provider: ReturnType<typeof createMockProvider>
@@ -132,6 +156,22 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
     return undefined;
   }
 
+  function findExactRoute(
+    method: string,
+    path: string
+  ): ((...args: unknown[]) => unknown) | undefined {
+    const router = (routesManager as any).interactionRouter;
+    if (!router?.stack) return undefined;
+
+    const methodKey = method.toLowerCase();
+    const layer = router.stack.find(
+      (candidate: any) =>
+        candidate.route?.methods[methodKey] && candidate.route.path === path
+    );
+    const handlers = layer?.route.stack;
+    return handlers?.[handlers.length - 1]?.handle;
+  }
+
   beforeEach(() => {
     mockProvider = createMockProvider('default-provider');
     mockProviderService = createMockProviderService(mockProvider);
@@ -147,17 +187,49 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
     mockSocialCb = createMockHandler();
     mockError = createMockHandler();
     spyApp = createSpyApp();
+    mockConfigManager = {
+      getConfig: vi.fn().mockReturnValue({
+        oidc: { path: '/oidc/v1' },
+        application: { title: 'Test' },
+        features: { multi_tenancy: { enabled: false } },
+      }),
+      subscribe: vi.fn(),
+    };
+    mockSessionManager = {
+      get: vi.fn().mockReturnValue(null),
+      set: vi.fn(),
+      flash: vi.fn().mockReturnValue({
+        success: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+      }),
+    };
+    mockUserService = {
+      findByUsername: vi.fn().mockResolvedValue(null),
+    };
+    mockMfaUtils = {
+      getEnabledMethods: vi.fn().mockReturnValue([]),
+    };
+    mockViewResolver = {
+      views: {
+        auth: {
+          oidc: {
+            mfa_select: 'mfa_select',
+            mfa_no_fallback: 'mfa_no_fallback',
+          },
+        },
+      },
+    };
+    mockLogger = {
+      info: vi.fn(),
+      error: vi.fn(),
+      warn: vi.fn(),
+      debug: vi.fn(),
+    };
 
     // Construct OidcRoutesManager with mocks — matches constructor parameter order
     routesManager = new (OidcRoutesManager as any)(
-      /* configManager */ {
-        getConfig: () => ({
-          oidc: { path: '/oidc/v1' },
-          application: { title: 'Test' },
-          features: { multi_tenancy: { enabled: false } },
-        }),
-        subscribe: vi.fn(),
-      },
+      /* configManager */ mockConfigManager,
       /* providerService */ mockProviderService,
       /* error */ mockError,
       /* abort */ mockAbort,
@@ -170,37 +242,11 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       /* login */ mockLogin,
       /* interaction */ mockInteraction,
       /* webauthnMfa */ mockWebauthnMfa,
-      /* sessionManager */ {
-        get: vi.fn().mockReturnValue(null),
-        set: vi.fn(),
-        flash: vi.fn().mockReturnValue({
-          success: vi.fn(),
-          error: vi.fn(),
-          info: vi.fn(),
-        }),
-      },
-      /* userService */ {
-        findByUsername: vi.fn().mockResolvedValue(null),
-      },
-      /* mfaUtils */ {
-        getEnabledMethods: vi.fn().mockReturnValue([]),
-      },
-      /* viewResolver */ {
-        views: {
-          auth: {
-            oidc: {
-              mfa_select: 'mfa_select',
-              mfa_no_fallback: 'mfa_no_fallback',
-            },
-          },
-        },
-      },
-      /* logger */ {
-        info: vi.fn(),
-        error: vi.fn(),
-        warn: vi.fn(),
-        debug: vi.fn(),
-      }
+      /* sessionManager */ mockSessionManager,
+      /* userService */ mockUserService,
+      /* mfaUtils */ mockMfaUtils,
+      /* viewResolver */ mockViewResolver,
+      /* logger */ mockLogger
     );
 
     routesManager.registerRoutes(spyApp as any);
@@ -382,9 +428,332 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       // No 4th arg (no provider)
       expect(mockSocialLogin.handle.mock.calls[0].length).toBe(3);
     });
+
+    it('GET /social/:provider/callback delegates without a provider', () => {
+      const handler = findExactRoute(
+        'GET',
+        '/oidc/v1/social/:provider/callback'
+      );
+      const req = {} as Request;
+      const res = {} as Response;
+      const next = vi.fn() as NextFunction;
+
+      handler!(req, res, next);
+
+      expect(mockSocialCb.handle).toHaveBeenCalledWith(req, res, next);
+      expect(mockSocialCb.handle.mock.calls[0]).toHaveLength(3);
+      expect(mockProviderService.getProviderForTenant).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('route error forwarding', () => {
+    it.each([
+      ['GET', '/oidc/v1/interaction/:uid'],
+      ['POST', '/oidc/v1/interaction/:uid/login'],
+      ['POST', '/oidc/v1/interaction/:uid/confirm'],
+      ['POST', '/oidc/v1/interaction/:uid/select_account'],
+      ['POST', '/oidc/v1/interaction/:uid/mfa'],
+      ['POST', '/oidc/v1/interaction/:uid/webauthn/options'],
+      ['POST', '/oidc/v1/interaction/:uid/webauthn/verify'],
+      ['GET', '/oidc/v1/interaction/:uid/new-device-verify'],
+      ['POST', '/oidc/v1/interaction/:uid/new-device-verify'],
+      ['GET', '/oidc/v1/interaction/:uid/abort'],
+    ])('%s %s forwards provider resolution failures', async (method, path) => {
+      const failure = new Error('provider unavailable');
+      mockProviderService.getProviderForTenant.mockRejectedValueOnce(failure);
+      const next = vi.fn();
+
+      await findExactRoute(method, path)!(
+        { params: { uid: 'test-uid' } } as unknown as Request,
+        {} as Response,
+        next
+      );
+
+      expect(next).toHaveBeenCalledOnce();
+      expect(next).toHaveBeenCalledWith(failure);
+    });
+  });
+
+  describe('MFA method selection', () => {
+    function createResponse() {
+      return {
+        redirect: vi.fn(),
+        render: vi.fn(),
+      } as unknown as Response;
+    }
+
+    it('redirects to the interaction when no pending MFA user exists', async () => {
+      const req = { params: { uid: 'mfa-uid' } } as unknown as Request;
+      const res = createResponse();
+
+      await findExactRoute('GET', '/oidc/v1/interaction/:uid/mfa/select')!(
+        req,
+        res,
+        vi.fn()
+      );
+
+      expect(res.redirect).toHaveBeenCalledWith('/oidc/v1/interaction/mfa-uid');
+      expect(mockUserService.findByUsername).not.toHaveBeenCalled();
+    });
+
+    it('redirects when the pending MFA user no longer exists', async () => {
+      mockSessionManager.get.mockReturnValueOnce({
+        username: 'removed-user',
+        email: 'removed@example.test',
+      });
+      const req = { params: { uid: 'mfa-uid' } } as unknown as Request;
+      const res = createResponse();
+
+      await findExactRoute('GET', '/oidc/v1/interaction/:uid/mfa/select')!(
+        req,
+        res,
+        vi.fn()
+      );
+
+      expect(mockUserService.findByUsername).toHaveBeenCalledWith(
+        'removed-user'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/oidc/v1/interaction/mfa-uid');
+    });
+
+    it.each([
+      {
+        methods: ['totp', 'email'],
+        clientId: 'test-client',
+        client: { clientId: 'test-client', clientName: 'Test' },
+        expectedMethods: { totp: true, email: true, webauthn: false },
+      },
+      {
+        methods: ['email', 'webauthn'],
+        clientId: undefined,
+        client: null,
+        expectedMethods: { totp: false, email: true, webauthn: true },
+      },
+    ])(
+      'renders the selector for multiple methods (client $clientId)',
+      async ({ methods, clientId, client, expectedMethods }) => {
+        const user = { username: 'mfa-user' };
+        mockSessionManager.get.mockImplementation(
+          (_req: Request, key: string) =>
+            key === 'pendingMfaUser'
+              ? { username: 'mfa-user', email: 'mfa@example.test' }
+              : 'csrf-value'
+        );
+        mockUserService.findByUsername.mockResolvedValue(user);
+        mockMfaUtils.getEnabledMethods.mockReturnValue(methods);
+        mockProvider.interactionDetails.mockResolvedValue({
+          params: {
+            client_id: clientId,
+            redirect_uri: 'https://rp.example.test/callback',
+            scope: 'openid',
+          },
+        });
+        const req = { params: { uid: 'mfa-uid' } } as unknown as Request;
+        const res = createResponse();
+
+        await findExactRoute('GET', '/oidc/v1/interaction/:uid/mfa/select')!(
+          req,
+          res,
+          vi.fn()
+        );
+
+        expect(mockProvider.interactionDetails).toHaveBeenCalledOnce();
+        if (clientId) {
+          expect(mockProvider.Client.find).toHaveBeenCalledWith(clientId);
+        } else {
+          expect(mockProvider.Client.find).not.toHaveBeenCalled();
+        }
+        expect(res.render).toHaveBeenCalledWith('mfa_select', {
+          client,
+          uid: 'mfa-uid',
+          params: expect.objectContaining({ client_id: clientId }),
+          title: 'Choose Verification - Test',
+          enabledMethods: expectedMethods,
+          selectUrl: '/oidc/v1/interaction/mfa-uid/mfa/select',
+          csrfToken: 'csrf-value',
+        });
+      }
+    );
+
+    it('stores recovery intent and renders no fallback for fewer than two methods', async () => {
+      const now = 1_800_000_000_000;
+      const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now);
+      mockSessionManager.get.mockImplementation((_req: Request, key: string) =>
+        key === 'pendingMfaUser'
+          ? { username: 'mfa-user', email: 'mfa@example.test' }
+          : 'csrf-value'
+      );
+      mockUserService.findByUsername.mockResolvedValue({
+        username: 'mfa-user',
+      });
+      mockMfaUtils.getEnabledMethods.mockReturnValue(['totp']);
+      const req = { params: { uid: 'mfa-uid' } } as unknown as Request;
+      const res = createResponse();
+
+      await findExactRoute('GET', '/oidc/v1/interaction/:uid/mfa/select')!(
+        req,
+        res,
+        vi.fn()
+      );
+
+      expect(mockSessionManager.set).toHaveBeenCalledWith(
+        req,
+        'oidcRecoveryIntent',
+        {
+          uid: 'mfa-uid',
+          clientId: 'test-client',
+          redirectUri: 'https://example.com',
+          scope: 'openid',
+          state: 'abc',
+          nonce: '123',
+          timestamp: now,
+          expiresAt: now + 30 * 60 * 1000,
+        }
+      );
+      expect(res.render).toHaveBeenCalledWith('mfa_no_fallback', {
+        uid: 'mfa-uid',
+        title: 'Cannot Complete Login - Test',
+        csrfToken: 'csrf-value',
+      });
+      dateNow.mockRestore();
+    });
+
+    it('logs and forwards unexpected MFA selector errors', async () => {
+      const failure = new Error('session read failed');
+      mockSessionManager.get.mockImplementationOnce(() => {
+        throw failure;
+      });
+      const next = vi.fn();
+
+      await findExactRoute('GET', '/oidc/v1/interaction/:uid/mfa/select')!(
+        { params: { uid: 'mfa-uid' } } as unknown as Request,
+        createResponse(),
+        next
+      );
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Error in MFA select GET handler',
+        { error: failure }
+      );
+      expect(next).toHaveBeenCalledWith(failure);
+    });
+
+    it('stores the selected method and redirects to the interaction', () => {
+      const req = {
+        params: { uid: 'mfa-uid' },
+        body: { method: 'webauthn' },
+      } as unknown as Request;
+      const res = createResponse();
+
+      findExactRoute('POST', '/oidc/v1/interaction/:uid/mfa/select')!(req, res);
+
+      expect(mockSessionManager.set).toHaveBeenCalledWith(
+        req,
+        'selectedMfaMethod',
+        'webauthn'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/oidc/v1/interaction/mfa-uid');
+    });
+  });
+
+  describe('mounted middleware and route rebuilding', () => {
+    it('forwards requests through the current interaction router', () => {
+      const forwardingMiddleware = spyApp.use.mock.calls[0][0] as unknown as (
+        req: Request,
+        res: Response,
+        next: NextFunction
+      ) => void;
+      const activeRouter = vi.fn();
+      (routesManager as any).interactionRouter = activeRouter;
+      const req = {} as Request;
+      const res = {} as Response;
+      const next = vi.fn();
+
+      forwardingMiddleware(req, res, next);
+
+      expect(activeRouter).toHaveBeenCalledWith(req, res, next);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('falls through when no interaction router is available', () => {
+      const forwardingMiddleware = spyApp.use.mock.calls[0][0] as unknown as (
+        req: Request,
+        res: Response,
+        next: NextFunction
+      ) => void;
+      (routesManager as any).interactionRouter = null;
+      const next = vi.fn();
+
+      forwardingMiddleware({} as Request, {} as Response, next);
+
+      expect(next).toHaveBeenCalledOnce();
+    });
+
+    it('delegates route errors to the OIDC error handler', () => {
+      const errorMiddleware = spyApp.use.mock.calls[1][0] as unknown as (
+        error: Error,
+        req: Request,
+        res: Response,
+        next: NextFunction
+      ) => void;
+      const error = new Error('route failure');
+      const req = {} as Request;
+      const res = {} as Response;
+      const next = vi.fn();
+
+      errorMiddleware(error, req, res, next);
+
+      expect(mockError.handle).toHaveBeenCalledWith(error, req, res, next);
+    });
+
+    it('rebuilds interaction routes when configuration changes', async () => {
+      expect(mockConfigManager.subscribe).toHaveBeenCalledWith(
+        'OidcRoutesManager',
+        expect.any(Function)
+      );
+      mockConfigManager.getConfig.mockReturnValue({
+        oidc: { path: '/identity' },
+        application: { title: 'Updated' },
+        features: { multi_tenancy: { enabled: false } },
+      });
+      const subscriber = mockConfigManager.subscribe.mock.calls[0][1];
+
+      await subscriber();
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Rebuilding OIDC interaction routes for updated configuration'
+      );
+      expect(findExactRoute('GET', '/identity/interaction/:uid')).toBeDefined();
+      expect(
+        findExactRoute('GET', '/oidc/v1/interaction/:uid')
+      ).toBeUndefined();
+    });
   });
 
   describe('multi-tenant context', () => {
+    it('rejects requests that bypass tenant context middleware', async () => {
+      mockConfigManager.getConfig.mockReturnValue({
+        oidc: { path: '/oidc/v1' },
+        application: { title: 'Test' },
+        features: { multi_tenancy: { enabled: true } },
+      });
+      const handler = findExactRoute('GET', '/oidc/v1/interaction/:uid');
+      const next = vi.fn();
+
+      await handler!(
+        { params: { uid: 'u1' } } as unknown as Request,
+        {} as Response,
+        next
+      );
+
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining('No tenant context'),
+        })
+      );
+      expect(mockProviderService.getProviderForTenant).not.toHaveBeenCalled();
+    });
+
     it('reads tenant from AsyncLocalStorage', async () => {
       const handler = findRoute('POST', '/interaction/:uid/login');
 

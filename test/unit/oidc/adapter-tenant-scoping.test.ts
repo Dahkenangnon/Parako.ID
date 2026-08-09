@@ -226,8 +226,13 @@ describe('MongoDB OIDC Adapter — tenant scoping', () => {
 
       expect(filter1.tenant_id).toBe('acme');
       expect(filter2.tenant_id).toBe('globex');
-      // Same document id, different tenant scoping
-      expect(filter1._id).toBe(filter2._id);
+      expect(filter1._id).toEqual({
+        $in: ['4:acme:tok-shared', 'tok-shared'],
+      });
+      expect(filter2._id).toEqual({
+        $in: ['6:globex:tok-shared', 'tok-shared'],
+      });
+      expect(filter1._id).not.toEqual(filter2._id);
     });
   });
 });

@@ -138,6 +138,7 @@ describe('API v1 — DB abstraction contract', () => {
         },
         authService: {
           registerUser: vi.fn(),
+          registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },
@@ -255,6 +256,7 @@ describe('API v1 — DB abstraction contract', () => {
         },
         authService: {
           registerUser: vi.fn(),
+          registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },
@@ -364,7 +366,7 @@ describe('API v1 — DB abstraction contract', () => {
   // Filter objects are DB-agnostic
 
   describe('filter objects passed to services are DB-agnostic', () => {
-    it('audit: date range uses timestampRange, not $gte/$lte', async () => {
+    it('audit: date range uses the shared repository timestamp contract', async () => {
       const deps: AuditControllerDeps = {
         activityService: {
           queryActivities: vi.fn().mockResolvedValue({
@@ -394,18 +396,13 @@ describe('API v1 — DB abstraction contract', () => {
       const filter = vi.mocked(deps.activityService.queryActivities).mock
         .calls[0][0];
 
-      // Must use DB-agnostic timestampRange
-      expect(filter.timestampRange).toBeDefined();
-      const range = filter.timestampRange as { from: Date; to: Date };
-      expect(range.from).toBeInstanceOf(Date);
-      expect(range.to).toBeInstanceOf(Date);
-
-      // Must NOT use MongoDB operators
-      expect(filter.timestamp).toBeUndefined();
-      expect(JSON.stringify(filter)).not.toContain('$gte');
-      expect(JSON.stringify(filter)).not.toContain('$lte');
-      expect(JSON.stringify(filter)).not.toContain('$gt');
-      expect(JSON.stringify(filter)).not.toContain('$lt');
+      // ActivityFilter is the shared repository contract: Mongoose consumes
+      // these operators directly and Prisma normalizes them at its boundary.
+      expect(filter.timestamp).toBeDefined();
+      const range = filter.timestamp as { $gte: Date; $lte: Date };
+      expect(range.$gte).toBeInstanceOf(Date);
+      expect(range.$lte).toBeInstanceOf(Date);
+      expect(filter.timestampRange).toBeUndefined();
     });
 
     it('users: no MongoDB operators in filter', async () => {
@@ -421,6 +418,7 @@ describe('API v1 — DB abstraction contract', () => {
         },
         authService: {
           registerUser: vi.fn(),
+          registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },

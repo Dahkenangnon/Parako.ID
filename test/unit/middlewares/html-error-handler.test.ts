@@ -97,6 +97,40 @@ describe('createHtmlErrorHandler', () => {
     expect(res.render).toHaveBeenCalledWith('error/401', expect.any(Object));
   });
 
+  it('renders error/404 with the request path for a not-found GuardError', () => {
+    const handler = createHtmlErrorHandler(makeDeps());
+    const res = makeRes();
+
+    handler(new GuardError('missing page', { status: 404 }), req, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.render).toHaveBeenCalledWith('error/404', {
+      title: 'Not Found',
+      message: 'missing page',
+      url: '/admin/x',
+    });
+  });
+
+  it.each([
+    { redirectTo: '/admin', flashMessage: undefined },
+    { redirectTo: undefined, flashMessage: 'Try again' },
+  ])('renders a GuardError when redirect metadata is incomplete', metadata => {
+    const deps = makeDeps();
+    const handler = createHtmlErrorHandler(deps);
+    const res = makeRes();
+
+    handler(
+      new GuardError('no perms', { status: 403, ...metadata }),
+      req,
+      res,
+      vi.fn()
+    );
+
+    expect(deps.sessionManager.flash).not.toHaveBeenCalled();
+    expect(res.redirect).not.toHaveBeenCalled();
+    expect(res.render).toHaveBeenCalledWith('error/403', expect.any(Object));
+  });
+
   it('issues flashAndRedirect for a GuardError with redirectTo + flashMessage', () => {
     const deps = makeDeps();
     const handler = createHtmlErrorHandler(deps);
@@ -156,6 +190,10 @@ describe('createHtmlErrorHandler', () => {
     );
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.render).toHaveBeenCalledWith('error/500', expect.any(Object));
+
+    const renderData = res.render.mock.calls[0][1];
+    expect(renderData.title).toBe('Error');
+    expect(renderData.t('errors.unexpected')).toBe('errors.unexpected');
   });
 
   it('wraps non-Error rejections into an Error before logging', () => {
@@ -184,10 +222,29 @@ describe('createHtmlErrorHandler', () => {
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '5');
     expect(res.render).toHaveBeenCalledWith('error/500', expect.any(Object));
+
+    const renderData = res.render.mock.calls[0][1];
+    expect(renderData.title).toBe('Service Unavailable');
+    expect(renderData.t('errors.unavailable')).toBe('errors.unavailable');
+  });
+
+  it('preserves tenant title and translation helper during shutdown', () => {
+    vi.spyOn(shutdown, 'isShuttingDown').mockReturnValue(true);
+    const t = vi.fn((key: string) => `translated:${key}`);
+    const handler = createHtmlErrorHandler(makeDeps());
+    const res = makeRes({ app: { title: 'Tenant ID' }, t });
+
+    handler(new Error('boom'), req, res, vi.fn());
+
+    expect(res.render).toHaveBeenCalledWith('error/500', {
+      title: 'Tenant ID',
+      t,
+    });
   });
 
   it('delegates to next when headers have already been sent', () => {
-    const handler = createHtmlErrorHandler(makeDeps());
+    const deps = makeDeps();
+    const handler = createHtmlErrorHandler(deps);
     const res = makeRes();
     (res as { headersSent: boolean }).headersSent = true;
     const next: NextFunction = vi.fn();
@@ -196,6 +253,9 @@ describe('createHtmlErrorHandler', () => {
     handler(err, req, res, next);
 
     expect(next).toHaveBeenCalledWith(err);
+    expect(deps.logger.error).not.toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.setHeader).not.toHaveBeenCalled();
     expect(res.render).not.toHaveBeenCalled();
   });
 

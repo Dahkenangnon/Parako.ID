@@ -149,20 +149,42 @@ describe('password-breach-check handler', () => {
     );
   });
 
-  it('handles API failure gracefully (returns checked: false)', async () => {
+  it('propagates breach-service failures so BullMQ can retry the job', async () => {
+    const failure = new Error('HIBP unavailable');
+    mockedCheckBreachBySha1.mockRejectedValueOnce(failure);
+
+    await expect(handler(createValidPayload(), reportProgress)).rejects.toBe(
+      failure
+    );
+
+    expect(mocks.activityService.warning).not.toHaveBeenCalled();
+    expect(mocks.notificationService.sendSecurityAlert).not.toHaveBeenCalled();
+  });
+
+  it('applies schema defaults and notifies at the exact breach threshold', async () => {
     mockedCheckBreachBySha1.mockResolvedValueOnce({
-      breached: false,
-      count: 0,
+      breached: true,
+      count: 1,
+    });
+    const payload = createValidPayload({
+      apiTimeoutMs: undefined,
+      minBreachCount: undefined,
     });
 
-    const result = await handler(createValidPayload(), reportProgress);
+    const result = await handler(payload, reportProgress);
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        checked: true,
-        breached: false,
-      })
+    expect(mockedCheckBreachBySha1).toHaveBeenCalledWith(
+      '5BAA6',
+      '1E4C9B93F3F0682250B6CF8331B7EE68FD8',
+      3000
     );
+    expect(mocks.notificationService.sendSecurityAlert).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      checked: true,
+      breached: true,
+      breachCount: 1,
+      notified: true,
+    });
   });
 
   it('handles email send failure gracefully (still logs activity)', async () => {
@@ -179,6 +201,13 @@ describe('password-breach-check handler', () => {
 
     // Activity should still be logged even if email fails
     expect(mocks.activityService.warning).toHaveBeenCalled();
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Failed to send breach notification email',
+      {
+        userId: 'user-123',
+        error: 'SMTP connection failed',
+      }
+    );
     expect(result).toEqual(
       expect.objectContaining({
         checked: true,
@@ -187,6 +216,32 @@ describe('password-breach-check handler', () => {
         notified: false,
       })
     );
+  });
+
+  it('normalizes non-Error notification failures in the audit log', async () => {
+    mockedCheckBreachBySha1.mockResolvedValueOnce({
+      breached: true,
+      count: 100,
+    });
+    (
+      mocks.notificationService.sendSecurityAlert as ReturnType<typeof vi.fn>
+    ).mockRejectedValueOnce('SMTP unavailable');
+
+    const result = await handler(createValidPayload(), reportProgress);
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Failed to send breach notification email',
+      {
+        userId: 'user-123',
+        error: 'SMTP unavailable',
+      }
+    );
+    expect(result).toEqual({
+      checked: true,
+      breached: true,
+      breachCount: 100,
+      notified: false,
+    });
   });
 
   it('validates Zod schema and rejects invalid payloads', async () => {

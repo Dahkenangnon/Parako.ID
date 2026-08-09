@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
 
 // Mock inversify decorators
@@ -9,13 +9,15 @@ vi.mock('inversify', () => ({
 
 // Mock ua-parser-js
 vi.mock('ua-parser-js', () => ({
-  UAParser: vi.fn().mockImplementation(() => ({
-    getResult: () => ({
-      browser: { name: 'Chrome' },
-      os: { name: 'Linux' },
-      device: { type: 'desktop' },
-    }),
-  })),
+  UAParser: vi.fn().mockImplementation(function (userAgent: string) {
+    return {
+      getResult: () => ({
+        browser: { name: userAgent === 'unknown-agent' ? '' : 'Chrome' },
+        os: { name: userAgent === 'unknown-agent' ? '' : 'Linux' },
+        device: { type: 'desktop' },
+      }),
+    };
+  }),
 }));
 
 // Mock tenant context
@@ -208,7 +210,62 @@ describe('AdminSessionsController', () => {
     controller = createController(deps);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe('list()', () => {
+    it('builds a portable case-insensitive username prefix filter', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+      const req = createMockReq({
+        query: {
+          username: '  Alice+Admin  ',
+          status: 'active',
+          sortOrder: 'asc',
+        },
+      });
+
+      await controller.list(req, createMockRes());
+
+      expect(deps.oidcSession.countSessions).toHaveBeenCalledWith({
+        'payload.kind': 'Session',
+        'payload.accountId': {
+          $regex: '^Alice\\+Admin',
+          $options: 'i',
+        },
+        'payload.exp': { $gt: Date.now() / 1000 },
+      });
+      expect(deps.oidcSession.findSessionsWithPagination).toHaveBeenCalledWith(
+        expect.any(Object),
+        'loginTime',
+        1,
+        0,
+        20
+      );
+    });
+
+    it.each([
+      [{ nested: true }, { nested: true }],
+      [42, 84],
+      [[], []],
+    ])(
+      'ignores non-string username and status query values %#',
+      async (username, status) => {
+        const req = createMockReq({ query: { username, status } as any });
+        const res = createMockRes();
+
+        await expect(controller.list(req, res)).resolves.toBeUndefined();
+
+        expect(deps.oidcSession.countSessions).toHaveBeenCalledWith({
+          'payload.kind': 'Session',
+        });
+        expect((res.render as any).mock.calls[0][1].filters).toEqual(
+          expect.objectContaining({ username: '', status: 'all' })
+        );
+      }
+    );
+
     it('should render sessions page with both OIDC and Express sessions', async () => {
       const req = createMockReq();
       const res = createMockRes();
@@ -261,6 +318,9 @@ describe('AdminSessionsController', () => {
       });
       const res = createMockRes();
 
+      deps.sessionManager.findAllExpressSessions.mockResolvedValue([
+        createMockExpressSession(),
+      ]);
       deps.sessionManager.countAllExpressSessions.mockResolvedValue(25);
 
       await controller.list(req, res);
@@ -275,6 +335,90 @@ describe('AdminSessionsController', () => {
       const renderArgs = (res.render as any).mock.calls[0][1];
       expect(renderArgs.expressPagination.page).toBe(2);
       expect(renderArgs.expressPagination.totalPages).toBe(3);
+      expect(renderArgs.expressPagination).toEqual(
+        expect.objectContaining({
+          hasNext: true,
+          hasPrev: true,
+          startIndex: 11,
+          endIndex: 20,
+        })
+      );
+    });
+
+    it('filters processed OIDC sessions across every searchable field', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+      const req = createMockReq({
+        query: {
+          page: '2',
+          limit: '2',
+          search: 'needle',
+          username: ['alice'],
+          status: 'expired',
+        } as any,
+      });
+      const res = createMockRes();
+      deps.oidcSession.countSessions.mockResolvedValue(6);
+      deps.oidcSession.findSessionsWithPagination.mockResolvedValue(
+        ['username', 'name', 'email', 'device', 'ip', 'none'].map(field => ({
+          payload: { field },
+        }))
+      );
+      deps.oidcUtils.processSessionData.mockImplementation(async session => {
+        const field = session.payload.field;
+        return {
+          userInfo: {
+            username: field === 'username' ? 'needle' : 'user',
+            full_name: field === 'name' ? 'Needle Name' : 'User Name',
+            email:
+              field === 'email' ? 'needle@example.com' : 'user@example.com',
+          },
+          device: field === 'device' ? 'Needle Browser' : 'Browser',
+          ip: field === 'ip' ? 'needle-address' : '127.0.0.1',
+        };
+      });
+
+      await controller.list(req, res);
+
+      const expectedFilters = {
+        'payload.kind': 'Session',
+        'payload.accountId': { $regex: '^alice', $options: 'i' },
+        'payload.exp': { $lte: Date.now() / 1000 },
+      };
+      expect(deps.oidcSession.countSessions).toHaveBeenCalledWith(
+        expectedFilters
+      );
+      expect(deps.oidcSession.findSessionsWithPagination).toHaveBeenCalledWith(
+        expectedFilters,
+        'loginTime',
+        -1,
+        2,
+        2
+      );
+      const rendered = (res.render as any).mock.calls[0][1];
+      expect(rendered.sessions).toHaveLength(5);
+      expect(
+        rendered.sessions.every(
+          (session: any) => session.sessionType === 'oidc'
+        )
+      ).toBe(true);
+      expect(rendered.pagination).toEqual(
+        expect.objectContaining({
+          hasNext: true,
+          hasPrev: true,
+          startIndex: 3,
+          endIndex: 4,
+        })
+      );
+    });
+
+    it('treats a null adapter result as an empty OIDC page', async () => {
+      deps.oidcSession.findSessionsWithPagination.mockResolvedValue(null);
+      const res = createMockRes();
+
+      await controller.list(createMockReq(), res);
+
+      expect((res.render as any).mock.calls[0][1].sessions).toEqual([]);
     });
 
     it('should render empty state when no sessions exist', async () => {
@@ -392,6 +536,59 @@ describe('AdminSessionsController', () => {
       expect(deps.flashChain.error).toHaveBeenCalledWith('Session not found');
       expect(res.redirect).toHaveBeenCalledWith('/admin/sessions');
     });
+
+    it('redirects when a matching Express document has no session payload', async () => {
+      const req = createMockReq({
+        params: { id: 'empty-express' },
+        query: { type: 'express' },
+      });
+      const res = createMockRes();
+      deps.sessionManager.findAllExpressSessions.mockResolvedValue([
+        { _id: 'empty-express' },
+      ]);
+
+      await controller.show(req, res);
+
+      expect(deps.flashChain.error).toHaveBeenCalledWith('Session not found');
+      expect(res.redirect).toHaveBeenCalledWith('/admin/sessions');
+    });
+
+    it('uses stable timestamp defaults for sparse Express sessions', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+      const req = createMockReq({
+        params: { id: 'sparse-express' },
+        query: { type: 'express' },
+      });
+      const res = createMockRes();
+      deps.sessionManager.findAllExpressSessions.mockResolvedValue([
+        { _id: 'sparse-express', session: {} },
+      ]);
+
+      await controller.show(req, res);
+
+      const rendered = (res.render as any).mock.calls[0][1].session;
+      expect(rendered.created_at).toEqual(new Date('2026-08-02T12:00:00.000Z'));
+      expect(rendered.updated_at).toEqual(rendered.created_at);
+      expect(rendered.authorizations).toEqual({});
+    });
+
+    it('uses stable defaults for optional OIDC session fields', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+      deps.oidcSession.findSessionById.mockResolvedValue({ payload: {} });
+      const res = createMockRes();
+
+      await controller.show(
+        createMockReq({ params: { id: 'oidc-session-1' } }),
+        res
+      );
+
+      const rendered = (res.render as any).mock.calls[0][1].session;
+      expect(rendered.authorizations).toEqual({});
+      expect(rendered.created_at).toEqual(new Date('2026-08-02T12:00:00.000Z'));
+      expect(rendered.updated_at).toEqual(new Date('2026-08-02T12:00:00.000Z'));
+    });
   });
 
   describe('revokeSession()', () => {
@@ -508,6 +705,79 @@ describe('AdminSessionsController', () => {
         })
       );
     });
+
+    it('skips pubsub when it is disconnected and handles an unknown target', async () => {
+      deps.pubsub.isConnected.mockReturnValue(false);
+      deps.oidcSession.findSessionById.mockResolvedValue(null);
+      deps.oidcSession.revokeSession.mockResolvedValue(true);
+
+      await controller.revokeSession(
+        createMockReq({ params: { id: 'orphan' }, body: {} }),
+        createMockRes()
+      );
+
+      expect(deps.activityService.success).toHaveBeenCalledWith(
+        'admin_session_revoked',
+        expect.stringContaining('unknown'),
+        null,
+        expect.any(Object)
+      );
+      expect(deps.pubsub.publish).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [new Error('redis unavailable'), 'redis unavailable'],
+      ['redis unavailable', 'redis unavailable'],
+    ])(
+      'logs asynchronous pubsub failures without failing revocation %#',
+      async (failure, message) => {
+        deps.configManager.getConfig.mockReturnValue({ deployment: {} });
+        deps.pubsub.publish.mockRejectedValue(failure);
+        deps.oidcSession.findSessionById.mockResolvedValue({
+          payload: { accountId: 'alice' },
+        });
+        deps.oidcSession.revokeSession.mockResolvedValue(true);
+
+        await controller.revokeSession(
+          createMockReq({ params: { id: 'oidc-session-1' }, body: {} }),
+          createMockRes()
+        );
+
+        await vi.waitFor(() => {
+          expect(deps.logger.warn).toHaveBeenCalledWith(
+            'Pubsub broadcast of session revocation failed',
+            expect.objectContaining({
+              step: 'admin-session-revoke-broadcast',
+              err: message,
+            })
+          );
+        });
+        expect(deps.pubsub.publish).toHaveBeenCalledWith(
+          'parako:session:revoked',
+          expect.objectContaining({ sessionId: 'oidc-session-1' })
+        );
+      }
+    );
+
+    it('uses an unknown target for an orphaned Express session that is revoked', async () => {
+      deps.sessionManager.findAllExpressSessions.mockResolvedValue([]);
+      deps.sessionManager.revokeExpressSession.mockResolvedValue(true);
+
+      await controller.revokeSession(
+        createMockReq({
+          params: { id: 'orphan-express' },
+          body: { sessionType: 'express' },
+        }),
+        createMockRes()
+      );
+
+      expect(deps.activityService.success).toHaveBeenCalledWith(
+        'admin_session_revoked',
+        expect.stringContaining('unknown'),
+        null,
+        expect.any(Object)
+      );
+    });
   });
 
   describe('revokeUserSessions()', () => {
@@ -574,6 +844,25 @@ describe('AdminSessionsController', () => {
         })
       );
     });
+
+    it('skips malformed and already-revoked OIDC sessions', async () => {
+      deps.oidcSession.findByAccountId.mockResolvedValue([
+        { payload: {} },
+        { payload: { jti: 'already-gone' } },
+      ]);
+      deps.oidcSession.revokeSession.mockResolvedValue(false);
+      deps.sessionManager.revokeAllSessionsForUser.mockResolvedValue(0);
+
+      await controller.revokeUserSessions(
+        createMockReq({ params: { username: 'alice' } }),
+        createMockRes()
+      );
+
+      expect(deps.oidcSession.revokeSession).toHaveBeenCalledTimes(1);
+      expect(deps.flashChain.info).toHaveBeenCalledWith(
+        'No active sessions found for this user'
+      );
+    });
   });
 
   describe('getStats()', () => {
@@ -614,6 +903,155 @@ describe('AdminSessionsController', () => {
       await controller.getStats(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it('returns zero average when there are no active OIDC users', async () => {
+      const res = createMockRes();
+
+      await controller.getStats(createMockReq(), res);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uniqueUsers: 0,
+          averageSessionsPerUser: '0',
+        })
+      );
+    });
+  });
+
+  describe('Express session normalization', () => {
+    it('normalizes sparse metadata, user activity, and minute/hour/day ages', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
+      const now = Date.now();
+      const sessions = [
+        {
+          _id: 'minute',
+          session: {
+            accountId: 'alice',
+            authTime: new Date(now - 30 * 60_000).toISOString(),
+            userAgent: 'test-agent',
+          },
+        },
+        {
+          _id: 'hour',
+          session: {
+            accountId: 'bob',
+            authTime: new Date(now - 2 * 60 * 60_000).toISOString(),
+            lastActivity: new Date(now - 60 * 60_000).toISOString(),
+            userAgent: '',
+            ipAddress: '',
+            _metadata: {
+              browser: { name: 'Firefox' },
+              os: {},
+              createdIp: '10.0.0.2',
+            },
+          },
+        },
+        {
+          _id: 'day',
+          session: {
+            authTime: new Date(now - 2 * 24 * 60 * 60_000).toISOString(),
+            ipAddress: '10.0.0.3',
+            userAgent: 'day-agent',
+            _metadata: {
+              browser: { name: 'Safari' },
+              os: { name: 'macOS' },
+            },
+          },
+        },
+        {
+          _id: 'lookup-failure',
+          session: {
+            accountId: 'failure',
+            authTime: new Date(now - 3 * 24 * 60 * 60_000).toISOString(),
+          },
+        },
+        {
+          _id: 'unknown-ua',
+          session: {
+            accountId: 'no-email',
+            authTime: new Date(now - 4 * 24 * 60 * 60_000).toISOString(),
+            userAgent: 'unknown-agent',
+          },
+        },
+      ];
+      deps.sessionManager.findAllExpressSessions.mockResolvedValue(sessions);
+      deps.sessionManager.countAllExpressSessions.mockResolvedValue(5);
+      deps.activityService.findActivitiesAroundTime.mockImplementation(
+        async accountId => {
+          if (accountId === 'failure') throw new Error('activity unavailable');
+          if (accountId === 'bob')
+            return [{ actor: { email: 'bob@example.com' } }];
+          if (accountId === 'no-email') return [{ actor: {} }];
+          if (accountId === 'Unknown') {
+            return [
+              {
+                actor: {
+                  email: 'known@example.com',
+                  full_name: 'Known User',
+                  given_name: 'Known',
+                  family_name: 'User',
+                },
+              },
+            ];
+          }
+          return [];
+        }
+      );
+      const res = createMockRes();
+
+      await controller.list(createMockReq(), res);
+
+      const normalized = (res.render as any).mock.calls[0][1].expressSessions;
+      expect(normalized).toEqual([
+        expect.objectContaining({
+          id: 'minute',
+          device: 'Chrome on Linux',
+          ip: 'Unknown',
+          location: 'Unknown',
+          sessionAge: '30m ago',
+          user_agent: 'test-agent',
+        }),
+        expect.objectContaining({
+          id: 'hour',
+          device: 'Firefox on Unknown',
+          ip: '10.0.0.2',
+          sessionAge: '2h ago',
+          userInfo: {
+            username: 'bob',
+            email: 'bob@example.com',
+            full_name: 'Unknown User',
+            given_name: '',
+            family_name: '',
+          },
+          user_agent: 'Unknown',
+        }),
+        expect.objectContaining({
+          id: 'day',
+          accountId: 'Unknown',
+          sessionAge: '2d ago',
+          userInfo: {
+            username: 'Unknown',
+            email: 'known@example.com',
+            full_name: 'Known User',
+            given_name: 'Known',
+            family_name: 'User',
+          },
+        }),
+        expect.objectContaining({
+          id: 'lookup-failure',
+          userInfo: expect.objectContaining({
+            username: 'failure',
+            email: 'Unknown',
+          }),
+        }),
+        expect.objectContaining({
+          id: 'unknown-ua',
+          device: 'Unknown on Unknown',
+          userInfo: expect.objectContaining({ email: 'Unknown' }),
+        }),
+      ]);
     });
   });
 });

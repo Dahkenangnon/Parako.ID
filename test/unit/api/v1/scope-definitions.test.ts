@@ -32,6 +32,11 @@ describe('api/v1/scope-definitions', () => {
   });
 
   describe('SCOPE_DEFINITIONS', () => {
+    it('is deeply immutable at runtime', () => {
+      expect(Object.isFrozen(SCOPE_DEFINITIONS)).toBe(true);
+      expect(SCOPE_DEFINITIONS.every(Object.isFrozen)).toBe(true);
+    });
+
     it('should have a definition for every scope in SCOPES', () => {
       const definedValues = new Set(SCOPE_DEFINITIONS.map(d => d.value));
       const allScopeValues = Object.values(SCOPES);

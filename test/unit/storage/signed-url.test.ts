@@ -5,6 +5,7 @@ import {
   validateSignature,
 } from '../../../src/storage/signed-url.js';
 
+// gitleaks:allow -- deterministic unit-test signing fixture.
 const SECRET = 'test-secret-key-for-signing';
 
 describe('signLocalUrl', () => {
@@ -69,6 +70,37 @@ describe('validateSignature', () => {
 
     const result = validateSignature(path, expiredTime, sig, SECRET);
     expect(result).toBe(false);
+  });
+
+  it('should reject a non-finite expiry even when its signature matches', () => {
+    const path = 'default/avatars/test.png';
+    const expires = Number.NaN;
+    const sig = createHmac('sha256', SECRET)
+      .update(`${path}:${expires}`)
+      .digest('hex');
+
+    expect(validateSignature(path, expires, sig, SECRET)).toBe(false);
+  });
+
+  it('should reject duplicate query values represented as arrays', () => {
+    const expires = Math.floor(Date.now() / 1000) + 60;
+
+    expect(
+      validateSignature(
+        'file.txt',
+        expires,
+        ['duplicate'] as unknown as string,
+        SECRET
+      )
+    ).toBe(false);
+    expect(
+      validateSignature(
+        ['file.txt'] as unknown as string,
+        expires,
+        'a'.repeat(64),
+        SECRET
+      )
+    ).toBe(false);
   });
 
   it('should reject a tampered signature', () => {

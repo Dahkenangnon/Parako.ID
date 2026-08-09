@@ -4,7 +4,7 @@ import {
   encryptWithKey,
   decryptWithKey,
   isEncrypted,
-} from '../../../src/utils/encryption';
+} from '../../../src/utils/encryption.js';
 
 describe('encryptWithKey / decryptWithKey', () => {
   const key = randomBytes(32);
@@ -46,6 +46,20 @@ describe('encryptWithKey / decryptWithKey', () => {
     expect(() =>
       decryptWithKey('ENCRYPTED:v1:aaa:bbb:ccc', randomBytes(16))
     ).toThrow('Key must be 32 bytes');
+  });
+
+  it('rejects non-Buffer keys even when their length is 32', () => {
+    const stringKey = 'a'.repeat(32) as unknown as Buffer;
+
+    expect(() => encryptWithKey('test', stringKey)).toThrow(
+      'Key must be a 32-byte Buffer'
+    );
+    expect(() =>
+      decryptWithKey(
+        `ENCRYPTED:v1:${'00'.repeat(12)}:${'11'.repeat(16)}:aa`,
+        stringKey
+      )
+    ).toThrow('Key must be a 32-byte Buffer');
   });
 
   it('should handle unicode content', () => {

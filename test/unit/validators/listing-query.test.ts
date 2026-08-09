@@ -22,6 +22,14 @@ describe('parsePositiveInt', () => {
     expect(parsePositiveInt('abc', { default: 7 })).toBe(7);
   });
 
+  it('returns the default when only a numeric prefix can be parsed', () => {
+    expect(parsePositiveInt('12px', { default: 7, max: 100 })).toBe(7);
+  });
+
+  it('returns the default for non-finite numeric input', () => {
+    expect(parsePositiveInt(Number.POSITIVE_INFINITY, { default: 7 })).toBe(7);
+  });
+
   it('parses a valid numeric string in radix 10', () => {
     expect(parsePositiveInt('42', { default: 1, min: 1, max: 100 })).toBe(42);
   });
@@ -67,9 +75,7 @@ describe('escapeRegExp', () => {
 
   it('is idempotent (escape of escape equals escape)', () => {
     const once = escapeRegExp('a.b*c');
-    expect(escapeRegExp(once)).toBe(
-      once.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    );
+    expect(escapeRegExp(once)).toBe(once);
   });
 });
 

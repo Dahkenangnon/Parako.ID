@@ -68,6 +68,10 @@ describe('OIDCClientMerger (simplified)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(mockRegistryManager.getOidcProviderClients).mockReset();
+    vi.mocked(mockRegistryManager.getOidcProviderClients).mockReturnValue([
+      staticClient,
+    ]);
     merger = new OIDCClientMerger(logger, mockRegistryManager);
   });
 
@@ -94,34 +98,125 @@ describe('OIDCClientMerger (simplified)', () => {
     it('merges static clients from config with passed statics', () => {
       const extra = [makeUnifiedClient({ client_id: 'extra' })];
       const result = merger.mergeClients(extra);
-      // extra + loaded from registry
-      expect(result.length).toBeGreaterThanOrEqual(1);
+
+      expect(result.map(client => client.client_id)).toEqual([
+        'extra',
+        'static-app',
+      ]);
+      expect(logger.info).toHaveBeenCalledWith(
+        '[OIDC] Total clients: 2 (1 passed + 1 from config)'
+      );
+    });
+
+    it('keeps the passed client when configuration contains the same client id', () => {
+      const passedClient = makeUnifiedClient({
+        client_id: 'static-app',
+        client_name: 'Passed Client',
+      });
+
+      const result = merger.mergeClients([passedClient]);
+
+      expect(result).toEqual([passedClient]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        '[OIDC] Duplicate client_id "static-app" between passed and config clients — skipping config copy'
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        '[OIDC] Total clients: 1 (1 passed + 0 from config)'
+      );
     });
   });
 
   describe('getAllClientStatistics', () => {
     it('returns statistics for static clients only', async () => {
       const stats = await merger.getAllClientStatistics();
-      expect(stats.total).toBeGreaterThanOrEqual(0);
-      expect(stats.adapter).toBe(0); // adapter clients managed separately
-      expect(typeof stats.static).toBe('number');
+
+      expect(stats).toEqual({
+        total: 1,
+        static: 1,
+        adapter: 0,
+        byType: { web: 1 },
+        bySource: { static: 1, adapter: 0 },
+        active: 1,
+        inactive: 0,
+      });
     });
   });
 
   describe('getClientStatistics', () => {
     it('returns sync statistics', () => {
       const stats = merger.getClientStatistics();
-      expect(typeof stats.total).toBe('number');
-      expect(typeof stats.active).toBe('number');
+
+      expect(stats).toEqual({
+        total: 1,
+        static: 1,
+        adapter: 0,
+        byType: { web: 1 },
+        active: 1,
+        inactive: 0,
+      });
     });
   });
 
   describe('formatClientForTemplate', () => {
     it('formats client data for template rendering', () => {
-      const client = makeUnifiedClient({ client_name: 'My App' });
+      const client = makeUnifiedClient({
+        client_name: 'My App',
+        metadata: {
+          client_id: 'test-client',
+          client_name: 'My App',
+          application_type: 'web',
+          policy_uri: 'https://client.example/policy',
+          tos_uri: 'https://client.example/terms',
+          client_uri: 'https://client.example',
+          logo_uri: 'https://client.example/logo.svg',
+        },
+      });
       const formatted = merger.formatClientForTemplate(client);
-      expect(formatted.clientName).toBe('My App');
-      expect(formatted.clientId).toBe('test-client');
+
+      expect(formatted).toEqual({
+        clientName: 'My App',
+        clientId: 'test-client',
+        policyUri: 'https://client.example/policy',
+        tosUri: 'https://client.example/terms',
+        clientUri: 'https://client.example',
+        logoUri: 'https://client.example/logo.svg',
+      });
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('uses safe display defaults and warns about invalid client data', () => {
+      const client = makeUnifiedClient({
+        client_id: '',
+        client_name: '',
+        application_type: '',
+        source: '' as never,
+        metadata: {
+          client_id: '',
+          client_name: '',
+          application_type: '',
+        },
+      });
+
+      expect(merger.formatClientForTemplate(client)).toEqual({
+        clientName: 'Application',
+        clientId: '',
+        policyUri: undefined,
+        tosUri: undefined,
+        clientUri: undefined,
+        logoUri: '/images/logo-light.png',
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Invalid client structure for template formatting',
+        {
+          client_id: '',
+          errors: [
+            'client_id is required',
+            'client_name is required',
+            'application_type is required',
+            'source is required',
+          ],
+        }
+      );
     });
   });
 });

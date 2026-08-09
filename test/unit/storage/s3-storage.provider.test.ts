@@ -39,12 +39,16 @@ vi.mock('inversify', () => ({
 
 import { S3StorageProvider } from '../../../src/storage/s3-storage.provider.js';
 import {
+  S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 
-function createProvider() {
+function createProvider(
+  s3Overrides: Record<string, unknown> = {},
+  fileStorageOverrides: Record<string, unknown> = {}
+) {
   const logger = {
     debug: vi.fn(),
     info: vi.fn(),
@@ -67,11 +71,13 @@ function createProvider() {
         file_storage: {
           provider: 's3',
           signed_url_expiry_seconds: 3600,
+          ...fileStorageOverrides,
           s3: {
             region: 'us-east-1',
             bucket: 'test-bucket',
             access_key_id: 'AKIAFAKEKEY1234567890',
             secret_access_key: 'fake-secret-key-for-testing-only-not-real-0',
+            ...s3Overrides,
           },
         },
       },
@@ -105,6 +111,79 @@ function createProvider() {
 describe('S3StorageProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('rejects a configured endpoint that is not a valid http(s) URL', () => {
+    expect(() => createProvider({ endpoint: 'not a url' })).toThrow(
+      /endpoint.*valid http\(s\) url/i
+    );
+  });
+
+  it.each([42, 'ftp://storage.example.com'])(
+    'rejects an unsupported endpoint value: %s',
+    endpoint => {
+      expect(() => createProvider({ endpoint })).toThrow(
+        /endpoint.*valid http\(s\) url/i
+      );
+    }
+  );
+
+  it.each(['http://storage.example.com', 'https://storage.example.com'])(
+    'passes a valid custom endpoint to the SDK: %s',
+    endpoint => {
+      createProvider({
+        access_key_id: '  access-key  ',
+        bucket: '  bucket  ',
+        endpoint: `  ${endpoint}  `,
+        force_path_style: true,
+        region: '  region  ',
+        secret_access_key: '  secret-key  ',
+      });
+
+      expect(S3Client).toHaveBeenCalledWith({
+        credentials: {
+          accessKeyId: 'access-key',
+          secretAccessKey: 'secret-key',
+        },
+        endpoint,
+        forcePathStyle: true,
+        region: 'region',
+      });
+    }
+  );
+
+  it.each([undefined, null, '   '])(
+    'omits an absent or blank optional endpoint: %s',
+    endpoint => {
+      createProvider({ endpoint });
+
+      expect(S3Client).toHaveBeenCalledWith({
+        credentials: {
+          accessKeyId: 'AKIAFAKEKEY1234567890',
+          secretAccessKey: 'fake-secret-key-for-testing-only-not-real-0',
+        },
+        region: 'us-east-1',
+      });
+    }
+  );
+
+  it('reports one missing required setting with singular grammar', () => {
+    expect(() => createProvider({ region: '   ' })).toThrow(
+      'S3 storage provider misconfigured: region is required'
+    );
+  });
+
+  it('reports every missing required setting with plural grammar', () => {
+    expect(() =>
+      createProvider({
+        access_key_id: undefined,
+        bucket: undefined,
+        region: undefined,
+        secret_access_key: undefined,
+      })
+    ).toThrow(
+      'S3 storage provider misconfigured: region, bucket, access_key_id, secret_access_key are required'
+    );
   });
 
   describe('store', () => {
@@ -181,6 +260,21 @@ describe('S3StorageProvider', () => {
       const { provider } = createProvider();
       const url = await provider.getUrl('');
       expect(url).toBe('');
+    });
+
+    it('should use the default expiry when it is not configured', async () => {
+      const { provider } = createProvider(
+        {},
+        { signed_url_expiry_seconds: undefined }
+      );
+
+      await provider.getUrl('default/avatars/test.png');
+
+      expect(mockGetSignedUrl).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        { expiresIn: 3600 }
+      );
     });
   });
 });

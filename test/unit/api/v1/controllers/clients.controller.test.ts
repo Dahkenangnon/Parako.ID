@@ -61,7 +61,7 @@ const sampleClient = {
   client_id: 'test-client-001',
   client_name: 'Test Client',
   client_secret: 'super-secret-value',
-  application_type: 'web',
+  application_type: 'web' as const,
   redirect_uris: ['https://example.com/callback'],
   active: true,
 };
@@ -180,6 +180,91 @@ describe('api/v1/controllers/ClientsController', () => {
       }
     });
 
+    it('advances cursor pages instead of repeating the first adapter page', async () => {
+      const clients = ['c1', 'c2', 'c3'].map(client_id => ({
+        ...sampleClient,
+        client_id,
+      }));
+      vi.mocked(deps.oidcAdapter.client.findAllClients).mockResolvedValue(
+        clients
+      );
+
+      const firstResponse = createMockResponse();
+      await controller.list(
+        createMockRequest({ query: { limit: '2' } }),
+        firstResponse,
+        createMockNext()
+      );
+      const firstPage = vi.mocked(firstResponse.json).mock.calls[0][0];
+
+      const secondResponse = createMockResponse();
+      await controller.list(
+        createMockRequest({
+          query: { after: firstPage.pagination.next_cursor, limit: '2' },
+        }),
+        secondResponse,
+        createMockNext()
+      );
+      const secondPage = vi.mocked(secondResponse.json).mock.calls[0][0];
+
+      expect(firstPage.data.map((client: any) => client.client_id)).toEqual([
+        'c1',
+        'c2',
+      ]);
+      expect(secondPage.data.map((client: any) => client.client_id)).toEqual([
+        'c3',
+      ]);
+      expect(secondPage.pagination).toEqual({
+        has_more: false,
+        next_cursor: null,
+      });
+    });
+
+    it('applies active and application filters to search results and their count', async () => {
+      vi.mocked(deps.oidcAdapter.client.searchClients).mockResolvedValue([
+        { ...sampleClient, client_id: 'active-web' },
+        {
+          ...sampleClient,
+          active: false,
+          client_id: 'inactive-web',
+        },
+        {
+          ...sampleClient,
+          application_type: 'spa',
+          client_id: 'active-spa',
+        },
+      ]);
+      const res = createMockResponse();
+
+      await controller.list(
+        createMockRequest({
+          query: {
+            active: 'true',
+            application_type: 'web',
+            include_count: 'true',
+            q: 'app',
+          },
+        }),
+        res,
+        createMockNext()
+      );
+
+      expect(vi.mocked(res.json).mock.calls[0][0]).toEqual({
+        data: [
+          expect.objectContaining({
+            active: true,
+            application_type: 'web',
+            client_id: 'active-web',
+          }),
+        ],
+        pagination: {
+          has_more: false,
+          next_cursor: null,
+          total_count: 1,
+        },
+      });
+    });
+
     it('should call next(error) on failure', async () => {
       const error = new Error('DB connection lost');
       vi.mocked(deps.oidcAdapter.client.findAllClients).mockRejectedValue(
@@ -289,7 +374,6 @@ describe('api/v1/controllers/ClientsController', () => {
 
     it('should strip secret from Mongoose documents (toJSON)', async () => {
       const mongooseDoc = {
-        ...sampleClient,
         toJSON: () => ({ ...sampleClient }),
       };
       vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue(
@@ -306,6 +390,8 @@ describe('api/v1/controllers/ClientsController', () => {
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data).not.toHaveProperty('client_secret');
+      expect(jsonCall.data.client_id).toBe('test-client-001');
+      expect(jsonCall.data).not.toHaveProperty('toJSON');
     });
 
     it('should call next with 404 ApiError when client is not found', async () => {
@@ -581,12 +667,16 @@ describe('api/v1/controllers/ClientsController', () => {
   describe('regenerateSecret()', () => {
     it('should regenerate the secret and return the client WITH the new secret', async () => {
       const regenerated = {
-        ...sampleClient,
-        client_secret: 'brand-new-secret',
+        client: { ...sampleClient, client_secret: 'brand-new-secret' },
+        newSecret: 'brand-new-secret',
       };
       vi.mocked(
         deps.oidcAdapter.client.regenerateClientSecret
       ).mockResolvedValue(regenerated);
+      vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
+        ...sampleClient,
+        token_endpoint_auth_method: 'client_secret_basic',
+      });
 
       const req = createMockRequest({
         params: { client_id: 'test-client-001' },
@@ -604,16 +694,23 @@ describe('api/v1/controllers/ClientsController', () => {
       // Secret IS included on regeneration (shown once)
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data.client_secret).toBe('brand-new-secret');
+      expect(jsonCall.data.client_id).toBe('test-client-001');
+      expect(jsonCall.data).not.toHaveProperty('client');
+      expect(jsonCall.data).not.toHaveProperty('newSecret');
     });
 
     it('should log secret regeneration', async () => {
       const regenerated = {
-        ...sampleClient,
-        client_secret: 'brand-new-secret',
+        client: { ...sampleClient, client_secret: 'brand-new-secret' },
+        newSecret: 'brand-new-secret',
       };
       vi.mocked(
         deps.oidcAdapter.client.regenerateClientSecret
       ).mockResolvedValue(regenerated);
+      vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
+        ...sampleClient,
+        token_endpoint_auth_method: 'client_secret_basic',
+      });
 
       const req = createMockRequest({
         params: { client_id: 'test-client-001' },
@@ -644,6 +741,59 @@ describe('api/v1/controllers/ClientsController', () => {
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
     });
+
+    it('should return 404 when the client disappears during secret regeneration', async () => {
+      vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
+        ...sampleClient,
+        token_endpoint_auth_method: 'client_secret_basic',
+      });
+      vi.mocked(
+        deps.oidcAdapter.client.regenerateClientSecret
+      ).mockResolvedValue(null);
+
+      const req = createMockRequest({
+        params: { client_id: 'test-client-001' },
+      });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controller.regenerateSecret(req, res, next);
+
+      expect(
+        deps.oidcAdapter.client.regenerateClientSecret
+      ).toHaveBeenCalledWith('test-client-001');
+      const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error.status).toBe(404);
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it.each(['none', 'private_key_jwt'] as const)(
+      'should reject secret regeneration for %s clients',
+      async tokenEndpointAuthMethod => {
+        vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue({
+          ...sampleClient,
+          token_endpoint_auth_method: tokenEndpointAuthMethod,
+        });
+        const req = createMockRequest({
+          params: { client_id: 'test-client-001' },
+        });
+        const res = createMockResponse();
+        const next = createMockNext();
+
+        await controller.regenerateSecret(req, res, next);
+
+        const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(409);
+        expect(error.detail).toContain(
+          'does not use secret-based authentication'
+        );
+        expect(
+          deps.oidcAdapter.client.regenerateClientSecret
+        ).not.toHaveBeenCalled();
+      }
+    );
   });
 
   // stats

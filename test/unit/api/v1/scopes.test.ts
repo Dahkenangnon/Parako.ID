@@ -79,6 +79,10 @@ describe('api/v1/scopes', () => {
       const keys = Object.keys(SCOPES);
       expect(keys).toHaveLength(30);
     });
+
+    it('is immutable at runtime', () => {
+      expect(Object.isFrozen(SCOPES)).toBe(true);
+    });
   });
 
   // hasScope
@@ -109,6 +113,11 @@ describe('api/v1/scopes', () => {
 
     it('should handle empty granted scopes', () => {
       expect(hasScope('', 'parako:clients:read')).toBe(false);
+    });
+
+    it('fails closed when the required scope is empty', () => {
+      expect(hasScope('', '')).toBe(false);
+      expect(hasScope('parako:clients:read ', '')).toBe(false);
     });
   });
 
@@ -141,6 +150,13 @@ describe('api/v1/scopes', () => {
 
     it('should handle empty granted scopes', () => {
       expect(hasAnyScope('', 'parako:clients:read')).toBe(false);
+    });
+
+    it('fails closed when every required scope is empty', () => {
+      expect(hasAnyScope('', '')).toBe(false);
+      expect(hasAnyScope('parako:clients:read  parako:users:read', '')).toBe(
+        false
+      );
     });
   });
 
@@ -216,6 +232,10 @@ describe('api/v1/scopes', () => {
     it('should have exactly three tiers', () => {
       expect(Object.keys(SCOPE_TTL_MAP)).toHaveLength(3);
     });
+
+    it('is immutable at runtime', () => {
+      expect(Object.isFrozen(SCOPE_TTL_MAP)).toBe(true);
+    });
   });
 
   // isPlatformOnlyScope
@@ -256,9 +276,37 @@ describe('api/v1/scopes', () => {
       expect(PLATFORM_ONLY_SCOPES.size).toBe(7);
     });
 
-    it('should be a ReadonlySet (not mutated at runtime)', () => {
-      // Verify it is a Set instance
+    it('resists runtime mutation of platform authorization boundaries', () => {
       expect(PLATFORM_ONLY_SCOPES).toBeInstanceOf(Set);
+
+      const runtimeSet = PLATFORM_ONLY_SCOPES as Set<string>;
+      let addError: unknown;
+      try {
+        runtimeSet.add(SCOPES.CLIENTS_READ);
+      } catch (error) {
+        addError = error;
+      } finally {
+        if (runtimeSet.has(SCOPES.CLIENTS_READ)) {
+          runtimeSet.delete(SCOPES.CLIENTS_READ);
+        }
+      }
+
+      let deleteError: unknown;
+      try {
+        runtimeSet.delete(SCOPES.TENANTS_READ);
+      } catch (error) {
+        deleteError = error;
+      } finally {
+        if (!runtimeSet.has(SCOPES.TENANTS_READ)) {
+          runtimeSet.add(SCOPES.TENANTS_READ);
+        }
+      }
+
+      expect(addError).toBeInstanceOf(TypeError);
+      expect(deleteError).toBeInstanceOf(TypeError);
+      expect(PLATFORM_ONLY_SCOPES.size).toBe(7);
+      expect(isPlatformOnlyScope(SCOPES.CLIENTS_READ)).toBe(false);
+      expect(isPlatformOnlyScope(SCOPES.TENANTS_READ)).toBe(true);
     });
   });
 });

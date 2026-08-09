@@ -108,6 +108,39 @@ describe('Tier 1 Social Login Completion', () => {
       expect(store.has(`${SOCIAL_REF_REDIS_PREFIX}${ref}`)).toBe(false);
     });
 
+    it('falls back to get and del for Redis clients without GETDEL', async () => {
+      const ref = 'legacy-redis-ref';
+      const key = `${SOCIAL_REF_REDIS_PREFIX}${ref}`;
+      const raw = JSON.stringify({
+        provider: 'google',
+        code: 'authorization-code',
+        tenant_id: 'acme',
+      });
+      const redis = {
+        get: vi.fn().mockResolvedValue(raw),
+        del: vi.fn().mockResolvedValue(1),
+      };
+
+      await expect(consumeRef(redis, ref)).resolves.toMatchObject({
+        success: true,
+      });
+      expect(redis.get).toHaveBeenCalledWith(key);
+      expect(redis.del).toHaveBeenCalledWith(key);
+    });
+
+    it('does not call del when the legacy Redis fallback finds no ref', async () => {
+      const redis = {
+        get: vi.fn().mockResolvedValue(null),
+        del: vi.fn().mockResolvedValue(0),
+      };
+
+      await expect(consumeRef(redis, 'missing-ref')).resolves.toEqual({
+        success: false,
+        error: 'Ref not found or expired',
+      });
+      expect(redis.del).not.toHaveBeenCalled();
+    });
+
     it('returns error when ref is not found (expired or invalid)', async () => {
       const redis = makeMockRedis();
 
@@ -142,6 +175,26 @@ describe('Tier 1 Social Login Completion', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error).toMatch(/missing|invalid/i);
+      }
+    });
+
+    it('returns error when a required ref field is not a string', async () => {
+      const store = new Map<string, string>();
+      store.set(
+        `${SOCIAL_REF_REDIS_PREFIX}invalid-field-types`,
+        JSON.stringify({
+          provider: 'google',
+          code: 42,
+          tenant_id: 'acme',
+        })
+      );
+      const redis = makeMockRedis(store);
+
+      const result = await consumeRef(redis, 'invalid-field-types');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toMatch(/missing|required|invalid/i);
       }
     });
 

@@ -85,6 +85,10 @@ describe('sanitizeClientPayload', () => {
 });
 
 describe('applyClientDefaults', () => {
+  it('uses a stable display name when none is provided', () => {
+    expect(applyClientDefaults({}).client_name).toBe('Unnamed Client');
+  });
+
   it('applies defaults for minimal input', () => {
     const result = applyClientDefaults({ client_name: 'Test App' });
     expect(result.client_name).toBe('Test App');
@@ -96,7 +100,37 @@ describe('applyClientDefaults', () => {
     expect(result.updated_at).toBeTruthy();
   });
 
-  it('preserves explicitly provided values', () => {
+  it('gives each new client independent mutable default collections', () => {
+    const first = applyClientDefaults({ client_name: 'First App' });
+    const second = applyClientDefaults({ client_name: 'Second App' });
+
+    expect(first.grant_types).not.toBe(second.grant_types);
+    expect(first.response_types).not.toBe(second.response_types);
+    expect(first.tags).not.toBe(second.tags);
+    expect(first.contacts).not.toBe(second.contacts);
+
+    first.grant_types?.push('refresh_token');
+    first.tags?.push('internal');
+    expect(second.grant_types).toEqual(['authorization_code']);
+    expect(second.tags).toEqual([]);
+  });
+
+  it('isolates returned client collections from later input mutations', () => {
+    const input = {
+      client_name: 'Caller-owned App',
+      redirect_uris: ['https://rp.example.test/callback'],
+      tags: ['demo'],
+    };
+    const result = applyClientDefaults(input);
+
+    input.redirect_uris.push('https://attacker.example.test/callback');
+    input.tags.push('mutated');
+
+    expect(result.redirect_uris).toEqual(['https://rp.example.test/callback']);
+    expect(result.tags).toEqual(['demo']);
+  });
+
+  it('preserves explicit values while normalizing the legacy SPA label', () => {
     const result = applyClientDefaults({
       client_id: 'my-id',
       client_name: 'My App',
@@ -104,7 +138,8 @@ describe('applyClientDefaults', () => {
       active: false,
     });
     expect(result.client_id).toBe('my-id');
-    expect(result.application_type).toBe('spa');
+    expect(result.application_type).toBe('web');
+    expect(result.preset).toBe('spa');
     expect(result.active).toBe(false);
   });
 
@@ -118,6 +153,15 @@ describe('applyClientDefaults', () => {
     const result = applyClientDefaults({
       client_name: 'SPA',
       token_endpoint_auth_method: 'none',
+    });
+    expect(result.client_secret).toBeUndefined();
+  });
+
+  it('does not generate a client_secret for private_key_jwt clients', () => {
+    const result = applyClientDefaults({
+      client_name: 'Private key client',
+      token_endpoint_auth_method: 'private_key_jwt',
+      jwks_uri: 'https://client.example/jwks.json',
     });
     expect(result.client_secret).toBeUndefined();
   });
@@ -185,6 +229,31 @@ describe('validateClientData', () => {
     expect(result.errors[0]).toContain('Invalid token_endpoint_auth_method');
   });
 
+  it.each([
+    ['grant_types', ['password']],
+    ['grant_types', ['urn:example:params:oauth:grant-type:custom']],
+    ['response_types', ['token']],
+    ['response_types', ['code token']],
+  ] as const)('fails for unsupported provider %s', (field, value) => {
+    const result = validateClientData({
+      client_name: 'App',
+      [field]: value,
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors[0]).toContain(`Invalid ${field}`);
+  });
+
+  it('accepts provider-supported grant and response types', () => {
+    expect(
+      validateClientData({
+        client_name: 'Authorization code client',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code', 'none'],
+      })
+    ).toEqual({ isValid: true, errors: [] });
+  });
+
   it('fails for invalid redirect_uris (dangerous protocol)', () => {
     const result = validateClientData({
       client_name: 'App',
@@ -216,6 +285,288 @@ describe('validateClientData', () => {
       id_token_signed_response_alg: 'RS256',
     });
     expect(result.isValid).toBe(true);
+  });
+
+  it('requires exactly one usable key source for private_key_jwt clients', () => {
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+      })
+    ).toMatchObject({ isValid: false });
+
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks_uri: 'https://rp.example.test/jwks.json',
+      })
+    ).toEqual({ isValid: true, errors: [] });
+
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: {
+          keys: [
+            {
+              kty: 'EC',
+              crv: 'P-256',
+              x: 'x-coordinate',
+              y: 'y-coordinate',
+            },
+          ],
+        },
+      })
+    ).toEqual({ isValid: true, errors: [] });
+
+    for (const keyMetadata of [
+      {
+        jwks_uri: 'https://rp.example.test/jwks.json',
+        jwks: { keys: [{ kty: 'RSA', n: 'modulus', e: 'AQAB' }] },
+      },
+      { jwks_uri: 'data:application/json,{}' },
+      { jwks: { keys: [] } },
+      { jwks: { keys: [{ kty: 'RSA', n: 'missing-exponent' }] } },
+      {
+        jwks: {
+          keys: [{ kty: 'RSA', n: 'modulus', e: 'AQAB', d: 'private' }],
+        },
+      },
+    ]) {
+      expect(
+        validateClientData({
+          client_name: 'Private key client',
+          token_endpoint_auth_method: 'private_key_jwt',
+          ...keyMetadata,
+        }).isValid
+      ).toBe(false);
+    }
+  });
+
+  it('rejects symmetric keys in static JWKS metadata', () => {
+    const result = validateClientData({
+      client_name: 'Private key client',
+      token_endpoint_auth_method: 'private_key_jwt',
+      jwks: { keys: [{ kty: 'oct', k: 'symmetric-secret' }] },
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain(
+      'jwks.keys[0] must not contain a symmetric key'
+    );
+  });
+
+  it.each([
+    { kty: 'future-key-type', alg: '' },
+    { kty: 'EC', crv: 'P-999' },
+    { kty: 'OKP', crv: 'FutureCurve' },
+  ])('accepts provider-ignored public JWK metadata %#', key => {
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: { keys: [key] },
+      })
+    ).toEqual({ isValid: true, errors: [] });
+  });
+
+  it('rejects malformed key-set URIs and client authentication algorithms', () => {
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks_uri: 'not an absolute URL',
+      }).errors
+    ).toContain('jwks_uri must be a safe HTTP(S) URL');
+
+    expect(
+      validateClientData({
+        client_name: 'Secret JWT client',
+        token_endpoint_auth_method: 'client_secret_jwt',
+        token_endpoint_auth_signing_alg: '' as any,
+      }).errors
+    ).toContain(
+      'token_endpoint_auth_signing_alg must be a non-empty string if provided'
+    );
+  });
+
+  it('rejects non-plain or typeless JWK entries', () => {
+    for (const key of [null, Object.create(null), {}]) {
+      const result = validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: { keys: [key as any] },
+      });
+
+      expect(result.isValid).toBe(false);
+    }
+  });
+
+  it('requires a curve subtype for provider-recognized EC keys', () => {
+    const result = validateClientData({
+      client_name: 'Private key client',
+      token_endpoint_auth_method: 'private_key_jwt',
+      jwks: { keys: [{ kty: 'EC', x: 'x-coordinate', y: 'y-coordinate' }] },
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain(
+      'jwks.keys[0].crv must be a non-empty string'
+    );
+  });
+
+  it('validates optional public JWK labels when they are present', () => {
+    const malformed = validateClientData({
+      client_name: 'Private key client',
+      token_endpoint_auth_method: 'private_key_jwt',
+      jwks: {
+        keys: [
+          {
+            kty: 'RSA',
+            n: 'modulus',
+            e: 'AQAB',
+            alg: '',
+            kid: 42,
+            use: null,
+          },
+        ],
+      },
+    });
+
+    expect(malformed.isValid).toBe(false);
+    expect(malformed.errors).toEqual(
+      expect.arrayContaining([
+        'jwks.keys[0].alg must be a non-empty string if provided',
+        'jwks.keys[0].kid must be a non-empty string if provided',
+        'jwks.keys[0].use must be a non-empty string if provided',
+      ])
+    );
+
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: {
+          keys: [
+            {
+              kty: 'RSA',
+              n: 'modulus',
+              e: 'AQAB',
+              alg: 'RS256',
+              kid: 'signing-key-1',
+              use: 'sig',
+            },
+          ],
+        },
+      })
+    ).toEqual({ isValid: true, errors: [] });
+  });
+
+  it.each([
+    ['a scalar', 'certificate'],
+    ['an array with an empty certificate', ['']],
+  ])('rejects x5c represented as %s', (_description, x5c) => {
+    const result = validateClientData({
+      client_name: 'Private key client',
+      token_endpoint_auth_method: 'private_key_jwt',
+      jwks: {
+        keys: [
+          {
+            kty: 'RSA',
+            n: 'modulus',
+            e: 'AQAB',
+            x5c,
+          },
+        ],
+      },
+    });
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain(
+      'jwks.keys[0].x5c must contain non-empty strings if provided'
+    );
+  });
+
+  it('accepts a non-empty x5c certificate chain', () => {
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: {
+          keys: [
+            {
+              kty: 'RSA',
+              n: 'modulus',
+              e: 'AQAB',
+              x5c: ['base64-der-certificate'],
+            },
+          ],
+        },
+      })
+    ).toEqual({ isValid: true, errors: [] });
+  });
+
+  it('accepts an empty x5c certificate chain like oidc-provider', () => {
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        jwks: {
+          keys: [
+            {
+              kty: 'RSA',
+              n: 'modulus',
+              e: 'AQAB',
+              x5c: [],
+            },
+          ],
+        },
+      })
+    ).toEqual({ isValid: true, errors: [] });
+  });
+
+  it('enforces the provider signing algorithm family for JWT client authentication', () => {
+    const publicJwks = {
+      keys: [{ kty: 'RSA', n: 'modulus', e: 'AQAB' }],
+    };
+
+    for (const client of [
+      {
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt' as const,
+        token_endpoint_auth_signing_alg: 'HS256',
+        jwks: publicJwks,
+      },
+      {
+        client_name: 'Secret JWT client',
+        token_endpoint_auth_method: 'client_secret_jwt' as const,
+        token_endpoint_auth_signing_alg: 'RS256',
+      },
+      {
+        client_name: 'Basic client',
+        token_endpoint_auth_method: 'client_secret_basic' as const,
+        token_endpoint_auth_signing_alg: 'RS256',
+      },
+    ]) {
+      expect(validateClientData(client).isValid).toBe(false);
+    }
+
+    expect(
+      validateClientData({
+        client_name: 'Private key client',
+        token_endpoint_auth_method: 'private_key_jwt',
+        token_endpoint_auth_signing_alg: 'RS256',
+        jwks: publicJwks,
+      })
+    ).toEqual({ isValid: true, errors: [] });
+    expect(
+      validateClientData({
+        client_name: 'Secret JWT client',
+        token_endpoint_auth_method: 'client_secret_jwt',
+        token_endpoint_auth_signing_alg: 'HS256',
+      })
+    ).toEqual({ isValid: true, errors: [] });
   });
 
   it('reports multiple errors at once', () => {
@@ -305,6 +656,18 @@ describe('validateClientData - redirect URI security', () => {
     });
     expect(result.isValid).toBe(true);
   });
+
+  it('rejects malformed redirect URIs that are not absolute URIs', () => {
+    const result = validateClientData({
+      client_name: 'App',
+      redirect_uris: ['not a uri'],
+    });
+
+    expect(result).toEqual({
+      isValid: false,
+      errors: ['Invalid redirect_uri: not a uri'],
+    });
+  });
 });
 
 describe('filterClients', () => {
@@ -352,6 +715,14 @@ describe('filterClients', () => {
     const result = filterClients(clients, { tags: ['mobile'] });
     expect(result).toHaveLength(1);
     expect(result[0].client_id).toBe('c3');
+  });
+
+  it('does not match a tag filter when a client has no tags', () => {
+    const clientWithoutTags = { ...clients[0], tags: undefined };
+
+    expect(filterClients([clientWithoutTags], { tags: ['internal'] })).toEqual(
+      []
+    );
   });
 
   it('filters by search term', () => {
@@ -439,6 +810,23 @@ describe('computeClientStatistics', () => {
     expect(stats.total).toBe(0);
     expect(stats.active).toBe(0);
     expect(stats.inactive).toBe(0);
+  });
+
+  it('counts clients with unknown application types without creating a group', () => {
+    const stats = computeClientStatistics([
+      {
+        client_id: 'legacy-client',
+        client_name: 'Legacy client',
+        application_type: 'legacy' as OidcClientData['application_type'],
+      },
+    ]);
+
+    expect(stats).toEqual({
+      total: 1,
+      active: 1,
+      inactive: 0,
+      byType: { web: 0, native: 0, spa: 0 },
+    });
   });
 });
 

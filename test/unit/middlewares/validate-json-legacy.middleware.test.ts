@@ -105,6 +105,29 @@ describe('validateLegacyJsonParams', () => {
     expect(next).toHaveBeenCalledOnce();
   });
 
+  it('shadows an inherited Express 5 params getter with stripped parsed data', () => {
+    const prototype = {};
+    Object.defineProperty(prototype, 'params', {
+      configurable: true,
+      get: () => ({ credentialId: 'cred-1', dropped: 'not-allowed' }),
+    });
+    const req = Object.assign(Object.create(prototype), {
+      body: {},
+      originalUrl: '/webauthn/credentials/cred-1',
+      method: 'DELETE',
+    }) as Request;
+    const next = vi.fn();
+
+    validateLegacyJsonParams(
+      z.object({ credentialId: z.string().min(1) }),
+      deps
+    )(req, buildRes(), next);
+
+    expect(Object.hasOwn(req, 'params')).toBe(true);
+    expect(req.params).toEqual({ credentialId: 'cred-1' });
+    expect(next).toHaveBeenCalledOnce();
+  });
+
   it('on failure: responds with the legacy JSON shape', () => {
     const schema = z.object({ credentialId: z.string().min(1) });
     const req = buildReq({ params: { credentialId: '' } });

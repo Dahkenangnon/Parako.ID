@@ -238,6 +238,17 @@ describe('DEFAULT_FULL_CONFIG alignment', () => {
     // PKCE required by default (OAuth 2.1 mandate)
     expect(DEFAULT_FULL_CONFIG.features.oidc.pkce.required).toBe(true);
 
+    // URI query parameters leak bearer tokens into logs, history, and referrers.
+    expect(
+      DEFAULT_FULL_CONFIG.features.oidc.accept_query_param_access_tokens
+    ).toBe(false);
+
+    const withoutQueryTokenSetting = structuredClone(DEFAULT_FULL_CONFIG);
+    delete (withoutQueryTokenSetting.features.oidc as any)
+      .accept_query_param_access_tokens;
+    const parsed = AppConfigSchema.parse(withoutQueryTokenSetting);
+    expect(parsed.features.oidc.accept_query_param_access_tokens).toBe(false);
+
     // Token TTL alignment: Zod defaults match constants
     const result = AppConfigSchema.safeParse(DEFAULT_FULL_CONFIG);
     expect(result.success).toBe(true);

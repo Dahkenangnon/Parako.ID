@@ -2,27 +2,35 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_JOB_OPTIONS,
   DEFAULT_WORKER_OPTIONS,
+  QUEUE_NAMES,
+  QUEUE_PREFIX,
   deriveRotationCron,
 } from '../../../src/jobs/config.js';
 
 describe('Jobs config', () => {
-  it('DEFAULT_JOB_OPTIONS should configure 3 attempts with exponential backoff', () => {
-    expect(DEFAULT_JOB_OPTIONS.attempts).toBe(3);
-    expect(DEFAULT_JOB_OPTIONS.backoff).toEqual({
-      type: 'exponential',
-      delay: 1000,
+  it('namespaces the background queue in shared Redis deployments', () => {
+    expect(QUEUE_PREFIX).toBe('parako');
+    expect(QUEUE_NAMES).toEqual({ BACKGROUND_TASKS: 'background-tasks' });
+  });
+
+  it('applies bounded retry and retention policies to every job', () => {
+    expect(DEFAULT_JOB_OPTIONS).toEqual({
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 1_000,
+      },
+      removeOnComplete: { age: 24 * 3_600, count: 200 },
+      removeOnFail: { age: 7 * 24 * 3_600, count: 500 },
     });
   });
 
-  it('DEFAULT_JOB_OPTIONS should have removal policies', () => {
-    expect(DEFAULT_JOB_OPTIONS.removeOnComplete).toBeDefined();
-    expect(DEFAULT_JOB_OPTIONS.removeOnFail).toBeDefined();
-  });
-
-  it('DEFAULT_WORKER_OPTIONS should have concurrency, lockDuration, and stalledInterval', () => {
-    expect(DEFAULT_WORKER_OPTIONS.concurrency).toBeGreaterThan(0);
-    expect(DEFAULT_WORKER_OPTIONS.lockDuration).toBeGreaterThan(0);
-    expect(DEFAULT_WORKER_OPTIONS.stalledInterval).toBeGreaterThan(0);
+  it('uses explicit concurrency and lock timing for workers', () => {
+    expect(DEFAULT_WORKER_OPTIONS).toEqual({
+      concurrency: 5,
+      lockDuration: 30_000,
+      stalledInterval: 30_000,
+    });
   });
 });
 

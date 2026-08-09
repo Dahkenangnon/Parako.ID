@@ -224,10 +224,10 @@ describe('api/v1/controllers/AuditController', () => {
 
       const callArg = vi.mocked(deps.activityService.queryActivities).mock
         .calls[0][0];
-      expect(callArg).toHaveProperty('timestampRange');
-      const range = callArg.timestampRange as Record<string, unknown>;
-      expect(range.from).toBeInstanceOf(Date);
-      expect(range.to).toBeInstanceOf(Date);
+      expect(callArg).toHaveProperty('timestamp');
+      const range = callArg.timestamp as Record<string, unknown>;
+      expect(range.$gte).toBeInstanceOf(Date);
+      expect(range.$lte).toBeInstanceOf(Date);
     });
 
     it('should include total_count when include_count=true', async () => {
@@ -266,6 +266,28 @@ describe('api/v1/controllers/AuditController', () => {
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.pagination.total_count).toBeUndefined();
+    });
+
+    it('should return an empty page when the service omits its results array', async () => {
+      vi.mocked(deps.activityService.queryActivities).mockResolvedValue({
+        results: undefined as unknown as any[],
+        totalResults: 0,
+        totalPages: 0,
+        page: 1,
+        limit: 25,
+      });
+
+      const req = createMockRequest();
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controller.list(req, res, next);
+
+      expect(res.json).toHaveBeenCalledWith({
+        data: [],
+        pagination: { has_more: false, next_cursor: null },
+      });
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('should call next(error) on failure', async () => {
@@ -431,7 +453,7 @@ describe('api/v1/controllers/AuditController', () => {
   // DB abstraction
   describe('DB abstraction', () => {
     describe('date range filtering', () => {
-      it('should pass timestampRange with from/to (not $gte/$lte)', async () => {
+      it('should pass the shared repository timestamp contract with from/to', async () => {
         const req = createMockRequest({
           query: { from: '2026-01-01T00:00:00Z', to: '2026-12-31T23:59:59Z' },
         });
@@ -439,20 +461,17 @@ describe('api/v1/controllers/AuditController', () => {
         await controller.list(req, res, createMockNext());
         const filter = vi.mocked(deps.activityService.queryActivities).mock
           .calls[0][0];
-        expect(filter.timestampRange).toBeDefined();
-        expect((filter.timestampRange as any).from).toEqual(
+        expect(filter.timestamp).toBeDefined();
+        expect((filter.timestamp as any).$gte).toEqual(
           new Date('2026-01-01T00:00:00Z')
         );
-        expect((filter.timestampRange as any).to).toEqual(
+        expect((filter.timestamp as any).$lte).toEqual(
           new Date('2026-12-31T23:59:59Z')
         );
-        // Must NOT contain MongoDB operators
-        expect(filter.timestamp).toBeUndefined();
-        expect(filter.$gte).toBeUndefined();
-        expect(filter.$lte).toBeUndefined();
+        expect(filter.timestampRange).toBeUndefined();
       });
 
-      it('should pass only timestampRange.from when only "from" query param given', async () => {
+      it('should pass only timestamp.$gte when only "from" query param given', async () => {
         const req = createMockRequest({
           query: { from: '2026-01-01T00:00:00Z' },
         });
@@ -460,20 +479,35 @@ describe('api/v1/controllers/AuditController', () => {
         await controller.list(req, res, createMockNext());
         const filter = vi.mocked(deps.activityService.queryActivities).mock
           .calls[0][0];
-        expect(filter.timestampRange).toBeDefined();
-        expect((filter.timestampRange as any).from).toEqual(
+        expect(filter.timestamp).toBeDefined();
+        expect((filter.timestamp as any).$gte).toEqual(
           new Date('2026-01-01T00:00:00Z')
         );
-        expect((filter.timestampRange as any).to).toBeUndefined();
+        expect((filter.timestamp as any).$lte).toBeUndefined();
       });
 
-      it('should omit timestampRange when no date params provided', async () => {
+      it('should pass only timestamp.$lte when only "to" query param given', async () => {
+        const req = createMockRequest({
+          query: { to: '2026-12-31T23:59:59Z' },
+        });
+        const res = createMockResponse();
+        await controller.list(req, res, createMockNext());
+        const filter = vi.mocked(deps.activityService.queryActivities).mock
+          .calls[0][0];
+        expect(filter.timestamp).toBeDefined();
+        expect((filter.timestamp as any).$gte).toBeUndefined();
+        expect((filter.timestamp as any).$lte).toEqual(
+          new Date('2026-12-31T23:59:59Z')
+        );
+      });
+
+      it('should omit timestamp when no date params provided', async () => {
         const req = createMockRequest({ query: {} });
         const res = createMockResponse();
         await controller.list(req, res, createMockNext());
         const filter = vi.mocked(deps.activityService.queryActivities).mock
           .calls[0][0];
-        expect(filter.timestampRange).toBeUndefined();
+        expect(filter.timestamp).toBeUndefined();
       });
     });
 

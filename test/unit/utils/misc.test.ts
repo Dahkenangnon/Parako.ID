@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   formatDateTimeForUser,
   formatDateTimeWithMetadata,
@@ -14,7 +14,7 @@ import {
   getOrdinalSuffix,
   capitalizeFirstLetter,
   generateSecureRandomString,
-} from '../../../src/utils/misc';
+} from '../../../src/utils/misc.js';
 
 describe('misc utilities', () => {
   describe('formatDateTimeForUser', () => {
@@ -79,6 +79,77 @@ describe('misc utilities', () => {
       });
       expect(result).toBeDefined();
     });
+
+    it('should format a date from the previous seven days by weekday', () => {
+      const recent = new Date();
+      recent.setDate(recent.getDate() - 3);
+
+      const result = formatDateTimeForUser(recent, {
+        includeTime: false,
+        serverTimezone: false,
+      });
+      expect(result).toMatch(
+        /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/
+      );
+    });
+
+    it('should omit the year when requested', () => {
+      const result = formatDateTimeForUser(testDate, {
+        includeTime: false,
+        includeYear: false,
+        useRelativeTime: false,
+        serverTimezone: false,
+      });
+      expect(result).not.toContain('2024');
+    });
+
+    it('should use its locale fallback for an unsupported runtime language', () => {
+      expect(
+        formatDateTimeForUser(testDate, {
+          language: 'unsupported' as never,
+          serverTimezone: false,
+        })
+      ).toMatch(/2024/);
+    });
+
+    it('should fall back to UTC when server timezone detection fails', () => {
+      vi.spyOn(Intl, 'DateTimeFormat').mockImplementationOnce(() => {
+        throw new Error('timezone unavailable');
+      });
+
+      expect(formatDateTimeForUser(new Date())).toContain('Today');
+      vi.restoreAllMocks();
+    });
+
+    it('should treat an empty detected server timezone as UTC', () => {
+      vi.spyOn(Intl, 'DateTimeFormat').mockReturnValueOnce({
+        resolvedOptions: () => ({ timeZone: '' }),
+      } as Intl.DateTimeFormat);
+
+      expect(formatDateTimeForUser(new Date())).toContain('Today');
+      vi.restoreAllMocks();
+    });
+
+    it('should use the French locale in its simple formatting fallback', () => {
+      const toLocaleDateString = vi.fn().mockReturnValue('date de secours');
+      const invalidDate = {
+        getFullYear: () => {
+          throw new Error('date unavailable');
+        },
+        toLocaleDateString,
+      } as unknown as Date;
+
+      expect(
+        formatDateTimeForUser(invalidDate, {
+          language: 'fr',
+          serverTimezone: false,
+        })
+      ).toBe('date de secours');
+      expect(toLocaleDateString).toHaveBeenCalledWith(
+        'fr-FR',
+        expect.any(Object)
+      );
+    });
   });
 
   describe('formatDateTimeWithMetadata', () => {
@@ -116,6 +187,58 @@ describe('misc utilities', () => {
       });
       expect(result.isRelative).toBe(false);
       expect(result.relativeType).toBe('full');
+    });
+
+    it('should classify dates from the previous week as recent', () => {
+      const recent = new Date();
+      recent.setDate(recent.getDate() - 3);
+      const result = formatDateTimeWithMetadata(recent, {
+        serverTimezone: false,
+      });
+
+      expect(result.relativeType).toBe('recent');
+      expect(result.isRelative).toBe(true);
+    });
+
+    it('should support explicitly disabled relative formatting', () => {
+      const result = formatDateTimeWithMetadata(new Date('2024-01-15'), {
+        useRelativeTime: false,
+        serverTimezone: false,
+      });
+      expect(result.relativeType).toBe('full');
+      expect(result.isRelative).toBe(false);
+    });
+
+    it('should fall back to full metadata for an unsupported language', () => {
+      const result = formatDateTimeWithMetadata(new Date(), {
+        language: 'unsupported' as never,
+        serverTimezone: false,
+      });
+      expect(result).toEqual(
+        expect.objectContaining({
+          isRelative: false,
+          relativeType: 'full',
+          timezone: undefined,
+        })
+      );
+    });
+
+    it('should preserve an explicit timezone in fallback metadata', () => {
+      expect(
+        formatDateTimeWithMetadata(new Date(), {
+          language: 'unsupported' as never,
+          timezone: 'UTC',
+          serverTimezone: false,
+        }).timezone
+      ).toBe('UTC');
+    });
+
+    it('should detect the server timezone in fallback metadata by default', () => {
+      expect(
+        formatDateTimeWithMetadata(new Date(), {
+          language: 'unsupported' as never,
+        }).timezone
+      ).toEqual(expect.any(String));
     });
   });
 
@@ -167,9 +290,21 @@ describe('misc utilities', () => {
       const result = getShortRelativeTime(past, { language: 'fr' });
       expect(result).toBe('5min il y a');
     });
+
+    it('should return unknown for an unsupported language', () => {
+      expect(
+        getShortRelativeTime(new Date(), {
+          language: 'unsupported' as never,
+        })
+      ).toBe('unknown');
+    });
   });
 
   describe('isToday', () => {
+    it('should use the server timezone by default', () => {
+      expect(isToday(new Date())).toBe(true);
+    });
+
     it('should return true for today', () => {
       const today = new Date();
       expect(isToday(today, { serverTimezone: false })).toBe(true);
@@ -191,9 +326,36 @@ describe('misc utilities', () => {
       const today = new Date();
       expect(isToday(today, { timezone: 'UTC' })).toBe(true);
     });
+
+    it('should compare both dates in a non-UTC timezone', () => {
+      expect(isToday(new Date(), { timezone: 'Europe/Paris' })).toBe(true);
+    });
+
+    it('should use the direct comparison fallback after an accessor failure', () => {
+      const today = new Date();
+      const getDate = vi
+        .fn()
+        .mockImplementationOnce(() => {
+          throw new Error('date unavailable');
+        })
+        .mockReturnValue(today.getDate());
+      const date = {
+        getDate,
+        getMonth: () => today.getMonth(),
+        getFullYear: () => today.getFullYear(),
+      } as unknown as Date;
+
+      expect(isToday(date, { serverTimezone: false })).toBe(true);
+    });
   });
 
   describe('isYesterday', () => {
+    it('should use the server timezone by default', () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      expect(isYesterday(yesterday)).toBe(true);
+    });
+
     it('should return true for yesterday', () => {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
@@ -212,9 +374,36 @@ describe('misc utilities', () => {
         false
       );
     });
+
+    it('should compare both dates in a non-UTC timezone', () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      expect(isYesterday(yesterday, { timezone: 'Europe/Paris' })).toBe(true);
+    });
+
+    it('should use the direct comparison fallback after an accessor failure', () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const date = {
+        getDate: vi
+          .fn()
+          .mockImplementationOnce(() => {
+            throw new Error('date unavailable');
+          })
+          .mockReturnValue(yesterday.getDate()),
+        getMonth: () => yesterday.getMonth(),
+        getFullYear: () => yesterday.getFullYear(),
+      } as unknown as Date;
+
+      expect(isYesterday(date, { serverTimezone: false })).toBe(true);
+    });
   });
 
   describe('isWithinLastDays', () => {
+    it('should use the server timezone by default', () => {
+      expect(isWithinLastDays(new Date(), 1)).toBe(true);
+    });
+
     it('should return true for today', () => {
       const today = new Date();
       expect(isWithinLastDays(today, 1, { serverTimezone: false })).toBe(true);
@@ -240,6 +429,35 @@ describe('misc utilities', () => {
       const today = new Date();
       expect(isWithinLastDays(today, 1, { timezone: 'UTC' })).toBe(true);
     });
+
+    it('should compare the cutoff in a non-UTC timezone', () => {
+      expect(
+        isWithinLastDays(new Date(), 1, { timezone: 'Europe/Paris' })
+      ).toBe(true);
+    });
+
+    it('should use the direct fallback when date comparison throws', () => {
+      const date = new Date();
+      let comparisonCount = 0;
+      const throwingDate = new Proxy(date, {
+        get(target, property) {
+          if (property === Symbol.toPrimitive) {
+            return () => {
+              if (comparisonCount++ === 0) {
+                throw new Error('comparison unavailable');
+              }
+              return target.getTime();
+            };
+          }
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+
+      expect(
+        isWithinLastDays(throwingDate as Date, 1, { serverTimezone: false })
+      ).toBe(true);
+    });
   });
 
   describe('formatDateRange', () => {
@@ -255,6 +473,12 @@ describe('misc utilities', () => {
       expect(result).toContain('Today');
     });
 
+    it('should default same-day range text to English', () => {
+      expect(formatDateRange(today, today, { serverTimezone: false })).toBe(
+        'Today'
+      );
+    });
+
     it('should format different day range', () => {
       const result = formatDateRange(yesterday, today, {
         language: 'en',
@@ -263,16 +487,42 @@ describe('misc utilities', () => {
       expect(result).toContain(' - ');
     });
 
+    it('should format a range entirely within yesterday', () => {
+      expect(
+        formatDateRange(yesterday, yesterday, {
+          language: 'en',
+          serverTimezone: false,
+        })
+      ).toBe('Yesterday');
+    });
+
+    it('should default yesterday range text to English', () => {
+      expect(
+        formatDateRange(yesterday, yesterday, { serverTimezone: false })
+      ).toBe('Yesterday');
+    });
+
     it('should format same formatted dates', () => {
-      const sameDay = new Date(today);
+      const sameDay = new Date('2024-01-15T10:00:00Z');
       sameDay.setHours(10, 0, 0, 0);
-      const sameDay2 = new Date(today);
+      const sameDay2 = new Date('2024-01-15T15:00:00Z');
       sameDay2.setHours(15, 0, 0, 0);
       const result = formatDateRange(sameDay, sameDay2, {
         language: 'en',
         serverTimezone: false,
       });
       expect(result).not.toContain(' - ');
+    });
+
+    it('should fall back to locale dates for an unsupported language', () => {
+      const start = new Date();
+      const end = new Date(start);
+      expect(
+        formatDateRange(start, end, {
+          language: 'unsupported' as never,
+          serverTimezone: false,
+        })
+      ).toContain(' - ');
     });
   });
 
@@ -363,6 +613,28 @@ describe('misc utilities', () => {
         expect(isEmpty(Buffer.alloc(5))).toBe(false);
       }
     });
+
+    it('should handle arguments objects, typed arrays, DataView, and primitives', () => {
+      const captureArguments = function (..._values: unknown[]) {
+        // eslint-disable-next-line prefer-rest-params -- this contract specifically requires an Arguments object
+        return arguments;
+      };
+      const emptyArguments = captureArguments();
+      const populatedArguments = captureArguments('value');
+
+      expect(isEmpty(emptyArguments)).toBe(true);
+      expect(isEmpty(populatedArguments)).toBe(false);
+      expect(isEmpty(new Uint8Array())).toBe(true);
+      expect(isEmpty(new Uint8Array([1]))).toBe(false);
+      expect(isEmpty(new DataView(new ArrayBuffer(0)))).toBe(true);
+      expect(isEmpty(0)).toBe(false);
+      expect(isEmpty(false)).toBe(false);
+    });
+
+    it('should ignore inherited enumerable object properties', () => {
+      const value = Object.create({ inherited: true });
+      expect(isEmpty(value)).toBe(true);
+    });
   });
 
   describe('deepMerge', () => {
@@ -407,6 +679,70 @@ describe('misc utilities', () => {
       const result = deepMerge(target, source);
       expect(result).toBe(target); // Should return the same object reference
       expect(target).toEqual({ a: 1, b: 3, c: 4 });
+    });
+
+    it('should replace a non-object target and ignore non-object sources', () => {
+      expect(deepMerge(null, 1, 'value', { safe: true })).toEqual({
+        safe: true,
+      });
+    });
+
+    it('should block prototype-pollution keys', () => {
+      const source = Object.create(null);
+      Object.defineProperty(source, '__proto__', {
+        value: { polluted: true },
+        enumerable: true,
+      });
+      source.constructor = { polluted: true };
+      source.prototype = { polluted: true };
+
+      expect(deepMerge({}, source)).toEqual({});
+      expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+    });
+
+    it('should create nested objects when the destination type differs', () => {
+      expect(deepMerge({ nested: 1 }, { nested: { safe: true } })).toEqual({
+        nested: { safe: true },
+      });
+    });
+
+    it('should assign non-plain object values without recursively merging them', () => {
+      const date = new Date('2024-01-01');
+      const regex = /safe/;
+      const buffer = Buffer.from('safe');
+      const map = new Map([['safe', true]]);
+      const set = new Set(['safe']);
+      const weakMap = new WeakMap();
+      const weakSet = new WeakSet();
+      const result = deepMerge(
+        {},
+        {
+          date,
+          regex,
+          buffer,
+          map,
+          set,
+          weakMap,
+          weakSet,
+        }
+      );
+
+      expect(result).toEqual({
+        date,
+        regex,
+        buffer,
+        map,
+        set,
+        weakMap,
+        weakSet,
+      });
+    });
+
+    it('should ignore inherited enumerable source properties', () => {
+      const source = Object.create({ inherited: true });
+      source.own = true;
+
+      expect(deepMerge({}, source)).toEqual({ own: true });
     });
   });
 

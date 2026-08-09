@@ -8,7 +8,7 @@
  *   per tenant, with path resolved from config at request time
  * - WeakMap caching: same provider returns same callback handler
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Request, Response, NextFunction } from 'express';
 import { OidcManager } from '../../../src/oidc/index.js';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
@@ -75,15 +75,15 @@ function createMockReq(
 
 describe('OidcManager – Dynamic Callback Dispatch', () => {
   let mockProvider: ReturnType<typeof createMockProvider>;
-  let mockKoaMiddleware: { renderMiddleware: vi.Mock };
+  let mockKoaMiddleware: { renderMiddleware: Mock };
   let mockOidcMiddleware: {
-    applyOidcMiddleware: vi.Mock;
-    preMiddleware: vi.Mock;
-    postMiddleware: vi.Mock;
+    applyOidcMiddleware: Mock;
+    preMiddleware: Mock;
+    postMiddleware: Mock;
   };
-  let mockOidcListener: { setupListeners: vi.Mock };
-  let mockOidcRoutes: { registerRoutes: vi.Mock };
-  let mockSessionManager: { setOidcAdapterBridge: vi.Mock };
+  let mockOidcListener: { setupListeners: Mock };
+  let mockOidcRoutes: { registerRoutes: Mock };
+  let mockSessionManager: { setOidcAdapterBridge: Mock };
   let mockAdapterBridge: Record<string, unknown>;
 
   beforeEach(() => {
@@ -187,6 +187,47 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       );
     });
 
+    it('runs OIDC pre-processing before downstream middleware and post-processing after it', async () => {
+      const order: string[] = [];
+      mockOidcMiddleware.preMiddleware.mockImplementation(async () => {
+        order.push('pre');
+      });
+      mockOidcMiddleware.postMiddleware.mockImplementation(async () => {
+        order.push('post');
+      });
+      const app = createMockApp();
+      const { manager } = createOidcManager(false);
+
+      await manager.start(app);
+
+      const middleware = mockProvider.use.mock.calls[1][0];
+      await middleware({}, async () => {
+        order.push('provider');
+      });
+
+      expect(order).toEqual(['pre', 'provider', 'post']);
+    });
+
+    it.each([
+      [null, 404, false],
+      [undefined, 200, true],
+      [{ error: 'not_found' }, 404, true],
+    ])(
+      'sets Koa respond for body %j, status %i to %s',
+      async (body, status, expectedRespond) => {
+        const app = createMockApp();
+        const { manager } = createOidcManager(false);
+
+        await manager.start(app);
+
+        const middleware = mockProvider.use.mock.calls[3][0];
+        const context = { body, status, respond: true };
+        await middleware(context, vi.fn());
+
+        expect(context.respond).toBe(expectedRespond);
+      }
+    );
+
     it('registers interaction routes', async () => {
       const app = createMockApp();
       const { manager } = createOidcManager(false);
@@ -215,6 +256,21 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       expect(mockProvider._callbackHandler).not.toHaveBeenCalled();
     });
 
+    it('passes through when the current provider is temporarily unavailable', async () => {
+      const app = createMockApp();
+      const { manager, mockProviderService } = createOidcManager(false);
+
+      await manager.start(app);
+      mockProviderService.getProvider.mockReturnValue(undefined);
+
+      const dispatcher = findDynamicDispatcher(app)!;
+      const next = vi.fn();
+      await dispatcher(createMockReq('/oidc/v1/token'), {} as Response, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(mockProvider._callbackHandler).not.toHaveBeenCalled();
+    });
+
     it('dynamic middleware handles OIDC requests and strips mount path', async () => {
       const app = createMockApp();
       const { manager } = createOidcManager(false);
@@ -236,6 +292,49 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       // After callback, URL should be restored
       expect(req.url).toBe('/oidc/v1/.well-known/openid-configuration');
       expect(req.baseUrl).toBe('');
+    });
+
+    it('maps an exact mount-path request to the provider root and restores an existing base URL', async () => {
+      const app = createMockApp();
+      const { manager } = createOidcManager(false);
+
+      await manager.start(app);
+
+      mockProvider._callbackHandler.mockImplementationOnce(async req => {
+        expect(req.url).toBe('/');
+        expect(req.baseUrl).toBe('/gateway/oidc/v1');
+      });
+      const dispatcher = findDynamicDispatcher(app)!;
+      const req = createMockReq('/oidc/v1');
+      req.baseUrl = '/gateway';
+      const res = { headersSent: true } as Response;
+      const next = vi.fn();
+
+      await dispatcher(req, res, next);
+
+      expect(req.url).toBe('/oidc/v1');
+      expect(req.baseUrl).toBe('/gateway');
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('restores the request URL before forwarding a provider callback error', async () => {
+      const app = createMockApp();
+      const { manager } = createOidcManager(false);
+      const providerError = new Error('provider callback failed');
+
+      await manager.start(app);
+      mockProvider._callbackHandler.mockRejectedValueOnce(providerError);
+
+      const dispatcher = findDynamicDispatcher(app)!;
+      const req = createMockReq('/oidc/v1/token');
+      req.baseUrl = '/gateway';
+      const next = vi.fn();
+
+      await dispatcher(req, {} as Response, next);
+
+      expect(req.url).toBe('/oidc/v1/token');
+      expect(req.baseUrl).toBe('/gateway');
+      expect(next).toHaveBeenCalledWith(providerError);
     });
 
     it('lazily configures recreated providers', async () => {
@@ -335,6 +434,15 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       );
     });
 
+    it('supports a tenant registry without a provider configurator hook', async () => {
+      const app = createMockApp();
+      const { manager } = createOidcManager(true, {});
+
+      await expect(manager.start(app)).resolves.toBeUndefined();
+
+      expect(findDynamicDispatcher(app)).toBeDefined();
+    });
+
     it('dynamic dispatcher resolves provider from tenant context', async () => {
       const tenantProvider = createMockProvider('tenant-acme');
       const app = createMockApp();
@@ -371,6 +479,34 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       // Should invoke the tenant provider's callback
       expect(tenantProvider.callback).toHaveBeenCalled();
       expect(tenantProvider._callbackHandler).toHaveBeenCalled();
+    });
+
+    it('does not continue Express dispatch after a tenant provider sends the response', async () => {
+      const tenantProvider = createMockProvider('tenant-response');
+      const app = createMockApp();
+      const registry = { setProviderConfigurator: vi.fn() };
+      const { manager, mockProviderService } = createOidcManager(
+        true,
+        registry
+      );
+      mockProviderService.getProviderForTenant.mockResolvedValue(
+        tenantProvider
+      );
+
+      await manager.start(app);
+
+      const dispatcher = findDynamicDispatcher(app)!;
+      const next = vi.fn();
+      await tenantContext.run('acme', () =>
+        dispatcher(
+          createMockReq('/oidc/v1/token'),
+          { headersSent: true } as Response,
+          next
+        )
+      );
+
+      expect(tenantProvider._callbackHandler).toHaveBeenCalledOnce();
+      expect(next).not.toHaveBeenCalled();
     });
 
     it('caches callback in WeakMap (same provider = same handler)', async () => {
@@ -432,6 +568,58 @@ describe('OidcManager – Dynamic Callback Dispatch', () => {
       );
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('restores the tenant request URL before forwarding a provider callback error', async () => {
+      const tenantProvider = createMockProvider('failing-tenant');
+      const providerError = new Error('tenant provider callback failed');
+      tenantProvider._callbackHandler.mockRejectedValueOnce(providerError);
+      const app = createMockApp();
+      const registry = { setProviderConfigurator: vi.fn() };
+      const { manager, mockProviderService } = createOidcManager(
+        true,
+        registry
+      );
+      mockProviderService.getProviderForTenant.mockResolvedValue(
+        tenantProvider
+      );
+
+      await manager.start(app);
+
+      const dispatcher = findDynamicDispatcher(app)!;
+      const req = createMockReq('/oidc/v1/token');
+      req.baseUrl = '/gateway';
+      const next = vi.fn();
+      await tenantContext.run('acme', () =>
+        dispatcher(req, {} as Response, next)
+      );
+
+      expect(req.url).toBe('/oidc/v1/token');
+      expect(req.baseUrl).toBe('/gateway');
+      expect(next).toHaveBeenCalledWith(providerError);
+    });
+
+    it('rejects OIDC dispatch when multi-tenant context is missing', async () => {
+      const app = createMockApp();
+      const registry = { setProviderConfigurator: vi.fn() };
+      const { manager, mockProviderService } = createOidcManager(
+        true,
+        registry
+      );
+
+      await manager.start(app);
+
+      const dispatcher = findDynamicDispatcher(app)!;
+      const next = vi.fn();
+      await dispatcher(createMockReq('/oidc/v1/token'), {} as Response, next);
+
+      expect(mockProviderService.getProviderForTenant).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            '[OidcManager] No tenant context in multi-tenant mode. Ensure TenantContextMiddleware runs before OIDC routes.',
+        })
+      );
     });
 
     it('returns 400 with hint when "No tenant resolved" error is thrown', async () => {

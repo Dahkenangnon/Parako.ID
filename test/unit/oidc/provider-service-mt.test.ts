@@ -60,6 +60,7 @@ function createMockOidcConfig(): IOIDCConfig {
       claims: {},
     } as Configuration),
     getJwks: vi.fn().mockResolvedValue({ keys: [{ kty: 'RSA', kid: 'test' }] }),
+    initializeResourceServers: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -88,6 +89,7 @@ function createMockKeyStore(): IKeyStore {
     rotate: vi.fn().mockResolvedValue(undefined),
     promoteKeys: vi.fn().mockResolvedValue(0),
     retireExpiredKeys: vi.fn().mockResolvedValue(0),
+    retireKey: vi.fn().mockResolvedValue(false),
     listKeys: vi.fn().mockResolvedValue([]),
     needsRotation: vi.fn().mockResolvedValue(false),
   };
@@ -99,6 +101,11 @@ function createMockPubsub(): IRedisPubSubService {
     publish: vi.fn().mockResolvedValue(undefined),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    publishForTenant: vi.fn().mockResolvedValue(undefined),
+    subscribeForTenant: vi.fn(),
+    unsubscribeForTenant: vi.fn(),
+    psubscribe: vi.fn(),
+    punsubscribe: vi.fn(),
     isConnected: vi.fn().mockReturnValue(true),
     disconnect: vi.fn().mockResolvedValue(undefined),
   };
@@ -126,6 +133,8 @@ function createMockRegistry(): ITenantProviderRegistry {
     has: vi.fn().mockReturnValue(false),
     size: vi.fn().mockReturnValue(0),
     shutdown: vi.fn(),
+    setProviderConfigurator: vi.fn(),
+    reloadProviderJWKS: vi.fn().mockResolvedValue(undefined),
   };
 }
 

@@ -107,6 +107,7 @@ function createMockOidcConfig() {
   return {
     getConfig: vi.fn().mockReturnValue({}),
     getJwks: vi.fn().mockResolvedValue({ keys: [] }),
+    initializeResourceServers: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -249,6 +250,22 @@ describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () 
         })
       );
     });
+
+    it('normalizes a non-Error JWKS reload rejection', async () => {
+      await registry.getProvider('acme');
+      keyStore.getJWKS.mockClear();
+      keyStore.getJWKS.mockRejectedValue('key store offline');
+
+      await registry.reloadProviderJWKS('acme');
+
+      expect(logger.error).toHaveBeenCalledWith(
+        'tenant_provider_jwks_reload_failed',
+        expect.objectContaining({
+          tenantId: 'acme',
+          error: 'key store offline',
+        })
+      );
+    });
   });
 
   describe('JWKS PubSub per-tenant', () => {
@@ -263,6 +280,38 @@ describe('TenantProviderRegistry – Configurator & JWKS (Tasks 4.3 + 4.4)', () 
         'parako:acme:jwks:promoted',
         expect.any(Function)
       );
+    });
+
+    it('reloads tenant JWKS when a rotation event is received', async () => {
+      await registry.getProvider('acme');
+      keyStore.getJWKS.mockClear();
+      const rotationSubscription = pubsub.subscribe.mock.calls.find(
+        ([channel]) => channel === 'parako:acme:jwks:rotated'
+      );
+
+      expect(rotationSubscription).toBeDefined();
+      const rotationHandler = rotationSubscription?.[1] as () => void;
+      rotationHandler();
+
+      await vi.waitFor(() => {
+        expect(keyStore.getJWKS).toHaveBeenCalledWith('acme');
+      });
+    });
+
+    it('reloads tenant JWKS when a promotion event is received', async () => {
+      await registry.getProvider('acme');
+      keyStore.getJWKS.mockClear();
+      const promotionSubscription = pubsub.subscribe.mock.calls.find(
+        ([channel]) => channel === 'parako:acme:jwks:promoted'
+      );
+
+      expect(promotionSubscription).toBeDefined();
+      const promotionHandler = promotionSubscription?.[1] as () => void;
+      promotionHandler();
+
+      await vi.waitFor(() => {
+        expect(keyStore.getJWKS).toHaveBeenCalledWith('acme');
+      });
     });
 
     it('unsubscribes JWKS channels on shutdown()', async () => {

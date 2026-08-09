@@ -115,4 +115,58 @@ describe('BullMQ Worker Tenant Context', () => {
 
     expect(capturedTenants).toEqual(['alpha', 'beta']);
   });
+
+  it.each([
+    [{ id: 'missing-data', data: undefined, updateProgress: vi.fn() }],
+    [{ id: 'missing-name', data: { type: 'test' }, updateProgress: vi.fn() }],
+  ])(
+    'rejects jobs without a task name before entering tenant context',
+    async job => {
+      const { createBackgroundTaskWorker } =
+        await import('../../../src/jobs/domains/background-tasks/worker.js');
+      createBackgroundTaskWorker({ host: 'localhost', port: 6379 });
+
+      await expect(capturedProcessor!(job as any)).rejects.toThrow(
+        `Job ${job.id} is missing "name" in data payload`
+      );
+    }
+  );
+
+  it('rejects unknown task names without reporting progress', async () => {
+    const { createBackgroundTaskWorker } =
+      await import('../../../src/jobs/domains/background-tasks/worker.js');
+    createBackgroundTaskWorker({ host: 'localhost', port: 6379 });
+    const updateProgress = vi.fn();
+
+    await expect(
+      capturedProcessor!({
+        id: 'unknown-task',
+        data: { type: 'test', name: 'not-registered' },
+        updateProgress,
+      })
+    ).rejects.toThrow(
+      'No handler registered for task "not-registered" (job unknown-task)'
+    );
+    expect(updateProgress).not.toHaveBeenCalled();
+  });
+
+  it('returns the handler result and forwards progress updates to BullMQ', async () => {
+    const { registerTaskHandler, createBackgroundTaskWorker } =
+      await import('../../../src/jobs/domains/background-tasks/worker.js');
+    registerTaskHandler('progress-task', async (_data, reportProgress) => {
+      await reportProgress(60);
+      return { processed: true };
+    });
+    createBackgroundTaskWorker({ host: 'localhost', port: 6379 });
+    const updateProgress = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      capturedProcessor!({
+        id: 'progress-job',
+        data: { type: 'test', name: 'progress-task', tenantId: '' },
+        updateProgress,
+      })
+    ).resolves.toEqual({ processed: true });
+    expect(updateProgress).toHaveBeenCalledWith(60);
+  });
 });

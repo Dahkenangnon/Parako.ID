@@ -259,28 +259,34 @@ describe('PlatformTenantMiddleware', () => {
   });
 
   describe('write protection for viewers', () => {
-    it('rejects POST from platform_viewer with 403', async () => {
-      const sessionManager = makeMockSessionManager({
-        authenticated: true,
-        roles: ['platform_viewer'],
-      });
+    it.each(['POST', 'PUT', 'PATCH', 'DELETE'])(
+      'rejects %s from platform_viewer with 403',
+      async method => {
+        const sessionManager = makeMockSessionManager({
+          authenticated: true,
+          roles: ['platform_viewer'],
+        });
 
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
-      const middleware = new PlatformTenantMiddleware(
-        logger as any,
-        sessionManager as any
-      );
+        const { PlatformTenantMiddleware } =
+          await import('../../../src/middlewares/platform-tenant.middleware.js');
+        const middleware = new PlatformTenantMiddleware(
+          logger as any,
+          sessionManager as any
+        );
 
-      const req = makeMockReq({ method: 'POST' });
-      const res = makeMockRes();
-      const next = vi.fn();
+        const req = makeMockReq({ method });
+        const res = makeMockRes();
+        const next = vi.fn();
 
-      await middleware.handler(req, res, next);
+        await middleware.handler(req, res, next);
 
-      expect(next).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(403);
-    });
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'Write access requires platform_admin',
+        });
+      }
+    );
 
     it('allows POST from platform_admin', async () => {
       const sessionManager = makeMockSessionManager({

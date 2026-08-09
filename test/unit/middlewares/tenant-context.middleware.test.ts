@@ -225,6 +225,34 @@ describe('TenantContextMiddleware', () => {
       expect(capturedTenantId).toBe('globex');
     });
 
+    it('prefers a configured extraction source over the session tenant', async () => {
+      const configManager = createMockConfigManager();
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({
+        session: { tenantId: 'acme' },
+        headers: { 'x-tenant-id': 'globex' },
+        hostname: 'sub-tenant.parako.id',
+      });
+      let capturedTenantId: string | undefined;
+      const next: NextFunction = vi.fn(() => {
+        capturedTenantId = tenantContext.getTenantId();
+      });
+
+      await middleware.handler(req, createMockRes(), next);
+
+      expect(capturedTenantId).toBe('globex');
+      expect(sessionManager.set).toHaveBeenCalledWith(
+        req,
+        'tenantId',
+        'globex'
+      );
+    });
+
     it('extracts tenant from subdomain (second priority)', async () => {
       const configManager = createMockConfigManager();
       const middleware = new TenantContextMiddleware(
@@ -279,6 +307,59 @@ describe('TenantContextMiddleware', () => {
   });
 
   describe('production fallback safety', () => {
+    it('uses the session tenant when header and subdomain sources are absent', async () => {
+      const configManager = createMockConfigManager({
+        environment: 'production',
+      });
+      tenantRepo = createMockTenantRepo(
+        new Map([['acme', makeTenant('acme')]])
+      );
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({
+        session: { tenantId: 'acme' },
+        headers: {},
+        hostname: 'parako.id',
+      });
+      const next: NextFunction = vi.fn();
+
+      await middleware.handler(req, createMockRes(), next);
+
+      expect(tenantRepo.findBySlug).toHaveBeenCalledWith('acme');
+      expect(sessionManager.set).toHaveBeenCalledWith(req, 'tenantId', 'acme');
+      expect(next).toHaveBeenCalledOnce();
+    });
+
+    it('does not restore the stateless _ops tenant from a session', async () => {
+      const configManager = createMockConfigManager({
+        environment: 'production',
+      });
+      tenantRepo = createMockTenantRepo();
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({
+        session: { tenantId: '_ops' },
+        headers: {},
+        hostname: 'parako.id',
+      });
+      const res = createMockRes();
+      const next: NextFunction = vi.fn();
+
+      await middleware.handler(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
     it('rejects with 400 in production when no tenant is identified', async () => {
       const configManager = createMockConfigManager({
         environment: 'production',
@@ -384,6 +465,7 @@ describe('TenantContextMiddleware', () => {
       );
 
       const req = createMockReq({
+        session: { tenantId: 'acme' },
         headers: { 'x-tenant-id': '<script>alert(1)</script>' },
       });
       const res = createMockRes();
@@ -398,6 +480,7 @@ describe('TenantContextMiddleware', () => {
       expect(next).not.toHaveBeenCalled();
       // Must NOT reach the database
       expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
+      expect(sessionManager.clearAuthenticationData).not.toHaveBeenCalled();
     });
 
     it('rejects path traversal attempt with 400', async () => {
@@ -808,6 +891,35 @@ describe('TenantContextMiddleware', () => {
   });
 
   describe('subdomain-session mismatch validation', () => {
+    it('clears stale auth when a header selects a different tenant', async () => {
+      const tenants = new Map([
+        ['acme', makeTenant('acme')],
+        ['globex', makeTenant('globex')],
+      ]);
+      tenantRepo = createMockTenantRepo(tenants);
+      const configManager = createMockConfigManager();
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({
+        session: { tenantId: 'acme' },
+        headers: { 'x-tenant-id': 'globex' },
+        hostname: 'localhost',
+      });
+      let capturedTenantId: string | undefined;
+      const next: NextFunction = vi.fn(() => {
+        capturedTenantId = tenantContext.getTenantId();
+      });
+
+      await middleware.handler(req, createMockRes(), next);
+
+      expect(sessionManager.clearAuthenticationData).toHaveBeenCalledWith(req);
+      expect(capturedTenantId).toBe('globex');
+    });
+
     it('clears auth and uses subdomain when session tenant differs from subdomain', async () => {
       const tenants = new Map([
         ['acme', makeTenant('acme')],

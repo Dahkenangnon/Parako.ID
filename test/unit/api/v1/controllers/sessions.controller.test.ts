@@ -343,6 +343,73 @@ describe('api/v1/controllers/SessionsController', () => {
       expect(jsonCall.data.revoked_count).toBe(0);
     });
 
+    it('honors both username and client_id instead of revoking every account session', async () => {
+      vi.mocked(deps.oidcAdapter.session.findAll!).mockResolvedValue([
+        { jti: 'matching-session' },
+      ]);
+
+      const req = createMockRequest({
+        query: { client_id: 'my-client', username: 'janedoe' },
+      });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controller.bulkRevoke(req, res, next);
+
+      expect(deps.oidcAdapter.session.revokeByAccountId).not.toHaveBeenCalled();
+      expect(deps.oidcAdapter.session.findAll).toHaveBeenCalledWith({
+        accountId: 'janedoe',
+        clientId: 'my-client',
+      });
+      expect(deps.oidcAdapter.session.destroy).toHaveBeenCalledWith(
+        'matching-session'
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('skips malformed adapter rows without a session identifier', async () => {
+      const depsWithout = createMockDeps();
+      delete (depsWithout.oidcAdapter.session as any).revokeByAccountId;
+      const controllerWithout = new SessionsController(depsWithout);
+      vi.mocked(depsWithout.oidcAdapter.session.findAll!).mockResolvedValue([
+        {},
+        { id: null, jti: '' },
+        { id: 123 },
+      ]);
+
+      const res = createMockResponse();
+      await controllerWithout.bulkRevoke(
+        createMockRequest({ query: { client_id: 'my-client' } }),
+        res,
+        createMockNext()
+      );
+
+      expect(depsWithout.oidcAdapter.session.destroy).toHaveBeenCalledOnce();
+      expect(depsWithout.oidcAdapter.session.destroy).toHaveBeenCalledWith(
+        '123'
+      );
+      expect(vi.mocked(res.json).mock.calls[0][0].data.revoked_count).toBe(1);
+    });
+
+    it('returns a non-destructive zero result when no optional bulk method exists', async () => {
+      const depsWithout = createMockDeps();
+      delete (depsWithout.oidcAdapter.session as any).findAll;
+      delete (depsWithout.oidcAdapter.session as any).revokeByAccountId;
+      const controllerWithout = new SessionsController(depsWithout);
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controllerWithout.bulkRevoke(
+        createMockRequest({ query: { client_id: 'my-client' } }),
+        res,
+        next
+      );
+
+      expect(depsWithout.oidcAdapter.session.destroy).not.toHaveBeenCalled();
+      expect(vi.mocked(res.json).mock.calls[0][0].data.revoked_count).toBe(0);
+      expect(next).not.toHaveBeenCalled();
+    });
+
     it('should log bulk revocation', async () => {
       vi.mocked(deps.oidcAdapter.session.revokeByAccountId!).mockResolvedValue(
         3

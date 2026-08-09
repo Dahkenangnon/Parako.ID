@@ -216,6 +216,25 @@ describe('AdminJwksController', () => {
       );
     });
 
+    it('renders safe key-store defaults when optional config is absent', async () => {
+      deps.configManager.getConfig.mockReturnValue({});
+      const res = createMockRes();
+
+      await controller.list(createMockReq(), res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/jwks/index',
+        expect.objectContaining({
+          keyStoreConfig: {
+            type: 'database',
+            algorithms: ['RS256'],
+            rotation_interval_days: 90,
+            overlap_window_seconds: 86400,
+          },
+        })
+      );
+    });
+
     it('should sort keys by createdAt descending', async () => {
       const older = createMockKey({
         kid: 'old',
@@ -236,6 +255,19 @@ describe('AdminJwksController', () => {
       const renderedKeys = renderCall[1].keys;
       expect(renderedKeys[0].kid).toBe('new');
       expect(renderedKeys[1].kid).toBe('old');
+    });
+
+    it('never passes private key material to the list view', async () => {
+      const storedKey = createMockKey();
+      deps.keyStore.listKeys.mockResolvedValue([storedKey]);
+      const res = createMockRes();
+
+      await controller.list(createMockReq(), res);
+
+      const renderedKey = (res.render as any).mock.calls[0][1].keys[0];
+      expect(renderedKey).not.toHaveProperty('privateKey');
+      expect(renderedKey.publicKey).toEqual(storedKey.publicKey);
+      expect(storedKey).toHaveProperty('privateKey');
     });
 
     it('propagates errors to the global error handler', async () => {
@@ -263,10 +295,29 @@ describe('AdminJwksController', () => {
       expect(res.render).toHaveBeenCalledWith(
         'admin/jwks/show',
         expect.objectContaining({
-          key,
+          key: expect.objectContaining({
+            kid: 'target-kid',
+            publicKey: key.publicKey,
+          }),
           publicJwk: JSON.stringify(key.publicKey, null, 2),
         })
       );
+    });
+
+    it('never passes private key material to the detail view', async () => {
+      const storedKey = createMockKey({ kid: 'target-kid' });
+      deps.keyStore.listKeys.mockResolvedValue([storedKey]);
+      const res = createMockRes();
+
+      await controller.show(
+        createMockReq({ params: { kid: 'target-kid' } }),
+        res
+      );
+
+      const renderedKey = (res.render as any).mock.calls[0][1].key;
+      expect(renderedKey).not.toHaveProperty('privateKey');
+      expect(renderedKey.publicKey).toEqual(storedKey.publicKey);
+      expect(storedKey).toHaveProperty('privateKey');
     });
 
     it('flashes "Key not found" and redirects when the key is missing', async () => {
@@ -378,6 +429,36 @@ describe('AdminJwksController', () => {
       expect(deps.pubsub.publish).not.toHaveBeenCalled();
       expect(deps.flashChain.success).toHaveBeenCalled();
     });
+
+    it.each([
+      [new Error('redis unavailable'), 'redis unavailable'],
+      ['connection closed', 'connection closed'],
+    ])(
+      'completes rotation and logs a Pub/Sub rejection %#',
+      async (rejection, expectedMessage) => {
+        deps.configManager.getConfig.mockReturnValue({});
+        deps.pubsub.publish.mockRejectedValue(rejection);
+        const res = createMockRes();
+
+        await controller.rotate(createMockReq(), res);
+        await Promise.resolve();
+
+        expect(deps.pubsub.publish).toHaveBeenCalledWith(
+          'parako:test-tenant:jwks:rotated',
+          expect.objectContaining({ tenantId: 'test-tenant' })
+        );
+        expect(deps.logger.warn).toHaveBeenCalledWith(
+          `Failed to publish JWKS rotated event: ${expectedMessage}`,
+          {
+            context: 'jwks_pubsub_publish_failed',
+            phase: 'rotated',
+            tenantId: 'test-tenant',
+          }
+        );
+        expect(deps.flashChain.success).toHaveBeenCalled();
+        expect(res.redirect).toHaveBeenCalledWith('/admin/jwks');
+      }
+    );
 
     it('should always run both phases synchronously (even with promotion_delay_ms > 0)', async () => {
       // Admin panel always runs immediate mode — BullMQ handles delayed promotion

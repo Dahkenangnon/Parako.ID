@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolveSqliteDatabasePath } from '../../../src/db/prisma.js';
 
 describe('resolveSqliteDatabasePath', () => {
@@ -18,5 +18,22 @@ describe('resolveSqliteDatabasePath', () => {
     expect(
       resolveSqliteDatabasePath('/var/lib/parako/parako.db', '/srv/parako')
     ).toBe('/var/lib/parako/parako.db');
+  });
+
+  it('falls back to the current working directory without PARAKO_ROOT', () => {
+    const previousRoot = process.env.PARAKO_ROOT;
+    delete process.env.PARAKO_ROOT;
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue('/workspace/parako');
+
+    try {
+      expect(resolveSqliteDatabasePath('./data/parako.db')).toBe(
+        '/workspace/parako/data/parako.db'
+      );
+      expect(cwd).toHaveBeenCalledOnce();
+    } finally {
+      cwd.mockRestore();
+      if (previousRoot === undefined) delete process.env.PARAKO_ROOT;
+      else process.env.PARAKO_ROOT = previousRoot;
+    }
   });
 });

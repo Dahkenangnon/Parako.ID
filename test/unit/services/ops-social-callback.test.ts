@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { OpsSocialCallbackService } from '../../../src/services/ops-social-callback.service.js';
 import { createHmacState } from '../../../src/utils/hmac-state.js';
 
+// gitleaks:allow -- deterministic unit-test HMAC fixture.
 const TEST_SECRET = 'ops-test-secret-32-chars-long!!';
 const TEST_BASE_DOMAIN = 'parako.id';
 
@@ -9,7 +10,12 @@ function makeMockRedis() {
   const store = new Map<string, string>();
   return {
     set: vi.fn(
-      async (key: string, value: string, _mode?: string, _ttl?: number) => {
+      async (
+        key: string,
+        value: string,
+        _mode?: string,
+        _ttl?: number
+      ): Promise<'OK' | null> => {
         store.set(key, value);
         return 'OK';
       }
@@ -32,11 +38,13 @@ function makeMockLogger() {
   };
 }
 
-function makeMockConfigManager() {
+function makeMockConfigManager(
+  deploymentUrl: string = `https://${TEST_BASE_DOMAIN}`
+) {
   return {
     getConfig: vi.fn(() => ({
       deployment: {
-        url: `https://${TEST_BASE_DOMAIN}`,
+        url: deploymentUrl,
       },
       security: {
         secrets: {
@@ -47,10 +55,10 @@ function makeMockConfigManager() {
   };
 }
 
-function makeService() {
+function makeService(deploymentUrl?: string) {
   const redis = makeMockRedis();
   const logger = makeMockLogger();
-  const configManager = makeMockConfigManager();
+  const configManager = makeMockConfigManager(deploymentUrl);
 
   const service = new OpsSocialCallbackService(
     logger as any,
@@ -195,6 +203,77 @@ describe('OpsSocialCallbackService', () => {
       expect(storedData.provider).toBe('google');
       expect(storedData.code).toBe('auth-code-xyz');
       expect(storedData.tenant_id).toBe('acme');
+      expect(storedData.timestamp).toBe(Date.now());
+    });
+
+    it('normalizes safe tenant and provider slugs before storage and redirect', async () => {
+      const { service, redis } = makeService();
+      const state = createHmacState(
+        { tenant_id: '  Acme  ', nonce: 'n1', timestamp: Date.now() },
+        TEST_SECRET
+      );
+
+      const result = await service.handleCallback(
+        '  GitHub  ',
+        'auth-code-123',
+        state
+      );
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.redirectUrl.hostname).toBe('acme.parako.id');
+        expect(result.redirectUrl.pathname).toBe(
+          '/auth/social/github/complete'
+        );
+      }
+      expect(JSON.parse(redis.set.mock.calls[0][1])).toMatchObject({
+        provider: 'github',
+        tenant_id: 'acme',
+      });
+    });
+
+    it.each(['', '['])(
+      'rejects invalid deployment URL %j before storing the authorization code',
+      async deploymentUrl => {
+        const { service, redis, logger } = makeService(deploymentUrl);
+        const state = createHmacState(
+          { tenant_id: 'acme', nonce: 'n1', timestamp: Date.now() },
+          TEST_SECRET
+        );
+
+        await expect(
+          service.handleCallback('google', 'sensitive-code', state)
+        ).resolves.toEqual({
+          success: false,
+          error: 'Service misconfigured',
+        });
+        expect(redis.set).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledWith(
+          'ops_social_callback_invalid_base_domain',
+          { deploymentUrl }
+        );
+      }
+    );
+
+    it('does not redirect when Redis does not acknowledge the callback write', async () => {
+      const { service, redis, logger } = makeService();
+      redis.set.mockResolvedValueOnce(null);
+      const state = createHmacState(
+        { tenant_id: 'acme', nonce: 'n1', timestamp: Date.now() },
+        TEST_SECRET
+      );
+
+      await expect(
+        service.handleCallback('google', 'auth-code-123', state)
+      ).resolves.toEqual({ success: false, error: 'Service unavailable' });
+      expect(logger.error).toHaveBeenCalledWith(
+        'ops_social_callback_store_failed',
+        expect.objectContaining({ provider: 'google', tenant_id: 'acme' })
+      );
+      expect(logger.info).not.toHaveBeenCalledWith(
+        'ops_social_callback_redirect',
+        expect.any(Object)
+      );
     });
 
     it('returns error when Redis is not bound (null)', async () => {

@@ -8,13 +8,16 @@ import { ApiError } from '../../../../../src/api/v1/errors.js';
 // Helpers
 
 function createMockDeps(): JwksControllerDeps {
+  const keyStore = {
+    listKeys: vi.fn().mockResolvedValue([]),
+    rotate: vi.fn().mockResolvedValue(undefined),
+    promoteKeys: vi.fn().mockResolvedValue(0),
+    retireExpiredKeys: vi.fn().mockResolvedValue(0),
+    retireKey: vi.fn().mockResolvedValue(true),
+  };
+
   return {
-    keyStore: {
-      listKeys: vi.fn().mockResolvedValue([]),
-      rotate: vi.fn().mockResolvedValue(undefined),
-      promoteKeys: vi.fn().mockResolvedValue(0),
-      retireExpiredKeys: vi.fn().mockResolvedValue(0),
-    },
+    keyStore,
     getTenantId: vi.fn().mockReturnValue('default'),
     redisPubSub: {
       publish: vi.fn().mockResolvedValue(undefined),
@@ -377,7 +380,51 @@ describe('api/v1/controllers/JwksController', () => {
 
   // retire
   describe('retire()', () => {
-    it('should verify the key exists and return 202 accepted for an active key', async () => {
+    it('should persist retirement for the tenant before returning 202', async () => {
+      vi.mocked(deps.keyStore.listKeys).mockResolvedValue([
+        { ...sampleKey },
+        { ...sampleKey, kid: 'key-004' },
+      ]);
+
+      const req = createMockRequest({ params: { kid: 'key-001' } });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controller.retire(req, res, next);
+
+      expect((deps.keyStore as any).retireKey).toHaveBeenCalledWith(
+        'key-001',
+        'default'
+      );
+      expect(res.status).toHaveBeenCalledWith(202);
+
+      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
+      expect(jsonCall.data.kid).toBe('key-001');
+      expect(jsonCall.data.current_status).toBe('active');
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should not report success when storage cannot retire the key', async () => {
+      vi.mocked(deps.keyStore.listKeys).mockResolvedValue([
+        { ...sampleKey },
+        { ...sampleKey, kid: 'key-004' },
+      ]);
+      vi.mocked((deps.keyStore as any).retireKey).mockResolvedValue(false);
+
+      const req = createMockRequest({ params: { kid: 'key-001' } });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      await controller.retire(req, res, next);
+
+      expect(res.status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(ApiError));
+      expect(
+        (vi.mocked(next).mock.calls[0][0] as unknown as ApiError).status
+      ).toBe(409);
+    });
+
+    it('should refuse to retire the last promoted active signing key', async () => {
       vi.mocked(deps.keyStore.listKeys).mockResolvedValue([{ ...sampleKey }]);
 
       const req = createMockRequest({ params: { kid: 'key-001' } });
@@ -386,15 +433,18 @@ describe('api/v1/controllers/JwksController', () => {
 
       await controller.retire(req, res, next);
 
-      expect(res.status).toHaveBeenCalledWith(202);
-
-      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
-      expect(jsonCall.data.kid).toBe('key-001');
-      expect(jsonCall.data.current_status).toBe('active');
+      expect((deps.keyStore as any).retireKey).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.any(ApiError));
+      expect(
+        (vi.mocked(next).mock.calls[0][0] as unknown as ApiError).status
+      ).toBe(409);
     });
 
     it('should log the retirement request', async () => {
-      vi.mocked(deps.keyStore.listKeys).mockResolvedValue([{ ...sampleKey }]);
+      vi.mocked(deps.keyStore.listKeys).mockResolvedValue([
+        { ...sampleKey },
+        { ...sampleKey, kid: 'key-004' },
+      ]);
 
       const req = createMockRequest({ params: { kid: 'key-001' } });
       const res = createMockResponse();
@@ -403,7 +453,7 @@ describe('api/v1/controllers/JwksController', () => {
       await controller.retire(req, res, next);
 
       expect(deps.logger.info).toHaveBeenCalledWith(
-        'Key marked for retirement via API',
+        'Key retired via API',
         expect.objectContaining({ kid: 'key-001', currentStatus: 'active' })
       );
     });

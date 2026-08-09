@@ -129,6 +129,36 @@ describe('api/v1/pagination', () => {
         expect((err as ApiError).detail).toContain('not a JSON object');
       }
     });
+
+    it('should reject an empty cursor object', () => {
+      const cursor = Buffer.from(JSON.stringify({}), 'utf-8').toString(
+        'base64url'
+      );
+
+      expect(() => decodeCursor(cursor)).toThrow(ApiError);
+
+      try {
+        decodeCursor(cursor);
+      } catch (err) {
+        expect((err as ApiError).status).toBe(422);
+        expect((err as ApiError).detail).toContain('field');
+      }
+    });
+
+    it('should reject cursor fields with non-string values', () => {
+      const cursor = Buffer.from(JSON.stringify({ id: 42 }), 'utf-8').toString(
+        'base64url'
+      );
+
+      expect(() => decodeCursor(cursor)).toThrow(ApiError);
+
+      try {
+        decodeCursor(cursor);
+      } catch (err) {
+        expect((err as ApiError).status).toBe(422);
+        expect((err as ApiError).detail).toContain('string');
+      }
+    });
   });
 
   describe('round-trip', () => {
@@ -182,6 +212,13 @@ describe('api/v1/pagination', () => {
       expect(result).toEqual({ _id: { $lt: 'abc123' } });
     });
 
+    it('should reject a simple cursor without an id field', () => {
+      const cursor = encodeCursor({ unrelated: 'value' });
+
+      expect(() => buildCursorQuery(cursor, 'id', 'asc')).toThrow(ApiError);
+      expect(() => buildCursorQuery(cursor, '_id', 'asc')).toThrow(ApiError);
+    });
+
     it('should build separate range filters for non-id sort field (desc)', () => {
       const cursor = encodeCursor({
         timestamp: '2024-01-15T10:30:00Z',
@@ -208,6 +245,18 @@ describe('api/v1/pagination', () => {
         name: { $gt: 'alpha' },
         id: { $gt: 'ghi789' },
       });
+    });
+
+    it('should reject a compound cursor without its sort field', () => {
+      const cursor = encodeCursor({ id: 'ghi789' });
+
+      expect(() => buildCursorQuery(cursor, 'name', 'asc')).toThrow(ApiError);
+    });
+
+    it('should reject a compound cursor without its stable id field', () => {
+      const cursor = encodeCursor({ name: 'alpha' });
+
+      expect(() => buildCursorQuery(cursor, 'name', 'asc')).toThrow(ApiError);
     });
   });
 
@@ -371,6 +420,14 @@ describe('api/v1/pagination', () => {
       const result = buildCursorQuery(cursor, 'id', 'asc');
       // Should extract from fields._id since fields.id is undefined
       expect(result.id).toBeDefined();
+    });
+
+    it('should use an id cursor with an explicit legacy _id sort field', () => {
+      const cursor = encodeCursor({ id: 'current-id' });
+
+      expect(buildCursorQuery(cursor, '_id', 'asc')).toEqual({
+        _id: { $gt: 'current-id' },
+      });
     });
   });
 

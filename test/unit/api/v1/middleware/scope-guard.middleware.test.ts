@@ -36,6 +36,22 @@ function createMockResponse() {
 // Tests
 
 describe('api/v1/middleware/scope-guard', () => {
+  describe('guard configuration', () => {
+    it.each([
+      { label: 'no scopes', scopes: [] },
+      { label: 'an empty scope', scopes: [''] },
+      { label: 'a whitespace-only scope', scopes: ['   '] },
+      {
+        label: 'an empty scope among valid scopes',
+        scopes: ['parako:users:read', ''],
+      },
+    ])('rejects $label when the middleware is created', ({ scopes }) => {
+      expect(() => requireScope(...scopes)).toThrow(
+        new TypeError('requireScope requires at least one non-empty scope')
+      );
+    });
+  });
+
   // 1. Calls next() when required scope is present
   describe('single required scope present', () => {
     it('should call next() when the required scope is present in req.apiAuth.scope', () => {
@@ -148,6 +164,7 @@ describe('api/v1/middleware/scope-guard', () => {
         expect(apiError.status).toBe(403);
         expect(apiError.type).toBe(ERROR_TYPES.SCOPE_INSUFFICIENT);
         expect(apiError.detail).toBe('No authentication context');
+        expect(apiError.instance).toBe('/api/v1/test');
       }
 
       expect(next).not.toHaveBeenCalled();

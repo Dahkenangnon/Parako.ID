@@ -4,6 +4,7 @@ import {
   apiSuccess,
   apiCreated,
   apiList,
+  apiAccepted,
   apiNoContent,
 } from '../../../../src/api/v1/response.js';
 import type { CursorPage } from '../../../../src/api/v1/types.js';
@@ -117,6 +118,18 @@ describe('api/v1/response', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       const jsonArg = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(jsonArg.pagination).not.toHaveProperty('total_count');
+    });
+  });
+
+  describe('apiAccepted()', () => {
+    it('should call res.status(202).json({ data })', () => {
+      const res = createMockResponse();
+      const payload = { rotation_id: 'rotation-123' };
+
+      apiAccepted(res, payload);
+
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(res.json).toHaveBeenCalledWith({ data: payload });
     });
   });
 

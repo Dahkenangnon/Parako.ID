@@ -77,6 +77,24 @@ describe('security.key_store schema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('should reject an empty signing-algorithm list', () => {
+    const config = structuredClone(getDefaultFullConfig());
+    (config as any).security.key_store = { algorithms: [] };
+
+    const result = AppConfigSchema.safeParse(config);
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: 'At least one signing algorithm is required',
+          path: ['security', 'key_store', 'algorithms'],
+        }),
+      ])
+    );
+  });
+
   it('should accept custom promotion_delay_ms', () => {
     const config = structuredClone(getDefaultFullConfig());
     (config as any).security.key_store = { promotion_delay_ms: 5000 };

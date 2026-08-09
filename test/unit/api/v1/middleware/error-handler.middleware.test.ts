@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
 
 import {
   createApiErrorHandler,
@@ -11,8 +12,9 @@ import {
 
 // Helpers
 
-function createMockResponse() {
+function createMockResponse(headersSent = false) {
   const res: Record<string, unknown> = {
+    headersSent,
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     setHeader: vi.fn().mockReturnThis(),
@@ -44,6 +46,27 @@ function createDeps(
 
 describe('api/v1/middleware/error-handler', () => {
   const next = vi.fn();
+
+  describe('committed responses', () => {
+    it('delegates the original error when response headers were already sent', () => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const err = new Error('stream failed');
+      const req = createMockRequest('/api/v1/export');
+      const res = createMockResponse(true);
+      const nextAfterHeaders = vi.fn();
+
+      handler(err, req, res as any, nextAfterHeaders);
+
+      expect(nextAfterHeaders).toHaveBeenCalledOnce();
+      expect(nextAfterHeaders).toHaveBeenCalledWith(err);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+      expect(deps.logger.error).not.toHaveBeenCalled();
+      expect(deps.logger.warn).not.toHaveBeenCalled();
+    });
+  });
 
   // 1. ApiError — serialises with correct status, type, Content-Type
   describe('ApiError', () => {
@@ -102,6 +125,19 @@ describe('api/v1/middleware/error-handler', () => {
       expect(body.instance).toBe('/custom/instance');
     });
 
+    it('preserves an explicitly empty instance URI-reference', () => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const err = notFound('Not found', '');
+      const req = createMockRequest('/api/v1/users/123');
+      const res = createMockResponse();
+
+      handler(err, req, res as any, next);
+
+      const body = (res.json as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(body.instance).toBe('');
+    });
+
     // 4. 5xx errors call logger.error
     it('should call logger.error for 5xx errors', () => {
       const deps = createDeps();
@@ -150,16 +186,20 @@ describe('api/v1/middleware/error-handler', () => {
       const deps = createDeps();
       const handler = createApiErrorHandler(deps);
 
-      const zodError = {
-        issues: [
-          { path: ['body', 'email'], message: 'Invalid email' },
-          { path: ['body', 'name'], message: 'Required' },
-        ],
-      };
+      const result = z
+        .object({
+          body: z.object({
+            email: z.email(),
+            name: z.string().min(1),
+          }),
+        })
+        .safeParse({ body: { email: 'not-an-email', name: '' } });
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('expected invalid test input');
       const req = createMockRequest('/api/v1/users');
       const res = createMockResponse();
 
-      handler(zodError as any, req, res as any, next);
+      handler(result.error, req, res as any, next);
 
       expect(res.status).toHaveBeenCalledWith(422);
       expect(res.setHeader).toHaveBeenCalledWith(
@@ -174,9 +214,46 @@ describe('api/v1/middleware/error-handler', () => {
           detail: 'Request validation failed',
           instance: '/api/v1/users',
           errors: [
-            { field: 'body.email', message: 'Invalid email' },
-            { field: 'body.name', message: 'Required' },
+            expect.objectContaining({ field: 'body.email' }),
+            expect.objectContaining({ field: 'body.name' }),
           ],
+        })
+      );
+    });
+
+    it('labels a schema-level issue as the root field', () => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const result = z.string().safeParse(42);
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error('expected invalid test input');
+      const req = createMockRequest('/api/v1/users');
+      const res = createMockResponse();
+
+      handler(result.error, req, res as any, next);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          errors: [expect.objectContaining({ field: '(root)' })],
+        })
+      );
+    });
+
+    it('does not trust an arbitrary object that only resembles a Zod error', () => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const spoofedError = { issues: [{ message: 'spoofed validation' }] };
+      const req = createMockRequest('/api/v1/users');
+      const res = createMockResponse();
+
+      expect(() =>
+        handler(spoofedError as any, req, res as any, next)
+      ).not.toThrow();
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'urn:parako:error:internal',
+          status: 500,
         })
       );
     });
@@ -208,6 +285,59 @@ describe('api/v1/middleware/error-handler', () => {
           instance: '/api/v1/clients',
         })
       );
+    });
+  });
+
+  describe('database uniqueness conflicts', () => {
+    it.each([
+      { adapter: 'Prisma', code: 'P2002' },
+      { adapter: 'PostgreSQL', code: '23505' },
+      { adapter: 'SQLite UNIQUE', code: 'SQLITE_CONSTRAINT_UNIQUE' },
+      {
+        adapter: 'SQLite PRIMARY KEY',
+        code: 'SQLITE_CONSTRAINT_PRIMARYKEY',
+      },
+    ])('returns 409 for $adapter code $code', ({ code }) => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const req = createMockRequest('/api/v1/clients');
+      const res = createMockResponse();
+
+      handler({ code } as any, req, res as any, next);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'urn:parako:error:conflict',
+          status: 409,
+          instance: '/api/v1/clients',
+        })
+      );
+      expect(deps.logger.warn).toHaveBeenCalledWith('API conflict error', {
+        path: '/api/v1/clients',
+      });
+    });
+
+    it('does not classify an arbitrary error by message text alone', () => {
+      const deps = createDeps();
+      const handler = createApiErrorHandler(deps);
+      const err = new Error('Unique constraint cache metadata is unavailable');
+      const req = createMockRequest('/api/v1/clients');
+      const res = createMockResponse();
+
+      handler(err, req, res as any, next);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'urn:parako:error:internal',
+          status: 500,
+        })
+      );
+      expect(deps.logger.error).toHaveBeenCalledWith(err, {
+        path: '/api/v1/clients',
+        context: 'unhandled_api_error',
+      });
     });
   });
 

@@ -5,7 +5,7 @@ import {
   encryptJWK,
   decryptJWK,
   isEncryptedJWK,
-} from '../../../src/utils/key-encryption';
+} from '../../../src/utils/key-encryption.js';
 
 describe('key-encryption', () => {
   const testSecret =
@@ -38,6 +38,15 @@ describe('key-encryption', () => {
 
     it('should throw if secret is empty', () => {
       expect(() => deriveKeyFromSecret('')).toThrow('at least 32 characters');
+    });
+
+    it.each([
+      ['a non-string value', Array.from({ length: 32 }, () => 'x')],
+      ['a whitespace-only value', ' '.repeat(32)],
+    ])('rejects %s', (_description, secret) => {
+      expect(() => deriveKeyFromSecret(secret as never)).toThrow(
+        'Secret must be a non-whitespace string of at least 32 characters'
+      );
     });
   });
 

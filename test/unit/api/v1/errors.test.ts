@@ -84,6 +84,21 @@ describe('api/v1/errors', () => {
       expect(err.extensions).toEqual({ retry_after: 60 });
     });
 
+    it('preserves prototype-named extensions as data properties', () => {
+      const problem = JSON.parse(
+        '{"type":"urn:test","title":"Test","status":400,"detail":"Bad","__proto__":{"polluted":true}}'
+      );
+
+      const err = new ApiError(problem);
+      const json = err.toJSON();
+
+      expect(Object.hasOwn(err.extensions, '__proto__')).toBe(true);
+      expect(Object.hasOwn(json, '__proto__')).toBe(true);
+      expect(json.__proto__).toEqual({ polluted: true });
+      expect(Object.getPrototypeOf(json)).toBe(Object.prototype);
+      expect(Object.prototype).not.toHaveProperty('polluted');
+    });
+
     describe('toJSON()', () => {
       it('should return a valid ProblemDetail object', () => {
         const err = new ApiError({
@@ -142,6 +157,10 @@ describe('api/v1/errors', () => {
 
   // ERROR_TYPES constant
   describe('ERROR_TYPES', () => {
+    it('is immutable at runtime', () => {
+      expect(Object.isFrozen(ERROR_TYPES)).toBe(true);
+    });
+
     it('should contain all 14 URN strings', () => {
       const keys = Object.keys(ERROR_TYPES);
       expect(keys).toHaveLength(14);

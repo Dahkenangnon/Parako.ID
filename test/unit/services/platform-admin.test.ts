@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
 /**
  * Tests for PlatformAdminService
@@ -328,6 +329,19 @@ describe('PlatformAdminService', () => {
         configManager as any,
         activityService as any
       );
+      userService.findWithPagination.mockImplementation(async () => {
+        expect(tenantContext.getTenantId()).toBe('acme');
+        return {
+          results: [
+            { _id: 'u1', username: 'alice', email: 'alice@acme.com' },
+            { _id: 'u2', username: 'bob', email: 'bob@acme.com' },
+          ],
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          totalResults: 2,
+        };
+      });
 
       const result = await service.listTenantUsers('acme', {
         page: 1,
@@ -336,6 +350,10 @@ describe('PlatformAdminService', () => {
 
       expect(result.results).toHaveLength(2);
       expect(result.totalResults).toBe(2);
+      expect(userService.findWithPagination).toHaveBeenCalledWith(
+        {},
+        { page: 1, limit: 20 }
+      );
     });
 
     it('throws when tenant does not exist', async () => {
@@ -352,6 +370,63 @@ describe('PlatformAdminService', () => {
       await expect(
         service.listTenantUsers('nonexistent', { page: 1, limit: 20 })
       ).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('updateTenant', () => {
+    it('updates mutable tenant details and records the complete audit context', async () => {
+      const { PlatformAdminService } =
+        await import('../../../src/services/platform-admin.service.js');
+      const service = new PlatformAdminService(
+        logger as any,
+        tenantRepo as any,
+        userService as any,
+        configManager as any,
+        activityService as any
+      );
+      const update = {
+        display_name: 'Acme International',
+        domain: 'login.acme.test',
+      };
+
+      const result = await service.updateTenant('acme', update);
+
+      expect(tenantRepo.update).toHaveBeenCalledWith('t1', update);
+      expect(result).toEqual({ _id: 't1', ...update });
+      expect(logger.info).toHaveBeenCalledWith('platform_tenant_updated', {
+        slug: 'acme',
+        ...update,
+      });
+      expect(activityService.info).toHaveBeenCalledWith(
+        'platform_tenant_updated',
+        "Updated tenant 'acme'",
+        null,
+        {
+          target: {
+            target_type: 'system',
+            entity_data: { slug: 'acme', ...update },
+          },
+        }
+      );
+    });
+
+    it('rejects a missing tenant without writing or logging success', async () => {
+      const { PlatformAdminService } =
+        await import('../../../src/services/platform-admin.service.js');
+      const service = new PlatformAdminService(
+        logger as any,
+        tenantRepo as any,
+        userService as any,
+        configManager as any,
+        activityService as any
+      );
+
+      await expect(
+        service.updateTenant('missing', { display_name: 'Missing' })
+      ).rejects.toThrow("Tenant 'missing' not found");
+      expect(tenantRepo.update).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(activityService.info).not.toHaveBeenCalled();
     });
   });
 

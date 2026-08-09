@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -9,17 +9,27 @@ import {
   validateHtmlQuery,
 } from '../../../src/middlewares/validate-html.middleware.js';
 
-type FlashErrorSpy = ReturnType<typeof vi.fn>;
+type FlashErrorSpy = Mock<(message: string) => unknown>;
+type LoggerSpy = Mock<
+  (message: string, context?: Record<string, unknown>) => void
+>;
 
 function buildDeps(): {
   sessionManager: { flash: (req: Request) => { error: FlashErrorSpy } };
-  logger: { info: FlashErrorSpy; warn: FlashErrorSpy };
+  logger: { info: LoggerSpy; warn: LoggerSpy };
   flashError: FlashErrorSpy;
 } {
-  const flashError = vi.fn();
+  const flashError = vi.fn<(message: string) => unknown>();
   return {
     sessionManager: { flash: () => ({ error: flashError }) },
-    logger: { info: vi.fn(), warn: vi.fn() },
+    logger: {
+      info: vi.fn<
+        (message: string, context?: Record<string, unknown>) => void
+      >(),
+      warn: vi.fn<
+        (message: string, context?: Record<string, unknown>) => void
+      >(),
+    },
     flashError,
   };
 }
@@ -61,6 +71,31 @@ describe('validateHtmlQuery', () => {
     expect(req.query).toEqual({ page: 5 });
     expect(next).toHaveBeenCalledOnce();
     expect(next).toHaveBeenCalledWith();
+  });
+
+  it('replaces an inherited getter-only req.query exposed by Express 5', () => {
+    const prototype = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(prototype, 'query', {
+      configurable: true,
+      get: () => ({ page: '5', extraField: 'dropped' }),
+    });
+    const req = Object.assign(Object.create(prototype) as Request, {
+      body: {},
+      params: {},
+      originalUrl: '/somewhere?page=5',
+      method: 'GET',
+    });
+    const next = vi.fn();
+
+    validateHtmlQuery(z.object({ page: z.coerce.number().int().min(1) }), deps)(
+      req,
+      buildRes(),
+      next
+    );
+
+    expect(Object.hasOwn(req, 'query')).toBe(true);
+    expect(req.query).toEqual({ page: 5 });
+    expect(next).toHaveBeenCalledOnce();
   });
 
   it('on failure: flashes a GENERIC message (never leaks field paths)', () => {
@@ -170,6 +205,22 @@ describe('validateHtmlBody', () => {
 
     expect(res.redirectSpy).toHaveBeenCalledWith('/admin/users/abc-123/edit');
   });
+
+  it('fails closed before flashing or redirecting when the function returns an external URL', () => {
+    const schema = z.object({ email: z.email() });
+    const req = buildReq({ body: { email: 'nope' } });
+    const res = buildRes();
+
+    expect(() =>
+      validateHtmlBody(schema, deps, () => 'https://attacker.example')(
+        req,
+        res,
+        vi.fn()
+      )
+    ).toThrow('refusing to redirect to non-same-origin path');
+    expect(deps.flashError).not.toHaveBeenCalled();
+    expect(res.redirectSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('validateHtmlParams', () => {
@@ -182,6 +233,31 @@ describe('validateHtmlParams', () => {
     validateHtmlParams(schema, deps, '/')(req, buildRes(), next);
 
     expect(req.params).toEqual({ provider: 'google' });
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('replaces an inherited getter-only req.params value', () => {
+    const prototype = Object.create(null) as Record<string, unknown>;
+    Object.defineProperty(prototype, 'params', {
+      configurable: true,
+      get: () => ({ provider: 'github', extraField: 'dropped' }),
+    });
+    const req = Object.assign(Object.create(prototype) as Request, {
+      query: {},
+      body: {},
+      originalUrl: '/social/github/callback',
+      method: 'GET',
+    });
+    const next = vi.fn();
+
+    validateHtmlParams(
+      z.object({ provider: z.enum(['google', 'github']) }),
+      buildDeps(),
+      '/'
+    )(req, buildRes(), next);
+
+    expect(Object.hasOwn(req, 'params')).toBe(true);
+    expect(req.params).toEqual({ provider: 'github' });
     expect(next).toHaveBeenCalledOnce();
   });
 

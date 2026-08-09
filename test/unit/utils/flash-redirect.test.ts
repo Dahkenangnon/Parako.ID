@@ -59,6 +59,11 @@ describe('toSameOriginPath', () => {
   it('rejects paths that resolve to another origin', () => {
     expect(toSameOriginPath('//attacker.example.com/login')).toBeNull();
   });
+
+  it('rejects non-string and NUL-containing paths', () => {
+    expect(toSameOriginPath(null as never)).toBeNull();
+    expect(toSameOriginPath('/admin\0users')).toBeNull();
+  });
 });
 
 describe('flashAndRedirect', () => {

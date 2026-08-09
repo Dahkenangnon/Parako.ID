@@ -4,6 +4,10 @@ import { getDefaultFullConfig } from '../../../src/config/constants.js';
 
 const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
+function splitFullName(fullname: string | null | undefined): string[] {
+  return fullname ? fullname.trim().split(' ') : [];
+}
+
 /**
  * Tests for security settings enforcement fixes.
  * Covers: P0-1, P1-1, P1-2, P1-3, P2-1, P2-3
@@ -69,25 +73,25 @@ describe('Security Settings Enforcement', () => {
   describe('P0-1: fullname null safety', () => {
     it('nameParts handles undefined fullname without crash', () => {
       const fullname: string | undefined = undefined;
-      const nameParts = fullname ? fullname.trim().split(' ') : [];
+      const nameParts = splitFullName(fullname);
       expect(nameParts).toEqual([]);
     });
 
     it('nameParts handles null fullname without crash', () => {
       const fullname: string | null = null;
-      const nameParts = fullname ? fullname.trim().split(' ') : [];
+      const nameParts = splitFullName(fullname);
       expect(nameParts).toEqual([]);
     });
 
     it('nameParts handles empty string fullname', () => {
       const fullname = '';
-      const nameParts = fullname ? fullname.trim().split(' ') : [];
+      const nameParts = splitFullName(fullname);
       expect(nameParts).toEqual([]);
     });
 
     it('nameParts correctly splits valid fullname', () => {
       const fullname = 'John Doe';
-      const nameParts = fullname ? fullname.trim().split(' ') : [];
+      const nameParts = splitFullName(fullname);
       expect(nameParts).toEqual(['John', 'Doe']);
       expect(nameParts[0]).toBe('John');
       expect(nameParts.slice(1).join(' ')).toBe('Doe');

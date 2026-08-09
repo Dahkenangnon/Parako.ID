@@ -99,6 +99,25 @@ describe('adminActivityListQuerySchema', () => {
     ).toBe(false);
   });
 
+  it('accepts valid date-only values emitted by the activity filter UI', () => {
+    const result = adminActivityListQuerySchema.parse({
+      dateFrom: '2026-08-01',
+      dateTo: '2026-08-31',
+    });
+
+    expect(result.dateFrom).toBe('2026-08-01');
+    expect(result.dateTo).toBe('2026-08-31');
+  });
+
+  it.each(['2026-02-30', '2026-99-99'])(
+    'rejects impossible date-only value %s',
+    dateFrom => {
+      expect(adminActivityListQuerySchema.safeParse({ dateFrom }).success).toBe(
+        false
+      );
+    }
+  );
+
   it('rejects type over 50 characters', () => {
     expect(
       adminActivityListQuerySchema.safeParse({ type: 'x'.repeat(51) }).success
@@ -117,6 +136,17 @@ describe('adminGrantListQuerySchema', () => {
     expect(
       adminGrantListQuerySchema.safeParse({ sortBy: 'leak' }).success
     ).toBe(false);
+  });
+
+  it('accepts every sort value emitted by the grant listing UI', () => {
+    for (const sortBy of [
+      'created_at',
+      'payload.iat',
+      'payload.accountId',
+      'payload.clientId',
+    ]) {
+      expect(adminGrantListQuerySchema.parse({ sortBy }).sortBy).toBe(sortBy);
+    }
   });
 });
 

@@ -4,6 +4,7 @@ import {
   verifyHmacState,
 } from '../../../src/utils/hmac-state.js';
 
+// gitleaks:allow -- deterministic unit-test HMAC fixture.
 const TEST_SECRET = 'test-hmac-secret-key-for-unit-tests';
 
 describe('HMAC State Utility', () => {

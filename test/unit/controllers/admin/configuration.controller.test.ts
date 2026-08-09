@@ -510,6 +510,23 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it('renders an empty form when tenant override storage is unavailable', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('storage unavailable'));
+      const { controller } = makeController(mocks);
+      const req = makeReq({ params: { section: 'application' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/configuration/application',
+        expect.objectContaining({ config: {}, hasOverride: false })
+      );
+    });
+
     it('passes tenant-derived OIDC issuer and token_ttl from platform config for oidc section', async () => {
       const { controller, configManager, platformAdminService } =
         makeController();
@@ -539,6 +556,35 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it('uses safe OIDC defaults when tenant and optional config are absent', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.configManager.getConfig as ReturnType<typeof vi.fn>
+      ).mockReturnValue({});
+      (
+        mocks.configManager.getPlatformConfig as ReturnType<typeof vi.fn>
+      ).mockReturnValue({});
+      (
+        mocks.platformAdminService.getTenantBySlug as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(null);
+      const { controller } = makeController(mocks);
+      const req = makeReq({ params: { section: 'oidc' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/configuration/oidc',
+        expect.objectContaining({
+          issuer: '',
+          oidcPath: '/oidc/v1',
+          deploymentUrl: '',
+          platformTokenTtl: {},
+          platformDiscovery: {},
+        })
+      );
+    });
+
     it('redirects on invalid section', async () => {
       const { controller, flashManager } = makeController();
       const req = makeReq({ params: { section: 'deployment' } });
@@ -549,6 +595,25 @@ describe('AdminConfigurationController', () => {
       expect(flashManager.error).toHaveBeenCalledWith(
         'Invalid configuration section'
       );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/configuration');
+    });
+
+    it('redirects when tenant context is unavailable', async () => {
+      vi.mocked(
+        tenantContextModule.tenantContext.getTenantId
+      ).mockImplementation(() => {
+        throw new Error('No ALS context');
+      });
+      const { controller, flashManager, overrideService } = makeController();
+      const req = makeReq({ params: { section: 'application' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(flashManager.error).toHaveBeenCalledWith(
+        'Tenant context not available'
+      );
+      expect(overrideService.loadOverrides).not.toHaveBeenCalled();
       expect(res.redirect).toHaveBeenCalledWith('/admin/configuration');
     });
 
@@ -576,6 +641,25 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it.each([
+      ['features', 'platformFeatures'],
+      ['integrations', 'platformIntegrations'],
+    ] as const)(
+      'renders %s with an empty platform default when none is configured',
+      async (section, platformField) => {
+        const { controller } = makeController();
+        const req = makeReq({ params: { section } });
+        const res = makeRes();
+
+        await controller.section(req, res);
+
+        expect(res.render).toHaveBeenCalledWith(
+          `admin/configuration/${section}`,
+          expect.objectContaining({ [platformField]: {} })
+        );
+      }
+    );
+
     it('passes platformBranding from global config for branding section', async () => {
       const { controller } = makeController();
       const req = makeReq({ params: { section: 'branding' } });
@@ -593,6 +677,62 @@ describe('AdminConfigurationController', () => {
               dark: { primary: '#d4967e', background: '#1a1a1a' },
             },
             fonts: { sans: 'Inter', heading: 'Inter' },
+          },
+        })
+      );
+    });
+
+    it('renders security with an empty platform default when none is configured', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.configManager.getPlatformConfig as ReturnType<typeof vi.fn>
+      ).mockReturnValue({});
+      const { controller } = makeController(mocks);
+      const req = makeReq({ params: { section: 'security' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/configuration/security',
+        expect.objectContaining({ platformSecurity: {} })
+      );
+    });
+
+    it('resolves branding storage keys without corrupting unsupported values', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: {
+          logo: 'tenant/logos/logo.png',
+          logoDark: 'tenant/logos/logo-dark.png',
+          logoIcon: { unexpected: true },
+          logoIconDark: '',
+        },
+      });
+      (
+        mocks.configManager.getPlatformConfig as ReturnType<typeof vi.fn>
+      ).mockReturnValue({});
+      (mocks.uploadMiddleware.getFileUrl as ReturnType<typeof vi.fn>)
+        .mockReturnValueOnce('/media/file/tenant/logos/logo.png')
+        .mockReturnValueOnce({ unsupported: true });
+      const { controller, uploadMiddleware } = makeController(mocks);
+      const req = makeReq({ params: { section: 'branding' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(uploadMiddleware.getFileUrl).toHaveBeenCalledTimes(2);
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/configuration/branding',
+        expect.objectContaining({
+          platformBranding: {},
+          config: {
+            logo: '/media/file/tenant/logos/logo.png',
+            logoDark: 'tenant/logos/logo-dark.png',
+            logoIcon: { unexpected: true },
+            logoIconDark: '',
           },
         })
       );
@@ -726,6 +866,40 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it.each([
+      {
+        section: 'features',
+        body: { social_providers: { enabled: ['', 'google'] } },
+        expected: { social_providers: { enabled: ['google'] } },
+      },
+      {
+        section: 'oidc',
+        body: { token_ttl: { access_token: '3600' } },
+        expected: { token_ttl: { access_token: 3600 } },
+      },
+      {
+        section: 'integrations',
+        body: { email: { smtp_port: '587' } },
+        expected: { email: { smtp_port: 587 } },
+      },
+    ])('normalizes $section form data before saving', async entry => {
+      const { controller, overrideService } = makeController();
+      const req = makeReq({
+        params: { section: entry.section },
+        body: { _csrf: 'token', ...entry.body },
+      });
+      const res = makeRes();
+
+      await controller.updateSection(req, res);
+
+      const savedOverrides = (
+        overrideService.saveOverrides as ReturnType<typeof vi.fn>
+      ).mock.calls[0][1];
+      expect(savedOverrides).toEqual({
+        [entry.section]: entry.expected,
+      });
+    });
+
     it('merges branding form data with existing overrides to preserve logos', async () => {
       const mocks = makeMocks();
       // Existing overrides include a logo uploaded previously
@@ -802,6 +976,26 @@ describe('AdminConfigurationController', () => {
 
       // Should NOT call loadOverrides for non-branding section
       expect(overrideService.loadOverrides).not.toHaveBeenCalled();
+    });
+
+    it('uses the admin attribution fallback when request user data is absent', async () => {
+      const { controller, overrideService } = makeController();
+      const req = makeReq({
+        params: { section: 'application' },
+        body: { _csrf: 'token', title: 'New Title' },
+        user: undefined,
+      });
+      const res = makeRes();
+
+      await controller.updateSection(req, res);
+
+      expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+        'test-tenant',
+        { application: { title: 'New Title' } },
+        'admin',
+        'Updated application configuration',
+        expect.any(Object)
+      );
     });
 
     it('sanitizes error messages - does not leak internal detail', async () => {
@@ -884,6 +1078,31 @@ describe('AdminConfigurationController', () => {
         })
       );
     });
+
+    it('reports a sanitized error and redirects when reset fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.deleteSection as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('database credentials leaked'));
+      const { controller, flashManager, logger, configManager } =
+        makeController(mocks);
+      const req = makeReq({ params: { section: 'security' } });
+      const res = makeRes();
+
+      await controller.resetSection(req, res);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ context: 'admin_configuration_reset' })
+      );
+      expect(flashManager.error).toHaveBeenCalledWith(
+        'Failed to reset configuration. Please try again.'
+      );
+      expect(configManager.invalidateTenantConfig).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/admin/configuration/security'
+      );
+    });
   });
 
   describe('testEmail()', () => {
@@ -914,6 +1133,22 @@ describe('AdminConfigurationController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ success: false })
       );
+    });
+
+    it('rejects structured email input instead of coercing it', async () => {
+      const { controller, emailService } = makeController();
+      const req = makeReq({ body: { email: ['test@example.com'] } });
+      const res = makeRes();
+
+      await controller.testEmail(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Invalid email address format',
+      });
+      expect(emailService.initialize).not.toHaveBeenCalled();
+      expect(emailService.sendEmail).not.toHaveBeenCalled();
     });
 
     it('returns 400 for email exceeding 254 characters', async () => {
@@ -983,6 +1218,36 @@ describe('AdminConfigurationController', () => {
         expect.any(Object)
       );
     });
+
+    it.each([
+      [{ remoteAddress: '10.0.0.8' }, '10.0.0.8'],
+      [undefined, 'unknown'],
+    ] as const)(
+      'uses safe actor and IP fallbacks when socket is %j',
+      async (socket, expectedIp) => {
+        const mocks = makeMocks();
+        (
+          mocks.sessionManager.getActiveUser as ReturnType<typeof vi.fn>
+        ).mockReturnValue(null);
+        (
+          mocks.emailService.sendEmail as ReturnType<typeof vi.fn>
+        ).mockRejectedValue(new Error('SMTP connection refused'));
+        const { controller, logger } = makeController(mocks);
+        const req = makeReq({
+          body: { email: 'test@example.com' },
+          ip: '',
+          socket,
+        });
+        const res = makeRes();
+
+        await controller.testEmail(req, res);
+
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.any(Error),
+          expect.objectContaining({ requestedBy: 'unknown', ip: expectedIp })
+        );
+      }
+    );
   });
 
   describe('revealSecret()', () => {
@@ -1028,6 +1293,28 @@ describe('AdminConfigurationController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ error: 'Invalid field path' })
       );
+    });
+
+    it('returns 400 when tenant context is unavailable', async () => {
+      vi.mocked(
+        tenantContextModule.tenantContext.getTenantId
+      ).mockImplementation(() => {
+        throw new Error('No ALS context');
+      });
+      const { controller, overrideService } = makeController();
+      const req = makeReq({
+        body: { fieldPath: 'integrations.email.smtp_password' },
+      });
+      const res = makeRes();
+
+      await controller.revealSecret(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Tenant context not available',
+      });
+      expect(overrideService.loadOverrides).not.toHaveBeenCalled();
     });
 
     it('accepts corrected SMS paths (notifications.channels.sms.*)', async () => {
@@ -1121,6 +1408,33 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it('returns a sanitized 500 response when secret storage fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('database credentials leaked'));
+      const { controller, logger } = makeController(mocks);
+      const req = makeReq({
+        body: { fieldPath: 'integrations.email.smtp_password' },
+      });
+      const res = makeRes();
+
+      await controller.revealSecret(req, res);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({
+          context: 'tenant_reveal_secret_failed',
+          fieldPath: 'integrations.email.smtp_password',
+        })
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'Failed to reveal secret',
+      });
+    });
+
     it('accepts social provider client_secret paths', async () => {
       const mocks = makeMocks();
       (
@@ -1150,6 +1464,236 @@ describe('AdminConfigurationController', () => {
   });
 
   describe('logo upload/remove (Bug B: tenant path prefix)', () => {
+    it.each(['uploadLogo', 'removeLogo', 'resetColors'] as const)(
+      '%s rejects requests without tenant context',
+      async method => {
+        vi.mocked(
+          tenantContextModule.tenantContext.getTenantId
+        ).mockImplementation(() => {
+          throw new Error('No ALS context');
+        });
+        const { controller, overrideService } = makeController();
+        const req = makeReq({ file: { filename: 'logo.png' } });
+        const res = makeRes();
+
+        await controller[method](req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'Tenant context not available',
+        });
+        expect(overrideService.loadOverrides).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each([
+      {
+        method: 'uploadLogo' as const,
+        fail: (mocks: ReturnType<typeof makeMocks>) =>
+          (
+            mocks.uploadMiddleware.storeFile as ReturnType<typeof vi.fn>
+          ).mockRejectedValue(new Error('storage failed')),
+        context: 'tenant_logo_upload_failed',
+        error: 'Failed to upload company logo',
+      },
+      {
+        method: 'removeLogo' as const,
+        fail: (mocks: ReturnType<typeof makeMocks>) =>
+          (
+            mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+          ).mockRejectedValue(new Error('storage failed')),
+        context: 'tenant_logo_remove_failed',
+        error: 'Failed to remove company logo',
+      },
+      {
+        method: 'resetColors' as const,
+        fail: (mocks: ReturnType<typeof makeMocks>) =>
+          (
+            mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+          ).mockRejectedValue(new Error('storage failed')),
+        context: 'tenant_colors_reset_failed',
+        error: 'Failed to reset theme colors',
+      },
+    ])('$method returns a sanitized storage failure', async entry => {
+      const mocks = makeMocks();
+      entry.fail(mocks);
+      const { controller, logger } = makeController(mocks);
+      const req = makeReq({ file: { filename: 'logo.png' } });
+      const res = makeRes();
+
+      await controller[entry.method](req, res);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.any(Error),
+        expect.objectContaining({ context: entry.context })
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: entry.error });
+    });
+
+    it('rejects an upload request without a file', async () => {
+      const { controller, uploadMiddleware, overrideService } =
+        makeController();
+      const req = makeReq();
+      const res = makeRes();
+
+      await controller.uploadLogo(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'No file uploaded' });
+      expect(uploadMiddleware.storeFile).not.toHaveBeenCalled();
+      expect(overrideService.saveOverrides).not.toHaveBeenCalled();
+    });
+
+    it('uses safe upload fallbacks for empty overrides and absent admin identity', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.sessionManager.getActiveUser as ReturnType<typeof vi.fn>
+      ).mockReturnValue(null);
+      (
+        mocks.uploadMiddleware.getFileUrl as ReturnType<typeof vi.fn>
+      ).mockReturnValue({ unsupported: true });
+      const { controller, overrideService } = makeController(mocks);
+      const req = makeReq({ file: { filename: 'logo.png' } });
+      const res = makeRes();
+
+      await controller.uploadLogo(req, res);
+
+      expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+        'test-tenant',
+        { branding: { logo: 'default/logos/logo.png' } },
+        'admin',
+        'Uploaded company logo',
+        expect.any(Object)
+      );
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'company logo uploaded successfully',
+        url: 'default/logos/logo.png',
+      });
+    });
+
+    it('keeps the current logo and rolls back the new file when persistence fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'tenant/logos/current-logo.png' },
+      });
+      (
+        mocks.overrideService.saveOverrides as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('database unavailable'));
+      const { controller, uploadMiddleware } = makeController(mocks);
+      const req = makeReq({ file: { filename: 'replacement-logo.png' } });
+      const res = makeRes();
+
+      await controller.uploadLogo(req, res);
+
+      expect(uploadMiddleware.deleteFile).toHaveBeenCalledTimes(1);
+      expect(uploadMiddleware.deleteFile).toHaveBeenCalledWith(
+        'default/logos/replacement-logo.png'
+      );
+      expect(uploadMiddleware.deleteFile).not.toHaveBeenCalledWith(
+        'tenant/logos/current-logo.png'
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it('keeps a successful upload when obsolete-file cleanup fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'tenant/logos/obsolete-logo.png' },
+      });
+      (
+        mocks.uploadMiddleware.deleteFile as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('storage cleanup unavailable'));
+      const { controller, logger } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.uploadLogo(
+        makeReq({ file: { filename: 'replacement-logo.png' } }),
+        res
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(expect.any(Error), {
+        context: 'tenant_logo_old_file_cleanup_failed',
+        storageKey: 'tenant/logos/obsolete-logo.png',
+      });
+      expect(res.status).not.toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
+    });
+
+    it.each([
+      ['uploadLogoDark', 'logoDark', 'dark mode logo'],
+      ['uploadLogoIcon', 'logoIcon', 'icon logo'],
+      ['uploadLogoIconDark', 'logoIconDark', 'dark icon logo'],
+    ] as const)(
+      '%s stores the uploaded file in its branding field',
+      async (method, field, displayName) => {
+        const { controller, overrideService, uploadMiddleware } =
+          makeController();
+        const req = makeReq({ file: { filename: `${field}.png` } });
+        const res = makeRes();
+
+        await controller[method](req, res);
+
+        expect(uploadMiddleware.storeFile).toHaveBeenCalledWith(
+          expect.objectContaining({ filename: `${field}.png` }),
+          'logos'
+        );
+        expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+          'test-tenant',
+          { branding: { [field]: `default/logos/${field}.png` } },
+          'admin@test.com',
+          `Uploaded ${displayName}`,
+          expect.any(Object)
+        );
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({ success: true })
+        );
+      }
+    );
+
+    it.each([
+      ['removeLogoDark', 'logoDark', 'dark mode logo'],
+      ['removeLogoIcon', 'logoIcon', 'icon logo'],
+      ['removeLogoIconDark', 'logoIconDark', 'dark icon logo'],
+    ] as const)(
+      '%s removes the file and clears its branding field',
+      async (method, field, displayName) => {
+        const mocks = makeMocks();
+        (
+          mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+        ).mockResolvedValue({
+          branding: { [field]: `tenant/logos/${field}.png` },
+        });
+        const { controller, overrideService, uploadMiddleware } =
+          makeController(mocks);
+        const req = makeReq();
+        const res = makeRes();
+
+        await controller[method](req, res);
+
+        expect(uploadMiddleware.deleteFile).toHaveBeenCalledWith(
+          `tenant/logos/${field}.png`
+        );
+        expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+          'test-tenant',
+          { branding: { [field]: '' } },
+          'admin@test.com',
+          `Removed ${displayName}`,
+          expect.any(Object)
+        );
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({ success: true })
+        );
+      }
+    );
+
     it('deletes old file when path uses tenant prefix /uploads/{tid}/logos/', async () => {
       const mocks = makeMocks();
       (
@@ -1177,7 +1721,8 @@ describe('AdminConfigurationController', () => {
       ).mockResolvedValue({
         branding: { logo: '/uploads/acme/logos/my-logo.png' },
       });
-      const { controller, uploadMiddleware } = makeController(mocks);
+      const { controller, overrideService, uploadMiddleware } =
+        makeController(mocks);
       const req = makeReq();
       const res = makeRes();
 
@@ -1185,6 +1730,60 @@ describe('AdminConfigurationController', () => {
 
       expect(uploadMiddleware.deleteFile).toHaveBeenCalledWith(
         '/uploads/acme/logos/my-logo.png'
+      );
+      expect(
+        (overrideService.saveOverrides as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
+      ).toBeLessThan(
+        (uploadMiddleware.deleteFile as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
+      );
+    });
+
+    it('preserves the current logo when clearing its reference fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'tenant/logos/current-logo.png' },
+      });
+      (
+        mocks.overrideService.saveOverrides as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('database unavailable'));
+      const { controller, uploadMiddleware } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.removeLogo(makeReq(), res);
+
+      expect(uploadMiddleware.deleteFile).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Failed to remove company logo',
+      });
+    });
+
+    it('keeps a successful removal when file cleanup fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'tenant/logos/removed-logo.png' },
+      });
+      (
+        mocks.uploadMiddleware.deleteFile as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('storage cleanup unavailable'));
+      const { controller, logger } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.removeLogo(makeReq(), res);
+
+      expect(logger.error).toHaveBeenCalledWith(expect.any(Error), {
+        context: 'tenant_logo_removed_file_cleanup_failed',
+        storageKey: 'tenant/logos/removed-logo.png',
+      });
+      expect(res.status).not.toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
       );
     });
 
@@ -1202,6 +1801,31 @@ describe('AdminConfigurationController', () => {
       await controller.uploadLogo(req, res);
 
       expect(uploadMiddleware.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('uses safe removal fallbacks for empty overrides and absent admin identity', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.sessionManager.getActiveUser as ReturnType<typeof vi.fn>
+      ).mockReturnValue(null);
+      const { controller, overrideService, uploadMiddleware } =
+        makeController(mocks);
+      const req = makeReq();
+      const res = makeRes();
+
+      await controller.removeLogo(req, res);
+
+      expect(uploadMiddleware.deleteFile).not.toHaveBeenCalled();
+      expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+        'test-tenant',
+        { branding: { logo: '' } },
+        'admin',
+        'Removed company logo',
+        expect.any(Object)
+      );
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ success: true })
+      );
     });
   });
 
@@ -1244,7 +1868,8 @@ describe('AdminConfigurationController', () => {
           companyName: 'Acme',
         },
       });
-      const { controller, uploadMiddleware } = makeController(mocks);
+      const { controller, overrideService, uploadMiddleware } =
+        makeController(mocks);
       const req = makeReq({
         params: { section: 'branding' },
         body: { _csrf: 'token', companyName: 'Acme' },
@@ -1256,6 +1881,13 @@ describe('AdminConfigurationController', () => {
 
       expect(uploadMiddleware.deleteFile).toHaveBeenCalledWith(
         '/uploads/acme/logos/old-logo.png'
+      );
+      expect(
+        (overrideService.saveOverrides as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
+      ).toBeLessThan(
+        (uploadMiddleware.deleteFile as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
       );
     });
 
@@ -1279,6 +1911,36 @@ describe('AdminConfigurationController', () => {
       // storeFile is called for the new file, but deleteFile is not called since existing logo is empty
       expect(uploadMiddleware.storeFile).toHaveBeenCalled();
       expect(uploadMiddleware.deleteFile).not.toHaveBeenCalled();
+    });
+
+    it('preserves the current logo and rolls back the new file when saving the form fails', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'tenant/logos/current-logo.png' },
+      });
+      (
+        mocks.overrideService.saveOverrides as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error('database unavailable'));
+      const { controller, uploadMiddleware } = makeController(mocks);
+
+      await controller.updateSection(
+        makeReq({
+          params: { section: 'branding' },
+          body: { _csrf: 'token', companyName: 'Acme' },
+          file: { filename: 'replacement-logo.png' },
+        }),
+        makeRes()
+      );
+
+      expect(uploadMiddleware.deleteFile).toHaveBeenCalledTimes(1);
+      expect(uploadMiddleware.deleteFile).toHaveBeenCalledWith(
+        'default/logos/replacement-logo.png'
+      );
+      expect(uploadMiddleware.deleteFile).not.toHaveBeenCalledWith(
+        'tenant/logos/current-logo.png'
+      );
     });
   });
 
@@ -1326,14 +1988,15 @@ describe('AdminConfigurationController', () => {
       );
     });
 
-    it('uploadFavicon deletes old favicon before storing new one', async () => {
+    it('uploadFavicon deletes old favicon after persisting the replacement', async () => {
       const mocks = makeMocks();
       (
         mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
       ).mockResolvedValue({
         branding: { favicon: '/uploads/acme/favicons/old-fav.ico' },
       });
-      const { controller, uploadMiddleware } = makeController(mocks);
+      const { controller, overrideService, uploadMiddleware } =
+        makeController(mocks);
       const req = makeReq({
         file: { filename: 'new-fav.png' },
       });
@@ -1348,10 +2011,34 @@ describe('AdminConfigurationController', () => {
         expect.objectContaining({ filename: 'new-fav.png' }),
         'favicons'
       );
+      expect(
+        (overrideService.saveOverrides as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
+      ).toBeLessThan(
+        (uploadMiddleware.deleteFile as ReturnType<typeof vi.fn>).mock
+          .invocationCallOrder[0]
+      );
     });
   });
 
   describe('resetColors/resetFonts handles empty branding', () => {
+    it('removes an empty branding section when no override document exists', async () => {
+      const { controller, overrideService } = makeController();
+      const req = makeReq();
+      const res = makeRes();
+
+      await controller.resetColors(req, res);
+
+      expect(overrideService.deleteSection).toHaveBeenCalledWith(
+        'test-tenant',
+        'branding'
+      );
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'theme colors reset to defaults',
+      });
+    });
+
     it('resetColors uses deleteSection when branding has only colors', async () => {
       const mocks = makeMocks();
       (
@@ -1424,6 +2111,34 @@ describe('AdminConfigurationController', () => {
         expect.any(Object)
       );
       expect(overrideService.deleteSection).not.toHaveBeenCalled();
+    });
+
+    it('uses the admin attribution fallback when saving a partial reset', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: {
+          colors: { light: { primary: '#ff0000' } },
+          companyName: 'Acme',
+        },
+      });
+      (
+        mocks.sessionManager.getActiveUser as ReturnType<typeof vi.fn>
+      ).mockReturnValue(null);
+      const { controller, overrideService } = makeController(mocks);
+      const req = makeReq();
+      const res = makeRes();
+
+      await controller.resetColors(req, res);
+
+      expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+        'test-tenant',
+        { branding: { companyName: 'Acme' } },
+        'admin',
+        'Reset theme colors to defaults',
+        expect.any(Object)
+      );
     });
 
     it('resetFonts preserves other branding fields when they exist', async () => {

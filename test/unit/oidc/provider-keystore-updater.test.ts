@@ -3,6 +3,7 @@ import { Provider } from 'oidc-provider';
 import * as jose from 'jose';
 import { get as getWeakCache } from 'oidc-provider/lib/helpers/weak_cache.js';
 import { updateProviderJWKS } from '../../../src/oidc/provider-keystore-updater.js';
+import type { JWKWithMetadata } from '../../../src/oidc/key-store/constants.js';
 
 /**
  * Integration test for updateProviderJWKS.
@@ -15,8 +16,10 @@ import { updateProviderJWKS } from '../../../src/oidc/provider-keystore-updater.
  * since we rely on an internal module (initialize_keystore.js).
  */
 describe('updateProviderJWKS', () => {
-  async function generateJWKS(count: number): Promise<{ keys: JsonWebKey[] }> {
-    const keys: JsonWebKey[] = [];
+  async function generateJWKS(
+    count: number
+  ): Promise<{ keys: JWKWithMetadata[] }> {
+    const keys: JWKWithMetadata[] = [];
     for (let i = 0; i < count; i++) {
       const { privateKey } = await jose.generateKeyPair('RS256', {
         extractable: true,
@@ -25,7 +28,7 @@ describe('updateProviderJWKS', () => {
       jwk.use = 'sig';
       jwk.alg = 'RS256';
       jwk.kid = await jose.calculateJwkThumbprint(jwk as jose.JWK, 'sha256');
-      keys.push(jwk as JsonWebKey);
+      keys.push(jwk as JWKWithMetadata);
     }
     return { keys };
   }
@@ -40,6 +43,10 @@ describe('updateProviderJWKS', () => {
     // Verify initial state via weak cache
     const cacheBefore = getWeakCache(provider);
     expect(cacheBefore.keystore).toBeDefined();
+    const initialKeystore = cacheBefore.keystore;
+    const initialKids = (
+      cacheBefore.jwks as { keys: JWKWithMetadata[] }
+    ).keys.map(key => key.kid);
 
     // Hot-swap with expanded JWKS (2 keys)
     const expandedJWKS = await generateJWKS(2);
@@ -49,13 +56,18 @@ describe('updateProviderJWKS', () => {
     const cacheAfter = getWeakCache(provider);
     expect(cacheAfter.keystore).toBeDefined();
 
-    // The provider's /jwks endpoint should reflect the new keys
-    // We verify via the internal keystore which exposes a toJWKS method
-    const keystore = cacheAfter.keystore as any;
-    if (typeof keystore.toJWKS === 'function') {
-      const publicJwks = keystore.toJWKS(false);
-      expect(publicJwks.keys).toHaveLength(2);
-    }
+    // initializeKeyStore replaces both the signing store and the public JWKS
+    // cache consumed by the provider's /jwks endpoint.
+    expect(cacheAfter.keystore).not.toBe(initialKeystore);
+    expect(
+      Array.from(cacheAfter.keystore as Iterable<JWKWithMetadata>)
+    ).toHaveLength(2);
+    const publicJwks = cacheAfter.jwks as { keys: JWKWithMetadata[] };
+    expect(publicJwks.keys.map(key => key.kid)).toEqual(
+      expandedJWKS.keys.map(key => key.kid)
+    );
+    expect(publicJwks.keys.map(key => key.kid)).not.toEqual(initialKids);
+    expect(publicJwks.keys.every(key => key.d === undefined)).toBe(true);
   });
 
   it('should not throw when called with valid JWKS', async () => {

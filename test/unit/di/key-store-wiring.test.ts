@@ -1,17 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Container } from 'inversify';
-import { TYPES } from '../../../src/di/types';
+import { oidcModule } from '../../../src/di/modules/oidc.module.js';
+import { TYPES } from '../../../src/di/types.js';
+import { DBKeyStore } from '../../../src/oidc/key-store/db-key-store.js';
+import { FileKeyStore } from '../../../src/oidc/key-store/file-key-store.js';
 
 describe('KeyStore DI Wiring', () => {
   it(
     'should bind FileKeyStore when config type is "file"',
     { timeout: 30000 },
     async () => {
-      const { oidcModule } =
-        await import('../../../src/di/modules/oidc.module');
-      const { FileKeyStore } =
-        await import('../../../src/oidc/key-store/file-key-store');
-
       const container = new Container();
 
       // Bind required dependencies as mocks
@@ -64,10 +62,6 @@ describe('KeyStore DI Wiring', () => {
   );
 
   it('should bind DBKeyStore when config type is "database"', async () => {
-    const { oidcModule } = await import('../../../src/di/modules/oidc.module');
-    const { DBKeyStore } =
-      await import('../../../src/oidc/key-store/db-key-store');
-
     const container = new Container();
 
     container.bind(TYPES.ConfigManager).toConstantValue({
@@ -121,7 +115,6 @@ describe('KeyStore DI Wiring', () => {
   });
 
   it('uses Prisma JWKS persistence without requiring a Mongoose model', async () => {
-    const { oidcModule } = await import('../../../src/di/modules/oidc.module');
     const container = new Container();
 
     container.bind(TYPES.ConfigManager).toConstantValue({
@@ -161,16 +154,11 @@ describe('KeyStore DI Wiring', () => {
   });
 
   it('should bind DBKeyStore by default (no explicit type)', async () => {
-    const { oidcModule } = await import('../../../src/di/modules/oidc.module');
-    const { DBKeyStore } =
-      await import('../../../src/oidc/key-store/db-key-store');
-
     const container = new Container();
 
     container.bind(TYPES.ConfigManager).toConstantValue({
       getConfig: () => ({
         security: {
-          key_store: { type: 'database' },
           secrets: { jwt_secret: 'x'.repeat(32) },
         },
       }),
