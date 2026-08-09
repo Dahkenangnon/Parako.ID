@@ -56,6 +56,16 @@ const SECTION_DESCRIPTIONS: Record<ConfigurableSection, string> = {
     'Notification channels, SMS configuration, and user notification preferences',
 };
 
+const VIEW_TEMPLATES: Record<ConfigurableSection, string> = {
+  application: 'admin/configuration/application',
+  branding: 'admin/configuration/branding',
+  security: 'admin/configuration/security',
+  features: 'admin/configuration/features',
+  oidc: 'admin/configuration/oidc',
+  integrations: 'admin/configuration/integrations',
+  notifications: 'admin/configuration/notifications',
+};
+
 function isConfigurableSection(
   section: string
 ): section is ConfigurableSection {
@@ -66,22 +76,7 @@ function buildSectionOverrides(
   section: ConfigurableSection,
   sectionData: Record<string, any>
 ): Partial<Record<ConfigurableSection, Record<string, any>>> {
-  switch (section) {
-    case 'application':
-      return { application: sectionData };
-    case 'branding':
-      return { branding: sectionData };
-    case 'security':
-      return { security: sectionData };
-    case 'features':
-      return { features: sectionData };
-    case 'oidc':
-      return { oidc: sectionData };
-    case 'integrations':
-      return { integrations: sectionData };
-    case 'notifications':
-      return { notifications: sectionData };
-  }
+  return { [section]: sectionData };
 }
 
 /**
@@ -154,7 +149,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     ).map(([key, label]) => ({
       key,
       label,
-      description: SECTION_DESCRIPTIONS[key] || '',
+      description: SECTION_DESCRIPTIONS[key],
       hasOverride: overrides ? key in overrides : false,
     }));
 
@@ -249,20 +244,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       renderData.platformIntegrations = globalConfig.integrations || {};
     }
 
-    // Render via a hard-coded allowlist of view paths to satisfy static analysis
-    // that the dynamic section name cannot escape the configuration view folder.
-    const VIEW_TEMPLATES: Record<string, string> = Object.fromEntries(
-      Object.keys(CONFIGURABLE_SECTIONS).map(name => [
-        name,
-        `admin/configuration/${name}`,
-      ])
-    );
-    const template = VIEW_TEMPLATES[section];
-    if (!template) {
-      this.sessionManager.flash(req).error('Invalid configuration section');
-      return res.redirect('/admin/configuration');
-    }
-    res.render(template, renderData);
+    // The section was narrowed through isConfigurableSection(), and this
+    // explicit map prevents user-controlled template paths.
+    res.render(VIEW_TEMPLATES[section], renderData);
   };
 
   updateSection = async (req: Request, res: Response): Promise<void> => {
@@ -280,6 +264,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       this.sessionManager.flash(req).error('Tenant context not available');
       return res.redirect('/admin/configuration');
     }
+
+    let uploadedBrandingStorageKey: string | undefined;
+    let previousBrandingStorageKey: string | undefined;
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the CSRF token; rawSectionData carries the actual config fields.
@@ -311,40 +298,54 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
         const file = (req as any).file;
         if (file) {
-          sectionData.logo = await this.uploadMiddleware.storeFile(
+          uploadedBrandingStorageKey = await this.uploadMiddleware.storeFile(
             file,
             'logos'
           );
-          if (existingSection.logo) {
-            await this.uploadMiddleware.deleteFile(existingSection.logo);
-          }
+          sectionData.logo = uploadedBrandingStorageKey;
+          previousBrandingStorageKey = existingSection.logo;
         }
 
         sectionData = { ...existingSection, ...sectionData };
       }
 
-      // Re-assert the allowlist for static analysers that cannot trace the
-      // earlier CONFIGURABLE_SECTIONS check through the function body.
-      if (!isConfigurableSection(section)) {
-        this.sessionManager.flash(req).error('Invalid configuration section');
-        return res.redirect('/admin/configuration');
-      }
       const overrides = buildSectionOverrides(section, sectionData);
 
-      const platformConfig =
-        this.configManager.getPlatformConfig() as unknown as Record<
-          string,
-          any
-        >;
-      await this.overrideService.saveOverrides(
-        tenantId,
-        overrides,
-        (req as any).user?.email ?? 'admin',
-        `Updated ${section} configuration`,
-        platformConfig
-      );
+      try {
+        const platformConfig =
+          this.configManager.getPlatformConfig() as unknown as Record<
+            string,
+            any
+          >;
+        await this.overrideService.saveOverrides(
+          tenantId,
+          overrides,
+          (req as any).user?.email ?? 'admin',
+          `Updated ${section} configuration`,
+          platformConfig
+        );
+      } catch (error) {
+        if (uploadedBrandingStorageKey) {
+          await this._deleteFileBestEffort(
+            uploadedBrandingStorageKey,
+            'tenant_branding_form_upload_rollback_failed'
+          );
+        }
+        throw error;
+      }
 
       this.configManager.invalidateTenantConfig(tenantId);
+
+      if (
+        uploadedBrandingStorageKey &&
+        previousBrandingStorageKey &&
+        previousBrandingStorageKey !== uploadedBrandingStorageKey
+      ) {
+        await this._deleteFileBestEffort(
+          previousBrandingStorageKey,
+          'tenant_branding_form_old_file_cleanup_failed'
+        );
+      }
 
       // Audit trail — config updates are security-sensitive operations
       activityLoggerFor(this.activityLoggerDeps, req, {
@@ -502,6 +503,19 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         res
           .status(400)
           .json({ success: false, error: 'Email address is required' });
+        return;
+      }
+
+      if (typeof email !== 'string') {
+        activity.failed(
+          'test_email',
+          userData,
+          'Test email failed: Invalid email format',
+          { target: { target_type: 'config' } }
+        );
+        res
+          .status(400)
+          .json({ success: false, error: 'Invalid email address format' });
         return;
       }
 
@@ -672,35 +686,49 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         return;
       }
 
-      const category = fieldName === 'favicon' ? 'favicons' : 'logos';
-      const storageKey = await this.uploadMiddleware.storeFile(file, category);
-
       const overrides =
         ((await this.overrideService.loadOverrides(tenantId)) as Record<
           string,
           any
         >) ?? {};
-      const branding = overrides.branding ?? {};
-
-      if (branding[fieldName]) {
-        await this.uploadMiddleware.deleteFile(branding[fieldName]);
-      }
+      const existingBranding = overrides.branding ?? {};
+      const existingStorageKey = existingBranding[fieldName] as
+        string | undefined;
+      const category = fieldName === 'favicon' ? 'favicons' : 'logos';
+      const storageKey = await this.uploadMiddleware.storeFile(file, category);
+      const branding = { ...existingBranding };
 
       branding[fieldName] = storageKey;
 
-      const platformConfig =
-        this.configManager.getPlatformConfig() as unknown as Record<
-          string,
-          any
-        >;
-      await this.overrideService.saveOverrides(
-        tenantId,
-        { branding },
-        userData?.email ?? 'admin',
-        `Uploaded ${displayName}`,
-        platformConfig
-      );
+      try {
+        const platformConfig =
+          this.configManager.getPlatformConfig() as unknown as Record<
+            string,
+            any
+          >;
+        await this.overrideService.saveOverrides(
+          tenantId,
+          { branding },
+          userData?.email ?? 'admin',
+          `Uploaded ${displayName}`,
+          platformConfig
+        );
+      } catch (error) {
+        await this._deleteFileBestEffort(
+          storageKey,
+          `tenant_${fieldName}_upload_rollback_failed`
+        );
+        throw error;
+      }
+
       this.configManager.invalidateTenantConfig(tenantId);
+
+      if (existingStorageKey && existingStorageKey !== storageKey) {
+        await this._deleteFileBestEffort(
+          existingStorageKey,
+          `tenant_${fieldName}_old_file_cleanup_failed`
+        );
+      }
 
       activityLoggerFor(this.activityLoggerDeps, req, {
         defaultActorType: 'admin',
@@ -729,6 +757,17 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     }
   }
 
+  private async _deleteFileBestEffort(
+    storageKey: string,
+    context: string
+  ): Promise<void> {
+    try {
+      await this.uploadMiddleware.deleteFile(storageKey);
+    } catch (error) {
+      this.logger.error(error as Error, { context, storageKey });
+    }
+  }
+
   /**
    * Generic logo/image remove handler for tenant branding overrides.
    */
@@ -754,11 +793,10 @@ export class AdminConfigurationController implements IAdminConfigurationControll
           string,
           any
         >) ?? {};
-      const branding = overrides.branding ?? {};
-
-      if (branding[fieldName]) {
-        await this.uploadMiddleware.deleteFile(branding[fieldName]);
-      }
+      const existingBranding = overrides.branding ?? {};
+      const existingStorageKey = existingBranding[fieldName] as
+        string | undefined;
+      const branding = { ...existingBranding };
 
       branding[fieldName] = '';
 
@@ -775,6 +813,13 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         platformConfig
       );
       this.configManager.invalidateTenantConfig(tenantId);
+
+      if (existingStorageKey) {
+        await this._deleteFileBestEffort(
+          existingStorageKey,
+          `tenant_${fieldName}_removed_file_cleanup_failed`
+        );
+      }
 
       activityLoggerFor(this.activityLoggerDeps, req, {
         defaultActorType: 'admin',

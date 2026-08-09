@@ -9,6 +9,7 @@
 
 import type { RequestHandler, Request, Response, NextFunction } from 'express';
 import * as jose from 'jose';
+import type { JWKWithMetadata } from '../../../oidc/key-store/constants.js';
 
 import type { ApiAuth } from '../types.js';
 import {
@@ -24,7 +25,7 @@ import { isPlatformOnlyScope, MANAGEMENT_API_RESOURCE_URI } from '../scopes.js';
 /** Subset of application services required by the JWT auth middleware. */
 export interface JwtAuthDependencies {
   keyStore: {
-    getPublicJWKS(tenantId?: string): Promise<{ keys: JsonWebKey[] }>;
+    getPublicJWKS(tenantId?: string): Promise<{ keys: JWKWithMetadata[] }>;
   };
   configManager: {
     getConfig(): { oidc: { issuer: string } };
@@ -77,6 +78,10 @@ const EXPECTED_AUDIENCE = MANAGEMENT_API_RESOURCE_URI;
 
 /** Clock tolerance in seconds to accommodate minor server time drift. */
 const CLOCK_TOLERANCE = 30;
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
 
 /**
  * Create an Express middleware that validates JWT Bearer tokens.
@@ -162,8 +167,8 @@ export function createJwtAuthMiddleware(
 
         // Evict oldest entry when cache exceeds max size.
         if (jwksCache.size >= JWKS_CACHE_MAX_SIZE) {
-          const oldestKey = jwksCache.keys().next().value;
-          if (oldestKey) jwksCache.delete(oldestKey);
+          const oldestKey = jwksCache.keys().next().value as string;
+          jwksCache.delete(oldestKey);
         }
 
         jwksCache.set(tenantId, { verifier, loadedAt: now });
@@ -175,7 +180,7 @@ export function createJwtAuthMiddleware(
     } catch (cause) {
       logger.warn('Failed to load JWKS for tenant', {
         tenantId,
-        error: cause instanceof Error ? cause.message : String(cause),
+        error: errorMessage(cause),
       });
       sendProblem(
         res,
@@ -205,7 +210,7 @@ export function createJwtAuthMiddleware(
 
       // All other jose verification failures (bad signature, wrong aud, etc.)
       logger.debug('JWT verification failed', {
-        error: cause instanceof Error ? cause.message : String(cause),
+        error: errorMessage(cause),
         expectedIssuer: issuer,
         tenantId,
       });
@@ -217,13 +222,36 @@ export function createJwtAuthMiddleware(
     }
 
     // 5. Build ApiAuth from verified claims
+    const invalidClaim =
+      typeof payload.client_id !== 'string' || payload.client_id.trim() === ''
+        ? 'client_id'
+        : typeof payload.scope !== 'string'
+          ? 'scope'
+          : typeof payload.exp !== 'number'
+            ? 'exp'
+            : typeof payload.iat !== 'number'
+              ? 'iat'
+              : undefined;
+
+    if (invalidClaim) {
+      logger.debug('JWT required claim validation failed', {
+        claim: invalidClaim,
+        tenantId,
+      });
+      sendProblem(
+        res,
+        tokenInvalid('Access token contains invalid claims', req.path)
+      );
+      return;
+    }
+
     const apiAuth: ApiAuth = {
-      client_id: (payload.client_id as string) ?? '',
-      scope: (payload.scope as string) ?? '',
-      iss: payload.iss ?? '',
-      aud: Array.isArray(payload.aud) ? payload.aud[0] : (payload.aud ?? ''),
-      exp: payload.exp ?? 0,
-      iat: payload.iat ?? 0,
+      client_id: payload.client_id as string,
+      scope: payload.scope as string,
+      iss: issuer,
+      aud: EXPECTED_AUDIENCE,
+      exp: payload.exp as number,
+      iat: payload.iat as number,
     };
 
     // 6. Platform-only scope check (H-3)

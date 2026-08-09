@@ -4,7 +4,25 @@ import type { ITenant } from '../../../types/tenant.js';
 import type {
   ITenantRepository,
   CreateTenantDto,
+  UpdateTenantDto,
 } from '../interfaces/tenant.repository.js';
+
+const IMMUTABLE_TENANT_FIELDS = new Set([
+  '_id',
+  'id',
+  'created_at',
+  'updated_at',
+  '__v',
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
+
+function mutableTenantFields(data: UpdateTenantDto): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => !IMMUTABLE_TENANT_FIELDS.has(key))
+  );
+}
 
 @injectable()
 export class PrismaTenantRepository implements ITenantRepository {
@@ -42,10 +60,10 @@ export class PrismaTenantRepository implements ITenantRepository {
     return this.toDoc(row);
   }
 
-  async update(id: string, data: Partial<ITenant>): Promise<ITenant> {
+  async update(id: string, data: UpdateTenantDto): Promise<ITenant> {
     const row = await this.prisma.tenant.update({
       where: { id },
-      data: { ...data, updated_at: new Date() },
+      data: { ...mutableTenantFields(data), updated_at: new Date() },
     });
     return this.toDoc(row);
   }

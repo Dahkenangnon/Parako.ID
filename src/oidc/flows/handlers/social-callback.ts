@@ -323,6 +323,8 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
                 context: 'Failed to send new device OTP for social login',
                 username: result.user.username,
               });
+              // Do not create a challenge the user cannot complete.
+              throw err;
             }
           }
 
@@ -372,7 +374,8 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
           provider,
           username: result.user.username,
         });
-        // Continue with authentication even if regeneration fails
+        // Authentication must not continue on the pre-login session ID.
+        throw err;
       }
 
       this.sessionManager.setAuthenticated(req, {

@@ -312,13 +312,15 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
 
       this.clearChallenge(req);
 
-      if (result.verified && result.newCounter !== undefined) {
+      if (result.verified) {
         try {
-          await this.webauthnService.updateCredentialCounter(
-            session.accountId,
-            credential.id,
-            result.newCounter
-          );
+          if (result.newCounter !== undefined) {
+            await this.webauthnService.updateCredentialCounter(
+              session.accountId,
+              credential.id,
+              result.newCounter
+            );
+          }
           await this.webauthnService.updateCredentialLastUsed(
             session.accountId,
             credential.id

@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   interface DialogApi {
     showAlert: (
       title: string,
@@ -88,13 +90,9 @@
         }
       }
 
-      const hops = Number.parseInt(trustHopsInput?.value || '', 10);
-      if (
-        !Number.isFinite(hops) ||
-        Number.isNaN(hops) ||
-        hops < 0 ||
-        hops > 10
-      ) {
+      const hopsValue = trustHopsInput?.value.trim() || '';
+      const hops = Number(hopsValue);
+      if (!hopsValue || !Number.isInteger(hops) || hops < 0 || hops > 10) {
         await this.showError(
           'Invalid Trust Proxy Hops',
           'Trust proxy hops must be an integer between 0 and 10.'

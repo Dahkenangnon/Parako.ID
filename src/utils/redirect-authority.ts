@@ -189,6 +189,14 @@ export default class RedirectAuthority implements IRedirectAuthority {
           for (const uri of redirectUris) {
             try {
               const parsedUri = new URL(uri);
+              if (
+                !['http:', 'https:'].includes(parsedUri.protocol) ||
+                !parsedUri.hostname
+              ) {
+                throw new TypeError(
+                  'Redirect URI must use HTTP or HTTPS and include a hostname'
+                );
+              }
               const hostname = parsedUri.hostname.toLowerCase();
               domains.add(hostname);
 
@@ -217,6 +225,12 @@ export default class RedirectAuthority implements IRedirectAuthority {
             for (const uri of redirectUris) {
               try {
                 const parsedUri = new URL(uri);
+                if (
+                  !['http:', 'https:'].includes(parsedUri.protocol) ||
+                  !parsedUri.hostname
+                ) {
+                  continue;
+                }
                 const hostname = parsedUri.hostname.toLowerCase();
                 domains.add(hostname);
               } catch {
@@ -540,20 +554,6 @@ export default class RedirectAuthority implements IRedirectAuthority {
       return false;
     }
 
-    // Prime OIDC client domains cache if needed (async, non-blocking)
-    if (
-      (!this.oidcClientDomainsCache ||
-        Date.now() - this.oidcClientDomainsCacheTime >= this.CACHE_TTL) &&
-      (this.oidcAdapter || this.oidcClientMerger)
-    ) {
-      // Don't await - let it populate in background
-      this.getOidcClientDomains().catch(error => {
-        this.logger.warn('Failed to prime OIDC client domains cache', {
-          error: (error as Error).message,
-        });
-      });
-    }
-
     const validation = this.validateUrl(url, options);
     this.logger.info('REDIRECT_AUTHORITY: URL validation result', {
       url,
@@ -566,7 +566,8 @@ export default class RedirectAuthority implements IRedirectAuthority {
     // If validation failed due to missing trusted domains, try loading OIDC domains and retry
     if (
       !validation.isValid &&
-      validation.reason?.includes('not in the list of trusted domains') &&
+      (validation.reason?.startsWith('No trusted domains configured.') ||
+        validation.reason?.includes('not in the list of trusted domains')) &&
       (this.oidcAdapter || this.oidcClientMerger)
     ) {
       this.logger.info(
@@ -578,43 +579,30 @@ export default class RedirectAuthority implements IRedirectAuthority {
         }
       );
 
-      try {
-        await this.getOidcClientDomains();
+      await this.getOidcClientDomains();
 
-        const retryValidation = this.validateUrl(url, options);
-        this.logger.info('REDIRECT_AUTHORITY: Retry validation result', {
-          url,
-          intent,
-          isValid: retryValidation.isValid,
-          validatedUrl: retryValidation.url,
-          reason: retryValidation.reason,
-        });
+      const retryValidation = this.validateUrl(url, options);
+      this.logger.info('REDIRECT_AUTHORITY: Retry validation result', {
+        url,
+        intent,
+        isValid: retryValidation.isValid,
+        validatedUrl: retryValidation.url,
+        reason: retryValidation.reason,
+      });
 
-        if (!retryValidation.isValid || !retryValidation.url) {
-          this.logger.warn(
-            'REDIRECT_AUTHORITY: Invalid URL provided to storeIntent (after retry)',
-            {
-              url,
-              intent,
-              reason: retryValidation.reason,
-            }
-          );
-          return false;
-        }
-
-        // Use retry validation result
-        return this.persistIntent(req, retryValidation.url, intent, metadata);
-      } catch (error) {
-        this.logger.error(
-          'REDIRECT_AUTHORITY: Error during OIDC domain load and retry',
+      if (!retryValidation.isValid || !retryValidation.url) {
+        this.logger.warn(
+          'REDIRECT_AUTHORITY: Invalid URL provided to storeIntent (after retry)',
           {
-            error: (error as Error).message,
             url,
             intent,
+            reason: retryValidation.reason,
           }
         );
         return false;
       }
+
+      return this.persistIntent(req, retryValidation.url, intent, metadata);
     }
 
     if (!validation.isValid || !validation.url) {

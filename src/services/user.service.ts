@@ -53,6 +53,18 @@ export class UserService implements IUserService {
     return validation.sanitized!;
   }
 
+  private validateRoles(roles: string[] | undefined): void {
+    if (!roles) return;
+
+    const availableRoles =
+      this.configManager.getConfig().security.authentication.roles.available;
+    const unavailableRole = roles.find(role => !availableRoles.includes(role));
+
+    if (unavailableRole) {
+      throw new Error(`Role '${unavailableRole}' is not available`);
+    }
+  }
+
   public async createOne(
     data: Partial<IUser>,
     _options: { ordered?: boolean } = {}
@@ -85,12 +97,7 @@ export class UserService implements IUserService {
       skip?: number;
     } = {}
   ): Promise<IUser[]> {
-    const result = await this.userRepo.findMany(filter as UserFilter, {
-      page: 1,
-      limit: options?.limit || 50000,
-      sort: options?.sort,
-    });
-    return result.results;
+    return this.userRepo.findManyRaw(filter as UserFilter, options);
   }
 
   public async updateById(
@@ -98,6 +105,8 @@ export class UserService implements IUserService {
     data: Partial<IUser>,
     _options: any = {}
   ): Promise<IUser | null> {
+    this.validateRoles(data.roles);
+
     try {
       return await this.userRepo.update(id, data as UpdateUserDto);
     } catch (error) {
@@ -271,12 +280,17 @@ export class UserService implements IUserService {
 
   public async findByRecoveryEmail(email: string): Promise<IUser | undefined> {
     try {
-      const user = await this.userRepo.findOne({
-        'recovery.secondary_email.email': email.toLowerCase(),
-        'recovery.secondary_email.verified': true,
-        account_enabled: true,
-      });
-      return user || undefined;
+      const user = await this.userRepo.findBySecondaryEmail(
+        email.toLowerCase()
+      );
+      if (
+        !user ||
+        !user.account_enabled ||
+        !user.recovery?.secondary_email?.verified
+      ) {
+        return undefined;
+      }
+      return user;
     } catch (error) {
       const err = error as Error;
       this.logger.error(err, {
@@ -388,7 +402,9 @@ export class UserService implements IUserService {
         [fieldName]: normalizedValue,
       };
       if (excludeUserId) {
-        query._id = { $ne: excludeUserId };
+        const existing = await this.userRepo.findOne(query);
+        if (!existing) return true;
+        return String(existing._id ?? existing.id) === excludeUserId;
       }
       return (await this.userRepo.count(query)) === 0;
     } catch (error) {
@@ -411,9 +427,7 @@ export class UserService implements IUserService {
         .createHash('sha256')
         .update(normalizedToken)
         .digest('hex');
-      return this.userRepo.findOne({
-        'recovery.secondary_email.verification_token': tokenHash,
-      });
+      return await this.userRepo.findByRecoveryTokenHash(tokenHash);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'find_user_by_recovery_token_failed',
@@ -985,10 +999,11 @@ export class UserService implements IUserService {
           typeof profileData.phone_number === 'string' &&
           profileData.phone_number.trim().length > 0
         ) {
-          if (!profileData.phone_number.match(/^\+?[\d\s\-()]+$/)) {
+          const phoneNumber = profileData.phone_number.trim();
+          if (!phoneNumber.match(/^\+?[\d\s\-()]+$/)) {
             throw new Error('Invalid phone number format');
           }
-          validatedData.phone_number = profileData.phone_number.trim();
+          validatedData.phone_number = phoneNumber;
         }
       }
 
@@ -1016,6 +1031,10 @@ export class UserService implements IUserService {
         if (profileData.theme === 'light' || profileData.theme === 'dark') {
           (validatedData as any).theme = profileData.theme;
         }
+      }
+
+      if (typeof profileData.sidebar_expanded === 'boolean') {
+        validatedData.sidebar_expanded = profileData.sidebar_expanded;
       }
 
       const updatedUser = await this.userRepo.update(
@@ -1586,7 +1605,14 @@ export class UserService implements IUserService {
   ): Promise<IUser> {
     try {
       const { email } = userData;
-      const username = await this.generateUniqueUsername();
+      const requestedUsername = userData.username?.trim();
+      const username =
+        requestedUsername || (await this.generateUniqueUsername());
+      const roles = userData.roles ?? [
+        this.configManager.getConfig().security.authentication.roles.default,
+      ];
+
+      this.validateRoles(roles);
 
       const user = await this.userRepo.create({
         ...userData,
@@ -1595,7 +1621,7 @@ export class UserService implements IUserService {
         email_verified: userData.email_verified ?? false,
         phone_number_verified: userData.phone_number_verified ?? false,
         account_enabled: userData.account_enabled ?? true,
-        roles: userData.roles ?? ['user'],
+        roles,
         auth_provider: userData.auth_provider ?? 'local',
       } as CreateUserDto);
 
@@ -1605,33 +1631,45 @@ export class UserService implements IUserService {
       });
       return user;
     } catch (error) {
-      // Translate MongoDB duplicate-key errors into user-friendly messages
-      // so raw E11000 details never leak to the end user.
+      // Translate backend-specific duplicate-key errors into user-friendly
+      // messages so raw database details never leak to the end user.
+      const databaseError = error as Error & {
+        code?: unknown;
+        keyPattern?: Record<string, number>;
+        meta?: { target?: unknown };
+      };
       if (
         error instanceof Error &&
-        'code' in error &&
-        (error as any).code === 11000
+        (databaseError.code === 11000 || databaseError.code === 'P2002')
       ) {
-        const keyPattern = (error as any).keyPattern as
-          Record<string, number> | undefined;
+        const keyPattern = databaseError.keyPattern;
+        const prismaTarget = databaseError.meta?.target;
+        const fields = new Set([
+          ...Object.keys(keyPattern ?? {}),
+          ...(Array.isArray(prismaTarget)
+            ? prismaTarget.map(String)
+            : typeof prismaTarget === 'string'
+              ? [prismaTarget]
+              : []),
+        ]);
         let friendly: string;
 
-        if (keyPattern?.email) {
+        if (fields.has('email')) {
           friendly = 'Email is already registered';
         } else if (
-          keyPattern?.custom_identifier_1 ||
-          keyPattern?.custom_identifier_2 ||
-          keyPattern?.custom_identifier_3
+          fields.has('custom_identifier_1') ||
+          fields.has('custom_identifier_2') ||
+          fields.has('custom_identifier_3')
         ) {
           friendly = 'This identifier is already taken';
-        } else if (keyPattern?.username) {
+        } else if (fields.has('username')) {
           friendly = 'Username is already taken';
         } else {
           friendly = 'An account with these details already exists';
         }
 
         this.logger.error('Duplicate key conflict during user creation', {
-          keyPattern,
+          fields: [...fields],
           originalError: error.message,
         });
         throw new Error(friendly);
@@ -1715,36 +1753,7 @@ export class UserService implements IUserService {
 
   public async anonymize(userId: string): Promise<IUser> {
     try {
-      const user = await this.userRepo.findById(userId);
-      if (!user) {
-        throw new Error('User not found');
-      }
-
-      const anonymizedData = {
-        account_is_anonymized: true,
-        family_name: 'Anonymized',
-        given_name: 'Anonymized',
-        nickname: 'Anonymized',
-        preferred_username: 'Anonymized',
-        middle_name: 'Anonymized',
-        gender: 'M' as const,
-        birthdate: new Date('1970-01-01'),
-        phone_number: 'Anonymized',
-        profile: 'Anonymized',
-        website: 'Anonymized',
-        picture: 'Anonymized',
-        email: `anon-${Date.now()}_${user.email}`,
-        address: 'Anonymized',
-        street_address: 'Anonymized',
-        city: 'Anonymized',
-        region: 'Anonymized',
-        postal_code: 'Anonymized',
-      };
-
-      return await this.userRepo.update(
-        userId,
-        anonymizedData as UpdateUserDto
-      );
+      return await this.userRepo.anonymize(userId);
     } catch (error) {
       this.logger.error(error as Error, { context: 'anonymize', userId });
       throw error;

@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   // Type Definitions
 
   interface GrantsConfig {
@@ -66,6 +68,8 @@
      * Expose global methods for inline onclick handlers
      */
     private exposeGlobalMethods(): void {
+      if (typeof window === 'undefined') return;
+
       (window as any).revokeGrant = this.revokeGrant.bind(this);
     }
 
@@ -118,7 +122,13 @@
 
       try {
         const csrfToken = this.getCsrfToken();
-        const response = await fetch(`/admin/user-grants/${grantId}/revoke`, {
+        const revokeRoute =
+          this.config.routes.revokeGrant || '/admin/user-grants/{id}/revoke';
+        const revokeUrl = revokeRoute.replace(
+          '{id}',
+          encodeURIComponent(grantId)
+        );
+        const response = await fetch(revokeUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -161,7 +171,7 @@
       const csrfInput = document.querySelector<HTMLInputElement>(
         'input[name="_csrf"]'
       );
-      if (csrfInput) {
+      if (csrfInput?.value) {
         return csrfInput.value;
       }
 
@@ -169,7 +179,10 @@
         'meta[name="csrf-token"]'
       ) as HTMLElement | null;
       if (csrfMeta) {
-        return csrfMeta.getAttribute('content') || '';
+        const metaToken = csrfMeta.getAttribute('content');
+        if (metaToken) {
+          return metaToken;
+        }
       }
 
       return this.config.csrfToken || '';

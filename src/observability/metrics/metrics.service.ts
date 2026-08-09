@@ -58,6 +58,23 @@ const KNOWN_SOCIAL_PROVIDERS = new Set([
   'unknown',
 ]);
 
+const KNOWN_JWKS_PHASES = new Set([
+  'generate',
+  'rotate',
+  'promote',
+  'retire',
+  'cleanup',
+  'unknown',
+]);
+
+const KNOWN_OIDC_PROMPTS = new Set([
+  'login',
+  'consent',
+  'select_account',
+  'mfa',
+  'unknown',
+]);
+
 const KNOWN_HTTP_METHODS = new Set([
   'GET',
   'POST',
@@ -73,13 +90,19 @@ export function sanitizeLabel(value: string, allowlist: Set<string>): string {
   return allowlist.has(value) ? value : 'other';
 }
 
+function metricErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Normalize route paths to prevent label cardinality explosion.
  * Replaces dynamic segments (UUIDs, ObjectIDs, numeric IDs) with placeholders.
  */
 export function normalizeRoute(route: string): string {
+  const path = route.replace(/[?#].*$/, '');
+
   return (
-    route
+    path
       // UUID v4: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
       .replace(
         /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
@@ -218,7 +241,7 @@ export class MetricsService implements IMetricsService {
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record token issued', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -237,7 +260,7 @@ export class MetricsService implements IMetricsService {
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record token error', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -256,7 +279,7 @@ export class MetricsService implements IMetricsService {
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record login attempt', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -275,7 +298,7 @@ export class MetricsService implements IMetricsService {
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record federation login', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -300,7 +323,7 @@ export class MetricsService implements IMetricsService {
       );
     } catch (err) {
       this.logger.debug('metrics: failed to record request duration', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -313,13 +336,13 @@ export class MetricsService implements IMetricsService {
     if (!this.enabled) return;
     try {
       this.jwksRotationCounter!.inc({
-        phase,
+        phase: sanitizeLabel(phase, KNOWN_JWKS_PHASES),
         status,
         tenant: tenant ?? DEFAULT_TENANT,
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record JWKS rotation', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }
@@ -332,13 +355,13 @@ export class MetricsService implements IMetricsService {
     if (!this.enabled) return;
     try {
       this.oidcInteractionCounter!.inc({
-        prompt,
+        prompt: sanitizeLabel(prompt, KNOWN_OIDC_PROMPTS),
         result,
         tenant: tenant ?? DEFAULT_TENANT,
       });
     } catch (err) {
       this.logger.debug('metrics: failed to record OIDC interaction', {
-        error: (err as Error).message,
+        error: metricErrorMessage(err),
       });
     }
   }

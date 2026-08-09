@@ -7,16 +7,59 @@ import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interf
 import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import type { IStorageProvider } from '../storage/storage-provider.interface.js';
 import { TYPES } from '../di/types.js';
-import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import {
+  SYSTEM_TENANTS,
+  tenantContext,
+} from '../multi-tenancy/tenant-context.js';
 import { isValidHttpUrl } from '../utils/views.js';
 import { ImageProcessorService } from '../services/image-processor.service.js';
 
+/** Validate a canonical tenant ID before using it in a filesystem path. */
+function validateTenantId(tid: string): string {
+  if (!SYSTEM_TENANTS.has(tid) && !/^[a-z0-9][a-z0-9_-]{0,62}$/.test(tid)) {
+    throw new Error('Invalid tenant ID for upload path');
+  }
+  return tid;
+}
+
 /**
- * Sanitize a tenant ID for use in filesystem paths.
- * Strips any characters that could enable path traversal.
+ * Require a non-empty filesystem path segment without separators.
+ * Multer generates filenames internally, but this validation keeps the
+ * storage-backed API safe when it is called directly or by a future adapter.
  */
-function sanitizeTenantId(tid: string): string {
-  return tid.replace(/[^a-zA-Z0-9_-]/g, '');
+function assertSafePathSegment(value: string, label: string): void {
+  if (
+    !value ||
+    value === '.' ||
+    value === '..' ||
+    value.includes('/') ||
+    value.includes('\\') ||
+    value.includes('\0')
+  ) {
+    throw new Error(`Invalid upload ${label}`);
+  }
+}
+
+const UPLOAD_EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'image/x-icon': '.ico',
+  'image/vnd.microsoft.icon': '.ico',
+};
+
+function getSafeUploadExtension(
+  originalname: string,
+  mimetype: string
+): string {
+  assertSafePathSegment(originalname, 'original filename');
+  const extension = UPLOAD_EXTENSION_BY_MIME[mimetype];
+  if (!extension) {
+    throw new Error('Invalid upload MIME type');
+  }
+  return extension;
 }
 
 /**
@@ -24,17 +67,10 @@ function sanitizeTenantId(tid: string): string {
  * Format: {rootDir}/runtime/.tmp-uploads/{tenantId}/{category}
  */
 export function getTenantTempDir(rootDir: string, category: string): string {
-  const tid = sanitizeTenantId(tenantContext.getTenantId());
+  const tid = validateTenantId(tenantContext.getTenantId());
+  assertSafePathSegment(category, 'path category');
   const base = path.resolve(rootDir, 'runtime', '.tmp-uploads');
-  const resolved = path.resolve(base, tid, category);
-
-  if (!resolved.startsWith(base + path.sep) && resolved !== base) {
-    throw new Error(
-      `Invalid tenant upload path: tenant ID "${tid}" resolves outside temp directory`
-    );
-  }
-
-  return resolved;
+  return path.resolve(base, tid, category);
 }
 
 /**
@@ -94,8 +130,14 @@ export class UploadMiddleware implements IUploadMiddleware {
         const userId =
           (req as any).session?.authenticatedUsers?.active?.id || 'unknown';
         const timestamp = Date.now();
-        const ext = path.extname(file.originalname);
-        cb(null, `avatar-${userId}-${timestamp}${ext}`);
+        try {
+          const ext = getSafeUploadExtension(file.originalname, file.mimetype);
+          const filename = `avatar-${userId}-${timestamp}${ext}`;
+          assertSafePathSegment(filename, 'filename');
+          cb(null, filename);
+        } catch (error) {
+          cb(error as Error, '');
+        }
       },
     });
 
@@ -145,8 +187,14 @@ export class UploadMiddleware implements IUploadMiddleware {
       },
       filename: (_req, file, cb) => {
         const timestamp = Date.now();
-        const ext = path.extname(file.originalname);
-        cb(null, `logo-${timestamp}${ext}`);
+        try {
+          const ext = getSafeUploadExtension(file.originalname, file.mimetype);
+          const filename = `logo-${timestamp}${ext}`;
+          assertSafePathSegment(filename, 'filename');
+          cb(null, filename);
+        } catch (error) {
+          cb(error as Error, '');
+        }
       },
     });
 
@@ -182,8 +230,14 @@ export class UploadMiddleware implements IUploadMiddleware {
       },
       filename: (_req, file, cb) => {
         const timestamp = Date.now();
-        const ext = path.extname(file.originalname);
-        cb(null, `favicon-${timestamp}${ext}`);
+        try {
+          const ext = getSafeUploadExtension(file.originalname, file.mimetype);
+          const filename = `favicon-${timestamp}${ext}`;
+          assertSafePathSegment(filename, 'filename');
+          cb(null, filename);
+        } catch (error) {
+          cb(error as Error, '');
+        }
       },
     });
 
@@ -193,16 +247,11 @@ export class UploadMiddleware implements IUploadMiddleware {
       'image/png',
       'image/svg+xml',
     ];
-    const allowedExtensions = ['.ico', '.png', '.svg'];
 
     return multer({
       storage: faviconStorage,
       fileFilter: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (
-          allowedTypes.includes(file.mimetype) ||
-          allowedExtensions.includes(ext)
-        ) {
+        if (allowedTypes.includes(file.mimetype)) {
           cb(null, true);
         } else {
           cb(
@@ -220,42 +269,50 @@ export class UploadMiddleware implements IUploadMiddleware {
     file: Express.Multer.File,
     category: string
   ): Promise<string> {
-    const tid = sanitizeTenantId(tenantContext.getTenantId());
+    const tid = validateTenantId(tenantContext.getTenantId());
+    assertSafePathSegment(category, 'category');
+    assertSafePathSegment(file.filename, 'filename');
     const key = `${tid}/${category}/${file.filename}`;
 
     // Read the temp file multer wrote (async to avoid blocking the event loop)
     const buffer = await fs.promises.readFile(file.path);
 
-    await this.storageProvider.store(buffer, key, file.mimetype);
+    try {
+      await this.storageProvider.store(buffer, key, file.mimetype);
 
-    // Raster image inputs get scaled WebP, AVIF, and JPEG variants written
-    // alongside the source. Variant generation failures are not fatal: the
-    // source is already stored and the view layer falls back to it when a
-    // variant is missing.
-    if (this.imageProcessor.isRasterImage(file.mimetype)) {
+      // Raster image inputs get scaled WebP, AVIF, and JPEG variants written
+      // alongside the source. Variant generation failures are not fatal: the
+      // source is already stored and the view layer falls back to it when a
+      // variant is missing.
+      if (this.imageProcessor.isRasterImage(file.mimetype)) {
+        try {
+          await this.imageProcessor.generateVariants(
+            buffer,
+            key,
+            file.mimetype
+          );
+        } catch (err) {
+          this.logger.warn('Image variant generation failed', {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      this.logger.debug('File stored via provider', {
+        key,
+        provider: this.storageProvider.providerName,
+      });
+
+      return key;
+    } finally {
       try {
-        await this.imageProcessor.generateVariants(buffer, key, file.mimetype);
-      } catch (err) {
-        this.logger.warn('Image variant generation failed', {
-          key,
-          error: (err as Error).message,
-        });
+        await fs.promises.unlink(file.path);
+      } catch {
+        // Best effort: the file may already be absent. Storage errors still
+        // propagate, but must not leave unbounded temporary files behind.
       }
     }
-
-    try {
-      await fs.promises.unlink(file.path);
-    } catch {
-      // best-effort: tempfile may already have been removed by Multer
-      // or by an earlier handler; storage already succeeded above.
-    }
-
-    this.logger.debug('File stored via provider', {
-      key,
-      provider: this.storageProvider.providerName,
-    });
-
-    return key;
   }
 
   getFileUrl(key: string): string | Promise<string> {

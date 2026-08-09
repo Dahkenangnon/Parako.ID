@@ -1,5 +1,11 @@
 import type { IBaseModel } from './base.js';
 
+/** Stable keyset position for newest-first activity pagination. */
+export interface ActivityCursor {
+  timestamp: Date;
+  id: string;
+}
+
 /**
  * Actor: who performed the action
  */

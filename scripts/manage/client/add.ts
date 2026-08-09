@@ -6,6 +6,41 @@ import { assertInteractiveTty, log } from '../shared/utils.js';
 import { displayClient } from './display.js';
 import type { OidcClient } from './local-types.js';
 
+const DANGEROUS_REDIRECT_PROTOCOLS = new Set([
+  'javascript:',
+  'data:',
+  'file:',
+  'vbscript:',
+]);
+
+function isSafeRedirectUri(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      !DANGEROUS_REDIRECT_PROTOCOLS.has(parsed.protocol) &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.hostname.includes('*') &&
+      !parsed.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isHttpUri(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      !parsed.username &&
+      !parsed.password
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Add a new client interactively.
  *
@@ -105,12 +140,9 @@ export async function addClientInteractive(): Promise<void> {
               message: `Redirect URI ${redirectUris.length + 1} (press Enter to finish):`,
               validate: (input: string) => {
                 if (!input) return true; // Empty to finish
-                try {
-                  new URL(input);
-                  return true;
-                } catch {
-                  return 'Please enter a valid URL';
-                }
+                return isSafeRedirectUri(input)
+                  ? true
+                  : 'Please enter a valid URL';
               },
             },
           ] as any);
@@ -118,8 +150,9 @@ export async function addClientInteractive(): Promise<void> {
           if (!uri) {
             addingUris = false;
           } else {
-            redirectUris.push(uri);
-            log.success(`Added: ${uri}`);
+            const normalizedUri = uri.trim();
+            redirectUris.push(normalizedUri);
+            log.success(`Added: ${normalizedUri}`);
           }
         }
 
@@ -148,12 +181,9 @@ export async function addClientInteractive(): Promise<void> {
                   message: `Post-logout URI ${logoutUris.length + 1} (press Enter to finish):`,
                   validate: (input: string) => {
                     if (!input) return true;
-                    try {
-                      new URL(input);
-                      return true;
-                    } catch {
-                      return 'Please enter a valid URL';
-                    }
+                    return isSafeRedirectUri(input)
+                      ? true
+                      : 'Please enter a valid URL';
                   },
                 },
               ] as any);
@@ -161,8 +191,9 @@ export async function addClientInteractive(): Promise<void> {
               if (!uri) {
                 addingLogoutUris = false;
               } else {
-                logoutUris.push(uri);
-                log.success(`Added: ${uri}`);
+                const normalizedUri = uri.trim();
+                logoutUris.push(normalizedUri);
+                log.success(`Added: ${normalizedUri}`);
               }
             }
 
@@ -186,12 +217,7 @@ export async function addClientInteractive(): Promise<void> {
         message: 'Client URI (optional):',
         validate: (input: string) => {
           if (!input) return true;
-          try {
-            new URL(input);
-            return true;
-          } catch {
-            return 'Please enter a valid URL';
-          }
+          return isHttpUri(input) ? true : 'Please enter a valid URL';
         },
       },
       {
@@ -200,12 +226,7 @@ export async function addClientInteractive(): Promise<void> {
         message: 'Logo URI (optional):',
         validate: (input: string) => {
           if (!input) return true;
-          try {
-            new URL(input);
-            return true;
-          } catch {
-            return 'Please enter a valid URL';
-          }
+          return isHttpUri(input) ? true : 'Please enter a valid URL';
         },
       },
       {
@@ -272,11 +293,13 @@ export async function addClientInteractive(): Promise<void> {
     }
 
     const defaultScopes = selectedType.defaults.scope
-      ? selectedType.defaults.scope.split(' ').filter((s: string) => s.trim())
+      ? selectedType.defaults.scope
+          .split(/\s+/u)
+          .filter((s: string) => s.trim())
       : [];
     const additionalScopes = additionalConfig.additionalScopes
       ? additionalConfig.additionalScopes
-          .split(' ')
+          .split(/\s+/u)
           .filter((s: string) => s.trim())
       : [];
     const allScopes = [...new Set([...defaultScopes, ...additionalScopes])]; // Remove duplicates using Set
@@ -284,8 +307,8 @@ export async function addClientInteractive(): Promise<void> {
 
     Object.assign(clientData, {
       scope: finalScope,
-      client_uri: additionalConfig.client_uri || undefined,
-      logo_uri: additionalConfig.logo_uri || undefined,
+      client_uri: additionalConfig.client_uri?.trim() || undefined,
+      logo_uri: additionalConfig.logo_uri?.trim() || undefined,
       tags: additionalConfig.tags
         ? additionalConfig.tags
             .split(',')
@@ -328,6 +351,7 @@ export async function addClientInteractive(): Promise<void> {
       );
     }
   } catch (error) {
-    log.error(`Failed to add client: ${(error as Error).message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    log.error(`Failed to add client: ${message}`);
   }
 }

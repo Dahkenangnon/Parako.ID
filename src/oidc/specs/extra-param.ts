@@ -12,9 +12,8 @@ export default function ExtraParams(configManager: IConfigManager) {
    * Extra Authorization Request Parameters Configuration
    *
    * This configuration allows you to specify additional custom parameters that can be
-   * passed through the OIDC authorization endpoints. By default, unknown parameters
-   * are rejected by the OIDC provider. Adding parameter names here will allow them
-   * to be accepted and made available in the request context.
+   * preserved by the OIDC authorization endpoints. The provider ignores unregistered
+   * parameters; registering a name here makes its value available in the request context.
    *
    * @see {@link https://github.com/panva/node-oidc-provider/blob/main/docs/README.md#extraparams}
    *
@@ -27,7 +26,7 @@ export default function ExtraParams(configManager: IConfigManager) {
    * //   - Pre-select a tenant in a UI drop-down
    * //   - Tailor consent or login text
    * //
-   * // If "tenant_id" is not listed here, the provider will reject the request.
+   * // If "tenant_id" is not listed here, the provider will ignore it.
    *
    * @type {string[]} Array of allowed custom parameter names
    */
@@ -37,5 +36,7 @@ export default function ExtraParams(configManager: IConfigManager) {
    * These are loaded from the configuration at 'features.oidc.extra_params.allowed_params'.
    * Defaults to an empty array if not set.
    */
-  return config.features.oidc.extra_params.allowed_params;
+  return config.features.oidc.extra_params.enabled
+    ? config.features.oidc.extra_params.allowed_params
+    : [];
 }

@@ -88,12 +88,17 @@ export default function LoadExistingGrant(logger: ILogger) {
           );
 
           if (resourceServerScope2Add.length > 0) {
-            const resource =
-              typeof ctx.oidc.params.resource === 'string'
-                ? ctx.oidc.params.resource
-                : '';
+            const requestedResources = Array.isArray(ctx.oidc.params.resource)
+              ? ctx.oidc.params.resource.filter(
+                  (resource): resource is string =>
+                    typeof resource === 'string' && resource.length > 0
+                )
+              : typeof ctx.oidc.params.resource === 'string' &&
+                  ctx.oidc.params.resource.length > 0
+                ? [ctx.oidc.params.resource]
+                : [];
 
-            if (resource) {
+            for (const resource of requestedResources) {
               grant.addResourceScope(
                 resource,
                 resourceServerScope2Add.join(' ')

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import paginate from '../db/plugins/paginate.plugin.js';
+import { tenantPlugin } from '../db/plugins/tenant.plugin.js';
 import toJSON from '../db/plugins/to-json.plugin.js';
 import { TypedModel } from './base.model.js';
 
@@ -332,6 +333,8 @@ export const createActivityModel = (): ActivityModel => {
     }
   );
 
+  activitySchema.plugin(tenantPlugin);
+
   activitySchema.index({ 'device_infos.fingerprint': 1 });
   activitySchema.index({ 'device_infos.fingerprint_js_id': 1 });
   activitySchema.index({ 'device_infos.risk_level': 1 });
@@ -365,10 +368,9 @@ export const createActivityModel = (): ActivityModel => {
   /**
    * @typedef Activity
    */
-  const Activity = mongoose.model<IActivity, ActivityModel>(
-    'Activity',
-    activitySchema
-  );
+  const Activity =
+    (mongoose.models.Activity as ActivityModel) ||
+    mongoose.model<IActivity, ActivityModel>('Activity', activitySchema);
 
   return Activity;
 };

@@ -1,6 +1,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   const toggles = document.querySelectorAll<HTMLInputElement>(
     '[data-provider-toggle]'
   );

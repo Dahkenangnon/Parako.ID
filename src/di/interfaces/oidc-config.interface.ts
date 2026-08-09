@@ -1,4 +1,5 @@
 import type { Configuration } from 'oidc-provider';
+import type { JWKWithMetadata } from '../../oidc/key-store/constants.js';
 
 /**
  * Interface for OIDC Configuration service
@@ -14,7 +15,7 @@ export interface IOIDCConfig {
    * Get JWKS from the key store (async — call before provider creation)
    * @returns JWKS object with keys array
    */
-  getJwks(): Promise<{ keys: JsonWebKey[] }>;
+  getJwks(): Promise<{ keys: JWKWithMetadata[] }>;
 
   /**
    * Initialize resource servers from DB clients (async).

@@ -7,6 +7,10 @@ import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { type IUser } from '../types/user.js';
 
+function isValidDate(value: unknown): value is Date {
+  return value instanceof Date && Number.isFinite(value.getTime());
+}
+
 /**
  * Recovery method types supported by the system
  */
@@ -331,7 +335,7 @@ export class RecoveryUtils implements IRecoveryUtils {
         };
       }
 
-      if (!expiresAt || !(expiresAt instanceof Date)) {
+      if (!isValidDate(expiresAt)) {
         return {
           valid: false,
           method: 'backup_codes',
@@ -352,7 +356,7 @@ export class RecoveryUtils implements IRecoveryUtils {
         return {
           valid: false,
           method: 'backup_codes',
-          error: formatValidation.error || 'Invalid backup code format',
+          error: formatValidation.error,
         };
       }
 
@@ -387,7 +391,7 @@ export class RecoveryUtils implements IRecoveryUtils {
       this.logger.error(error as Error, {
         context: 'backup_code_verification_error',
         codeProvided: !!code,
-        codesCount: storedHashedCodes?.length || 0,
+        codesCount: storedHashedCodes.length,
       });
       return {
         valid: false,
@@ -465,7 +469,7 @@ export class RecoveryUtils implements IRecoveryUtils {
         };
       }
 
-      if (!expiresAt || !(expiresAt instanceof Date)) {
+      if (!isValidDate(expiresAt)) {
         return {
           valid: false,
           method: 'secondary_email',
@@ -568,7 +572,7 @@ export class RecoveryUtils implements IRecoveryUtils {
         };
       }
 
-      if (!expiresAt || !(expiresAt instanceof Date)) {
+      if (!isValidDate(expiresAt)) {
         return {
           valid: false,
           method: 'sms',
@@ -770,7 +774,12 @@ export class RecoveryUtils implements IRecoveryUtils {
       return trimmedEmail;
     }
 
-    const [localPart, domain] = trimmedEmail.split('@');
+    const emailParts = trimmedEmail.split('@');
+    if (emailParts.length !== 2) {
+      return trimmedEmail;
+    }
+
+    const [localPart, domain] = emailParts;
     if (!localPart || !domain || localPart.length <= 1) {
       return trimmedEmail;
     }
@@ -814,35 +823,25 @@ export class RecoveryUtils implements IRecoveryUtils {
       security_questions: { enabled: boolean };
     };
   } {
+    const recoveryConfig =
+      this.configManager.getConfig().security.authentication.recovery;
+
     return {
-      enabled:
-        this.configManager.getConfig().security.authentication.recovery.enabled,
+      enabled: recoveryConfig.enabled,
       methods: {
         backup_codes: {
-          enabled:
-            this.configManager.getConfig().security.authentication.recovery
-              .backup_codes.enabled,
-          count:
-            this.configManager.getConfig().security.authentication.recovery
-              .backup_codes.count,
-          expiryDays:
-            this.configManager.getConfig().security.authentication.recovery
-              .backup_codes.expiry_days,
+          enabled: recoveryConfig.backup_codes.enabled,
+          count: recoveryConfig.backup_codes.count,
+          expiryDays: recoveryConfig.backup_codes.expiry_days,
         },
         secondary_email: {
-          enabled:
-            this.configManager.getConfig().security.authentication.recovery
-              .secondary_email.enabled,
+          enabled: recoveryConfig.secondary_email.enabled,
         },
         sms: {
-          enabled:
-            this.configManager.getConfig().security.authentication.recovery.sms
-              .enabled,
+          enabled: recoveryConfig.sms.enabled,
         },
         security_questions: {
-          enabled:
-            this.configManager.getConfig().security.authentication.recovery
-              .security_questions.enabled,
+          enabled: recoveryConfig.security_questions.enabled,
         },
       },
     };
@@ -892,38 +891,31 @@ export class RecoveryUtils implements IRecoveryUtils {
     sanitized?: string;
     error?: string;
   } {
-    try {
-      if (!code || typeof code !== 'string') {
-        return { valid: false, error: 'Backup code is required' };
-      }
-
-      const sanitized = code.toUpperCase().replace(/[^A-F0-9]/g, '');
-
-      if (sanitized.length !== RecoveryUtils.BACKUP_CODE_LENGTH) {
-        return {
-          valid: false,
-          error: `Backup code must be exactly ${RecoveryUtils.BACKUP_CODE_LENGTH} characters`,
-        };
-      }
-
-      return { valid: true, sanitized };
-    } catch (error) {
-      this.logger.error((error as Error).message, {
-        context: 'validate_backup_code_format_error',
-        code,
-      });
-      return { valid: false, error: 'Invalid backup code format' };
+    if (!code || typeof code !== 'string') {
+      return { valid: false, error: 'Backup code is required' };
     }
+
+    const sanitized = code.toUpperCase().replace(/[^A-F0-9]/g, '');
+
+    if (sanitized.length !== RecoveryUtils.BACKUP_CODE_LENGTH) {
+      return {
+        valid: false,
+        error: `Backup code must be exactly ${RecoveryUtils.BACKUP_CODE_LENGTH} characters`,
+      };
+    }
+
+    return { valid: true, sanitized };
   }
 
   /**
    * Check if backup codes are expired
    */
   areBackupCodesExpired(user: IUser): boolean {
-    if (!user.recovery?.backup_codes?.expires_at) {
+    const expiresAt = user.recovery?.backup_codes?.expires_at;
+    if (!isValidDate(expiresAt)) {
       return true;
     }
-    return user.recovery.backup_codes.expires_at < new Date();
+    return expiresAt < new Date();
   }
 
   /**
@@ -1137,12 +1129,27 @@ export class RecoveryUtils implements IRecoveryUtils {
       return { sameDomain: false };
     }
 
-    const primaryDomain = primaryEmail.split('@')[1]?.toLowerCase();
-    const secondaryDomain = secondaryEmail.split('@')[1]?.toLowerCase();
+    const primaryParts = primaryEmail.trim().split('@');
+    const secondaryParts = secondaryEmail.trim().split('@');
 
-    if (!primaryDomain || !secondaryDomain) {
+    if (primaryParts.length !== 2 || secondaryParts.length !== 2) {
       return { sameDomain: false };
     }
+
+    const [primaryLocal, primaryDomainValue] = primaryParts;
+    const [secondaryLocal, secondaryDomainValue] = secondaryParts;
+
+    if (
+      !primaryLocal ||
+      !primaryDomainValue ||
+      !secondaryLocal ||
+      !secondaryDomainValue
+    ) {
+      return { sameDomain: false };
+    }
+
+    const primaryDomain = primaryDomainValue.toLowerCase();
+    const secondaryDomain = secondaryDomainValue.toLowerCase();
 
     if (primaryDomain === secondaryDomain) {
       return {
@@ -1174,7 +1181,7 @@ export class RecoveryUtils implements IRecoveryUtils {
       .toLowerCase()
       .trim()
       .replace(/\s+/g, ' ')
-      .replace(/[^\w\s]/g, '');
+      .replace(/[^\p{L}\p{N}_\s]/gu, '');
   }
 
   /**

@@ -71,20 +71,33 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
       const sessionTenant = (req.session as Record<string, unknown>)
         ?.tenantId as string | undefined;
 
+      const hasValidExtractedTenant =
+        tenantId === '_ops' ||
+        tenantId === '_platforms' ||
+        (tenantId !== DEFAULT_TENANT_ID && TENANT_SLUG_PATTERN.test(tenantId));
       if (
-        subdomain &&
+        hasValidExtractedTenant &&
         sessionTenant &&
-        subdomain !== sessionTenant &&
+        tenantId !== sessionTenant &&
         sessionTenant !== DEFAULT_TENANT_ID
       ) {
         this.logger.warn('tenant_session_subdomain_mismatch', {
           sessionTenant,
           subdomain,
+          resolvedTenant: tenantId,
           path: req.originalUrl,
-          action: 'clearing_auth_using_subdomain',
+          action: 'clearing_auth_using_resolved_tenant',
         });
         this.sessionManager.clearAuthenticationData(req);
-        tenantId = subdomain; // subdomain wins
+      }
+
+      if (
+        tenantId === DEFAULT_TENANT_ID &&
+        sessionTenant &&
+        sessionTenant !== DEFAULT_TENANT_ID &&
+        sessionTenant !== '_ops'
+      ) {
+        tenantId = sessionTenant;
       }
 
       // _ops: stateless infrastructure gateway — no session, no config cache

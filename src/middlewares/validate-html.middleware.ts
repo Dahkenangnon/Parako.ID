@@ -38,8 +38,10 @@ import type { NextFunction, Request, Response } from 'express';
 import type { z } from 'zod';
 
 import type { ILogger } from '../di/interfaces/logger.interface.js';
-import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
-import { flashAndRedirect } from '../utils/flash-redirect.js';
+import {
+  flashAndRedirect,
+  type FlashRedirectDeps,
+} from '../utils/flash-redirect.js';
 import { safeParseOrIssues } from '../validators/parse.js';
 
 /**
@@ -51,8 +53,7 @@ import { safeParseOrIssues } from '../validators/parse.js';
 export const GENERIC_VALIDATION_FLASH =
   'Please correct the highlighted fields and try again.';
 
-export interface ValidateHtmlDeps {
-  sessionManager: Pick<ISessionManager, 'flash'>;
+export interface ValidateHtmlDeps extends FlashRedirectDeps<'error'> {
   logger: Pick<ILogger, 'info'>;
 }
 

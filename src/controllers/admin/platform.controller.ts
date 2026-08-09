@@ -48,13 +48,20 @@ export class PlatformAdminController {
           ? (rawStatus as TenantStatus)
           : undefined;
       const filter = status ? { status } : undefined;
-      const tenants = await this.platformService.listTenants(filter);
+      const tenantsPromise = this.platformService.listTenants(filter);
+      const allTenantsPromise = filter
+        ? this.platformService.listTenants(undefined)
+        : tenantsPromise;
+      const [tenants, allTenants] = await Promise.all([
+        tenantsPromise,
+        allTenantsPromise,
+      ]);
 
       const stats = {
-        total: tenants.length,
-        active: tenants.filter(t => t.status === 'active').length,
-        suspended: tenants.filter(t => t.status === 'suspended').length,
-        archived: tenants.filter(t => t.status === 'archived').length,
+        total: allTenants.length,
+        active: allTenants.filter(t => t.status === 'active').length,
+        suspended: allTenants.filter(t => t.status === 'suspended').length,
+        archived: allTenants.filter(t => t.status === 'archived').length,
       };
 
       res.render('admin/tenants/index', {
@@ -152,6 +159,16 @@ export class PlatformAdminController {
         return;
       }
 
+      const normalizedDisplayName = display_name.trim();
+      if (!normalizedDisplayName) {
+        res.render('admin/tenants/create', {
+          title: 'New Tenant',
+          error: 'Display name is required',
+          formData: req.body,
+        });
+        return;
+      }
+
       const normalizedSlug = slug.trim().toLowerCase();
       if (!TENANT_SLUG_PATTERN.test(normalizedSlug)) {
         res.render('admin/tenants/create', {
@@ -165,7 +182,7 @@ export class PlatformAdminController {
 
       const data: { slug: string; display_name: string; domain?: string } = {
         slug: normalizedSlug,
-        display_name: display_name.trim(),
+        display_name: normalizedDisplayName,
       };
       if (domain && typeof domain === 'string' && domain.trim()) {
         data.domain = domain.trim();
@@ -231,12 +248,15 @@ export class PlatformAdminController {
       const { slug } = req.params;
       const { display_name, domain } = req.body;
 
-      const data: { display_name?: string; domain?: string } = {};
-      if (display_name && typeof display_name === 'string') {
-        data.display_name = display_name.trim();
+      const data: { display_name?: string; domain?: string | null } = {};
+      if (typeof display_name === 'string') {
+        const normalizedDisplayName = display_name.trim();
+        if (normalizedDisplayName) {
+          data.display_name = normalizedDisplayName;
+        }
       }
       if (typeof domain === 'string') {
-        data.domain = domain.trim() || undefined;
+        data.domain = domain.trim() || null;
       }
 
       await this.platformService.updateTenant(slug, data);
@@ -251,9 +271,19 @@ export class PlatformAdminController {
         context: 'platform_update_tenant',
       });
 
-      const tenant = await this.platformService.getTenantBySlug(
-        req.params.slug
-      );
+      let tenant;
+      try {
+        tenant = await this.platformService.getTenantBySlug(req.params.slug);
+      } catch (reloadError) {
+        this.logger.error(reloadError as Error, {
+          context: 'platform_update_tenant_reload_failed',
+        });
+        res.status(500).render('error', {
+          message: 'Failed to load tenant',
+        });
+        return;
+      }
+
       res.render('admin/tenants/edit', {
         title: `Edit Tenant: ${req.params.slug}`,
         tenant,

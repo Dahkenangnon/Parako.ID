@@ -21,13 +21,32 @@ export const createRegistrationTokenSchema = z.object({
 
   /** Registration policies to attach. Defaults to ['general-policy']. */
   policies: z
-    .array(z.string().min(1).max(128))
+    .array(z.string().trim().min(1).max(128))
     .min(1)
     .max(10)
+    .superRefine((policies, context) => {
+      const seen = new Set<string>();
+
+      policies.forEach((policy, index) => {
+        if (seen.has(policy)) {
+          context.addIssue({
+            code: 'custom',
+            path: [index],
+            message: 'Registration policies must be unique',
+          });
+        }
+        seen.add(policy);
+      });
+    })
     .default(['general-policy']),
 
   /** Optional admin note for identifying the token's purpose. */
-  note: z.string().max(500).optional(),
+  note: z
+    .string()
+    .trim()
+    .max(500)
+    .transform(value => value || undefined)
+    .optional(),
 });
 
 export type CreateRegistrationTokenInput = z.infer<

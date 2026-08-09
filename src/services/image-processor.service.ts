@@ -54,6 +54,9 @@ export const buildVariantKey = (
 
 const emptyVariantSet = (): VariantSet => ({ avif: {}, webp: {}, jpeg: {} });
 
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 /**
  * Generate scaled WebP, AVIF, and JPEG variants from a raster image source.
  *
@@ -95,56 +98,78 @@ export class ImageProcessorService {
 
     const variants = emptyVariantSet();
     const descriptors: VariantDescriptor[] = [];
+    const storedKeys: string[] = [];
 
-    for (const width of HARDENING.images.widths) {
-      const pipeline = sharp(source).resize(width, undefined, {
-        fit: 'inside',
-        withoutEnlargement: true,
-      });
+    try {
+      for (const width of HARDENING.images.widths) {
+        const pipeline = sharp(source).resize(width, undefined, {
+          fit: 'inside',
+          withoutEnlargement: true,
+        });
 
-      const [avif, webp, jpeg] = await Promise.all([
-        pipeline
-          .clone()
-          .avif({
-            quality: HARDENING.images.avif.quality,
-            effort: avifEffort,
-          })
-          .toBuffer(),
-        pipeline
-          .clone()
-          .webp({
-            quality: HARDENING.images.webp.quality,
-            effort: HARDENING.images.webp.effort,
-          })
-          .toBuffer(),
-        pipeline
-          .clone()
-          .jpeg({
-            quality: HARDENING.images.jpeg.quality,
-            progressive: HARDENING.images.jpeg.progressive,
-          })
-          .toBuffer(),
-      ]);
+        const [avif, webp, jpeg] = await Promise.all([
+          pipeline
+            .clone()
+            .avif({
+              quality: HARDENING.images.avif.quality,
+              effort: avifEffort,
+            })
+            .toBuffer(),
+          pipeline
+            .clone()
+            .webp({
+              quality: HARDENING.images.webp.quality,
+              effort: HARDENING.images.webp.effort,
+            })
+            .toBuffer(),
+          pipeline
+            .clone()
+            .jpeg({
+              quality: HARDENING.images.jpeg.quality,
+              progressive: HARDENING.images.jpeg.progressive,
+            })
+            .toBuffer(),
+        ]);
 
-      const avifKey = buildVariantKey(baseKey, width, 'avif');
-      const webpKey = buildVariantKey(baseKey, width, 'webp');
-      const jpegKey = buildVariantKey(baseKey, width, 'jpeg');
+        const avifKey = buildVariantKey(baseKey, width, 'avif');
+        const webpKey = buildVariantKey(baseKey, width, 'webp');
+        const jpegKey = buildVariantKey(baseKey, width, 'jpeg');
+        const stores = [
+          { buffer: avif, key: avifKey, mime: FORMAT_TO_MIME.avif },
+          { buffer: webp, key: webpKey, mime: FORMAT_TO_MIME.webp },
+          { buffer: jpeg, key: jpegKey, mime: FORMAT_TO_MIME.jpeg },
+        ];
+        const results = await Promise.allSettled(
+          stores.map(({ buffer, key, mime }) =>
+            this.storageProvider.store(buffer, key, mime)
+          )
+        );
 
-      await Promise.all([
-        this.storageProvider.store(avif, avifKey, FORMAT_TO_MIME.avif),
-        this.storageProvider.store(webp, webpKey, FORMAT_TO_MIME.webp),
-        this.storageProvider.store(jpeg, jpegKey, FORMAT_TO_MIME.jpeg),
-      ]);
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            storedKeys.push(stores[index].key);
+          }
+        });
+        const failedStore = results.find(
+          result => result.status === 'rejected'
+        );
+        if (failedStore?.status === 'rejected') {
+          throw failedStore.reason;
+        }
 
-      variants.avif[width] = avifKey;
-      variants.webp[width] = webpKey;
-      variants.jpeg[width] = jpegKey;
+        variants.avif[width] = avifKey;
+        variants.webp[width] = webpKey;
+        variants.jpeg[width] = jpegKey;
 
-      descriptors.push(
-        { key: avifKey, width, format: 'avif' },
-        { key: webpKey, width, format: 'webp' },
-        { key: jpegKey, width, format: 'jpeg' }
-      );
+        descriptors.push(
+          { key: avifKey, width, format: 'avif' },
+          { key: webpKey, width, format: 'webp' },
+          { key: jpegKey, width, format: 'jpeg' }
+        );
+      }
+    } catch (error) {
+      await this.deleteKeys(storedKeys);
+      throw error;
     }
 
     this.logger.debug('Image variants generated', {
@@ -162,14 +187,20 @@ export class ImageProcessorService {
         keys.push(variants[format][Number(width)]);
       }
     }
+    await this.deleteKeys(keys);
+  }
+
+  private async deleteKeys(keys: readonly string[]): Promise<void> {
     await Promise.all(
       keys.map(key =>
-        this.storageProvider.delete(key).catch(err =>
-          this.logger.warn('Variant delete failed', {
-            key,
-            error: (err as Error).message,
-          })
-        )
+        Promise.resolve()
+          .then(() => this.storageProvider.delete(key))
+          .catch(error =>
+            this.logger.warn('Variant delete failed', {
+              key,
+              error: errorMessage(error),
+            })
+          )
       )
     );
   }

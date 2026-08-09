@@ -1,4 +1,5 @@
 import type { KoaContextWithOIDC } from 'oidc-provider';
+import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
 
 /**
@@ -6,7 +7,10 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
  * @param logger - Logger instance
  * @returns Refresh token rotation function
  */
-export default function RotateRefreshToken(logger: ILogger) {
+export default function RotateRefreshToken(
+  configManager: IConfigManager,
+  logger: ILogger
+) {
   /**
    * Refresh Token Rotation Configuration
    *
@@ -34,6 +38,10 @@ export default function RotateRefreshToken(logger: ILogger) {
    */
   return function rotateRefreshToken(ctx: KoaContextWithOIDC) {
     try {
+      if (!configManager.getConfig().features.oidc.rotate_refresh_token) {
+        return false;
+      }
+
       const { RefreshToken: refreshToken, Client: client } = ctx.oidc.entities;
 
       // Safety check for required entities

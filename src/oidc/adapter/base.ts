@@ -98,6 +98,12 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
   abstract find(id: string): Promise<OIDCPayload | undefined>;
 
   /**
+   * Return every non-expired instance for this model in the current tenant.
+   * Storage adapters must preserve the stable adapter identifier as `_id`.
+   */
+  abstract findAll(): Promise<OIDCPayload[]>;
+
+  /**
    * Return previously stored instance of DeviceCode by the end-user entered user code.
    * Required for the device flow feature.
    *
@@ -211,7 +217,7 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
    * @protected
    */
   protected validatePayload(payload: OIDCPayload, operation: string): void {
-    if (!payload || typeof payload !== 'object') {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw new Error(`Invalid payload provided for ${this.name}.${operation}`);
     }
   }
@@ -225,14 +231,8 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
    * @returns {Promise<number>} Promise fulfilled with the item count
    */
   async countAll(): Promise<number> {
-    try {
-      // Default implementation returns 0
-      // Subclasses should override this with storage-specific counting
-      return 0;
-    } catch (error) {
-      this.logError(error as Error, 'countAll');
-      return 0;
-    }
+    // Subclasses should override this with storage-specific counting.
+    return 0;
   }
 
   /**
@@ -256,10 +256,10 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
         customData: doc.data || {},
       };
 
-      if (doc.exp) {
+      if (doc.exp !== undefined && doc.exp !== null) {
         result.expiration = new Date(doc.exp * 1000);
       }
-      if (doc.iat) {
+      if (doc.iat !== undefined && doc.iat !== null) {
         result.issuedAt = new Date(doc.iat * 1000);
       }
       if (doc.expiresAt) {
@@ -272,7 +272,9 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
         const payload = doc.payload || doc;
         if (payload.accountId) result.accountId = payload.accountId;
         if (payload.uid) result.uid = payload.uid;
-        if (payload.loginTs) result.loginTs = new Date(payload.loginTs * 1000);
+        if (payload.loginTs !== undefined && payload.loginTs !== null) {
+          result.loginTs = new Date(payload.loginTs * 1000);
+        }
         if (payload.authorizations)
           result.authorizations = payload.authorizations;
       }
@@ -306,7 +308,11 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
     try {
       this.validateId(id, 'extendModel');
 
-      if (!customData || typeof customData !== 'object') {
+      if (
+        !customData ||
+        typeof customData !== 'object' ||
+        Array.isArray(customData)
+      ) {
         throw new Error('Invalid custom data provided');
       }
 
@@ -327,7 +333,7 @@ export default abstract class BaseOIDCAdapter implements IBaseOIDCAdapter {
    */
   async findByCustomField(field: string, _value: unknown): Promise<any[]> {
     try {
-      if (!field || typeof field !== 'string') {
+      if (!field || typeof field !== 'string' || field.trim().length === 0) {
         throw new Error('Invalid field provided');
       }
 

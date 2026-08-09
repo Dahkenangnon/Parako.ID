@@ -4,6 +4,7 @@ import { log } from '../shared/logger.js';
 import { executeCommand } from '../shared/utils.js';
 import { SYSTEMD_DIR, SERVICE_NAME } from './constants.js';
 import type { SystemdConfig, UnitFiles } from './types.js';
+import { assertServiceName } from './validation.js';
 
 export interface InstallOptions {
   /** Overwrite existing unit files even if they differ. Default: false */
@@ -12,34 +13,32 @@ export interface InstallOptions {
 
 /**
  * Pre-install validation. Verifies the configured user, working directory,
- * and env file are present. Throws (via process.exit) on hard failures and
+ * and env file are present. Throws on hard failures and
  * warns on soft failures (e.g., missing env file is recoverable on first boot).
  */
 async function preflight(config: SystemdConfig): Promise<void> {
   // user must exist
   const userCheck = await executeCommand('id', ['-u', config.user]);
   if (!userCheck.success) {
-    log.error(
+    throw new Error(
       `Service user "${config.user}" does not exist. Create it first (e.g., \`sudo useradd --system --no-create-home --shell /usr/sbin/nologin ${config.user}\`).`
     );
-    process.exit(1);
   }
 
   // workingDirectory must exist
   if (!fs.existsSync(config.workingDirectory)) {
-    log.error(
+    throw new Error(
       `Working directory "${config.workingDirectory}" does not exist. Create or correct the path before installing.`
     );
-    process.exit(1);
   }
   if (!fs.statSync(config.workingDirectory).isDirectory()) {
-    log.error(`"${config.workingDirectory}" is not a directory.`);
-    process.exit(1);
+    throw new Error(`"${config.workingDirectory}" is not a directory.`);
   }
 
   if (!fs.existsSync(config.runtimeDirectory)) {
-    log.error(`Runtime directory "${config.runtimeDirectory}" does not exist.`);
-    process.exit(1);
+    throw new Error(
+      `Runtime directory "${config.runtimeDirectory}" does not exist.`
+    );
   }
 
   // envFile is allowed to be missing on first boot but warn the operator
@@ -93,13 +92,12 @@ function writeUnitFile(
       return { wrote: false, skipped: true };
     }
     if (!force) {
-      log.error(
-        `Refusing to overwrite ${filePath} — content differs. Pass --force to apply, or remove the file first.`
-      );
+      const message = `Refusing to overwrite ${filePath} — content differs. Pass --force to apply, or remove the file first.`;
+      log.error(message);
       console.log('');
       console.log(renderDiff(existing, contents, path.basename(filePath)));
       console.log('');
-      process.exit(1);
+      throw new Error(message);
     }
     log.warning(`Overwriting ${filePath} (--force).`);
   }
@@ -115,10 +113,10 @@ export async function installServices(
   config: SystemdConfig,
   options: InstallOptions = {}
 ): Promise<void> {
+  assertServiceName(serviceName);
   // Check if running as root
   if (process.getuid && process.getuid() !== 0) {
-    log.error('Installation requires root privileges. Run with sudo.');
-    process.exit(1);
+    throw new Error('Installation requires root privileges. Run with sudo.');
   }
 
   // Pre-install validation
@@ -137,8 +135,9 @@ export async function installServices(
   if (appResult.wrote || workerResult.wrote) {
     const reload = await executeCommand('systemctl', ['daemon-reload']);
     if (!reload.success) {
-      log.error(`Failed to reload systemd: ${reload.stderr}`);
-      process.exit(1);
+      throw new Error(
+        `Failed to reload systemd: ${reload.stderr || `exit code ${reload.code}`}`
+      );
     }
     log.success('Systemd daemon reloaded');
   } else {

@@ -6,7 +6,8 @@
  * already matching the contract. On failure the middleware throws an
  * `ApiError(422)` which the central error handler serialises into an
  * RFC 9457 Problem Detail with a `errors[]` member listing every field
- * that failed.
+ * that failed. Unexpected schema failures are passed to Express's error
+ * pipeline unchanged so they are handled as internal errors.
  *
  * References:
  *   - OWASP Input Validation: https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html
@@ -27,7 +28,14 @@ export function validateBody<T>(
   schema: z.ZodType<T>
 ): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const result = schema.safeParse(req.body);
+    let result: ReturnType<typeof schema.safeParse>;
+    try {
+      result = schema.safeParse(req.body);
+    } catch (error) {
+      next(error);
+      return;
+    }
+
     if (!result.success) {
       // Convert Zod issue list to the API's `{ field, message }[]` shape.
       const errors = result.error.issues.map(issue => ({

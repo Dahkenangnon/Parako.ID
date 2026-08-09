@@ -6,58 +6,53 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { generateKeys, generateKeysInteractive } from './index.js';
 
-const program = new Command();
+interface CliError {
+  code?: string;
+  message?: string;
+}
 
-program.name('keys').description('🔑 Manage OIDC JWKS keys').version('1.0.0');
+function getErrorDetails(error: unknown): CliError {
+  if (error && typeof error === 'object') return error as CliError;
+  return { message: String(error) };
+}
 
-program
-  .command('generate')
-  .alias('gen')
-  .description(
-    'Generate JWKS keys (RS256, ES256, EdDSA). For first-boot bootstrap; rotation/listing are handled by the DB-backed key store.'
-  )
-  .action(async () => {
-    try {
-      await generateKeys(true);
-    } catch (error: any) {
-      console.error(
-        chalk.red(`\n❌ Failed to generate keys: ${error.message}\n`)
-      );
-      process.exit(1);
-    }
-  });
+export function buildKeysProgram(): Command {
+  const program = new Command();
+  program.name('keys').description('🔑 Manage OIDC JWKS keys').version('1.0.0');
 
-process.on('uncaughtException', error => {
-  console.error(`Uncaught exception: ${error.message}`);
-  process.exit(1);
-});
+  program
+    .command('generate')
+    .alias('gen')
+    .description(
+      'Generate JWKS keys (RS256, ES256, EdDSA). For first-boot bootstrap; rotation/listing are handled by the DB-backed key store.'
+    )
+    .action(() => generateKeys(true));
 
-process.on('unhandledRejection', (reason: any) => {
-  console.error(`Unhandled rejection: ${reason}`);
-  process.exit(1);
-});
+  return program;
+}
 
-// Default action - run interactive mode if no command provided
-if (process.argv.length === 2) {
-  generateKeysInteractive().catch(error => {
-    console.error(
-      chalk.red(`\n❌ Failed to generate keys: ${error.message}\n`)
-    );
-    process.exit(1);
-  });
-} else {
+export async function runKeysCli(argv = process.argv): Promise<void> {
   try {
-    program.parse();
-  } catch (error: any) {
-    if (error.code === 'commander.unknownCommand') {
-      console.error(chalk.red(`\nUnknown command: ${error.message}`));
+    if (argv.length === 2) {
+      await generateKeysInteractive();
+      return;
+    }
+
+    await buildKeysProgram().parseAsync(argv);
+  } catch (error: unknown) {
+    const details = getErrorDetails(error);
+    const message = details.message ?? 'Unknown error';
+
+    if (details.code === 'commander.unknownCommand') {
+      console.error(chalk.red(`\nUnknown command: ${message}`));
       console.log(chalk.dim('Run with --help to see available commands\n'));
-    } else if (error.code === 'commander.missingArgument') {
-      console.error(chalk.red(`\nMissing argument: ${error.message}`));
+    } else if (details.code === 'commander.missingArgument') {
+      console.error(chalk.red(`\nMissing argument: ${message}`));
       console.log(chalk.dim('Run with --help to see command usage\n'));
     } else {
-      console.error(chalk.red(`\nCLI error: ${error.message}\n`));
+      console.error(chalk.red(`\n❌ Failed to generate keys: ${message}\n`));
     }
-    process.exit(1);
+
+    process.exitCode = 1;
   }
 }

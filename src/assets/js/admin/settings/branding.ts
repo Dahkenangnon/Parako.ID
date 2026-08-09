@@ -1321,34 +1321,29 @@
      */
     private setupFontPreview(): void {
       if (this.fontSansSelect && this.previewSans) {
-        this.fontSansSelect.addEventListener('change', () => {
-          const fontValue =
-            this.fontSansSelect?.value || 'system-ui, sans-serif';
-          if (this.previewSans) {
-            this.previewSans.style.fontFamily = fontValue || 'inherit';
-          }
+        const select = this.fontSansSelect;
+        const preview = this.previewSans;
+        select.addEventListener('change', () => {
+          preview.style.fontFamily = select.value || 'system-ui, sans-serif';
         });
       }
 
       if (this.fontHeadingSelect && this.previewHeading) {
-        this.fontHeadingSelect.addEventListener('change', () => {
+        const headingSelect = this.fontHeadingSelect;
+        const sansSelect = this.fontSansSelect;
+        const preview = this.previewHeading;
+        headingSelect.addEventListener('change', () => {
           // Heading font defaults to sans if empty
-          const fontValue =
-            this.fontHeadingSelect?.value ||
-            this.fontSansSelect?.value ||
-            'system-ui, sans-serif';
-          if (this.previewHeading) {
-            this.previewHeading.style.fontFamily = fontValue || 'inherit';
-          }
+          preview.style.fontFamily =
+            headingSelect.value || sansSelect?.value || 'system-ui, sans-serif';
         });
       }
 
       if (this.fontMonoSelect && this.previewMono) {
-        this.fontMonoSelect.addEventListener('change', () => {
-          const fontValue = this.fontMonoSelect?.value || 'monospace';
-          if (this.previewMono) {
-            this.previewMono.style.fontFamily = fontValue || 'inherit';
-          }
+        const select = this.fontMonoSelect;
+        const preview = this.previewMono;
+        select.addEventListener('change', () => {
+          preview.style.fontFamily = select.value || 'monospace';
         });
       }
     }

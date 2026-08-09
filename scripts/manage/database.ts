@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
 import { MongoClient } from 'mongodb';
 import { isMainModule } from './shared/entrypoint.js';
+import { getPackageInfo } from './shared/utils.js';
 
 export type DatabaseAdapter = 'sqlite' | 'postgresql' | 'mongodb';
 
@@ -72,14 +73,34 @@ export function resolveAdapterEnvironment(root: string): {
         'STORAGE_POSTGRESQL_URL is required when STORAGE_ADAPTER=postgresql.'
       );
     }
+    if (!/^postgres(?:ql)?:\/\//u.test(url)) {
+      throw new Error('PostgreSQL URL must use postgres:// or postgresql://.');
+    }
+    try {
+      const parsedUrl = new URL(url);
+      if (!parsedUrl.hostname) {
+        throw new Error('missing host');
+      }
+    } catch {
+      throw new Error('STORAGE_POSTGRESQL_URL must be a valid URL.');
+    }
     env.DATABASE_URL = url;
     return { adapter, env, config: 'prisma.config.pg.ts' };
   }
 
-  if (!process.env.STORAGE_MONGODB_URI) {
+  const uri = process.env.STORAGE_MONGODB_URI;
+  if (!uri) {
     throw new Error(
       'STORAGE_MONGODB_URI is required when STORAGE_ADAPTER=mongodb.'
     );
+  }
+  if (!/^mongodb(?:\+srv)?:\/\//u.test(uri)) {
+    throw new Error('MongoDB URI must use mongodb:// or mongodb+srv://.');
+  }
+  try {
+    new MongoClient(uri);
+  } catch {
+    throw new Error('STORAGE_MONGODB_URI must be a valid URI.');
   }
   return { adapter, env };
 }
@@ -222,7 +243,7 @@ export function buildProgram(): Command {
   program
     .name('parako-database')
     .description('Inspect and apply Parako.ID database migrations')
-    .version('1');
+    .version(getPackageInfo().version);
 
   program
     .command('status')
@@ -250,13 +271,18 @@ export function buildProgram(): Command {
   return program;
 }
 
+/** Execute the database CLI and translate failures to process status. */
+export async function runDatabaseCli(argv = process.argv): Promise<void> {
+  try {
+    await buildProgram().parseAsync(argv);
+  } catch (error) {
+    console.error(
+      `Database command failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    process.exitCode = 1;
+  }
+}
+
 if (isMainModule(import.meta.url)) {
-  buildProgram()
-    .parseAsync(process.argv)
-    .catch(error => {
-      console.error(
-        `Database command failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-      process.exitCode = 1;
-    });
+  void runDatabaseCli();
 }

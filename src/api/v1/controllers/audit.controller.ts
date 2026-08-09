@@ -87,12 +87,13 @@ export class AuditController {
         filter.client_id = query.client_id;
       }
 
-      // Date range filters (DB-agnostic — repository translates to the
-      // appropriate operator for MongoDB or Prisma)
+      // Shared repository date-range contract: MongoDB consumes these range
+      // operators directly and the Prisma repository translates them to
+      // `gte` / `lte`.
       if (query.from || query.to) {
-        filter.timestampRange = {
-          ...(query.from ? { from: new Date(query.from) } : {}),
-          ...(query.to ? { to: new Date(query.to) } : {}),
+        filter.timestamp = {
+          ...(query.from ? { $gte: new Date(query.from) } : {}),
+          ...(query.to ? { $lte: new Date(query.to) } : {}),
         };
       }
 

@@ -87,23 +87,33 @@ export function createSpdxSbom(releaseDir, sourceDateEpoch) {
 const isEntrypoint =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isEntrypoint) {
-  const [releaseDirArg] = process.argv.slice(2);
-  if (!releaseDirArg || !process.env.SOURCE_DATE_EPOCH) {
-    console.error(
+export function main({
+  argv = process.argv.slice(2),
+  env = process.env,
+  stdout = console.log,
+  stderr = console.error,
+} = {}) {
+  const [releaseDirArg] = argv;
+  if (!releaseDirArg || !env.SOURCE_DATE_EPOCH) {
+    stderr(
       'Usage: SOURCE_DATE_EPOCH=<unix> node scripts/create-sbom.mjs <release-dir>'
     );
-    process.exit(2);
+    return 2;
   }
   const releaseDir = path.resolve(releaseDirArg);
   const target = path.join(releaseDir, 'SBOM.spdx.json');
   fs.writeFileSync(
     target,
     `${JSON.stringify(
-      createSpdxSbom(releaseDir, process.env.SOURCE_DATE_EPOCH),
+      createSpdxSbom(releaseDir, env.SOURCE_DATE_EPOCH),
       null,
       2
     )}\n`
   );
-  console.log(target);
+  stdout(target);
+  return 0;
+}
+
+if (isEntrypoint) {
+  process.exitCode = main();
 }

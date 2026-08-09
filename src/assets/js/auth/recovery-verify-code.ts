@@ -53,7 +53,7 @@
   interface RecoveryVerifyCodeManagerOptions {
     config: RecoveryVerifyCodeConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
+    debug: boolean;
     errorRecoveryTimeout?: number;
   }
 
@@ -70,7 +70,7 @@
     private submitButton: HTMLButtonElement | null = null;
     private hiddenInput: HTMLInputElement | null = null;
     private otpContainer: HTMLElement | null = null;
-    private otpInputs: NodeListOf<HTMLInputElement> | null = null;
+    private otpInputs!: NodeListOf<HTMLInputElement>;
 
     // Default translations (fallback)
     private readonly defaultTranslations: Partial<TranslationStrings> = {
@@ -89,12 +89,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
       this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
 
       this.initializeElements();
@@ -176,8 +176,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -191,7 +189,7 @@
      * Initialize DOM elements and event listeners
      */
     public run(): void {
-      if (!this.otpInputs || this.otpInputs.length === 0) {
+      if (this.otpInputs.length === 0) {
         this.log('No OTP inputs found', null, 'error');
         return;
       }
@@ -223,8 +221,6 @@
      * Setup OTP input handling
      */
     private setupOTPInputs(): void {
-      if (!this.otpInputs) return;
-
       this.otpInputs.forEach((input, index) => {
         input.addEventListener('input', e => {
           this.handleInput(e, index);
@@ -287,10 +283,12 @@
     private handlePaste(e: ClipboardEvent): void {
       e.preventDefault();
 
-      if (!this.otpInputs) return;
-
       const pastedData =
         e.clipboardData?.getData('text').replace(/[^0-9]/g, '') || '';
+
+      this.otpInputs.forEach(input => {
+        input.value = '';
+      });
 
       for (
         let i = 0;
@@ -327,7 +325,7 @@
      * Update hidden input with complete code
      */
     private updateHiddenInput(): void {
-      if (!this.hiddenInput || !this.otpInputs) return;
+      if (!this.hiddenInput) return;
 
       const code = Array.from(this.otpInputs)
         .map(input => input.value)
@@ -371,9 +369,7 @@
         `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -389,21 +385,18 @@
       );
 
       if (this.otpContainer) {
-        this.otpContainer.classList.add('animate-pulse');
+        const otpContainer = this.otpContainer;
+        otpContainer.classList.add('animate-pulse');
         setTimeout(() => {
-          this.otpContainer?.classList.remove('animate-pulse');
+          otpContainer.classList.remove('animate-pulse');
         }, this.config.shakeAnimationDuration);
       }
 
-      if (this.otpInputs) {
-        const firstEmpty = Array.from(this.otpInputs).find(
-          input => !input.value
-        );
-        if (firstEmpty) {
-          firstEmpty.focus();
-        } else {
-          this.otpInputs[0].focus();
-        }
+      const firstEmpty = Array.from(this.otpInputs).find(input => !input.value);
+      if (firstEmpty) {
+        firstEmpty.focus();
+      } else {
+        this.otpInputs[0].focus();
       }
 
       alert(this.getTranslation('codeInvalid'));
@@ -415,32 +408,21 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
+      this.submitButton!.disabled = true;
+      this.submitButton!.style.opacity = '0.6';
+      this.submitButton!.style.cursor = 'not-allowed';
+      this.submitButton!.style.pointerEvents = 'none';
 
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.style.opacity = '0.6';
-        this.submitButton.style.cursor = 'not-allowed';
-        this.submitButton.style.pointerEvents = 'none';
-      }
-
-      if (this.otpInputs) {
-        this.otpInputs.forEach(input => {
-          input.disabled = true;
-          input.style.opacity = '0.6';
-          input.style.cursor = 'not-allowed';
-          input.style.pointerEvents = 'none';
-        });
-      }
+      this.otpInputs.forEach(input => {
+        input.disabled = true;
+        input.style.opacity = '0.6';
+        input.style.cursor = 'not-allowed';
+        input.style.pointerEvents = 'none';
+      });
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -456,36 +438,27 @@
     private enableAllButtons(): void {
       this.isSubmitting = false;
 
-      // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = this.getTranslation('verifyCode');
-        this.submitButton.style.opacity = '1';
-        this.submitButton.style.cursor = 'pointer';
-        this.submitButton.style.pointerEvents = 'auto';
-      }
+      this.submitButton!.disabled = false;
+      this.submitButton!.innerHTML = this.getTranslation('verifyCode');
+      this.submitButton!.style.opacity = '1';
+      this.submitButton!.style.cursor = 'pointer';
+      this.submitButton!.style.pointerEvents = 'auto';
 
       // Re-enable all OTP inputs
-      if (this.otpInputs) {
-        this.otpInputs.forEach(input => {
-          input.disabled = false;
-          input.style.opacity = '1';
-          input.style.cursor = 'text';
-          input.style.pointerEvents = 'auto';
-        });
-      }
+      this.otpInputs.forEach(input => {
+        input.disabled = false;
+        input.style.opacity = '1';
+        input.style.cursor = 'text';
+        input.style.pointerEvents = 'auto';
+      });
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
     }
   }
 

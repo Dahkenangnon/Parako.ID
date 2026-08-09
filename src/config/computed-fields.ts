@@ -211,8 +211,9 @@ export function applyComputedDefaults(config: any): any {
   // Create a deep copy to avoid mutating the original
   const result = JSON.parse(JSON.stringify(config));
 
-  const deploymentUrl =
-    (getNestedValue(result, 'deployment.url') as string) || '';
+  const deploymentUrl = (
+    (getNestedValue(result, 'deployment.url') as string) || ''
+  ).replace(/\/+$/, '');
   const oidcPath =
     (getNestedValue(result, 'oidc.path') as string) || '/oidc/v1';
   const companyName =
@@ -381,32 +382,30 @@ export function applyComputedDefaults(config: any): any {
 
   // MFA fields derived from companyName and deploymentUrl
   // Only set these if not already specified by user
-  if (companyName) {
-    // TOTP issuer name - only set if not already specified
-    const existingIssuerName = getNestedValue(
+  // TOTP issuer name - only set if not already specified
+  const existingIssuerName = getNestedValue(
+    result,
+    'security.authentication.multi_factor.totp.issuer_name'
+  );
+  if (!existingIssuerName || existingIssuerName === 'OIDC Provider') {
+    setNestedValue(
       result,
-      'security.authentication.multi_factor.totp.issuer_name'
+      'security.authentication.multi_factor.totp.issuer_name',
+      companyName
     );
-    if (!existingIssuerName || existingIssuerName === 'OIDC Provider') {
-      setNestedValue(
-        result,
-        'security.authentication.multi_factor.totp.issuer_name',
-        companyName
-      );
-    }
+  }
 
-    // WebAuthn relying party name - only set if not already specified
-    const existingRpName = getNestedValue(
+  // WebAuthn relying party name - only set if not already specified
+  const existingRpName = getNestedValue(
+    result,
+    'security.authentication.multi_factor.webauthn.rp_name'
+  );
+  if (!existingRpName || existingRpName === 'OIDC Provider') {
+    setNestedValue(
       result,
-      'security.authentication.multi_factor.webauthn.rp_name'
+      'security.authentication.multi_factor.webauthn.rp_name',
+      companyName
     );
-    if (!existingRpName || existingRpName === 'OIDC Provider') {
-      setNestedValue(
-        result,
-        'security.authentication.multi_factor.webauthn.rp_name',
-        companyName
-      );
-    }
   }
 
   // WebAuthn RP ID derived from effective base URL hostname.

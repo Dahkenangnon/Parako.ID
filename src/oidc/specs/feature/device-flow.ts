@@ -125,7 +125,8 @@ export default function DeviceFlow(
    */
   function formatTime(timestamp: string): string {
     try {
-      return new Date(timestamp).toLocaleString();
+      const date = new Date(timestamp);
+      return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString();
     } catch {
       return 'Unknown';
     }

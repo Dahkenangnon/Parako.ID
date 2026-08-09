@@ -197,6 +197,7 @@ async function bootstrap(): Promise<void> {
               type: 'process',
               name: 'jwks-rotation',
               phase: 'promote',
+              ...(data.tenantId ? { tenantId: data.tenantId } : {}),
             },
             { delay: delayMs }
           );

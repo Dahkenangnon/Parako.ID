@@ -117,13 +117,18 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
-      this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
+      this.debug = Boolean(options.debug);
+      const configuredRecoveryTimeout = Number(options.errorRecoveryTimeout);
+      this.errorRecoveryTimeout =
+        Number.isFinite(configuredRecoveryTimeout) &&
+        configuredRecoveryTimeout > 0
+          ? Math.min(Math.max(configuredRecoveryTimeout, 1000), 300000)
+          : 120000;
       this.timeLeft = this.config.timerDuration;
 
       this.initializeElements();
@@ -210,14 +215,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -271,13 +274,11 @@
      * Setup OTP input handling
      */
     private setupOTPInputs(): void {
-      if (!this.otpInputs || this.otpInputs.length === 0) return;
-
-      if (this.config.autoFocus && this.otpInputs[0]) {
-        this.otpInputs[0].focus();
+      if (this.config.autoFocus && this.otpInputs![0]) {
+        this.otpInputs![0].focus();
       }
 
-      this.otpInputs.forEach((input, index) => {
+      this.otpInputs!.forEach((input, index) => {
         // Only allow numeric input
         input.addEventListener('input', (e: Event) => {
           const target = e.target as HTMLInputElement;
@@ -308,6 +309,10 @@
             const pastedData =
               e.clipboardData?.getData('text').replace(/[^0-9]/g, '') || '';
 
+            this.otpInputs!.forEach(otpInput => {
+              otpInput.value = '';
+            });
+
             for (
               let i = 0;
               i < Math.min(pastedData.length, this.otpInputs!.length);
@@ -332,9 +337,9 @@
      * Update hidden input with complete code
      */
     private updateHiddenInput(): void {
-      if (!this.hiddenInput || !this.otpInputs) return;
+      if (!this.hiddenInput) return;
 
-      const code = Array.from(this.otpInputs)
+      const code = Array.from(this.otpInputs!)
         .map(input => input.value)
         .join('');
       this.hiddenInput.value = code;
@@ -344,9 +349,9 @@
      * Setup form submission handling
      */
     private setupFormSubmission(): void {
-      if (!this.form || !this.submitButton || !this.hiddenInput) return;
+      if (!this.hiddenInput) return;
 
-      this.form.addEventListener('submit', (e: Event) => {
+      this.form!.addEventListener('submit', (e: Event) => {
         if (this.isSubmitting) {
           e.preventDefault();
           e.stopPropagation();
@@ -370,7 +375,7 @@
           );
           if (firstEmpty) {
             firstEmpty.focus();
-          } else if (this.otpInputs![0]) {
+          } else {
             this.otpInputs![0].focus();
           }
 
@@ -391,9 +396,7 @@
         `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -410,10 +413,8 @@
         this.timerEl!.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
         if (this.timeLeft <= 0) {
-          if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-            this.timerInterval = null;
-          }
+          clearInterval(this.timerInterval!);
+          this.timerInterval = null;
           this.timerEl!.textContent = '0:00';
           this.timerEl!.classList.add('text-red-500', 'dark:text-red-400');
         } else {
@@ -489,9 +490,7 @@
      * Setup input focus animations
      */
     private setupInputFocusAnimations(): void {
-      if (!this.otpInputs) return;
-
-      this.otpInputs.forEach(input => {
+      this.otpInputs!.forEach(input => {
         input.addEventListener('focus', () => {
           input.classList.add('ring-2', 'ring-primary/20');
         });
@@ -508,8 +507,8 @@
     private showDialog(title: string, message: string): void {
       if (!this.customAlert || !this.dialogTitle || !this.dialogMessage) return;
 
-      this.dialogTitle.textContent = title || 'Notification';
-      this.dialogMessage.textContent = message || '';
+      this.dialogTitle.textContent = title;
+      this.dialogMessage.textContent = message;
       this.customAlert.classList.remove('hidden');
 
       setTimeout(() => {
@@ -550,15 +549,8 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.classList.add('disabled-button');
-      }
+      this.submitButton!.disabled = true;
+      this.submitButton!.classList.add('disabled-button');
 
       if (this.resendButton) {
         (this.resendButton as HTMLButtonElement).disabled = true;
@@ -569,18 +561,14 @@
         this.tryAnotherMethodButton.classList.add('disabled-button');
       }
 
-      if (this.otpInputs) {
-        this.otpInputs.forEach(input => {
-          input.disabled = true;
-          input.classList.add('disabled-button');
-        });
-      }
+      this.otpInputs!.forEach(input => {
+        input.disabled = true;
+        input.classList.add('disabled-button');
+      });
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -597,17 +585,13 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = this.getTranslation('verify');
-        this.submitButton.classList.remove('disabled-button');
-      }
+      this.submitButton!.disabled = false;
+      this.submitButton!.innerHTML = this.getTranslation('verify');
+      this.submitButton!.classList.remove('disabled-button');
 
       // Re-enable resend and try another method buttons
       if (this.resendButton) {
@@ -620,18 +604,14 @@
       }
 
       // Re-enable OTP inputs
-      if (this.otpInputs) {
-        this.otpInputs.forEach(input => {
-          input.disabled = false;
-          input.classList.remove('disabled-button');
-        });
-      }
+      this.otpInputs!.forEach(input => {
+        input.disabled = false;
+        input.classList.remove('disabled-button');
+      });
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
     }
 
     /**
@@ -644,6 +624,29 @@
       alert(message);
     }
   }
+
+  const runFallbackManager = (): void => {
+    try {
+      const mfaManager = new MFAManager({
+        config: {
+          codeLength: 6,
+          autoFocus: true,
+          enablePaste: true,
+          enableBackspace: true,
+          shakeAnimationDuration: 500,
+          timerDuration: 300,
+          enableCustomDialog: true,
+        },
+        debug: true,
+      });
+      mfaManager.run();
+    } catch (fallbackError) {
+      console.error(
+        '[MFAManager] Fallback initialization failed:',
+        fallbackError
+      );
+    }
+  };
 
   // Auto-initialize when DOM is ready
   document.addEventListener('DOMContentLoaded', () => {
@@ -671,52 +674,11 @@
         mfaManager.run();
       } catch (error) {
         console.error('[MFAManager] Failed to initialize:', error);
-
-        // Fallback initialization with minimal config
-        try {
-          const mfaManager = new MFAManager({
-            config: {
-              codeLength: 6,
-              autoFocus: true,
-              enablePaste: true,
-              enableBackspace: true,
-              shakeAnimationDuration: 500,
-              timerDuration: 300,
-              enableCustomDialog: true,
-            },
-            debug: true,
-          });
-          mfaManager.run();
-        } catch (fallbackError) {
-          console.error(
-            '[MFAManager] Fallback initialization failed:',
-            fallbackError
-          );
-        }
+        runFallbackManager();
       }
     } else {
       console.error('[MFAManager] No configuration data found in DOM');
-
-      try {
-        const mfaManager = new MFAManager({
-          config: {
-            codeLength: 6,
-            autoFocus: true,
-            enablePaste: true,
-            enableBackspace: true,
-            shakeAnimationDuration: 500,
-            timerDuration: 300,
-            enableCustomDialog: true,
-          },
-          debug: true,
-        });
-        mfaManager.run();
-      } catch (fallbackError) {
-        console.error(
-          '[MFAManager] Fallback initialization failed:',
-          fallbackError
-        );
-      }
+      runFallbackManager();
     }
   });
 })();

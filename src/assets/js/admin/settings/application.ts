@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   // Type Definitions
 
   interface DialogApi {

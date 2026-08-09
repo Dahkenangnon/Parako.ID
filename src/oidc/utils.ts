@@ -51,11 +51,11 @@ export class OIDCUtils implements IOIDCUtils {
     const config = this.configManager.getConfig();
     const availableLocales = config.application.locales.available;
 
-    // Priority 1: Check ui_locales parameter (OIDC spec - comma-separated list)
-    // Format: "fr-CA,fr,en" - returns first supported locale
+    // Priority 1: Check ui_locales parameter. OIDC defines a space-separated
+    // ordered list; commas remain accepted for compatibility with older RPs.
     if (ctx.query && ctx.query.ui_locales) {
       const uiLocales = (ctx.query.ui_locales as string)
-        .split(',')
+        .split(/[\s,]+/)
         .map(l => l.trim());
       for (const locale of uiLocales) {
         const langCode = locale.split('-')[0].toLowerCase();
@@ -69,7 +69,7 @@ export class OIDCUtils implements IOIDCUtils {
       const urlParams = new URLSearchParams(ctx.originalUrl.split('?')[1]);
       const uiLocalesParam = urlParams.get('ui_locales');
       if (uiLocalesParam) {
-        const uiLocales = uiLocalesParam.split(',').map(l => l.trim());
+        const uiLocales = uiLocalesParam.split(/[\s,]+/).map(l => l.trim());
         for (const locale of uiLocales) {
           const langCode = locale.split('-')[0].toLowerCase();
           if (availableLocales.includes(langCode)) {
@@ -815,7 +815,7 @@ export class OIDCUtils implements IOIDCUtils {
     const clients = await this.getClientInfo(clientIds);
 
     const now = Math.floor(Date.now() / 1000);
-    const isExpired = payload.exp && payload.exp <= now;
+    const isExpired = Boolean(payload.exp && payload.exp <= now);
     const sessionAge = this.formatTimeAgo(loginTime);
     const expiresIn = payload.exp
       ? this.formatTimeAgo(payload.exp, true)

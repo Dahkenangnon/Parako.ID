@@ -5,7 +5,7 @@
  * Errors trigger centered modal dialogs requiring acknowledgment
  */
 
-interface ToastElement extends HTMLElement {
+export interface ToastElement extends HTMLElement {
   dataset: {
     toastType?: string;
     timeout?: string;
@@ -13,7 +13,7 @@ interface ToastElement extends HTMLElement {
   };
 }
 
-interface FlashError {
+export interface FlashError {
   type: 'error';
   message: string;
   title?: string;
@@ -39,7 +39,7 @@ interface WindowWithDialog extends Window {
   dialog?: DialogApi;
 }
 
-class NotificationManager {
+export class NotificationManager {
   private activeToasts: Map<HTMLElement, ToastTimer> = new Map();
 
   constructor() {
@@ -161,6 +161,8 @@ class NotificationManager {
       // Remove the script element immediately to prevent re-processing
       errorScript.remove();
 
+      if (errors.length === 0) return;
+
       const win = window as WindowWithDialog;
       if (!win.dialog?.showAlert) {
         console.error(
@@ -195,6 +197,8 @@ class NotificationManager {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  new NotificationManager();
-});
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    new NotificationManager();
+  });
+}

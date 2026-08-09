@@ -11,7 +11,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
-import { notFound } from '../errors.js';
+import { conflict, notFound } from '../errors.js';
 import { apiSuccess, apiCreated, apiList, apiNoContent } from '../response.js';
 import {
   buildCursorQuery,
@@ -22,6 +22,10 @@ import type {
   CreateClientInput,
   UpdateClientInput,
 } from '../validators/clients.validator.js';
+import {
+  clientAuthMethodUsesSecret,
+  type RegenerateSecretResult,
+} from '../../../oidc/adapter/client.interface.js';
 
 /** Service and logger dependencies required by {@link ClientsController}. */
 export interface ClientsControllerDeps {
@@ -37,7 +41,9 @@ export interface ClientsControllerDeps {
       deleteClient(clientId: string): Promise<boolean>;
       activateClient(clientId: string): Promise<any>;
       deactivateClient(clientId: string): Promise<any>;
-      regenerateClientSecret(clientId: string): Promise<any>;
+      regenerateClientSecret(
+        clientId: string
+      ): Promise<RegenerateSecretResult | null>;
       getClientStatistics(): Promise<Record<string, unknown>>;
       countClients(): Promise<number>;
       searchClients(query: string): Promise<any[]>;
@@ -53,12 +59,12 @@ export interface ClientsControllerDeps {
  * Strip the `client_secret` field from a client document.
  *
  * Handles both plain objects and Mongoose documents (which expose
- * `.toJSON()`). Returns the input untouched when it is falsy.
+ * `.toJSON()`). Callers provide only adapter-confirmed client records.
  */
 function stripClientSecret(client: any): any {
-  if (!client) return client;
-
-  const plain = { ...client };
+  const plain = {
+    ...(typeof client.toJSON === 'function' ? client.toJSON() : client),
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips client_secret before returning the client to the caller.
   const { client_secret: _secret, ...rest } = plain;
@@ -90,9 +96,7 @@ export class ClientsController {
         req.query as Record<string, unknown>
       );
 
-      const filters: Record<string, unknown> = {
-        ...buildCursorQuery(cursor),
-      };
+      const filters: Record<string, unknown> = {};
 
       if (req.query.application_type) {
         filters.application_type = req.query.application_type;
@@ -102,27 +106,55 @@ export class ClientsController {
         filters.active = req.query.active === 'true';
       }
 
-      // Full-text search via `q` parameter — delegates to adapter.
-      if (typeof req.query.q === 'string' && req.query.q.trim().length > 0) {
-        const searchTerm = req.query.q.trim().slice(0, 200);
-        const results = await this.adapter.searchClients(searchTerm);
-        const stripped = results.map(stripClientSecret);
-        const page = buildCursorResponse(stripped, limit);
-        apiList(res, page);
-        return;
+      const searchTerm =
+        typeof req.query.q === 'string' && req.query.q.trim().length > 0
+          ? req.query.q.trim().slice(0, 200)
+          : undefined;
+      let docs = searchTerm
+        ? await this.adapter.searchClients(searchTerm)
+        : await this.adapter.findAllClients(filters);
+
+      // Search adapters return all matches, so apply the same structured
+      // filters as non-search listing before pagination.
+      if (searchTerm) {
+        docs = docs.filter(client => {
+          if (
+            filters.application_type !== undefined &&
+            client.application_type !== filters.application_type
+          ) {
+            return false;
+          }
+          if (
+            filters.active !== undefined &&
+            client.active !== filters.active
+          ) {
+            return false;
+          }
+          return true;
+        });
       }
 
-      const docs = await this.adapter.findAllClients({
-        ...filters,
-        limit: limit + 1,
-      });
+      docs = [...docs].sort((left, right) =>
+        String(left.client_id).localeCompare(String(right.client_id))
+      );
 
       const totalCount = includeCount
-        ? await this.adapter.countClients()
+        ? searchTerm || Object.keys(filters).length > 0
+          ? docs.length
+          : await this.adapter.countClients()
         : undefined;
 
+      if (cursor) {
+        const cursorQuery = buildCursorQuery(cursor, 'client_id');
+        const clientIdRange = cursorQuery.client_id as { $gt: string };
+        const afterClientId = clientIdRange.$gt;
+        docs = docs.filter(
+          client => String(client.client_id).localeCompare(afterClientId) > 0
+        );
+      }
+
       const page = buildCursorResponse(
-        docs.map(stripClientSecret),
+        docs.slice(0, limit + 1).map(stripClientSecret),
         limit,
         'client_id',
         totalCount
@@ -299,11 +331,23 @@ export class ClientsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const client = await this.adapter.regenerateClientSecret(
+      const existing = await this.adapter.findClientById(req.params.client_id);
+
+      if (!existing) {
+        throw notFound(`Client '${req.params.client_id}' not found`);
+      }
+
+      if (!clientAuthMethodUsesSecret(existing.token_endpoint_auth_method)) {
+        throw conflict(
+          `Client '${req.params.client_id}' does not use secret-based authentication`
+        );
+      }
+
+      const result = await this.adapter.regenerateClientSecret(
         req.params.client_id
       );
 
-      if (!client) {
+      if (!result) {
         throw notFound(`Client '${req.params.client_id}' not found`);
       }
 
@@ -312,7 +356,10 @@ export class ClientsController {
       });
 
       // Return WITH the new secret — callers must store it now.
-      apiSuccess(res, client);
+      apiSuccess(res, {
+        ...stripClientSecret(result.client),
+        client_secret: result.newSecret,
+      });
     } catch (error) {
       next(error);
     }

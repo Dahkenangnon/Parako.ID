@@ -26,7 +26,7 @@ const entityConfigFactories: Record<string, EntityConfigFactory> = {
   activities: createActivityEntityConfig,
 };
 
-export const ENTITY_IDS = Object.keys(entityConfigFactories);
+export const ENTITY_IDS = Object.freeze(Object.keys(entityConfigFactories));
 
 export function getEntityConfigFactory(
   entityId: string

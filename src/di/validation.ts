@@ -16,15 +16,6 @@ const NON_SERVICE_SYMBOLS = new Set([
  * Redis adapter services are only bound when using Redis storage.
  */
 const OPTIONAL_SYMBOLS = new Set([
-  // Redis Pub/Sub - optional, degrades gracefully when Redis unavailable
-  'RedisPubSubService',
-  // Repository layer - bound conditionally based on storage.adapter config
-  'UserRepository',
-  'ActivityRepository',
-  'SettingsRepository',
-  'SocialIntegrationRepository',
-  // PrismaClient - only bound when adapter !== 'mongodb'
-  'PrismaClient',
   // Multi-tenancy - optional, only used when features.multi_tenancy.enabled
   'TenantActivityRedisClient',
   'ProviderFactory',

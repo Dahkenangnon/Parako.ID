@@ -33,7 +33,8 @@ export interface IDataTransferService {
 
   /**
    * Execute import insert phase (called inside BullMQ worker handler).
-   * Rows are already validated — this only prepares and inserts.
+   * Revalidates queued rows at the worker trust boundary, then prepares and
+   * inserts valid rows while retaining row-level failures in the result.
    * Reports progress and returns ImportResult.
    */
   executeImport(

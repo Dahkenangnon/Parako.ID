@@ -63,7 +63,7 @@
   interface OIDCLoginManagerOptions {
     config: OIDCLoginConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
+    debug: boolean;
     errorRecoveryTimeout?: number;
   }
 
@@ -74,6 +74,10 @@
     private errorRecoveryTimeout: number;
     private isSubmitting: boolean = false;
     private submissionTimeout: number | null = null;
+    private readonly socialButtonContents = new Map<
+      HTMLButtonElement,
+      string
+    >();
 
     // DOM elements
     private emailTab: HTMLElement | null = null;
@@ -108,12 +112,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
       this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
 
       this.initializeElements();
@@ -128,7 +132,7 @@
      * Validate configuration object
      */
     private validateConfig(config: OIDCLoginConfig): OIDCLoginConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           bothMethodsEnabled: false,
@@ -149,6 +153,14 @@
         clientId: String(config.clientId || ''),
         prompt: config.prompt ? String(config.prompt) : undefined,
         acrValues: config.acrValues ? String(config.acrValues) : undefined,
+        allowedRedirectHosts: Array.isArray(config.allowedRedirectHosts)
+          ? config.allowedRedirectHosts
+              .filter(
+                (host): host is string =>
+                  typeof host === 'string' && host.trim().length > 0
+              )
+              .map(host => host.trim().toLowerCase())
+          : undefined,
       };
     }
 
@@ -194,14 +206,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -287,8 +297,7 @@
     /**
      * Helper to set tab as active
      */
-    private setTabActive(tab: HTMLElement | null): void {
-      if (!tab) return;
+    private setTabActive(tab: HTMLElement): void {
       tab.classList.add(
         'bg-white',
         'dark:bg-card',
@@ -336,9 +345,7 @@
      * Switch to email input mode
      */
     private switchToEmail(): void {
-      if (this.isSubmitting) return;
-
-      this.setTabActive(this.emailTab);
+      this.setTabActive(this.emailTab!);
       this.setTabInactive(this.phoneTab);
 
       // Show/hide fields
@@ -359,9 +366,7 @@
      * Switch to phone input mode
      */
     private switchToPhone(): void {
-      if (this.isSubmitting) return;
-
-      this.setTabActive(this.phoneTab);
+      this.setTabActive(this.phoneTab!);
       this.setTabInactive(this.emailTab);
 
       // Show/hide fields
@@ -413,11 +418,7 @@
      * Setup form submission handling
      */
     private setupFormSubmission(): void {
-      if (!this.form || !this.submitButton) {
-        return;
-      }
-
-      this.form.addEventListener('submit', (e: Event) => {
+      this.form!.addEventListener('submit', (e: Event) => {
         if (this.isSubmitting) {
           e.preventDefault();
           e.stopPropagation();
@@ -445,9 +446,7 @@
         `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -457,7 +456,7 @@
      */
     private setupInputFocusAnimations(): void {
       const inputs = document.querySelectorAll(
-        'input[type="email"], input[type="tel"], input[type="password"]'
+        'input[type="text"], input[type="email"], input[type="tel"], input[type="password"]'
       );
       inputs.forEach(input => {
         input.addEventListener('focus', function (this: HTMLElement) {
@@ -490,6 +489,12 @@
           this.disableAllButtons();
 
           const buttonElement = button as HTMLButtonElement;
+          if (!this.socialButtonContents.has(buttonElement)) {
+            this.socialButtonContents.set(
+              buttonElement,
+              buttonElement.innerHTML
+            );
+          }
           buttonElement.innerHTML = `
             <svg class="animate-spin -ml-1 mr-2 h-5 w-5 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -540,12 +545,8 @@
      * Validate redirect URL to prevent XSS and malicious redirects
      */
     private isValidRedirectUrl(url: string): boolean {
-      if (!url || typeof url !== 'string') {
-        return false;
-      }
-
       try {
-        const parsedUrl = new URL(url);
+        const parsedUrl = new URL(url, window.location.origin);
 
         // Only allow http and https protocols
         if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
@@ -581,11 +582,12 @@
 
         // For OIDC URLs, ensure they point to expected domains
         // This should match your OIDC server configuration
-        const allowedHosts = this.config.allowedRedirectHosts || [];
-        if (
-          allowedHosts.length > 0 &&
-          !allowedHosts.includes(parsedUrl.hostname)
-        ) {
+        const currentHost = new URL(window.location.origin).hostname;
+        const allowedHosts = new Set([
+          currentHost,
+          ...(this.config.allowedRedirectHosts || []),
+        ]);
+        if (!allowedHosts.has(parsedUrl.hostname)) {
           return false;
         }
 
@@ -599,28 +601,17 @@
      * Build OIDC social login URL with all required parameters
      */
     private buildSocialLoginUrl(provider: string): string {
-      if (!provider || typeof provider !== 'string') {
-        throw new Error('Invalid provider parameter');
-      }
-
       const sanitizedProvider = provider.replace(/[^a-zA-Z0-9-]/g, '');
       if (sanitizedProvider !== provider) {
-        this.log('Provider parameter sanitized', {
-          original: provider,
-          sanitized: sanitizedProvider,
-        });
-      }
-
-      if (!this.config.oidcPath || typeof this.config.oidcPath !== 'string') {
-        throw new Error('Invalid OIDC path configuration');
+        throw new Error('Invalid provider parameter');
       }
 
       let socialLoginUrl = `${this.config.oidcPath}/social/${sanitizedProvider}?uid=${encodeURIComponent(this.config.uid)}&client_id=${encodeURIComponent(this.config.clientId)}`;
 
-      if (this.config.prompt && typeof this.config.prompt === 'string') {
+      if (this.config.prompt) {
         socialLoginUrl += `&prompt=${encodeURIComponent(this.config.prompt)}`;
       }
-      if (this.config.acrValues && typeof this.config.acrValues === 'string') {
+      if (this.config.acrValues) {
         socialLoginUrl += `&acr_values=${encodeURIComponent(this.config.acrValues)}`;
       }
 
@@ -634,7 +625,7 @@
       ];
 
       currentParams.forEach((value, key) => {
-        if (allowedParams.includes(key) && value && typeof value === 'string') {
+        if (allowedParams.includes(key) && value) {
           // Additional validation for each parameter
           if (this.isValidQueryParameter(key, value)) {
             socialLoginUrl += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
@@ -676,15 +667,8 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.classList.add('disabled-button');
-      }
+      this.submitButton!.disabled = true;
+      this.submitButton!.classList.add('disabled-button');
 
       const socialButtons = document.querySelectorAll('[data-provider]');
       socialButtons.forEach(button => {
@@ -705,10 +689,8 @@
       }
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -725,17 +707,13 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = this.getTranslation('signIn');
-        this.submitButton.classList.remove('disabled-button');
-      }
+      this.submitButton!.disabled = false;
+      this.submitButton!.innerHTML = this.getTranslation('signIn');
+      this.submitButton!.classList.remove('disabled-button');
 
       // Re-enable all social provider buttons and restore visual state
       const socialButtons = document.querySelectorAll('[data-provider]');
@@ -744,12 +722,9 @@
         btn.disabled = false;
         btn.classList.remove('disabled-button');
 
-        const provider = btn.getAttribute('data-provider');
-        if (provider) {
-          const iconSpan = btn.querySelector('span');
-          if (iconSpan) {
-            btn.innerHTML = iconSpan.outerHTML;
-          }
+        const originalContent = this.socialButtonContents.get(btn);
+        if (originalContent !== undefined) {
+          btn.innerHTML = originalContent;
         }
       });
 
@@ -766,10 +741,8 @@
       }
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
     }
 
     /**

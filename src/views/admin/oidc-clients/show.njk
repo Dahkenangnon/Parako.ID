@@ -98,6 +98,12 @@
                 <p class="text-sm text-foreground mt-1">{{ client.token_endpoint_auth_method }}</p>
             </div>
             {% endif %}
+            {% if client.jwks_uri %}
+            <div>
+                <label class="text-sm font-medium text-muted-foreground">Client JWKS URI</label>
+                <p class="text-sm text-foreground mt-1 break-all">{{ client.jwks_uri }}</p>
+            </div>
+            {% endif %}
         </div>
     </div>
 

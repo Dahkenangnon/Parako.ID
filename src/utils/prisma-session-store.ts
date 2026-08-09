@@ -48,6 +48,17 @@ export class PrismaSessionStore extends Store {
     }
   }
 
+  private resolveExpiresAt(session: SessionData): Date {
+    const cookieExpires = (session as any)?.cookie?.expires;
+    if (cookieExpires) {
+      const expiresAt = new Date(cookieExpires);
+      if (Number.isFinite(expiresAt.getTime())) {
+        return expiresAt;
+      }
+    }
+    return new Date(Date.now() + this.ttl * 1000);
+  }
+
   get(
     sid: string,
     cb: (err: unknown, session?: SessionData | null) => void
@@ -68,16 +79,21 @@ export class PrismaSessionStore extends Store {
   }
 
   set(sid: string, session: SessionData, cb: (err?: unknown) => void): void {
-    const cookie = (session as any)?.cookie;
-    const expires_at = cookie?.expires
-      ? new Date(cookie.expires)
-      : new Date(Date.now() + this.ttl * 1000);
+    const expires_at = this.resolveExpiresAt(session);
+    let data: string;
+
+    try {
+      data = JSON.stringify(session);
+    } catch (error) {
+      cb(error);
+      return;
+    }
 
     this.prisma.session
       .upsert({
         where: { sid },
-        create: { sid, data: JSON.stringify(session), expires_at },
-        update: { data: JSON.stringify(session), expires_at },
+        create: { sid, data, expires_at },
+        update: { data, expires_at },
       })
       .then(() => cb())
       .catch(cb);
@@ -91,10 +107,7 @@ export class PrismaSessionStore extends Store {
   }
 
   touch(sid: string, session: SessionData, cb: (err?: unknown) => void): void {
-    const cookie = (session as any)?.cookie;
-    const expires_at = cookie?.expires
-      ? new Date(cookie.expires)
-      : new Date(Date.now() + this.ttl * 1000);
+    const expires_at = this.resolveExpiresAt(session);
 
     this.prisma.session
       .updateMany({ where: { sid }, data: { expires_at } })

@@ -3,6 +3,7 @@ import type {
   IBaseRepository,
   PaginatedResult,
   PaginationOptions,
+  QueryOptions,
 } from './base.repository.js';
 
 export interface UserFilter {
@@ -71,10 +72,12 @@ export interface IUserRepository extends Omit<
   findByUsername(username: string): Promise<IUser | null>;
   findBySub(sub: string): Promise<IUser | null>;
   findBySecondaryEmail(email: string): Promise<IUser | null>;
+  findByRecoveryTokenHash(tokenHash: string): Promise<IUser | null>;
   findMany(
     filter: UserFilter,
     opts?: PaginationOptions
   ): Promise<PaginatedResult<IUser>>;
+  findManyRaw(filter: UserFilter, opts?: QueryOptions): Promise<IUser[]>;
   updateMfa(id: string, mfa: IUserMfaUpdate): Promise<void>;
   updateRecovery(id: string, recovery: Record<string, unknown>): Promise<void>;
   addWebAuthnCredential(

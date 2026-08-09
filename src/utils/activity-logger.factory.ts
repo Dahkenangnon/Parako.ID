@@ -74,7 +74,7 @@ export interface RequestActivityLogger {
 function resolveActor(
   deps: ActivityLoggerDeps,
   req: Request,
-  defaultActorType: ActorInfo['actor_type']
+  defaultActorType: NonNullable<ActorInfo['actor_type']>
 ): ActorInfo {
   const sessionUser = deps.sessionManager.getActiveUser(req);
   if (sessionUser) {
@@ -87,7 +87,7 @@ function resolveActor(
       family_name: (sessionUser as { family_name?: string }).family_name,
       role: (sessionUser as { role?: string }).role,
       is_admin: (sessionUser as { is_admin?: boolean }).is_admin,
-      actor_type: defaultActorType ?? 'user',
+      actor_type: defaultActorType,
     };
   }
   return { actor_type: 'anonymous' };

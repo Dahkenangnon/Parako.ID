@@ -153,7 +153,7 @@ export function setupCommands(program: Command): void {
     .action(async options => {
       const config = await resolveConfig(options);
       const unitFiles = generateUnitFiles(config);
-      const serviceName = config.serviceName || SERVICE_NAME;
+      const serviceName = config.serviceName;
       const workerServiceName = `${serviceName}-worker`;
 
       if (options.output) {
@@ -169,10 +169,9 @@ export function setupCommands(program: Command): void {
           [workerPath, unitFiles.worker],
         ] as const) {
           if (fs.existsSync(target) && !options.force) {
-            log.error(
-              `Refusing to overwrite ${target} — pass --force to overwrite.`
-            );
-            process.exit(1);
+            const message = `Refusing to overwrite ${target} — pass --force to overwrite.`;
+            log.error(message);
+            throw new Error(message);
           }
           fs.writeFileSync(target, contents, 'utf-8');
           log.success(`Wrote ${target}`);

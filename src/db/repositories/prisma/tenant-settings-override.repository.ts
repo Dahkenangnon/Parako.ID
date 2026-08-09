@@ -5,6 +5,33 @@ import type { ITenantSettingsOverrideRepository } from '../interfaces/tenant-set
 import { AbstractPrismaRepository } from './base.repository.js';
 
 const KEY = 'parako_config';
+const SAVE_MAX_ATTEMPTS = 16;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2002'
+  );
+}
+
+const MANAGED_OVERRIDE_FIELDS = new Set([
+  '_id',
+  'id',
+  'tenant_id',
+  'key',
+  'version',
+  '_version',
+  'is_active',
+  'metadata',
+  'created_at',
+  'updated_at',
+  '__v',
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
 
 interface TsoRow {
   id: string;
@@ -26,6 +53,7 @@ function toITenantSettingsOverride(row: TsoRow): ITenantSettingsOverride {
     change_reason?: string;
   };
   return {
+    ...parsed,
     id: row.id,
     _id: row.id,
     tenant_id: row.tenant_id,
@@ -36,8 +64,15 @@ function toITenantSettingsOverride(row: TsoRow): ITenantSettingsOverride {
     metadata: Object.keys(meta).length > 0 ? meta : undefined,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
-    ...parsed,
   } as ITenantSettingsOverride;
+}
+
+function overrideContent(
+  value: Partial<ITenantSettingsOverride>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !MANAGED_OVERRIDE_FIELDS.has(key))
+  );
 }
 
 @injectable()
@@ -60,34 +95,51 @@ export class PrismaTenantSettingsOverrideRepository
     value: Partial<ITenantSettingsOverride>,
     meta?: { modifiedBy?: string; reason?: string }
   ): Promise<ITenantSettingsOverride> {
-    const latest = await this.prisma.tenantSettingsOverride.findFirst({
-      where: { key: KEY },
-      orderBy: { int_version: 'desc' },
-    });
-
-    await this.prisma.tenantSettingsOverride.updateMany({
-      where: { key: KEY, is_active: true },
-      data: { is_active: false },
-    });
-
-    const nextVersion = this.incrementPatch(latest?.version ?? '0.0.0');
-    const nextIntVersion = (latest?.int_version ?? 0) + 1;
-
+    const content = overrideContent(value);
     const metadataObj = meta
       ? { last_modified_by: meta.modifiedBy, change_reason: meta.reason }
-      : {};
+      : (value.metadata ?? {});
 
-    const created = await this.prisma.tenantSettingsOverride.create({
-      data: {
-        key: KEY,
-        version: nextVersion,
-        int_version: nextIntVersion,
-        is_active: true,
-        value: JSON.stringify(value),
-        metadata: JSON.stringify(metadataObj),
-      },
-    });
+    for (let attempt = 0; attempt < SAVE_MAX_ATTEMPTS; attempt += 1) {
+      const deactivated = await this.prisma.tenantSettingsOverride.updateMany({
+        where: { key: KEY, is_active: true },
+        data: { is_active: false },
+      });
+      const latest = await this.prisma.tenantSettingsOverride.findFirst({
+        where: { key: KEY },
+        orderBy: { int_version: 'desc' },
+      });
 
-    return toITenantSettingsOverride(created);
+      if (
+        deactivated.count === 0 &&
+        latest !== null &&
+        attempt < SAVE_MAX_ATTEMPTS - 1
+      ) {
+        continue;
+      }
+
+      try {
+        const created = await this.prisma.tenantSettingsOverride.create({
+          data: {
+            key: KEY,
+            version: latest
+              ? this.incrementPatch(latest.version ?? '1.0.0')
+              : '1.0.0',
+            int_version: latest ? (latest.int_version ?? 0) + 1 : 0,
+            is_active: true,
+            value: JSON.stringify(content),
+            metadata: JSON.stringify(metadataObj),
+          },
+        });
+
+        return toITenantSettingsOverride(created);
+      } catch (error: unknown) {
+        if (!isUniqueConstraintError(error)) throw error;
+      }
+    }
+
+    throw new Error(
+      `Unable to save tenant settings after ${SAVE_MAX_ATTEMPTS} attempts`
+    );
   }
 }

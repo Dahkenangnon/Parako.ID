@@ -1,6 +1,5 @@
 import { injectable, inject } from 'inversify';
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import { Redis } from 'ioredis';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IAdminSettingsController } from '../../di/interfaces/admin-settings-controller.interface.js';
@@ -31,6 +30,44 @@ import {
   BOOTSTRAP_ONLY_FIELDS,
   getNestedValue,
 } from '../../utils/settings.helper.js';
+
+function getErrorMessage(error: unknown, fallback = 'Unknown error'): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function getRequestedBy(
+  userData: { email?: string | null } | null | undefined
+): string {
+  return userData?.email || 'unknown';
+}
+
+function getRequestIp(req: Request): string {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function getRequestUserAgent(req: Request): string {
+  return req.get('user-agent') || 'unknown';
+}
+
+function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    operation.then(
+      value => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
 
 /**
  * Admin Settings Controller
@@ -128,19 +165,8 @@ export class AdminSettingsController implements IAdminSettingsController {
 
         const keys = fieldPath.split('.');
         const lastKey = keys.pop()!;
-        let current = sanitized;
-
-        for (const key of keys) {
-          if (current[key]) {
-            current = current[key];
-          } else {
-            break; // Path doesn't exist, nothing to remove
-          }
-        }
-
-        if (current && lastKey in current) {
-          delete current[lastKey];
-        }
+        const parent = keys.reduce((current, key) => current[key], sanitized);
+        delete parent[lastKey];
       }
     }
 
@@ -214,7 +240,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         config,
         sections,
         isUsingFileConfig: this.configManager.isUsingFileConfig(),
-        versionHistory: versionHistory || [],
+        versionHistory,
         currentVersion,
         currentVersionNum,
       });
@@ -262,14 +288,15 @@ export class AdminSettingsController implements IAdminSettingsController {
           .flash(req)
           .success('Application settings updated successfully');
         res.redirect('/admin/settings/application');
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'application_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -341,14 +368,15 @@ export class AdminSettingsController implements IAdminSettingsController {
           .flash(req)
           .success('Branding settings updated successfully');
         res.redirect('/admin/settings/branding');
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'branding_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -394,8 +422,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_removal_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -442,8 +469,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'color_reset_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -484,8 +510,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'font_reset_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(req, 'failed', 'update_config', 'Failed to reset fonts', {
         error: errorMessage,
       });
@@ -535,8 +560,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_dark_upload_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -582,8 +606,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_dark_removal_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -639,8 +662,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_icon_upload_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(req, 'failed', 'update_config', 'Failed to upload icon logo', {
         error: errorMessage,
       });
@@ -680,8 +702,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_icon_removal_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(req, 'failed', 'update_config', 'Failed to remove icon logo', {
         error: errorMessage,
       });
@@ -734,8 +755,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_icon_dark_upload_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -781,8 +801,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'logo_icon_dark_removal_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -841,8 +860,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'favicon_upload_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(req, 'failed', 'update_config', 'Failed to upload favicon', {
         error: errorMessage,
       });
@@ -879,8 +897,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         context: 'favicon_removal_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(req, 'failed', 'update_config', 'Failed to remove favicon', {
         error: errorMessage,
       });
@@ -928,7 +945,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         const existingDeployment = config.deployment || {};
         const mergedDeployment = mergeConfig(
           existingDeployment,
-          sanitized.deployment || convertedData
+          sanitized.deployment
         );
 
         await this.configManager.update({
@@ -949,14 +966,15 @@ export class AdminSettingsController implements IAdminSettingsController {
           .flash(req)
           .success('Deployment settings updated successfully');
         res.redirect('/admin/settings/deployment');
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'deployment_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -984,7 +1002,15 @@ export class AdminSettingsController implements IAdminSettingsController {
   ): Promise<void> => {
     const config = this.configManager.getPlatformConfig();
 
+    const submittedCookieSecrets = Object.prototype.hasOwnProperty.call(
+      req.body?.secrets ?? {},
+      'cookie_secrets'
+    );
     const convertedData = convertSecurityFormData(req.body);
+
+    if (convertedData.secrets && !submittedCookieSecrets) {
+      delete convertedData.secrets.cookie_secrets;
+    }
 
     // Inline validation (moved from config-validation middleware for correct redirects)
     const validationErrors = this.validateSecurityData(convertedData);
@@ -1050,8 +1076,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       context: 'security_settings_update_failed',
     });
 
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = getErrorMessage(error);
     this.audit(
       req,
       'failed',
@@ -1081,19 +1106,13 @@ export class AdminSettingsController implements IAdminSettingsController {
       }
 
       if (data.secrets.cookie_secrets) {
-        let cookieSecretsArray: string[];
-        if (typeof data.secrets.cookie_secrets === 'string') {
-          cookieSecretsArray = data.secrets.cookie_secrets
-            .split('\n')
-            .map((s: string) => s.trim())
-            .filter((s: string) => s.length > 0);
-        } else if (Array.isArray(data.secrets.cookie_secrets)) {
+        let cookieSecretsArray: string[] = [];
+        if (Array.isArray(data.secrets.cookie_secrets)) {
           cookieSecretsArray = data.secrets.cookie_secrets;
         } else {
           errors.push(
             'Cookie secrets must be an array or newline-separated string'
           );
-          cookieSecretsArray = [];
         }
 
         if (cookieSecretsArray.length === 0) {
@@ -1321,14 +1340,15 @@ export class AdminSettingsController implements IAdminSettingsController {
           .flash(req)
           .success('Features settings updated successfully');
         res.redirect('/admin/settings/features');
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'features_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -1434,10 +1454,7 @@ export class AdminSettingsController implements IAdminSettingsController {
             modifiedBy: this.sessionManager.getActiveUser(req)?.email,
           });
 
-          const errorMessage =
-            updateError instanceof Error
-              ? updateError.message
-              : 'Unknown error';
+          const errorMessage = getErrorMessage(updateError);
           this.audit(
             req,
             'failed',
@@ -1453,14 +1470,15 @@ export class AdminSettingsController implements IAdminSettingsController {
             .error(`Failed to update OIDC settings: ${errorMessage}`);
           res.redirect('/admin/settings/oidc');
         }
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'oidc_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -1561,8 +1579,7 @@ export class AdminSettingsController implements IAdminSettingsController {
           );
         }
 
-        const { urls, ...integrationFields } =
-          restoredConfig.integrations || {};
+        const { urls, ...integrationFields } = restoredConfig.integrations;
 
         const existingIntegrations = config.integrations || {};
         const mergedIntegrations = mergeConfig(
@@ -1608,14 +1625,15 @@ export class AdminSettingsController implements IAdminSettingsController {
           .flash(req)
           .success('Integrations settings updated successfully');
         res.redirect('/admin/settings/integrations');
+      } else {
+        res.status(405).json({ error: 'Method not allowed' });
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'integrations_settings_update_failed',
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -1659,9 +1677,9 @@ export class AdminSettingsController implements IAdminSettingsController {
   testEmail = async (req: Request, res: Response): Promise<void> => {
     const startTime = Date.now();
     const userData = this.sessionManager.getActiveUser(req);
-    const requestedBy = userData?.email || 'unknown';
-    const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
+    const requestedBy = getRequestedBy(userData);
+    const requestIp = getRequestIp(req);
+    const userAgent = getRequestUserAgent(req);
 
     try {
       const { email } = req.body;
@@ -1685,6 +1703,21 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.status(400).json({
           success: false,
           error: 'Email address is required',
+        });
+        return;
+      }
+
+      if (typeof email !== 'string') {
+        this.audit(
+          req,
+          'failed',
+          'test_email',
+          'Test email failed: Invalid email format'
+        );
+
+        res.status(400).json({
+          success: false,
+          error: 'Invalid email address format',
         });
         return;
       }
@@ -1724,12 +1757,14 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      const recipientDomain = email.split('@')[1]?.toLowerCase() || 'unknown';
+      const recipientDomain = email.split('@')[1].toLowerCase();
       const config = this.configManager.getPlatformConfig();
       const deploymentUrl = config.deployment?.url || 'http://localhost:3000';
       const appDomain = new URL(deploymentUrl).hostname.toLowerCase();
 
-      const isExternalDomain = !recipientDomain.endsWith(appDomain);
+      const isExternalDomain =
+        recipientDomain !== appDomain &&
+        !recipientDomain.endsWith(`.${appDomain}`);
       if (isExternalDomain) {
         this.logger.warn('Test email to external domain', {
           requestedBy,
@@ -1794,8 +1829,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       });
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
 
       this.logger.error(error as Error, {
         context: 'test_email_failed',
@@ -1813,8 +1847,7 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       res.status(500).json({
         success: false,
-        error:
-          error instanceof Error ? error.message : 'Failed to send test email',
+        error: getErrorMessage(error, 'Failed to send test email'),
       });
     }
   };
@@ -1826,12 +1859,14 @@ export class AdminSettingsController implements IAdminSettingsController {
   rollback = async (req: Request, res: Response): Promise<void> => {
     const startTime = Date.now();
     const userData = this.sessionManager.getActiveUser(req);
-    const requestedBy = userData?.email || 'unknown';
-    const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
-    const userAgent = req.get('user-agent') || 'unknown';
+    const requestedBy = getRequestedBy(userData);
+    const requestIp = getRequestIp(req);
+    const userAgent = getRequestUserAgent(req);
 
     try {
-      const { versionId } = req.body;
+      const rawVersionId = req.body.versionId;
+      const versionId =
+        typeof rawVersionId === 'string' ? rawVersionId.trim() : '';
 
       this.logger.info('Configuration rollback requested', {
         versionId,
@@ -1924,8 +1959,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.redirect('/admin/settings');
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
 
       this.logger.error(error as Error, {
         context: 'rollback_failed',
@@ -1993,7 +2027,7 @@ export class AdminSettingsController implements IAdminSettingsController {
   exportConfig = async (req: Request, res: Response): Promise<void> => {
     try {
       const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
+      const requestIp = getRequestIp(req);
       const config = this.configManager.getPlatformConfig();
 
       const sanitizedConfig = prepareSensitiveConfigForDisplay(config);
@@ -2003,7 +2037,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       const filename = `parako-config-export-${dateStr}.json`;
 
       this.logger.info('Configuration export requested', {
-        exportedBy: userData?.email || 'unknown',
+        exportedBy: getRequestedBy(userData),
         filename,
         ip: requestIp,
         context: 'config_export',
@@ -2022,7 +2056,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       const exportData = {
         _export_metadata: {
           exportedAt: now.toISOString(),
-          exportedBy: userData?.email || 'unknown',
+          exportedBy: getRequestedBy(userData),
           version: (config as any).version || '1.0.0',
           warning:
             'SECURITY WARNING: Sensitive fields are masked with asterisks. ' +
@@ -2041,7 +2075,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       // Don't redirect for API endpoint - return error JSON
       res.status(500).json({
         error: 'Failed to export configuration',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: getErrorMessage(error),
       });
     }
   };
@@ -2098,6 +2132,18 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
+      if (
+        parsedConfig === null ||
+        typeof parsedConfig !== 'object' ||
+        Array.isArray(parsedConfig)
+      ) {
+        res.status(400).json({
+          success: false,
+          error: 'Configuration must be a JSON object',
+        });
+        return;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
       const { _export_metadata, ...configData } = parsedConfig;
 
@@ -2111,10 +2157,10 @@ export class AdminSettingsController implements IAdminSettingsController {
       const impact = this.settingsService.analyzeConfigImpact(diff);
 
       const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
+      const requestIp = getRequestIp(req);
 
       this.logger.info('Configuration import preview requested', {
-        requestedBy: userData?.email || 'unknown',
+        requestedBy: getRequestedBy(userData),
         changeCount: diff.length,
         ip: requestIp,
         context: 'config_import_preview',
@@ -2136,7 +2182,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.status(500).json({
         success: false,
         error: 'Failed to preview configuration import',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: getErrorMessage(error),
       });
     }
   };
@@ -2149,7 +2195,7 @@ export class AdminSettingsController implements IAdminSettingsController {
    */
   applyImport = async (req: Request, res: Response): Promise<void> => {
     const userData = this.sessionManager.getActiveUser(req);
-    const requestIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const requestIp = getRequestIp(req);
 
     try {
       const importedConfig = req.body.config;
@@ -2174,6 +2220,18 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
+      if (
+        parsedConfig === null ||
+        typeof parsedConfig !== 'object' ||
+        Array.isArray(parsedConfig)
+      ) {
+        this.sessionManager
+          .flash(req)
+          .error('Configuration must be a JSON object');
+        res.redirect('/admin/settings');
+        return;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
       const { _export_metadata, ...configData } = parsedConfig;
 
@@ -2190,7 +2248,7 @@ export class AdminSettingsController implements IAdminSettingsController {
           'Restored masked sensitive fields from current config',
           {
             restoredFields,
-            importedBy: userData?.email || 'unknown',
+            importedBy: getRequestedBy(userData),
             ip: requestIp,
             context: 'config_import_restore_masked',
           }
@@ -2202,7 +2260,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       await this.configManager.reload();
 
       this.logger.info('Configuration imported successfully', {
-        importedBy: userData?.email || 'unknown',
+        importedBy: getRequestedBy(userData),
         ip: requestIp,
         context: 'config_import_applied',
       });
@@ -2225,8 +2283,7 @@ export class AdminSettingsController implements IAdminSettingsController {
         importedBy: userData?.email,
       });
 
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       this.audit(
         req,
         'failed',
@@ -2351,10 +2408,8 @@ export class AdminSettingsController implements IAdminSettingsController {
         : null;
 
       try {
-        checks.databaseConnectivity = mongoose.connection.readyState === 1; // 1 = connected
-        if (!checks.databaseConnectivity) {
-          overallHealthy = false;
-        }
+        await this.settingsService.findMany({}, { limit: 1 });
+        checks.databaseConnectivity = true;
       } catch (error) {
         this.logger.warn('Database connectivity check failed', { error });
         checks.databaseConnectivity = false;
@@ -2364,12 +2419,11 @@ export class AdminSettingsController implements IAdminSettingsController {
       if (config?.integrations?.email?.smtp_host) {
         try {
           // Test SMTP connection with timeout
-          const testResult = await Promise.race([
+          const testResult = await withTimeout(
             this.emailService.connectToEmailServer(),
-            new Promise<boolean>((_, reject) =>
-              setTimeout(() => reject(new Error('SMTP test timeout')), 5000)
-            ),
-          ]);
+            5000,
+            'SMTP test timeout'
+          );
           checks.smtpConnectivity = testResult === true;
         } catch (error) {
           this.logger.warn('SMTP connectivity check failed', { error });
@@ -2385,15 +2439,16 @@ export class AdminSettingsController implements IAdminSettingsController {
         // MongoDB adapter uses same connection as main database
         checks.oidcStorageConnectivity = checks.databaseConnectivity;
       } else if (oidcAdapterType === 'redis' && config) {
+        let testClient: Redis | undefined;
         try {
           const redisConfig = config.oidc_storage.oidc_adapter.redis;
           if (redisConfig?.host && redisConfig?.port) {
             const auth = redisConfig.password
-              ? `:${redisConfig.password}@`
+              ? `:${encodeURIComponent(redisConfig.password)}@`
               : '';
             const uri = `redis://${auth}${redisConfig.host}:${redisConfig.port}/${redisConfig.database || 0}`;
 
-            const testClient = new Redis(uri, {
+            testClient = new Redis(uri, {
               lazyConnect: true,
               connectTimeout: 5000,
               maxRetriesPerRequest: 1,
@@ -2402,15 +2457,28 @@ export class AdminSettingsController implements IAdminSettingsController {
             await testClient.connect();
             const pingResult = await testClient.ping();
             checks.oidcStorageConnectivity = pingResult === 'PONG';
-            await testClient.quit();
+            if (!checks.oidcStorageConnectivity) {
+              overallHealthy = false;
+            }
           } else {
             checks.oidcStorageConnectivity = false;
+            overallHealthy = false;
             this.logger.warn('Redis config incomplete for health check');
           }
         } catch (error) {
           this.logger.warn('Redis connectivity check failed', { error });
           checks.oidcStorageConnectivity = false;
           overallHealthy = false;
+        } finally {
+          if (testClient) {
+            try {
+              await testClient.quit();
+            } catch (error) {
+              this.logger.warn('Redis health client cleanup failed', {
+                error,
+              });
+            }
+          }
         }
       } else if (
         oidcAdapterType === 'sqlite' ||

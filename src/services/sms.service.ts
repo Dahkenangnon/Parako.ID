@@ -185,22 +185,24 @@ export class SmsService {
    * Initialize the SMS provider based on configuration
    */
   private initializeProvider(): void {
-    const config = this.configManager.getConfig();
-    const smsConfig = config.notifications?.channels?.sms;
-
-    if (!smsConfig?.enabled) {
-      this.logger.info('SMS service disabled in configuration');
-      return;
-    }
-
-    const providerName = smsConfig.provider;
-
-    if (!providerName) {
-      this.logger.warn('SMS enabled but no provider configured');
-      return;
-    }
+    let providerName: string | undefined;
 
     try {
+      const config = this.configManager.getConfig();
+      const smsConfig = config.notifications?.channels?.sms;
+
+      if (!smsConfig?.enabled) {
+        this.logger.info('SMS service disabled in configuration');
+        return;
+      }
+
+      providerName = smsConfig.provider;
+
+      if (!providerName) {
+        this.logger.warn('SMS enabled but no provider configured');
+        return;
+      }
+
       if (providerName === 'twilio') {
         this.provider = new TwilioProvider(smsConfig, this.logger);
       } else {
@@ -210,7 +212,7 @@ export class SmsService {
       }
     } catch (error) {
       this.logger.error('Failed to initialize SMS provider', {
-        provider: providerName,
+        ...(providerName ? { provider: providerName } : {}),
         error,
       });
     }
@@ -245,29 +247,39 @@ export class SmsService {
       return { success: false, error: 'SMS service not configured' };
     }
 
-    const rateLimitResult = this.checkRateLimit(phone, ip);
-    if (!rateLimitResult.allowed) {
+    const phoneValidation = this.validatePhoneNumber(phone);
+    if (!phoneValidation.valid || !phoneValidation.formatted) {
       return {
         success: false,
-        error: 'Too many SMS requests. Please try again later.',
-        retryAfter: rateLimitResult.retryAfter,
+        error: phoneValidation.error,
       };
     }
-
-    const config = this.configManager.getConfig();
-    const appName = config.branding?.companyName || 'Application';
-
-    const message = `Your ${appName} verification code is: ${code}. This code expires in 15 minutes.`;
+    const normalizedPhone = phoneValidation.formatted;
 
     try {
-      const result = await this.provider.sendSms(phone, message);
+      const rateLimitResult = this.checkRateLimit(normalizedPhone, ip);
+      if (!rateLimitResult.allowed) {
+        return {
+          success: false,
+          error: 'Too many SMS requests. Please try again later.',
+          retryAfter: rateLimitResult.retryAfter,
+        };
+      }
+
+      const config = this.configManager.getConfig();
+      const appName = config.branding?.companyName || 'Application';
+      const message = `Your ${appName} verification code is: ${code}. This code expires in 15 minutes.`;
+      const result = await this.provider.sendSms(normalizedPhone, message);
       return {
         success: result.success,
         error: result.error,
         messageId: result.messageId,
       };
     } catch (error) {
-      this.logger.error('Failed to send verification SMS', { phone, error });
+      this.logger.error('Failed to send verification SMS', {
+        phone: normalizedPhone,
+        error,
+      });
       return { success: false, error: 'Failed to send SMS' };
     }
   }
@@ -287,29 +299,39 @@ export class SmsService {
       return { success: false, error: 'SMS service not configured' };
     }
 
-    const rateLimitResult = this.checkRateLimit(phone, ip);
-    if (!rateLimitResult.allowed) {
+    const phoneValidation = this.validatePhoneNumber(phone);
+    if (!phoneValidation.valid || !phoneValidation.formatted) {
       return {
         success: false,
-        error: 'Too many SMS requests. Please try again later.',
-        retryAfter: rateLimitResult.retryAfter,
+        error: phoneValidation.error,
       };
     }
-
-    const config = this.configManager.getConfig();
-    const appName = config.branding?.companyName || 'Application';
-
-    const message = `Your ${appName} account recovery code is: ${code}. This code expires in 15 minutes. If you didn't request this, please ignore.`;
+    const normalizedPhone = phoneValidation.formatted;
 
     try {
-      const result = await this.provider.sendSms(phone, message);
+      const rateLimitResult = this.checkRateLimit(normalizedPhone, ip);
+      if (!rateLimitResult.allowed) {
+        return {
+          success: false,
+          error: 'Too many SMS requests. Please try again later.',
+          retryAfter: rateLimitResult.retryAfter,
+        };
+      }
+
+      const config = this.configManager.getConfig();
+      const appName = config.branding?.companyName || 'Application';
+      const message = `Your ${appName} account recovery code is: ${code}. This code expires in 15 minutes. If you didn't request this, please ignore.`;
+      const result = await this.provider.sendSms(normalizedPhone, message);
       return {
         success: result.success,
         error: result.error,
         messageId: result.messageId,
       };
     } catch (error) {
-      this.logger.error('Failed to send recovery SMS', { phone, error });
+      this.logger.error('Failed to send recovery SMS', {
+        phone: normalizedPhone,
+        error,
+      });
       return { success: false, error: 'Failed to send SMS' };
     }
   }
@@ -364,9 +386,9 @@ class TwilioProvider implements ISmsProvider {
     config: SmsProviderConfig,
     private logger: ILogger
   ) {
-    this.accountSid = config.api_key || '';
-    this.authToken = config.api_secret || '';
-    this.fromNumber = config.from_number || '';
+    this.accountSid = config.api_key?.trim() || '';
+    this.authToken = config.api_secret?.trim() || '';
+    this.fromNumber = config.from_number?.trim() || '';
   }
 
   private async getClient(): Promise<ReturnType<typeof Twilio>> {
@@ -378,7 +400,12 @@ class TwilioProvider implements ISmsProvider {
         this.client = instance;
         this.logger.info('Twilio SMS provider initialized');
         return instance;
-      })();
+      })().catch(error => {
+        // A transient import or SDK initialization error must not permanently
+        // poison this provider instance with a rejected cached promise.
+        this.clientPromise = null;
+        throw error;
+      });
     }
     return this.clientPromise;
   }

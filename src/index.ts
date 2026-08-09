@@ -123,49 +123,51 @@ class ParakoServer {
       try {
         await configManager.load();
 
-        try {
-          await configManager.flushInitial();
-          await configManager.load();
-        } catch (flushError) {
-          logger.warn(
-            'Failed to flush initial configuration, continuing with loaded config',
-            { error: flushError }
-          );
-        }
-
-        try {
-          const settingsService = container.get<ISettingsService>(
-            TYPES.SettingsService
-          );
-          const validationResult =
-            await settingsService.validateAndFixActiveConfigs();
-
-          if (validationResult.multipleActiveFound) {
+        if (!configManager.isUsingFileConfig()) {
+          try {
+            await configManager.flushInitial();
+            await configManager.load();
+          } catch (flushError) {
             logger.warn(
-              'Multiple active configurations detected and auto-healed',
-              {
-                fixedCount: validationResult.fixedCount,
-                keptVersion: validationResult.keptVersion,
+              'Failed to flush initial configuration, continuing with loaded config',
+              { error: flushError }
+            );
+          }
+
+          try {
+            const settingsService = container.get<ISettingsService>(
+              TYPES.SettingsService
+            );
+            const validationResult =
+              await settingsService.validateAndFixActiveConfigs();
+
+            if (validationResult.multipleActiveFound) {
+              logger.warn(
+                'Multiple active configurations detected and auto-healed',
+                {
+                  fixedCount: validationResult.fixedCount,
+                  keptVersion: validationResult.keptVersion,
+                  details: validationResult.details,
+                }
+              );
+              await configManager.reload();
+            } else if (validationResult.isValid) {
+              logger.info('Configuration validation passed', {
                 details: validationResult.details,
+              });
+            } else {
+              logger.warn('Configuration validation returned issues', {
+                details: validationResult.details,
+              });
+            }
+          } catch (validationError) {
+            logger.warn(
+              'Configuration validation failed, but continuing startup',
+              {
+                error: validationError,
               }
             );
-            await configManager.reload();
-          } else if (validationResult.isValid) {
-            logger.info('Configuration validation passed', {
-              details: validationResult.details,
-            });
-          } else {
-            logger.warn('Configuration validation returned issues', {
-              details: validationResult.details,
-            });
           }
-        } catch (validationError) {
-          logger.warn(
-            'Configuration validation failed, but continuing startup',
-            {
-              error: validationError,
-            }
-          );
         }
 
         // Bootstrap master tenant (multi-tenancy only)

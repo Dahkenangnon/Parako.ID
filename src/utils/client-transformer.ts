@@ -9,6 +9,20 @@
 
 import type { OidcClientData } from '../oidc/adapter/client.interface.js';
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function cloneOptionalArray<T>(
+  values: readonly T[] | undefined
+): T[] | undefined {
+  return values ? [...values] : undefined;
+}
+
+function cloneArrayOrEmpty<T>(values: readonly T[] | undefined): T[] {
+  return cloneOptionalArray(values) ?? [];
+}
+
 // Source-specific client interfaces
 
 /**
@@ -27,7 +41,7 @@ export interface StaticClient {
   accessTokenFormat?: string;
   id_token_signed_response_alg?: string;
   allowedResources?: string[];
-  resourcesScopes?: string[];
+  resourcesScopes?: string;
   isInternalClient?: boolean;
   contacts?: string[];
   active?: boolean;
@@ -126,6 +140,15 @@ export class ClientTransformer {
   static transformStaticClient(client: StaticClient): UnifiedClient {
     return {
       ...client,
+      grant_types: cloneOptionalArray(client.grant_types),
+      response_types: cloneOptionalArray(client.response_types),
+      redirect_uris: cloneOptionalArray(client.redirect_uris),
+      post_logout_redirect_uris: cloneOptionalArray(
+        client.post_logout_redirect_uris
+      ),
+      allowedResources: cloneOptionalArray(client.allowedResources),
+      tags: cloneArrayOrEmpty(client.tags),
+      contacts: cloneArrayOrEmpty(client.contacts),
       source: 'static',
       isStatic: true,
       isEditable: false,
@@ -135,19 +158,19 @@ export class ClientTransformer {
         client_name: client.client_name,
         application_type: client.application_type,
         token_endpoint_auth_method: client.token_endpoint_auth_method,
-        grant_types: client.grant_types,
-        response_types: client.response_types,
-        redirect_uris: client.redirect_uris,
-        post_logout_redirect_uris: client.post_logout_redirect_uris,
+        grant_types: cloneOptionalArray(client.grant_types),
+        response_types: cloneOptionalArray(client.response_types),
+        redirect_uris: cloneOptionalArray(client.redirect_uris),
+        post_logout_redirect_uris: cloneOptionalArray(
+          client.post_logout_redirect_uris
+        ),
         scope: client.scope,
         id_token_signed_response_alg: client.id_token_signed_response_alg,
-        contacts: client.contacts,
+        contacts: cloneOptionalArray(client.contacts),
       },
 
       active: client.active !== undefined ? client.active : true,
       require_pkce: client.require_pkce || false,
-      tags: client.tags || [],
-      contacts: client.contacts || [],
       isInternalClient: client.isInternalClient || false,
       created_at: client.created_at || null,
       updated_at: client.updated_at || null,
@@ -160,6 +183,15 @@ export class ClientTransformer {
   static transformAdapterClient(client: OidcClientData): UnifiedClient {
     return {
       ...client,
+      grant_types: cloneOptionalArray(client.grant_types),
+      response_types: cloneOptionalArray(client.response_types),
+      redirect_uris: cloneOptionalArray(client.redirect_uris),
+      post_logout_redirect_uris: cloneOptionalArray(
+        client.post_logout_redirect_uris
+      ),
+      allowedResources: cloneOptionalArray(client.allowedResources),
+      tags: cloneArrayOrEmpty(client.tags),
+      contacts: cloneArrayOrEmpty(client.contacts),
       source: 'adapter',
       isStatic: false,
       isEditable: true,
@@ -169,23 +201,23 @@ export class ClientTransformer {
         client_name: client.client_name,
         application_type: client.application_type,
         token_endpoint_auth_method: client.token_endpoint_auth_method,
-        grant_types: client.grant_types,
-        response_types: client.response_types,
-        redirect_uris: client.redirect_uris,
-        post_logout_redirect_uris: client.post_logout_redirect_uris,
+        grant_types: cloneOptionalArray(client.grant_types),
+        response_types: cloneOptionalArray(client.response_types),
+        redirect_uris: cloneOptionalArray(client.redirect_uris),
+        post_logout_redirect_uris: cloneOptionalArray(
+          client.post_logout_redirect_uris
+        ),
         scope: client.scope,
         client_uri: client.client_uri,
         logo_uri: client.logo_uri,
         policy_uri: client.policy_uri,
         tos_uri: client.tos_uri,
         id_token_signed_response_alg: client.id_token_signed_response_alg,
-        contacts: client.contacts,
+        contacts: cloneOptionalArray(client.contacts),
       },
 
       active: client.active !== undefined ? client.active : true,
       require_pkce: client.require_pkce || false,
-      tags: client.tags || [],
-      contacts: client.contacts || [],
       isInternalClient: client.isInternalClient || false,
       created_at: client.created_at || null,
       updated_at: client.updated_at || null,
@@ -254,9 +286,12 @@ export class ClientTransformer {
   } {
     const errors: string[] = [];
 
-    if (!client.client_id) errors.push('client_id is required');
-    if (!client.client_name) errors.push('client_name is required');
-    if (!client.application_type) errors.push('application_type is required');
+    if (!isNonEmptyString(client.client_id))
+      errors.push('client_id is required');
+    if (!isNonEmptyString(client.client_name))
+      errors.push('client_name is required');
+    if (!isNonEmptyString(client.application_type))
+      errors.push('application_type is required');
     if (!client.metadata) errors.push('metadata is required');
     if (!client.source) errors.push('source is required');
 
@@ -295,8 +330,19 @@ export class ClientTransformer {
         stats.inactive++;
       }
 
-      stats.byType[client.application_type] =
-        (stats.byType[client.application_type] || 0) + 1;
+      const currentCount = Object.prototype.hasOwnProperty.call(
+        stats.byType,
+        client.application_type
+      )
+        ? stats.byType[client.application_type]
+        : 0;
+
+      Object.defineProperty(stats.byType, client.application_type, {
+        value: currentCount + 1,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     });
 
     return stats;

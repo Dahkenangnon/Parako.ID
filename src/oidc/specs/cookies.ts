@@ -27,7 +27,19 @@ export default function Cookies(configManager: IConfigManager) {
    *
    * @type {Object} Cookie configuration object
    */
-  return {
+  const cookies: {
+    keys: string[];
+    long?: { sameSite: 'none' };
+  } = {
     keys: config.security.secrets.cookie_secrets,
   };
+
+  // oidc-provider v9 only registers POST handlers for the authorization and
+  // end-session endpoints when its long-lived cookies use SameSite=None.
+  // Keep the safer provider default for every other configuration profile.
+  if (config.features.oidc.enable_http_post_methods) {
+    cookies.long = { sameSite: 'none' };
+  }
+
+  return cookies;
 }

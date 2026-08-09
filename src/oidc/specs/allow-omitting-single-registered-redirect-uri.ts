@@ -19,5 +19,8 @@ export default function AllowOmittingSingleRegisteredRedirectUri(
    *
    * "When there's one and only one redirect_uri registered for the client, it may be omitted from the Authorization Request since the provider would know unambiguously where to send the response."
    */
-  return config.features.oidc.allowOmittingSingleRegisteredRedirectUri;
+  return (
+    config.features.oidc.allow_omitting_single_registered_redirect_uri ??
+    config.features.oidc.allowOmittingSingleRegisteredRedirectUri
+  );
 }

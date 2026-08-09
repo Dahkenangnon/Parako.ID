@@ -1,10 +1,11 @@
 import type { Client, KoaContextWithOIDC } from 'oidc-provider';
+import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 
 /**
  * Factory function to create client-based CORS function
  * @returns Client-based CORS function
  */
-export default function ClientBasedCORS() {
+export default function ClientBasedCORS(configManager: IConfigManager) {
   /**
    * Function used to check whether a given CORS request should be allowed based on the request's client.
    * This function is called for every CORS request to determine if it should be allowed based on the client making the request.
@@ -49,12 +50,31 @@ export default function ClientBasedCORS() {
     origin: string,
     client: Client
   ) {
+    if (!configManager.getConfig().features.oidc.client_based_cors) {
+      return false;
+    }
+
     // ctx.oidc.route can be used to exclude endpoints from this behaviour, in that case just return
     // true to always allow CORS on them, false to deny
     // you may also allow some known internal origins if you want to
 
     // Client can only request from their registered redirect URIs origins
-    const allowed = client.redirectUris?.map((u: string) => new URL(u).origin);
-    return allowed?.includes(origin) ?? false;
+    try {
+      const allowed = client.redirectUris?.map(
+        (redirectUri: string) => new URL(redirectUri).origin
+      );
+
+      return (
+        allowed?.some(
+          registeredOrigin =>
+            registeredOrigin !== 'null' && registeredOrigin === origin
+        ) ?? false
+      );
+    } catch {
+      // Invalid client metadata must not break the request pipeline or grant
+      // cross-origin access. Registration validation should reject malformed
+      // URIs, but static or migrated client records can still be defective.
+      return false;
+    }
   };
 }

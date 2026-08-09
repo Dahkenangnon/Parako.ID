@@ -8,11 +8,73 @@ import type {
   ExportContext,
   ExportFilters,
 } from '../types.js';
+import type { IUser } from '../../../types/user.js';
 
 export function createUserEntityConfig(
   deps: EntityConfigDeps
 ): EntityTransferConfig {
   const { userService, passwordUtils } = deps;
+  const optionalSafeUrl = z
+    .string()
+    .max(2048)
+    .superRefine((rawValue, ctx) => {
+      const value = rawValue.trim();
+      if (!value) return;
+
+      let parsed: URL;
+      try {
+        parsed = new URL(value);
+      } catch {
+        ctx.addIssue({ code: 'custom', message: 'URL must be a valid URL' });
+        return;
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'URL must use http or https',
+        });
+      }
+      if (parsed.username || parsed.password) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'URL must not include credentials',
+        });
+      }
+      if (parsed.hostname.includes('*')) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'URL must not include a wildcard hostname',
+        });
+      }
+    })
+    .optional();
+  const optionalBirthdate = z
+    .string()
+    .superRefine((rawValue, ctx) => {
+      const value = rawValue.trim();
+      if (!value) return;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        ctx.addIssue({ code: 'custom', message: 'Invalid birthdate' });
+        return;
+      }
+
+      const date = new Date(`${value}T00:00:00.000Z`);
+      if (
+        Number.isNaN(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== value
+      ) {
+        ctx.addIssue({ code: 'custom', message: 'Invalid birthdate' });
+        return;
+      }
+      if (value > new Date().toISOString().slice(0, 10)) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Birthdate cannot be in the future',
+        });
+      }
+    })
+    .optional();
 
   const importColumns: EntityColumnDef[] = [
     {
@@ -20,7 +82,7 @@ export function createUserEntityConfig(
       header: 'Email',
       required: true,
       group: 'core',
-      validator: z.string().email().max(254),
+      validator: z.string().trim().email().max(254),
       aliases: ['email_address', 'e-mail'],
     },
     {
@@ -28,7 +90,7 @@ export function createUserEntityConfig(
       header: 'First Name',
       required: true,
       group: 'core',
-      validator: z.string().min(1).max(100),
+      validator: z.string().trim().min(1).max(100),
       aliases: ['first_name', 'firstname', 'givenname'],
     },
     {
@@ -36,7 +98,7 @@ export function createUserEntityConfig(
       header: 'Last Name',
       required: true,
       group: 'core',
-      validator: z.string().min(1).max(100),
+      validator: z.string().trim().min(1).max(100),
       aliases: ['last_name', 'lastname', 'familyname', 'surname'],
     },
     {
@@ -56,13 +118,19 @@ export function createUserEntityConfig(
       field: 'gender',
       header: 'Gender',
       group: 'core',
-      validator: z.enum(['M', 'F']).optional(),
+      validator: z
+        .preprocess(
+          value =>
+            typeof value === 'string' ? value.trim().toUpperCase() : value,
+          z.enum(['M', 'F'])
+        )
+        .optional(),
     },
     {
       field: 'birthdate',
       header: 'Birthdate',
       group: 'core',
-      validator: z.string().optional(),
+      validator: optionalBirthdate,
     },
     {
       field: 'phone_number',
@@ -121,19 +189,19 @@ export function createUserEntityConfig(
       field: 'profile',
       header: 'Profile URL',
       group: 'sensitive',
-      validator: z.string().max(2048).optional(),
+      validator: optionalSafeUrl,
     },
     {
       field: 'website',
       header: 'Website',
       group: 'sensitive',
-      validator: z.string().max(2048).optional(),
+      validator: optionalSafeUrl,
     },
     {
       field: 'picture',
       header: 'Profile Picture',
       group: 'sensitive',
-      validator: z.string().max(2048).optional(),
+      validator: optionalSafeUrl,
     },
   ];
 
@@ -251,15 +319,24 @@ export function createUserEntityConfig(
         row: Record<string, unknown>,
         _ctx: ImportContext
       ): Promise<Record<string, unknown>> {
+        const email = String(row.email ?? '')
+          .trim()
+          .toLowerCase();
+        const givenName = String(row.given_name ?? '').trim();
+        const familyName = String(row.family_name ?? '').trim();
+        if (!email || !givenName || !familyName) {
+          throw new Error(
+            'Email, first name, and last name are required for user import'
+          );
+        }
+
         const password = crypto.randomUUID();
         const hashedPassword = await passwordUtils.hashPassword(password);
 
         const userData: Record<string, unknown> = {
-          email: String(row.email ?? '')
-            .trim()
-            .toLowerCase(),
-          given_name: String(row.given_name ?? '').trim(),
-          family_name: String(row.family_name ?? '').trim(),
+          email,
+          given_name: givenName,
+          family_name: familyName,
           account_enabled: true,
           email_verified: true,
           auth_provider: 'local',
@@ -325,11 +402,22 @@ export function createUserEntityConfig(
         filters: ExportFilters,
         _ctx: ExportContext
       ): Promise<Record<string, unknown>[]> {
-        const MAX_EXPORT_ROWS = 10000;
-        const users = await userService.findMany(
-          {},
-          { sort: { created_at: -1 }, limit: MAX_EXPORT_ROWS }
-        );
+        const batchSize = 10000;
+        const users: IUser[] = [];
+        let skip = 0;
+        while (true) {
+          const batch = await userService.findMany(
+            {},
+            {
+              sort: { created_at: -1, username: 1 },
+              limit: batchSize,
+              ...(skip > 0 ? { skip } : {}),
+            }
+          );
+          users.push(...batch);
+          if (batch.length < batchSize) break;
+          skip += batchSize;
+        }
 
         return users.map(user => {
           const record: Record<string, unknown> = {};
@@ -341,7 +429,7 @@ export function createUserEntityConfig(
               ];
             }
           }
-          if (filters.includeSensitive) {
+          if (filters.includeSensitive === true) {
             for (const col of exportColumns) {
               if (col.group === 'sensitive') {
                 record[col.field] = (
@@ -350,7 +438,7 @@ export function createUserEntityConfig(
               }
             }
           }
-          if (filters.includeSecrets) {
+          if (filters.includeSecrets === true) {
             for (const col of exportColumns) {
               if (col.group === 'internal') {
                 record[col.field] = (

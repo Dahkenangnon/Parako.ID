@@ -6,10 +6,7 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type { IViewResolver } from '../di/interfaces/view-resolver.interface.js';
 import type { ISecurityMiddleware } from '../di/interfaces/security-middleware.interface.js';
 import { TYPES } from '../di/types.js';
-import {
-  tenantContext,
-  DEFAULT_TENANT_ID,
-} from '../multi-tenancy/tenant-context.js';
+import { tenantContext } from '../multi-tenancy/tenant-context.js';
 
 @injectable()
 export class SecurityMiddleware implements ISecurityMiddleware {
@@ -139,9 +136,8 @@ export class SecurityMiddleware implements ISecurityMiddleware {
     const config = this.configManager.getConfig();
     if (!config.features.multi_tenancy.enabled) return next();
 
-    const tenantId = tenantContext.getTenantIdSafe() || DEFAULT_TENANT_ID;
-    if (tenantId === '_platforms' || tenantId === DEFAULT_TENANT_ID)
-      return next();
+    const tenantId = tenantContext.getTenantIdSafe();
+    if (tenantId === '_platforms') return next();
 
     this.sessionManager
       .flash(req)
@@ -250,8 +246,7 @@ export class SecurityMiddleware implements ISecurityMiddleware {
       this.logger.error(error as Error, {
         context: 'error_generating_csrf_token',
       });
-      // Continue without CSRF token if generation fails
-      next();
+      next(error);
     }
   };
 

@@ -261,14 +261,34 @@ export class AuthController implements IAuthController {
       let user;
       const configuredLoginMethods =
         this.config().security.authentication.login.login_methods;
+      const isLoginMethodAllowed = (method: string) =>
+        configuredLoginMethods.some(
+          (configuredMethod: string) => configuredMethod === method
+        );
+      const rejectUnavailableLoginMethod = () => {
+        this.sessionManager
+          .flash(req)
+          .error('This login method is not available.');
+        res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
+        );
+      };
 
       if (email) {
         // Older login forms POST `email` directly instead of using the
         // unified `login` field below. Kept for backwards compatibility
         // with embedded login UIs that haven't migrated yet.
+        if (!isLoginMethodAllowed('email')) {
+          rejectUnavailableLoginMethod();
+          return;
+        }
         user = await this.authService.loginWithEmail(email, password);
       } else if (phone) {
         // Same as above for `phone` — explicit phone-number forms.
+        if (!isLoginMethodAllowed('phone')) {
+          rejectUnavailableLoginMethod();
+          return;
+        }
         user = await this.authService.loginWithPhoneNumber(phone, password);
       } else if (login) {
         // Unified login field - auto-detect or use explicit login_method
@@ -279,16 +299,9 @@ export class AuthController implements IAuthController {
           typeof detectedMethod === 'string'
             ? detectedMethod
             : 'custom_identifier';
-        const isMethodAllowed = configuredLoginMethods.some(
-          (method: string) => method === loginMethodLabel
-        );
-        if (!isMethodAllowed) {
-          this.sessionManager
-            .flash(req)
-            .error('This login method is not available.');
-          return res.redirect(
-            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
-          );
+        if (!isLoginMethodAllowed(loginMethodLabel)) {
+          rejectUnavailableLoginMethod();
+          return;
         }
 
         if (detectedMethod === 'email') {
@@ -372,9 +385,10 @@ export class AuthController implements IAuthController {
             `${user.given_name || ''} ${user.family_name || ''}`.trim(),
           picture: user.picture || '',
           roles: user.roles || ['user'],
-          is_admin:
+          is_admin: Boolean(
             user.roles &&
-            (user.roles.includes('admin') || user.roles.includes('superadmin')),
+            (user.roles.includes('admin') || user.roles.includes('superadmin'))
+          ),
           last_used: Date.now(),
           mfa_method: preferred_method,
           enabled_methods: enabledMethodsObject,
@@ -458,9 +472,10 @@ export class AuthController implements IAuthController {
         full_name: `${user.given_name || ''} ${user.family_name || ''}`.trim(),
         picture: user.picture || '',
         roles: user.roles || ['user'],
-        is_admin:
+        is_admin: Boolean(
           user.roles &&
-          (user.roles.includes('admin') || user.roles.includes('superadmin')),
+          (user.roles.includes('admin') || user.roles.includes('superadmin'))
+        ),
         last_used: Date.now(),
       };
 
@@ -826,7 +841,16 @@ export class AuthController implements IAuthController {
     req: Request,
     res: Response
   ): Promise<void> => {
-    const { fullname, email, phone, password } = req.body;
+    const {
+      fullname: rawFullname,
+      email: rawEmail,
+      phone: rawPhone,
+      password: rawPassword,
+    } = req.body;
+    const fullname = typeof rawFullname === 'string' ? rawFullname : '';
+    const email = typeof rawEmail === 'string' ? rawEmail : '';
+    const phone = typeof rawPhone === 'string' ? rawPhone : '';
+    const password = typeof rawPassword === 'string' ? rawPassword : '';
 
     const contactChannels = this.config().security.authentication.signup
       .contact_channels || {
@@ -859,7 +883,9 @@ export class AuthController implements IAuthController {
     ); // Don't consume yet
 
     const stepMessage =
-      (req.query.step_message as string) || req.body.step_message || '';
+      (typeof req.query.step_message === 'string' && req.query.step_message) ||
+      (typeof req.body.step_message === 'string' && req.body.step_message) ||
+      '';
 
     this.logger.info(
       'REGISTRATION: Processing registration with redirect check',
@@ -877,8 +903,12 @@ export class AuthController implements IAuthController {
       const hasEmail = email && email.trim().length > 0;
       const hasPhone = phone && phone.trim().length > 0;
       const ciFields = this.getCustomIdentifierFields();
+      const getCustomIdentifierValue = (slot: number): string => {
+        const value = req.body[`custom_identifier_${slot}`];
+        return typeof value === 'string' ? value.trim() : '';
+      };
       const hasCustomIdentifier = ciFields.some(f =>
-        req.body[`custom_identifier_${f.slot}`]?.trim()
+        Boolean(getCustomIdentifierValue(f.slot))
       );
 
       const hasValidCredentials: boolean =
@@ -1013,10 +1043,7 @@ export class AuthController implements IAuthController {
           // Skip admin_only fields during registration
           if (field.edit_policy === 'admin_only') continue;
 
-          const fieldValue =
-            (
-              req.body[`custom_identifier_${field.slot}`] as string | undefined
-            )?.trim() || '';
+          const fieldValue = getCustomIdentifierValue(field.slot);
 
           if (field.required_for_registration && !fieldValue) {
             this.sessionManager.flash(req).error(`${field.name} is required.`);
@@ -1089,9 +1116,7 @@ export class AuthController implements IAuthController {
       // Add custom identifier values from form
       for (const field of ciFields) {
         if (field.edit_policy === 'admin_only') continue;
-        const val = (
-          req.body[`custom_identifier_${field.slot}`] as string | undefined
-        )?.trim();
+        const val = getCustomIdentifierValue(field.slot);
         if (val) {
           const slotKey = `custom_identifier_${field.slot}` as keyof Pick<
             AuthUserData,
@@ -1180,9 +1205,10 @@ export class AuthController implements IAuthController {
             `${user.given_name || ''} ${user.family_name || ''}`.trim(),
           picture: user.picture || '',
           roles: user.roles || ['user'],
-          is_admin:
+          is_admin: Boolean(
             user.roles &&
-            (user.roles.includes('admin') || user.roles.includes('superadmin')),
+            (user.roles.includes('admin') || user.roles.includes('superadmin'))
+          ),
           last_used: Date.now(),
           zoneinfo: user.zoneinfo || 'UTC',
           locale: user.locale || 'en',
@@ -1817,9 +1843,9 @@ export class AuthController implements IAuthController {
       maskedEmail = this.mfaUtils.maskEmail(pendingUser.email);
     }
 
-    const isSocialLogin =
-      this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser') !==
-      null;
+    const isSocialLogin = Boolean(
+      this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser')
+    );
     const provider = pendingUser.provider;
 
     res.render(this.viewResolver.views.auth.mfa_verify, {
@@ -1932,9 +1958,9 @@ export class AuthController implements IAuthController {
         last_used: Date.now(),
       };
 
-      const isSocialLogin =
-        this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser') !==
-        null;
+      const isSocialLogin = Boolean(
+        this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser')
+      );
       const provider = pendingUser.provider;
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
@@ -2189,6 +2215,18 @@ export class AuthController implements IAuthController {
         );
       }
 
+      if (
+        typeof method !== 'string' ||
+        pendingUser.enabled_methods?.[method] !== true
+      ) {
+        this.sessionManager
+          .flash(req)
+          .error('Selected MFA method is not available.');
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.mfa_select}`
+        );
+      }
+
       pendingUser.mfa_method = method;
       this.sessionManager.set(req, 'pendingMfaUser', pendingUser);
 
@@ -2440,16 +2478,7 @@ export class AuthController implements IAuthController {
       try {
         const user = await this.userService.findByEmail(email);
 
-        if (user) {
-          if (user.email_verified) {
-            this.sessionManager
-              .flash(req)
-              .info('Your email is already verified. You can now log in.');
-            return res.redirect(
-              `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
-            );
-          }
-
+        if (user && !user.email_verified) {
           const { verificationToken } =
             await this.authService.generateEmailVerificationToken(
               user._id as string
@@ -2467,6 +2496,11 @@ export class AuthController implements IAuthController {
           );
 
           this.logger.info('Verification email sent', { email });
+        } else if (user) {
+          this.logger.info(
+            'Email verification requested for an already verified user',
+            { email }
+          );
         } else {
           this.logger.info(
             'Email verification requested for non-existent user',
@@ -2736,7 +2770,7 @@ export class AuthController implements IAuthController {
     try {
       const { identifier } = req.body;
 
-      if (!identifier || !identifier.trim()) {
+      if (typeof identifier !== 'string' || !identifier.trim()) {
         return renderError('Please enter your email, phone, or username');
       }
 
@@ -2802,7 +2836,7 @@ export class AuthController implements IAuthController {
 
       if (available.length === 0) {
         return renderError(
-          'No recovery methods are configured for this account. Please contact support.',
+          'If an account exists with this identifier, recovery options will be shown.',
           trimmedIdentifier
         );
       }
@@ -2895,36 +2929,33 @@ export class AuthController implements IAuthController {
       });
     }
 
+    const authRoutes = config.deployment.routes.auth_routes;
+    const authBase = config.deployment.routes.auth;
+    const routeByMethod: Record<string, string> = {
+      backup_codes: authRoutes.recovery_backup_codes,
+      secondary_email: authRoutes.recovery_secondary_email,
+      security_questions: authRoutes.recovery_security_questions,
+      sms: authRoutes.recovery_sms,
+    };
+    const selectedRoute =
+      typeof method === 'string' ? routeByMethod[method] : undefined;
+
+    if (!selectedRoute) {
+      return res.render(this.viewResolver.views.auth.recovery_method_select, {
+        title: `${req.t('auth.recovery_method_select.title')} - ${this.getAppTitle()}`,
+        maskedIdentifier: recoveryAttempt.maskedIdentifier,
+        availableMethods: recoveryAttempt.availableMethods,
+        error: 'Invalid recovery method selected',
+      });
+    }
+
     this.sessionManager.set(req, 'recoveryAttempt', {
       ...recoveryAttempt,
       method,
       methodDetails: selectedMethod.details,
     });
 
-    const authRoutes = config.deployment.routes.auth_routes;
-    const authBase = config.deployment.routes.auth;
-
-    switch (method) {
-      case 'backup_codes':
-        return res.redirect(`${authBase}${authRoutes.recovery_backup_codes}`);
-      case 'secondary_email':
-        return res.redirect(
-          `${authBase}${authRoutes.recovery_secondary_email}`
-        );
-      case 'security_questions':
-        return res.redirect(
-          `${authBase}${authRoutes.recovery_security_questions}`
-        );
-      case 'sms':
-        return res.redirect(`${authBase}${authRoutes.recovery_sms}`);
-      default:
-        return res.render(this.viewResolver.views.auth.recovery_method_select, {
-          title: `${req.t('auth.recovery_method_select.title')} - ${this.getAppTitle()}`,
-          maskedIdentifier: recoveryAttempt.maskedIdentifier,
-          availableMethods: recoveryAttempt.availableMethods,
-          error: 'Invalid recovery method selected',
-        });
-    }
+    return res.redirect(`${authBase}${selectedRoute}`);
   };
 
   /**
@@ -3007,9 +3038,17 @@ export class AuthController implements IAuthController {
       }
 
       const answersMap = new Map<string, string>();
+      const validQuestionIds = new Set(
+        user.recovery.security_questions.questions.map(question => question.id)
+      );
       if (Array.isArray(questionIds) && Array.isArray(answers)) {
         for (let i = 0; i < questionIds.length; i++) {
-          if (answers[i]) {
+          if (
+            typeof questionIds[i] === 'string' &&
+            typeof answers[i] === 'string' &&
+            answers[i] &&
+            validQuestionIds.has(questionIds[i])
+          ) {
             answersMap.set(questionIds[i], answers[i]);
           }
         }
@@ -3084,30 +3123,36 @@ export class AuthController implements IAuthController {
         context: 'process_recovery_security_questions_failed',
       });
 
-      const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
-        req,
-        'recoveryAttempt'
-      );
-      if (recoveryAttempt?.userId) {
-        const user = await this.userService.findById(recoveryAttempt.userId);
-        if (user?.recovery?.security_questions?.questions) {
-          const questions = user.recovery.security_questions.questions.map(
-            q => ({
-              id: q.id,
-              question_key: q.question_key,
-            })
-          );
+      try {
+        const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
+          req,
+          'recoveryAttempt'
+        );
+        if (recoveryAttempt?.userId) {
+          const user = await this.userService.findById(recoveryAttempt.userId);
+          if (user?.recovery?.security_questions?.questions) {
+            const questions = user.recovery.security_questions.questions.map(
+              q => ({
+                id: q.id,
+                question_key: q.question_key,
+              })
+            );
 
-          return res.render(
-            this.viewResolver.views.auth.recovery_security_questions,
-            {
-              title: `${req.t('auth.recovery_security_questions.title')} - ${this.getAppTitle()}`,
-              questions,
-              lockout: { locked: false, remainingAttempts: 0 },
-              error: 'An error occurred. Please try again.',
-            }
-          );
+            return res.render(
+              this.viewResolver.views.auth.recovery_security_questions,
+              {
+                title: `${req.t('auth.recovery_security_questions.title')} - ${this.getAppTitle()}`,
+                questions,
+                lockout: { locked: false, remainingAttempts: 0 },
+                error: 'An error occurred. Please try again.',
+              }
+            );
+          }
         }
+      } catch (fallbackError) {
+        this.logger.error(fallbackError as Error, {
+          context: 'recovery_security_questions_error_fallback_failed',
+        });
       }
 
       return res.redirect(
@@ -3156,8 +3201,6 @@ export class AuthController implements IAuthController {
       req,
       'recoveryAttempt'
     );
-    const deviceInfos =
-      this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
     if (!recoveryAttempt || recoveryAttempt.method !== 'sms') {
       return res.redirect(
@@ -3169,67 +3212,84 @@ export class AuthController implements IAuthController {
     const maskedPhone = recoveryAttempt.methodDetails?.maskedPhone || '***';
 
     if (action === 'send_code') {
-      const user = await this.userService.findById(recoveryAttempt.userId);
-      if (!user || !user.phone_number) {
+      try {
+        const user = await this.userService.findById(recoveryAttempt.userId);
+        if (!user || !user.phone_number) {
+          return res.render(this.viewResolver.views.auth.recovery_sms, {
+            title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
+            maskedPhone,
+            codeSent: false,
+            retryAfter: null,
+            error: 'Phone number not available for this account',
+            success: null,
+          });
+        }
+
+        const deviceInfos =
+          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
+        const { code, hash, expiresAt } =
+          this.recoveryUtils.generateSmsVerificationCode();
+
+        const smsResult = await this.smsService.sendRecoveryCode(
+          user.phone_number,
+          code,
+          deviceInfos.ip
+        );
+
+        if (!smsResult.success) {
+          return res.render(this.viewResolver.views.auth.recovery_sms, {
+            title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
+            maskedPhone,
+            codeSent: false,
+            retryAfter: smsResult.retryAfter || null,
+            error: smsResult.error || 'Failed to send SMS. Please try again.',
+            success: null,
+          });
+        }
+
+        await this.userService.updateById(user._id!.toString(), {
+          recovery: {
+            ...user.recovery,
+            enabled: user.recovery?.enabled ?? false,
+            methods: user.recovery?.methods ?? [],
+            sms: {
+              ...user.recovery?.sms,
+              phone_number: user.recovery?.sms?.phone_number || '',
+              verified: user.recovery?.sms?.verified || false,
+              verification_code: hash,
+              verification_expires: expiresAt,
+            },
+          },
+        });
+
+        this.sessionManager.set(req, 'recoveryAttempt', {
+          ...recoveryAttempt,
+          smsSent: true,
+          smsExpiresAt: expiresAt.toISOString(),
+        });
+
+        return res.render(this.viewResolver.views.auth.recovery_sms, {
+          title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
+          maskedPhone,
+          codeSent: true,
+          retryAfter: null,
+          error: null,
+          success: 'Verification code sent successfully',
+        });
+      } catch (error) {
+        this.logger.error(error as Error, {
+          context: 'process_recovery_sms_failed',
+        });
+
         return res.render(this.viewResolver.views.auth.recovery_sms, {
           title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
           maskedPhone,
           codeSent: false,
           retryAfter: null,
-          error: 'Phone number not available for this account',
+          error: 'An error occurred. Please try again.',
           success: null,
         });
       }
-
-      const { code, hash, expiresAt } =
-        this.recoveryUtils.generateSmsVerificationCode();
-
-      const smsResult = await this.smsService.sendRecoveryCode(
-        user.phone_number,
-        code,
-        deviceInfos.ip
-      );
-
-      if (!smsResult.success) {
-        return res.render(this.viewResolver.views.auth.recovery_sms, {
-          title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
-          maskedPhone,
-          codeSent: false,
-          retryAfter: smsResult.retryAfter || null,
-          error: smsResult.error || 'Failed to send SMS. Please try again.',
-          success: null,
-        });
-      }
-
-      await this.userService.updateById(user._id!.toString(), {
-        recovery: {
-          ...user.recovery,
-          enabled: user.recovery?.enabled ?? false,
-          methods: user.recovery?.methods ?? [],
-          sms: {
-            ...user.recovery?.sms,
-            phone_number: user.recovery?.sms?.phone_number || '',
-            verified: user.recovery?.sms?.verified || false,
-            verification_code: hash,
-            verification_expires: expiresAt,
-          },
-        },
-      });
-
-      this.sessionManager.set(req, 'recoveryAttempt', {
-        ...recoveryAttempt,
-        smsSent: true,
-        smsExpiresAt: expiresAt.toISOString(),
-      });
-
-      return res.render(this.viewResolver.views.auth.recovery_sms, {
-        title: `${req.t('auth.recovery_sms.title')} - ${this.getAppTitle()}`,
-        maskedPhone,
-        codeSent: true,
-        retryAfter: null,
-        error: null,
-        success: 'Verification code sent successfully',
-      });
     }
 
     return res.render(this.viewResolver.views.auth.recovery_sms, {
@@ -3251,7 +3311,7 @@ export class AuthController implements IAuthController {
       'recoveryAttempt'
     );
 
-    if (!recoveryAttempt) {
+    if (!recoveryAttempt || recoveryAttempt.method !== 'backup_codes') {
       return res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
       );
@@ -3273,20 +3333,18 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { code } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
       const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
         req,
         'recoveryAttempt'
       );
 
-      if (!recoveryAttempt) {
+      if (!recoveryAttempt || recoveryAttempt.method !== 'backup_codes') {
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
         );
       }
 
-      if (!code) {
+      if (typeof code !== 'string' || !code.trim()) {
         return res.render(this.viewResolver.views.auth.recovery_backup_codes, {
           title: `${req.t('auth.recovery_backup_codes.title')} - ${this.getAppTitle()}`,
           username: recoveryAttempt.username,
@@ -3328,7 +3386,7 @@ export class AuthController implements IAuthController {
 
       const verificationResult = await this.recoveryUtils.verifyUserBackupCode(
         user,
-        code
+        code.trim()
       );
 
       if (!verificationResult.valid) {
@@ -3408,6 +3466,9 @@ export class AuthController implements IAuthController {
           error: 'Verification failed. Please try again.',
         });
       }
+
+      const deviceInfos =
+        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
 
       const updatedCodes = user.recovery.backup_codes.codes.filter(
         c => c !== verificationResult.matchedCode
@@ -3504,13 +3565,22 @@ export class AuthController implements IAuthController {
       this.logger.error(error as Error, {
         context: 'process_recovery_backup_codes_failed',
       });
-      const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
-        req,
-        'recoveryAttempt'
-      );
+      let username = 'Unknown';
+      try {
+        const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
+          req,
+          'recoveryAttempt'
+        );
+        username = recoveryAttempt?.username || 'Unknown';
+      } catch (fallbackError) {
+        this.logger.error(fallbackError as Error, {
+          context: 'process_recovery_backup_codes_error_fallback_failed',
+        });
+      }
+
       res.render(this.viewResolver.views.auth.recovery_backup_codes, {
         title: `${req.t('auth.recovery_backup_codes.title')} - ${this.getAppTitle()}`,
-        username: recoveryAttempt?.username || 'Unknown',
+        username,
         error: 'An error occurred. Please try again.',
       });
     }
@@ -3525,7 +3595,7 @@ export class AuthController implements IAuthController {
       'recoveryAttempt'
     );
 
-    if (!recoveryAttempt) {
+    if (!recoveryAttempt || recoveryAttempt.method !== 'secondary_email') {
       return res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
       );
@@ -3552,13 +3622,17 @@ export class AuthController implements IAuthController {
         'recoveryAttempt'
       );
 
-      if (!recoveryAttempt) {
+      if (!recoveryAttempt || recoveryAttempt.method !== 'secondary_email') {
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
         );
       }
 
-      if (!email || !email.includes('@')) {
+      const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+      if (
+        !normalizedEmail ||
+        !this.authService.isValidEmailAddress(normalizedEmail)
+      ) {
         return res.render(
           this.viewResolver.views.auth.recovery_secondary_email,
           {
@@ -3583,7 +3657,7 @@ export class AuthController implements IAuthController {
 
       if (
         user.recovery.secondary_email.email.toLowerCase() !==
-        email.toLowerCase()
+        normalizedEmail.toLowerCase()
       ) {
         activityLoggerFor(this.activityLoggerDeps, req).failed(
           'recovery_attempt_failed',
@@ -3645,7 +3719,7 @@ export class AuthController implements IAuthController {
 
       try {
         await this.notificationService.sendTemplatedEmail(
-          email,
+          normalizedEmail,
           `Account Recovery Verification Code - ${this.getAppTitle()}`,
           'email/mail.njk',
           {
@@ -3666,9 +3740,10 @@ export class AuthController implements IAuthController {
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.recovery_verify_code}`
         );
       } catch (emailError) {
+        this.sessionManager.remove(req, 'secondaryEmailVerification');
         this.logger.error('Failed to send recovery verification email', {
           username: user.username,
-          email,
+          email: normalizedEmail,
           error: emailError,
         });
         return res.render(
@@ -3684,13 +3759,22 @@ export class AuthController implements IAuthController {
       this.logger.error(error as Error, {
         context: 'process_recovery_secondary_email_failed',
       });
-      const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
-        req,
-        'recoveryAttempt'
-      );
+      let username = 'Unknown';
+      try {
+        const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
+          req,
+          'recoveryAttempt'
+        );
+        username = recoveryAttempt?.username || 'Unknown';
+      } catch (fallbackError) {
+        this.logger.error(fallbackError as Error, {
+          context: 'process_recovery_secondary_email_error_fallback_failed',
+        });
+      }
+
       res.render(this.viewResolver.views.auth.recovery_secondary_email, {
         title: `${req.t('auth.recovery_secondary_email.title')} - ${this.getAppTitle()}`,
-        username: recoveryAttempt?.username || 'Unknown',
+        username,
         error: 'An error occurred. Please try again.',
       });
     }
@@ -3726,8 +3810,6 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     try {
       const { code } = req.body;
-      const deviceInfos =
-        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
       const verification = this.sessionManager.get<SecondaryEmailVerification>(
         req,
         'secondaryEmailVerification'
@@ -3739,33 +3821,49 @@ export class AuthController implements IAuthController {
         );
       }
 
-      if (!code) {
+      const normalizedCode = typeof code === 'string' ? code.trim() : '';
+      if (!normalizedCode) {
         return res.render(this.viewResolver.views.auth.recovery_verify_code, {
           title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
           error: 'Verification code is required',
         });
       }
 
-      if (verification.expiresAt < new Date()) {
-        const expiredUser = await this.userService.findById(
-          verification.userId
-        );
-        if (expiredUser) {
-          activityLoggerFor(this.activityLoggerDeps, req).failed(
-            'recovery_attempt_failed',
-            expiredUser,
-            'Recovery verification code expired',
-            {
-              actor: expiredUser,
-              target: { target_type: 'none' },
-              metadata: {
-                method: 'secondary_email_verification',
-                error: 'Verification code expired',
-              },
-            }
-          );
-        }
+      const verificationExpiresAt =
+        verification.expiresAt instanceof Date
+          ? verification.expiresAt.getTime()
+          : new Date(verification.expiresAt as unknown as string).getTime();
+      if (
+        !Number.isFinite(verificationExpiresAt) ||
+        verificationExpiresAt <= Date.now()
+      ) {
         this.sessionManager.remove(req, 'secondaryEmailVerification');
+        try {
+          const expiredUser = await this.userService.findById(
+            verification.userId
+          );
+          if (expiredUser) {
+            activityLoggerFor(this.activityLoggerDeps, req).failed(
+              'recovery_attempt_failed',
+              expiredUser,
+              'Recovery verification code expired',
+              {
+                actor: expiredUser,
+                target: { target_type: 'none' },
+                metadata: {
+                  method: 'secondary_email_verification',
+                  error: 'Verification code expired',
+                },
+              }
+            );
+          }
+        } catch (expiredUserError) {
+          this.logger.error(expiredUserError as Error, {
+            context: 'recovery_verify_code_expired_user_lookup_failed',
+            userId: verification.userId,
+          });
+        }
+
         return res.render(this.viewResolver.views.auth.recovery_verify_code, {
           title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
           error: 'Verification code has expired. Please try again.',
@@ -3801,7 +3899,7 @@ export class AuthController implements IAuthController {
         }
       }
 
-      if (code !== verification.code) {
+      if (normalizedCode !== verification.code) {
         if (userForLockout) {
           const failedAttemptResult =
             this.recoveryUtils.recordFailedRecoveryAttempt(userForLockout);
@@ -3883,6 +3981,9 @@ export class AuthController implements IAuthController {
         });
       }
 
+      const deviceInfos =
+        this.clientDeviceInfoManager.getClientInfoFromRequest(req);
+
       this.recoveryUtils.clearRecoveryLockout(user);
       this.recoveryUtils.setLastRecoveredAt(user);
       if (user.recovery) {
@@ -3924,6 +4025,7 @@ export class AuthController implements IAuthController {
         });
 
       this.sessionManager.remove(req, 'secondaryEmailVerification');
+      this.sessionManager.remove(req, 'recoveryAttempt');
 
       this.sessionManager.setAuthenticated(req, {
         currentActiveLoggedUser: {
@@ -4152,7 +4254,7 @@ export class AuthController implements IAuthController {
           }
 
           this.logger.info('User logged out from all accounts', {
-            totalAccounts: accounts.length,
+            totalAccounts,
             activeUser: userData?.username,
             activeUserId: userData?.id,
           });
@@ -4168,7 +4270,7 @@ export class AuthController implements IAuthController {
             title: `Signed Out - ${this.getAppTitle()}`,
             confirmed: true,
             logoutType: 'all',
-            accountCount: accounts.length,
+            accountCount: totalAccounts,
             redirectUri,
           });
         } else if (logoutType === 'single' && accountId) {
@@ -4176,15 +4278,25 @@ export class AuthController implements IAuthController {
           const removedAccount = accounts.find(acc => acc.id === accountId);
 
           const allUsers = this.sessionManager.getAuthenticatedUsers(req);
-          const isOnlyAccount =
+          const selectedUser =
+            allUsers?.active?.id === accountId
+              ? allUsers?.active
+              : allUsers?.others.find(user => user.id === accountId);
+          const username = selectedUser?.username || accountId;
+          const accountName =
+            selectedUser?.full_name ||
+            selectedUser?.username ||
+            removedAccount?.name ||
+            'Account';
+          const isOnlyAccount = Boolean(
+            selectedUser &&
             allUsers &&
             ((allUsers.active && allUsers.others.length === 0) ||
-              (!allUsers.active && allUsers.others.length === 1));
+              (!allUsers.active && allUsers.others.length === 1))
+          );
 
           if (isOnlyAccount) {
             // This is the only account - destroy entire session
-            const username = removedAccount?.name || accountId;
-
             activityLoggerFor(this.activityLoggerDeps, req).info(
               'logout_single',
               null,
@@ -4211,7 +4323,7 @@ export class AuthController implements IAuthController {
             }
 
             this.logger.info('User logged out from only account', {
-              removedAccount: removedAccount?.name || accountId,
+              removedAccount: accountName,
               removedAccountId: accountId,
             });
 
@@ -4226,7 +4338,7 @@ export class AuthController implements IAuthController {
               title: `Signed Out - ${this.getAppTitle()}`,
               confirmed: true,
               logoutType: 'single',
-              accountName: removedAccount?.name || 'Account',
+              accountName,
               redirectUri,
             });
           } else {
@@ -4235,8 +4347,6 @@ export class AuthController implements IAuthController {
               await this.sessionManager.removeAuthenticatedUser(req, accountId);
 
             if (removeSuccess) {
-              const username = removedAccount?.name || accountId;
-
               try {
                 await this.logoutOIDC(username);
                 this.logger.info(`Cleared OIDC data for account: ${username}`);
@@ -4249,7 +4359,7 @@ export class AuthController implements IAuthController {
               }
 
               this.logger.info('User logged out from specific account', {
-                removedAccount: removedAccount?.name || accountId,
+                removedAccount: accountName,
                 removedAccountId: accountId,
                 remainingAccounts: accounts.length - 1,
               });
@@ -4265,16 +4375,14 @@ export class AuthController implements IAuthController {
                   title: `Signed Out - ${this.getAppTitle()}`,
                   confirmed: true,
                   logoutType: 'single',
-                  accountName: removedAccount?.name || 'Account',
+                  accountName,
                   redirectUri,
                 });
               } else {
                 // Still have accounts - redirect to account management
                 this.sessionManager
                   .flash(req)
-                  .success(
-                    `Signed out from ${removedAccount?.name || 'account'} successfully.`
-                  );
+                  .success(`Signed out from ${accountName} successfully.`);
                 return res.redirect(
                   `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`
                 );
@@ -4443,8 +4551,8 @@ export class AuthController implements IAuthController {
       }
 
       const continueUrl =
-        (req.query.continue as string) ||
-        (req.query.redirectTo as string) ||
+        (typeof req.query.continue === 'string' && req.query.continue) ||
+        (typeof req.query.redirectTo === 'string' && req.query.redirectTo) ||
         '';
       if (continueUrl) {
         await this.redirectAuthority.storeIntent(
@@ -4500,9 +4608,18 @@ export class AuthController implements IAuthController {
         );
       }
 
+      // Strict allowlist so registration state cannot be mutated for an
+      // adapter-provided value outside SocialProvider.
+      if (!isKnownSocialProvider(provider)) {
+        this.logger.warn(`Rejected unknown social provider: ${provider}`);
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
+        );
+      }
+
       const continueUrl =
-        (req.query.continue as string) ||
-        (req.query.redirectTo as string) ||
+        (typeof req.query.continue === 'string' && req.query.continue) ||
+        (typeof req.query.redirectTo === 'string' && req.query.redirectTo) ||
         '';
       if (continueUrl) {
         this.logger.info(`Storing continue URL for social registration`, {
@@ -4513,14 +4630,6 @@ export class AuthController implements IAuthController {
           req,
           continueUrl,
           'social_register'
-        );
-      }
-
-      // Strict allowlist so the session update cannot fall outside SocialProvider.
-      if (!isKnownSocialProvider(provider)) {
-        this.logger.warn(`Rejected unknown social provider: ${provider}`);
-        return res.redirect(
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
         );
       }
 
@@ -4743,8 +4852,8 @@ export class AuthController implements IAuthController {
         );
 
         const continueUrl =
-          (req.query.continue as string) ||
-          (req.query.redirectTo as string) ||
+          (typeof req.query.continue === 'string' && req.query.continue) ||
+          (typeof req.query.redirectTo === 'string' && req.query.redirectTo) ||
           this.redirectAuthority.getIntent(req, 'social_login', false) ||
           this.redirectAuthority.getIntent(req, 'social_register', false);
 
@@ -4765,10 +4874,11 @@ export class AuthController implements IAuthController {
             `${result.user.given_name || ''} ${result.user.family_name || ''}`.trim(),
           picture: result.user.picture || '',
           roles: result.user.roles || ['user'],
-          is_admin:
+          is_admin: Boolean(
             result.user.roles &&
             (result.user.roles.includes('admin') ||
-              result.user.roles.includes('superadmin')),
+              result.user.roles.includes('superadmin'))
+          ),
           last_used: Date.now(),
           mfa_method: preferred_method,
           enabled_methods: enabledMethodsObject,
@@ -4848,10 +4958,11 @@ export class AuthController implements IAuthController {
           `${result.user.given_name || ''} ${result.user.family_name || ''}`.trim(),
         picture: result.user.picture || '',
         roles: result.user.roles || ['user'],
-        is_admin:
+        is_admin: Boolean(
           result.user.roles &&
           (result.user.roles.includes('admin') ||
-            result.user.roles.includes('superadmin')),
+            result.user.roles.includes('superadmin'))
+        ),
         last_used: Date.now(),
       };
 
@@ -4896,7 +5007,9 @@ export class AuthController implements IAuthController {
         this.redirectAuthority.getIntent(req, 'social_login', false) ||
         this.redirectAuthority.getIntent(req, 'social_register', false);
       const continueUrl =
-        (req.query.continue as string) || (req.query.redirectTo as string);
+        (typeof req.query.continue === 'string' && req.query.continue) ||
+        (typeof req.query.redirectTo === 'string' && req.query.redirectTo) ||
+        undefined;
 
       if (continueUrl) {
         // Regenerate session ID to prevent session fixation attacks
@@ -5088,24 +5201,56 @@ export class AuthController implements IAuthController {
           return res.redirect(
             `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
           );
+        } else {
+          this.logger.warn(
+            'Unsupported social missing-contact policy; rejecting registration',
+            {
+              provider,
+              policy: socialConfig.missingContactInfo,
+            }
+          );
+          return res.render(this.viewResolver.views.auth.social_callback, {
+            title: `Social Registration Error - ${this.getAppTitle()}`,
+            provider,
+            error: `${provider} account must have an email address or phone number to register`,
+            redirectUrl: `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`,
+          });
         }
       }
 
-      const existingUser = await this.userService.findByEmailIncludingDisabled(
-        providerData.email
-      );
+      const existingUserByEmail = providerData.email
+        ? await this.userService.findByEmailIncludingDisabled(
+            providerData.email
+          )
+        : undefined;
+      const existingUserByPhone =
+        !existingUserByEmail && providerData.phone_number
+          ? await this.userService.findByPhoneNumberIncludingDisabled(
+              providerData.phone_number
+            )
+          : undefined;
+      const existingUser = existingUserByEmail || existingUserByPhone;
       if (existingUser) {
+        const duplicateContactType = existingUserByEmail ? 'email' : 'phone';
+        const duplicateContact = existingUserByEmail
+          ? providerData.email
+          : providerData.phone_number;
+
         this.logger.info(
-          `User already exists with email ${providerData.email}, redirecting to login`,
+          `User already exists with ${duplicateContactType} ${duplicateContact}, redirecting to login`,
           {
             provider,
-            email: providerData.email,
+            [duplicateContactType]: duplicateContact,
           }
         );
 
-        const errorMessage = socialConfig.showHelpfulErrors
-          ? `An account with email ${providerData.email} already exists. Please log in first, then link your ${provider} account.`
-          : `Account already exists with this email address.`;
+        const errorMessage = existingUserByEmail
+          ? socialConfig.showHelpfulErrors
+            ? `An account with email ${providerData.email} already exists. Please log in first, then link your ${provider} account.`
+            : `Account already exists with this email address.`
+          : socialConfig.showHelpfulErrors
+            ? `An account with phone number ${providerData.phone_number} already exists. Please log in first, then link your ${provider} account.`
+            : `Account already exists with this phone number.`;
 
         return res.render(this.viewResolver.views.auth.social_callback, {
           title: `Account Already Exists - ${this.getAppTitle()}`,
@@ -5116,13 +5261,15 @@ export class AuthController implements IAuthController {
       }
 
       const userData = {
-        email: providerData.email,
+        ...(providerData.email ? { email: providerData.email } : {}),
+        ...(providerData.phone_number
+          ? { phone_number: providerData.phone_number }
+          : {}),
         given_name: providerData.given_name || '',
         family_name: providerData.family_name || '',
         picture: providerData.picture || '',
-        email_verified: socialConfig.autoVerifyEmail
-          ? providerData.email_verified || true
-          : false,
+        email_verified:
+          socialConfig.autoVerifyEmail && providerData.email_verified === true,
         auth_provider: provider, // Set to specific provider (github, google, etc.)
         register_with: provider, // Track which provider was used for registration
         account_enabled: !socialConfig.requirePasswordOnRegistration, // Disable account if password is required
@@ -5220,10 +5367,11 @@ export class AuthController implements IAuthController {
           `${newUser.given_name || ''} ${newUser.family_name || ''}`.trim(),
         picture: newUser.picture || '',
         roles: newUser.roles || ['user'],
-        is_admin:
+        is_admin: Boolean(
           newUser.roles &&
           (newUser.roles.includes('admin') ||
-            newUser.roles.includes('superadmin')),
+            newUser.roles.includes('superadmin'))
+        ),
         last_used: Date.now(),
       };
 
@@ -5257,7 +5405,9 @@ export class AuthController implements IAuthController {
         false
       );
       const continueUrl =
-        (req.query.continue as string) || (req.query.redirectTo as string);
+        (typeof req.query.continue === 'string' && req.query.continue) ||
+        (typeof req.query.redirectTo === 'string' && req.query.redirectTo) ||
+        undefined;
 
       if (continueUrl) {
         this.redirectAuthority
@@ -5321,7 +5471,11 @@ export class AuthController implements IAuthController {
         'socialPasswordSetup'
       );
 
-      if (!socialPasswordData || !provider) {
+      if (
+        !socialPasswordData ||
+        typeof provider !== 'string' ||
+        provider !== socialPasswordData.provider
+      ) {
         this.sessionManager
           .flash(req)
           .error('Invalid social password setup session');
@@ -5332,6 +5486,7 @@ export class AuthController implements IAuthController {
 
       const sessionAge = Date.now() - socialPasswordData.timestamp;
       if (sessionAge > 30 * 60 * 1000) {
+        this.sessionManager.remove(req, 'socialPasswordSetup');
         this.sessionManager
           .flash(req)
           .error('Social password setup session has expired');
@@ -5375,7 +5530,11 @@ export class AuthController implements IAuthController {
         'socialPasswordSetup'
       );
 
-      if (!socialPasswordData || !provider) {
+      if (
+        !socialPasswordData ||
+        typeof provider !== 'string' ||
+        provider !== socialPasswordData.provider
+      ) {
         this.sessionManager
           .flash(req)
           .error('Invalid social password setup session');
@@ -5386,6 +5545,7 @@ export class AuthController implements IAuthController {
 
       const sessionAge = Date.now() - socialPasswordData.timestamp;
       if (sessionAge > 30 * 60 * 1000) {
+        this.sessionManager.remove(req, 'socialPasswordSetup');
         this.sessionManager
           .flash(req)
           .error('Social password setup session has expired');
@@ -5394,7 +5554,12 @@ export class AuthController implements IAuthController {
         );
       }
 
-      if (!password || !confirmPassword) {
+      if (
+        typeof password !== 'string' ||
+        typeof confirmPassword !== 'string' ||
+        !password ||
+        !confirmPassword
+      ) {
         this.sessionManager
           .flash(req)
           .error('Password and confirmation are required');
@@ -5449,7 +5614,10 @@ export class AuthController implements IAuthController {
         full_name: `${user.given_name || ''} ${user.family_name || ''}`.trim(),
         picture: user.picture || '',
         roles: user.roles || ['user'],
-        is_admin: user.roles?.includes('admin') || false,
+        is_admin: Boolean(
+          user.roles &&
+          (user.roles.includes('admin') || user.roles.includes('superadmin'))
+        ),
         last_used: Date.now(),
       };
 
@@ -5511,7 +5679,11 @@ export class AuthController implements IAuthController {
         'socialRegistrationPending'
       );
 
-      if (!socialContactData || !provider) {
+      if (
+        !socialContactData ||
+        typeof provider !== 'string' ||
+        provider !== socialContactData.provider
+      ) {
         this.sessionManager
           .flash(req)
           .error('Invalid social contact info session');
@@ -5522,6 +5694,7 @@ export class AuthController implements IAuthController {
 
       const sessionAge = Date.now() - socialContactData.timestamp;
       if (sessionAge > 30 * 60 * 1000) {
+        this.sessionManager.remove(req, 'socialRegistrationPending');
         this.sessionManager
           .flash(req)
           .error('Social contact info session has expired');
@@ -5570,7 +5743,11 @@ export class AuthController implements IAuthController {
         'socialRegistrationPending'
       );
 
-      if (!socialContactData || !provider) {
+      if (
+        !socialContactData ||
+        typeof provider !== 'string' ||
+        provider !== socialContactData.provider
+      ) {
         this.sessionManager
           .flash(req)
           .error('Invalid social contact info session');
@@ -5581,11 +5758,33 @@ export class AuthController implements IAuthController {
 
       const sessionAge = Date.now() - socialContactData.timestamp;
       if (sessionAge > 30 * 60 * 1000) {
+        this.sessionManager.remove(req, 'socialRegistrationPending');
         this.sessionManager
           .flash(req)
           .error('Social contact info session has expired');
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
+        );
+      }
+
+      const contactChannels = this.config().security.authentication.signup
+        .contact_channels || {
+        email: { enabled: true, required: true },
+        phone: { enabled: false, required: false },
+        require_at_least_one: true,
+      };
+
+      if (contactChannels.email?.required && !email) {
+        this.sessionManager.flash(req).error('Email is required');
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
+        );
+      }
+
+      if (contactChannels.phone?.required && !phone_number) {
+        this.sessionManager.flash(req).error('Phone number is required');
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
         );
       }
 
@@ -5598,9 +5797,23 @@ export class AuthController implements IAuthController {
         );
       }
 
+      let normalizedEmail: string | undefined;
+      let normalizedPhoneNumber: string | undefined;
+
       if (email) {
+        if (typeof email !== 'string') {
+          this.sessionManager
+            .flash(req)
+            .error('Please enter a valid email address');
+          return res.redirect(
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
+          );
+        }
+
+        normalizedEmail = email.trim().toLowerCase();
+
         // Limit input length to prevent ReDoS attacks
-        if (email.length > 254) {
+        if (normalizedEmail.length > 254) {
           this.sessionManager.flash(req).error('Email address is too long');
           return res.redirect(
             `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
@@ -5610,7 +5823,7 @@ export class AuthController implements IAuthController {
         // Use a more efficient email regex that avoids catastrophic backtracking
         const emailRegex =
           /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
           this.sessionManager
             .flash(req)
             .error('Please enter a valid email address');
@@ -5620,7 +5833,7 @@ export class AuthController implements IAuthController {
         }
 
         const existingUserByEmail =
-          await this.userService.findByEmailIncludingDisabled(email);
+          await this.userService.findByEmailIncludingDisabled(normalizedEmail);
         if (existingUserByEmail) {
           this.sessionManager
             .flash(req)
@@ -5634,6 +5847,15 @@ export class AuthController implements IAuthController {
       }
 
       if (phone_number) {
+        if (typeof phone_number !== 'string') {
+          this.sessionManager
+            .flash(req)
+            .error('Please enter a valid phone number');
+          return res.redirect(
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_contact_info}?provider=${provider}`
+          );
+        }
+
         // Limit input length to prevent ReDoS attacks
         if (phone_number.length > 20) {
           this.sessionManager.flash(req).error('Phone number is too long');
@@ -5642,11 +5864,11 @@ export class AuthController implements IAuthController {
           );
         }
 
-        const cleanPhone = phone_number.replace(/[\s\-()]/g, '');
+        normalizedPhoneNumber = phone_number.replace(/[\s\-()]/g, '');
 
         // Use a more efficient phone regex that avoids catastrophic backtracking
         const phoneRegex = /^\+?[1-9]\d{0,14}$/;
-        if (!phoneRegex.test(cleanPhone)) {
+        if (!phoneRegex.test(normalizedPhoneNumber)) {
           this.sessionManager
             .flash(req)
             .error('Please enter a valid phone number');
@@ -5657,7 +5879,7 @@ export class AuthController implements IAuthController {
 
         const existingUserByPhone =
           await this.userService.findByPhoneNumberIncludingDisabled(
-            phone_number
+            normalizedPhoneNumber
           );
         if (existingUserByPhone) {
           this.sessionManager
@@ -5673,9 +5895,9 @@ export class AuthController implements IAuthController {
 
       const updatedProviderData = {
         ...socialContactData.providerData,
-        email: email || socialContactData.providerData.email,
+        email: normalizedEmail || socialContactData.providerData.email,
         phone_number:
-          phone_number || socialContactData.providerData.phone_number,
+          normalizedPhoneNumber || socialContactData.providerData.phone_number,
       };
 
       this.sessionManager.remove(req, 'socialRegistrationPending');

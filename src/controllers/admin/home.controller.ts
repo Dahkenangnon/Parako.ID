@@ -74,8 +74,8 @@ export class AdminHomeController implements IAdminHomeController {
       });
 
       const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const todayStart = new Date(today);
+      todayStart.setHours(0, 0, 0, 0);
 
       const lastWeek = new Date(today);
       lastWeek.setDate(lastWeek.getDate() - 7);
@@ -84,7 +84,7 @@ export class AdminHomeController implements IAdminHomeController {
       lastMonth.setMonth(lastMonth.getMonth() - 1);
 
       const newUsersToday = await this.userService.countDocuments({
-        created_at: { $gte: yesterday },
+        created_at: { $gte: todayStart },
       });
 
       const newUsersThisWeek = await this.userService.countDocuments({
@@ -234,18 +234,22 @@ export class AdminHomeController implements IAdminHomeController {
         { limit: 3, page: 1 }
       );
 
-      return result.results.map((act: any) => ({
-        type: act.type,
-        message: act.description,
-        timestamp: act.timestamp,
-        user: act.user
-          ? {
-              username: act.user.username,
-              email: act.user.email,
-            }
-          : null,
-        metadata: act.metadata || {},
-      }));
+      return result.results.map((act: any) => {
+        const actor = act.actor ?? act.user;
+
+        return {
+          type: act.type,
+          message: act.description,
+          timestamp: act.timestamp,
+          user: actor
+            ? {
+                username: actor.username,
+                email: actor.email,
+              }
+            : null,
+          metadata: act.metadata || {},
+        };
+      });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'recent_activity_load_failed',

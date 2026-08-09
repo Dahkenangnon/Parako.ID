@@ -18,7 +18,14 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, extname, join, relative } from 'node:path';
+import {
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from 'node:path';
 
 const HASH_LENGTH = 8;
 
@@ -38,9 +45,19 @@ export function writeManifest(manifestPath, mapping) {
 
 export function cleanPriorOutputs(publicRoot, priorManifest) {
   if (!priorManifest) return 0;
+  const resolvedRoot = resolve(publicRoot);
   let removed = 0;
   for (const hashedPath of Object.values(priorManifest)) {
-    const absPath = join(publicRoot, hashedPath);
+    if (typeof hashedPath !== 'string') continue;
+    const absPath = resolve(resolvedRoot, hashedPath);
+    const relativePath = relative(resolvedRoot, absPath);
+    if (
+      relativePath === '' ||
+      relativePath.startsWith('..') ||
+      isAbsolute(relativePath)
+    ) {
+      continue;
+    }
     if (existsSync(absPath)) {
       rmSync(absPath, { force: true });
       removed++;
@@ -61,7 +78,7 @@ export function hashFile(absolutePath, rootDir) {
   const buffer = readFileSync(absolutePath);
   const hash = sha256Hex(buffer).slice(0, HASH_LENGTH);
   const ext = extname(absolutePath);
-  const base = absolutePath.slice(0, -ext.length);
+  const base = ext ? absolutePath.slice(0, -ext.length) : absolutePath;
   const hashedPath = `${base}-${hash}${ext}`;
   renameSync(absolutePath, hashedPath);
   return relative(rootDir, hashedPath).replace(/\\/g, '/');

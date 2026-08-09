@@ -99,6 +99,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
                 params,
                 title: `Sign-in - ${this.configManager.getConfig().application.title}`,
                 stepMessage: stepMessage.trim(),
+                csrfToken: this.sessionManager.get(req, 'csrfToken'),
               });
             }
 
@@ -237,13 +238,24 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
               });
             }
 
+            const preferredMethod = userDoc.mfa.preferred_method;
             const mfaMethod =
-              selectedMethod ||
-              userDoc.mfa.preferred_method ||
-              enabledMethods[0];
+              selectedMethod && enabledMethods.includes(selectedMethod as any)
+                ? selectedMethod
+                : preferredMethod && enabledMethods.includes(preferredMethod)
+                  ? preferredMethod
+                  : enabledMethods[0];
 
             if (selectedMethod) {
               this.sessionManager.set(req, 'selectedMfaMethod', null);
+            }
+
+            if (
+              mfaMethod !== 'totp' &&
+              mfaMethod !== 'email' &&
+              mfaMethod !== 'webauthn'
+            ) {
+              throw new Error(`Unsupported MFA method: ${mfaMethod}`);
             }
 
             if (mfaMethod === 'webauthn') {
@@ -288,7 +300,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
                     `${userDoc.given_name || ''} ${userDoc.family_name || ''}`.trim(),
                 }
               );
-            } else if (mfaMethod === 'totp') {
+            } else {
               this.logger.info('TOTP MFA requested for user', {
                 username: activeUser.username,
               });
@@ -303,25 +315,23 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
               csrfToken: this.sessionManager.get(req, 'csrfToken'),
             });
           } catch (err) {
-            // On error, skip MFA
             this.logger.error(err as Error, { context: 'MFA setup error' });
-            return await provider.interactionFinished(
-              req,
-              res,
-              {
-                login: {
-                  accountId: activeUser.username,
-                  amr: ['pwd'],
-                  acr: 'urn:pwd',
-                },
-                ts: Math.floor(Date.now() / 1000),
-              },
-              { mergeWithLastSubmission: false }
-            );
+            return next(err);
           }
         }
 
         case 'consent': {
+          if (!session?.accountId) {
+            this.logger.warn('Consent prompt reached without active session');
+            return res
+              .status(400)
+              .render(this.viewResolver.views.auth.oidc.error, {
+                errorType: 'SessionNotFound',
+                errorMessage:
+                  'Your session has expired or is invalid. Please try authenticating again.',
+              });
+          }
+
           // For internal clients, we don't need to show the consent screen
           // because the client is already trusted.
           if (client.isInternalClient) {
@@ -336,7 +346,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
               )) as Grant;
             } else {
               grant = new provider.Grant({
-                accountId: session?.accountId,
+                accountId: session.accountId,
                 clientId: params.client_id as string,
               }) as Grant;
             }

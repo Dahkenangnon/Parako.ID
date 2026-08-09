@@ -161,6 +161,59 @@ export default class OIDCRedisAdapter
     }
   }
 
+  /** Return active records for this model in the current tenant. */
+  async findAll(): Promise<OIDCPayload[]> {
+    try {
+      const pattern = buildRedisKey(this.keyPrefix, 'oidc', this.name, '*');
+      const keys = (await this.scanKeys(pattern)).filter(
+        key => !key.endsWith(':custom')
+      );
+      if (keys.length === 0) return [];
+
+      const pipeline = this.client.pipeline();
+      keys.forEach(key => {
+        if (consumable.has(this.name)) {
+          pipeline.hgetall(key);
+        } else {
+          pipeline.get(key);
+        }
+      });
+      const entries = await pipeline.exec();
+      const keyRoot = this.key('');
+      const payloads: OIDCPayload[] = [];
+
+      for (let index = 0; index < keys.length; index++) {
+        const [entryError, data] = entries?.[index] ?? [];
+        if (entryError) throw entryError;
+        if (isEmpty(data)) continue;
+
+        let payload: OIDCPayload;
+        if (typeof data === 'string') {
+          payload = JSON.parse(data) as OIDCPayload;
+        } else {
+          const { payload: encodedPayload, ...metadata } = data as {
+            payload: string;
+            [key: string]: string;
+          };
+          payload = {
+            ...metadata,
+            ...(JSON.parse(encodedPayload) as OIDCPayload),
+          };
+        }
+
+        payloads.push({
+          ...payload,
+          _id: keys[index].slice(keyRoot.length),
+        });
+      }
+
+      return payloads;
+    } catch (error) {
+      this.logError(error as Error, 'findAll');
+      throw error;
+    }
+  }
+
   /**
    * Return previously stored instance of DeviceCode by the end-user entered user code.
    */
@@ -288,10 +341,10 @@ export default class OIDCRedisAdapter
         customData: doc.data || {},
       };
 
-      if (doc.exp) {
+      if (doc.exp != null) {
         result.expiration = new Date(doc.exp * 1000);
       }
-      if (doc.iat) {
+      if (doc.iat != null) {
         result.issuedAt = new Date(doc.iat * 1000);
       }
 
@@ -300,7 +353,7 @@ export default class OIDCRedisAdapter
       } else {
         if (doc.accountId) result.accountId = doc.accountId;
         if (doc.uid) result.uid = doc.uid;
-        if (doc.loginTs) result.loginTs = new Date(doc.loginTs * 1000);
+        if (doc.loginTs != null) result.loginTs = new Date(doc.loginTs * 1000);
         if (doc.authorizations) result.authorizations = doc.authorizations;
       }
 
@@ -342,7 +395,7 @@ export default class OIDCRedisAdapter
    */
   async findByCustomField(field: string, value: unknown): Promise<any[]> {
     try {
-      if (!field) return [];
+      if (!field.trim()) return [];
 
       const pattern = buildRedisKey(
         this.keyPrefix,

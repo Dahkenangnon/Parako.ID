@@ -63,6 +63,7 @@ cp .env.example runtime/.env
 | `DEPLOYMENT_URL`         | string | —                           | Public URL of your deployment (e.g., `https://auth.example.com`). Used to derive `oidc.issuer`, discovery URLs, and integration URLs (see [Computed Fields](#computed-fields)). In multi-tenant mode, tenant URLs are derived as `https://{tenant}.{base_domain}` (e.g., `https://acme.auth.example.com`). Optional — if unset, falls back to `deployment.url` from the database or file config (default: `http://localhost:9007`). Read-only in admin panel. |
 | `STORAGE_ADAPTER`        | enum   | `sqlite`                    | Primary database: `sqlite`, `mongodb`, or `postgresql`                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `OIDC_STORAGE_ADAPTER`   | enum   | _(same as STORAGE_ADAPTER)_ | OIDC token and session storage: `sqlite`, `mongodb`, `redis`, or `postgresql`                                                                                                                                                                                                                                                                                                                                                                                 |
+| `FILE_STORAGE_PROVIDER`  | enum   | `local`                     | File storage implementation loaded at startup: `local` or `s3`. S3 connection settings remain under `integrations.file_storage.s3`.                                                                                                                                                                                                                                                                                                                           |
 
 ### Database Connection
 
@@ -410,7 +411,7 @@ Tenant configs are loaded on demand via `ensureTenantConfig()` and cached in mem
 
 ## Bootstrap-Only Fields
 
-These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts`). They can **only** be set via `runtime/.env`, are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
+These 12 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts`). They can **only** be set via `runtime/.env`, are stripped from any database or file config before persisting, and shown as read-only in the admin panel.
 
 | #   | Field Path                                                 | Set By                                            |
 | --- | ---------------------------------------------------------- | ------------------------------------------------- |
@@ -420,11 +421,12 @@ These 11 field paths are listed in `BOOTSTRAP_ONLY_FIELDS` (`src/config/types.ts
 | 4   | `storage.mongodb.uri`                                      | `STORAGE_MONGODB_URI`                             |
 | 5   | `storage.sqlite.path`                                      | `STORAGE_SQLITE_PATH`                             |
 | 6   | `storage.postgresql.url`                                   | `STORAGE_POSTGRESQL_URL`                          |
-| 7   | `features.multi_tenancy.extraction_priority`               | `MULTI_TENANCY_EXTRACTION_PRIORITY`               |
-| 8   | `features.multi_tenancy.tenant_header`                     | `MULTI_TENANCY_TENANT_HEADER`                     |
-| 9   | `features.multi_tenancy.provider_pool.max_size`            | `MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE`            |
-| 10  | `features.multi_tenancy.provider_pool.idle_ttl_ms`         | `MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS`         |
-| 11  | `features.multi_tenancy.provider_pool.cleanup_interval_ms` | `MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS` |
+| 7   | `integrations.file_storage.provider`                       | `FILE_STORAGE_PROVIDER`                           |
+| 8   | `features.multi_tenancy.extraction_priority`               | `MULTI_TENANCY_EXTRACTION_PRIORITY`               |
+| 9   | `features.multi_tenancy.tenant_header`                     | `MULTI_TENANCY_TENANT_HEADER`                     |
+| 10  | `features.multi_tenancy.provider_pool.max_size`            | `MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE`            |
+| 11  | `features.multi_tenancy.provider_pool.idle_ttl_ms`         | `MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS`         |
+| 12  | `features.multi_tenancy.provider_pool.cleanup_interval_ms` | `MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS` |
 
 > **Note:**
 >

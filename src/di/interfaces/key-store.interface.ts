@@ -8,6 +8,8 @@
  * - Multi-tenancy readiness via tenantId parameter
  */
 
+import type { JWKWithMetadata } from '../../oidc/key-store/constants.js';
+
 export type KeyStatus = 'active' | 'expiring' | 'retired';
 
 export interface StoredKey {
@@ -16,8 +18,8 @@ export interface StoredKey {
   use: string;
   status: KeyStatus;
   promoted: boolean;
-  privateKey: JsonWebKey; // decrypted at runtime
-  publicKey: JsonWebKey; // always plain
+  privateKey: JWKWithMetadata; // decrypted at runtime
+  publicKey: JWKWithMetadata; // always plain
   createdAt: Date;
   rotatedAt?: Date;
   tenantId: string; // default: 'default' (future multi-tenancy)
@@ -36,12 +38,12 @@ export interface IKeyStore {
    * 2. active + unpromoted (verification only)
    * 3. expiring (verification only)
    */
-  getJWKS(tenantId?: string): Promise<{ keys: JsonWebKey[] }>;
+  getJWKS(tenantId?: string): Promise<{ keys: JWKWithMetadata[] }>;
 
   /**
    * Get public-only JWKS for the /.well-known/jwks.json endpoint
    */
-  getPublicJWKS(tenantId?: string): Promise<{ keys: JsonWebKey[] }>;
+  getPublicJWKS(tenantId?: string): Promise<{ keys: JWKWithMetadata[] }>;
 
   /**
    * Phase 1 of rotation: generate new keys (unpromoted), move current active → expiring.
@@ -60,6 +62,13 @@ export interface IKeyStore {
    * @returns Number of keys retired
    */
   retireExpiredKeys(tenantId?: string): Promise<number>;
+
+  /**
+   * Retire one key by its public key identifier.
+   * Implementations must preserve at least one promoted active signing key.
+   * @returns Whether a non-retired key was changed
+   */
+  retireKey(kid: string, tenantId?: string): Promise<boolean>;
 
   /**
    * List all keys with their metadata

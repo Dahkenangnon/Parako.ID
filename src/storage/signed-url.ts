@@ -44,6 +44,9 @@ export function validateSignature(
   if (typeof signature !== 'string' || typeof relativePath !== 'string') {
     return false;
   }
+  if (!Number.isSafeInteger(expires)) {
+    return false;
+  }
 
   const now = Math.floor(Date.now() / 1000);
   if (now > expires) {

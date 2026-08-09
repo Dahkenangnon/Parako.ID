@@ -79,7 +79,7 @@ export default function PairwiseIdentifier(
 
       if (memoizationCache.size < CACHE_MAX_SIZE) {
         memoizationCache.set(cacheKey, identifier);
-      } else if (memoizationCache.size === CACHE_MAX_SIZE) {
+      } else {
         logger.warn('Pairwise identifier memoization cache reached capacity');
       }
 
@@ -89,10 +89,18 @@ export default function PairwiseIdentifier(
         context: `Error generating pairwise identifier: ${error.message}`,
       });
       // Fallback to a safe identifier in case of error, but still unique per user and client
+      const safeAccountId =
+        typeof accountId === 'string' && accountId ? accountId : 'unknown';
+      const sectorIdentifier = client?.sectorIdentifier;
+      const safeSectorIdentifier =
+        typeof sectorIdentifier === 'string' && sectorIdentifier
+          ? sectorIdentifier
+          : 'unknown';
+
       return crypto
         .createHash('sha256')
-        .update(accountId || 'unknown')
-        .update((client?.sectorIdentifier as string) || 'unknown')
+        .update(safeAccountId)
+        .update(safeSectorIdentifier)
         .update(SALT)
         .digest('hex');
     }

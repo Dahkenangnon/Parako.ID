@@ -26,6 +26,11 @@ const isDev = process.env.NODE_ENV !== 'production';
 // Redis client for distributed rate limiting (production only)
 let redisClient: Redis | null = null;
 let redisBasePrefix = 'parako';
+const staticLimiterRefreshers: Array<() => void> = [];
+
+const refreshStaticLimiters = (): void => {
+  staticLimiterRefreshers.forEach(refresh => refresh());
+};
 
 /** Minimal logger contract used by the rate-limiter init. */
 export interface RateLimitInitLogger {
@@ -50,17 +55,31 @@ export async function initRateLimitRedis(
   if (basePrefix) redisBasePrefix = basePrefix;
 
   if (!isDev && redisUrl) {
+    let candidate: Redis | null = null;
     try {
-      redisClient = new Redis(redisUrl, {
+      candidate = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         lazyConnect: true,
       });
 
-      await redisClient.connect();
+      await candidate.connect();
+      redisClient = candidate;
+      refreshStaticLimiters();
       logger.info('Rate-limiter Redis client connected', {
         component: 'rate-limiter',
       });
     } catch (error) {
+      try {
+        candidate?.disconnect();
+      } catch (cleanupError) {
+        logger.warn('Failed to clean up Rate-limiter Redis client', {
+          component: 'rate-limiter',
+          err:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+        });
+      }
       logger.warn(
         'Rate-limiter Redis connection failed; falling back to in-memory store',
         {
@@ -69,6 +88,7 @@ export async function initRateLimitRedis(
         }
       );
       redisClient = null;
+      refreshStaticLimiters();
     }
   }
 }
@@ -94,8 +114,6 @@ interface RateLimiterOptions {
   message: string;
   /** Multiplier for max in development mode (default: 10) */
   devMultiplier?: number;
-  /** Custom handler for rate limit exceeded */
-  handler?: (req: Request, res: Response) => void;
   /**
    * When true, requests judged successful by {@link requestWasSuccessful} are
    * not counted against the quota. Used to build failure-only counters.
@@ -124,7 +142,6 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
     max,
     message,
     devMultiplier = 10,
-    handler,
     skipSuccessfulRequests,
     keyExtra,
     requestWasSuccessful,
@@ -149,16 +166,13 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
     },
     skipSuccessfulRequests,
     requestWasSuccessful,
-    handler: handler
-      ? (req, res) => handler(req, res)
-      : (req, res, _next, opts) => {
-          // Default handler with proper response
-          res.status(429).json({
-            success: false,
-            error: opts.message,
-            retryAfter: Math.ceil(windowMs / 1000),
-          });
-        },
+    handler: (req, res, _next, opts) => {
+      res.status(429).json({
+        success: false,
+        error: opts.message,
+        retryAfter: Math.ceil(windowMs / 1000),
+      });
+    },
     store: redisClient
       ? new RedisStore({
           sendCommand: (...args: string[]) =>
@@ -168,6 +182,28 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
         })
       : undefined,
   });
+}
+
+/**
+ * Keep exported middleware references stable while allowing application
+ * startup to replace their in-memory delegates after Redis connects. Creating
+ * express-rate-limit inside a request handler is unsupported, so refreshes run
+ * only from initRateLimitRedis(), before the server accepts traffic.
+ */
+function createReconfigurableLimiter(
+  options: RateLimiterOptions
+): RateLimitRequestHandler {
+  let limiter = createLimiter(options);
+  const refresh = (): void => {
+    limiter = createLimiter(options);
+  };
+  staticLimiterRefreshers.push(refresh);
+
+  const middleware = ((req, res, next) =>
+    limiter(req, res, next)) as RateLimitRequestHandler;
+  middleware.resetKey = key => limiter.resetKey(key);
+  middleware.getKey = key => limiter.getKey(key);
+  return middleware;
 }
 
 /**
@@ -195,7 +231,7 @@ const normalizeLoginIdentifier = (raw: unknown): string => {
  * Production: 5 attempts per 15 minutes
  * Development: 50 attempts per 15 minutes
  */
-export const loginLimiter = createLimiter({
+export const loginLimiter = createReconfigurableLimiter({
   name: 'login',
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -208,7 +244,7 @@ export const loginLimiter = createLimiter({
  * `res.locals.loginFailed = true`; successful sign-ins decrement the bucket.
  * Catches password guessing against a single account from one origin.
  */
-export const loginBruteForceByIdentifierAndIp = createLimiter({
+export const loginBruteForceByIdentifierAndIp = createReconfigurableLimiter({
   name: 'login-brute-identifier',
   windowMs: HARDENING.bruteForce.perIdentifier.windowMs,
   max: HARDENING.bruteForce.perIdentifier.max,
@@ -223,7 +259,7 @@ export const loginBruteForceByIdentifierAndIp = createLimiter({
  * larger budget. Catches username spraying that the per-identifier counter
  * cannot see because spraying changes the identifier on every attempt.
  */
-export const loginBruteForceByIp = createLimiter({
+export const loginBruteForceByIp = createReconfigurableLimiter({
   name: 'login-brute-ip',
   windowMs: HARDENING.bruteForce.perIp.windowMs,
   max: HARDENING.bruteForce.perIp.max,
@@ -238,7 +274,7 @@ export const loginBruteForceByIp = createLimiter({
  * Production: 3 registrations per hour
  * Development: 30 registrations per hour
  */
-export const registerLimiter = createLimiter({
+export const registerLimiter = createReconfigurableLimiter({
   name: 'register',
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 3,
@@ -251,7 +287,7 @@ export const registerLimiter = createLimiter({
  * Production: 5 attempts per 15 minutes
  * Development: 50 attempts per 15 minutes
  */
-export const mfaVerifyLimiter = createLimiter({
+export const mfaVerifyLimiter = createReconfigurableLimiter({
   name: 'mfa-verify',
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -264,7 +300,7 @@ export const mfaVerifyLimiter = createLimiter({
  * Production: 10 attempts per 5 minutes
  * Development: 100 attempts per 5 minutes
  */
-export const socialLoginLimiter = createLimiter({
+export const socialLoginLimiter = createReconfigurableLimiter({
   name: 'social-login',
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 10,
@@ -277,7 +313,7 @@ export const socialLoginLimiter = createLimiter({
  * Production: 5 attempts per 15 minutes
  * Development: 50 attempts per 15 minutes
  */
-export const recoveryLimiter = createLimiter({
+export const recoveryLimiter = createReconfigurableLimiter({
   name: 'recovery',
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -290,7 +326,7 @@ export const recoveryLimiter = createLimiter({
  * Production: 3 requests per 15 minutes
  * Development: 30 requests per 15 minutes
  */
-export const forgotPasswordLimiter = createLimiter({
+export const forgotPasswordLimiter = createReconfigurableLimiter({
   name: 'forgot-password',
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 3,
@@ -303,7 +339,7 @@ export const forgotPasswordLimiter = createLimiter({
  * Production: 5 attempts per 15 minutes
  * Development: 50 attempts per 15 minutes
  */
-export const changePasswordLimiter = createLimiter({
+export const changePasswordLimiter = createReconfigurableLimiter({
   name: 'change-password',
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
@@ -318,7 +354,7 @@ export const changePasswordLimiter = createLimiter({
  * Production: 20 updates per 5 minutes
  * Development: 200 updates per 5 minutes
  */
-export const configUpdateLimiter = createLimiter({
+export const configUpdateLimiter = createReconfigurableLimiter({
   name: 'config-update',
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 20,
@@ -331,7 +367,7 @@ export const configUpdateLimiter = createLimiter({
  * Production: 3 test emails per minute
  * Development: 30 test emails per minute
  */
-export const testEmailLimiter = createLimiter({
+export const testEmailLimiter = createReconfigurableLimiter({
   name: 'test-email',
   windowMs: 60 * 1000, // 1 minute
   max: 3,
@@ -344,7 +380,7 @@ export const testEmailLimiter = createLimiter({
  * Production: 10 reveals per minute
  * Development: 100 reveals per minute
  */
-export const revealSecretLimiter = createLimiter({
+export const revealSecretLimiter = createReconfigurableLimiter({
   name: 'reveal-secret',
   windowMs: 60 * 1000, // 1 minute
   max: 10,

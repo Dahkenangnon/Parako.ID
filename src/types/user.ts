@@ -25,7 +25,7 @@ export type AuthProvider =
   | 'okta'
   | 'twitter'
   | 'apple';
-export const RegisterWithValues = [
+export const RegisterWithValues: readonly RegisterWith[] = Object.freeze([
   'email',
   'phone_number',
   'github',
@@ -36,8 +36,8 @@ export const RegisterWithValues = [
   'okta',
   'twitter',
   'apple',
-];
-export const AuthProviderValues = [
+]);
+export const AuthProviderValues: readonly AuthProvider[] = Object.freeze([
   'local',
   'oauth',
   'ldap',
@@ -49,7 +49,7 @@ export const AuthProviderValues = [
   'okta',
   'twitter',
   'apple',
-];
+]);
 
 /**
  *  These fields are compliant with the Open ID Connect specification
@@ -178,10 +178,10 @@ export interface IUser extends IBaseModel {
   password_hash_algo?: string;
   password_updated_at?: Date;
   password_force_reset?: boolean;
-  reset_password_token?: string;
-  reset_password_expires?: Date;
-  email_verification_token?: string;
-  email_verification_expires?: Date;
+  reset_password_token?: string | null;
+  reset_password_expires?: Date | null;
+  email_verification_token?: string | null;
+  email_verification_expires?: Date | null;
   blocked_from: string[];
   account_is_anonymized: boolean;
   register_with: RegisterWith;

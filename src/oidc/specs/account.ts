@@ -80,7 +80,10 @@ export class Account implements IAccount {
     const configuredScopes = this.configManager.getConfig().features.oidc
       .scopes || ['openid', 'offline_access'];
 
-    const requestedClaims = (claims as any)?.[use] || {};
+    // oidc-provider passes the claim mask already filtered for `use`.
+    // It is a flat object whose keys are the explicitly requested claims.
+    const requestedClaims =
+      (claims as Record<string, unknown> | undefined) || {};
 
     // Use configuration if available, otherwise fall back to defaults
     const scopeToClaims: Record<string, string[]> = {
@@ -170,8 +173,15 @@ export class Account implements IAccount {
       }
     });
 
+    const supportedClaims = new Set(Object.values(scopeToClaims).flat());
     Object.keys(requestedClaims).forEach(claim => {
-      availableClaims.add(claim);
+      if (supportedClaims.has(claim)) {
+        availableClaims.add(claim);
+      } else {
+        this.logger.warn(`Unsupported OIDC claim '${claim}' was ignored`, {
+          requestedClaim: claim,
+        });
+      }
     });
 
     rejected.forEach(claim => availableClaims.delete(claim));

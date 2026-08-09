@@ -12,7 +12,13 @@ import type {
   ClientValidationResult,
   ApplicationType,
 } from './client.interface.js';
-import { CLIENT_DEFAULTS } from './client.interface.js';
+import {
+  CLIENT_DEFAULTS,
+  clientAuthMethodUsesSecret,
+  normalizeClientApplicationType,
+  SUPPORTED_GRANT_TYPES,
+  SUPPORTED_RESPONSE_TYPES,
+} from './client.interface.js';
 import { ensureEncrypted, ensureDecrypted } from '../../utils/encryption.js';
 
 /**
@@ -55,21 +61,25 @@ export function sanitizeClientPayload<T extends Record<string, unknown>>(
 export function applyClientDefaults(
   data: Partial<OidcClientData>
 ): OidcClientData {
+  const normalizedData = normalizeClientApplicationType(data);
   const now = new Date().toISOString();
-  const needsSecret =
-    !data.token_endpoint_auth_method ||
-    data.token_endpoint_auth_method !== 'none';
+  const needsSecret = clientAuthMethodUsesSecret(
+    normalizedData.token_endpoint_auth_method
+  );
+  const independentDefaults = structuredClone(CLIENT_DEFAULTS);
+  const independentData = structuredClone(normalizedData);
 
   return sanitizeClientPayload({
-    ...CLIENT_DEFAULTS,
-    ...data,
-    client_id: data.client_id || generateClientId(),
-    client_name: data.client_name || 'Unnamed Client',
-    application_type: data.application_type || 'web',
+    ...independentDefaults,
+    ...independentData,
+    client_id: normalizedData.client_id || generateClientId(),
+    client_name: normalizedData.client_name || 'Unnamed Client',
+    application_type: normalizedData.application_type || 'web',
     client_secret:
-      data.client_secret || (needsSecret ? generateClientSecret() : undefined),
-    created_at: data.created_at || now,
-    updated_at: data.updated_at || now,
+      normalizedData.client_secret ||
+      (needsSecret ? generateClientSecret() : undefined),
+    created_at: normalizedData.created_at || now,
+    updated_at: normalizedData.updated_at || now,
   }) as OidcClientData;
 }
 
@@ -81,12 +91,186 @@ const VALID_AUTH_METHODS = new Set([
   'client_secret_jwt',
   'private_key_jwt',
 ]);
+const VALID_GRANT_TYPES = new Set<string>(SUPPORTED_GRANT_TYPES);
+const VALID_RESPONSE_TYPES = new Set<string>(SUPPORTED_RESPONSE_TYPES);
 const DANGEROUS_PROTOCOLS = new Set([
   'javascript:',
   'data:',
   'file:',
   'vbscript:',
 ]);
+
+const PUBLIC_JWK_REQUIREMENTS = {
+  RSA: {
+    required: ['e', 'n'],
+    private: ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth'],
+  },
+  EC: {
+    required: ['x', 'y'],
+    private: ['d'],
+    curves: new Set(['P-256', 'P-384', 'P-521']),
+  },
+  OKP: {
+    required: ['x'],
+    private: ['d'],
+    curves: new Set(['Ed25519', 'X25519']),
+  },
+  AKP: {
+    required: ['alg', 'pub'],
+    private: ['priv'],
+  },
+} as const;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return !!value && (value as { constructor?: unknown }).constructor === Object;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isSafeHttpUri(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      !parsed.username &&
+      !parsed.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate managed client key metadata using the same invariants enforced by
+ * node-oidc-provider's client model. Only public JWK material may be stored.
+ */
+export function validateClientKeyMetadata(
+  data: Partial<OidcClientData>,
+  options: { requirePrivateKeyJwtSource?: boolean } = {}
+): string[] {
+  const errors: string[] = [];
+  const hasJwks = data.jwks !== undefined;
+  const hasJwksUri = data.jwks_uri !== undefined;
+
+  if (hasJwks && hasJwksUri) {
+    errors.push('jwks and jwks_uri must not be used at the same time');
+  }
+
+  if (data.jwks_uri !== undefined && !isSafeHttpUri(data.jwks_uri)) {
+    errors.push('jwks_uri must be a safe HTTP(S) URL');
+  }
+
+  if (data.token_endpoint_auth_signing_alg !== undefined) {
+    const algorithm = data.token_endpoint_auth_signing_alg;
+    if (!isNonEmptyString(algorithm)) {
+      errors.push(
+        'token_endpoint_auth_signing_alg must be a non-empty string if provided'
+      );
+    } else if (data.token_endpoint_auth_method === 'private_key_jwt') {
+      if (algorithm.startsWith('HS')) {
+        errors.push(
+          'private_key_jwt requires an asymmetric token_endpoint_auth_signing_alg'
+        );
+      }
+    } else if (data.token_endpoint_auth_method === 'client_secret_jwt') {
+      if (!algorithm.startsWith('HS')) {
+        errors.push(
+          'client_secret_jwt requires an HMAC token_endpoint_auth_signing_alg'
+        );
+      }
+    } else {
+      errors.push(
+        'token_endpoint_auth_signing_alg is only valid with private_key_jwt or client_secret_jwt'
+      );
+    }
+  }
+
+  if (data.jwks !== undefined) {
+    if (
+      !Array.isArray(data.jwks.keys) ||
+      data.jwks.keys.length === 0 ||
+      !data.jwks.keys.every(isPlainObject)
+    ) {
+      errors.push('jwks must contain at least one public JSON Web Key');
+    } else {
+      data.jwks.keys.forEach((key, index) => {
+        if (!isNonEmptyString(key.kty)) {
+          errors.push(`jwks.keys[${index}].kty must be a non-empty string`);
+          return;
+        }
+
+        if (key.kty === 'oct') {
+          errors.push(`jwks.keys[${index}] must not contain a symmetric key`);
+          return;
+        }
+
+        const requirements =
+          PUBLIC_JWK_REQUIREMENTS[
+            key.kty as keyof typeof PUBLIC_JWK_REQUIREMENTS
+          ];
+        // oidc-provider deliberately ignores unknown key types and unsupported
+        // EC/OKP curves instead of rejecting the client's metadata.
+        if (!requirements) return;
+
+        if ('curves' in requirements) {
+          if (!isNonEmptyString(key.crv)) {
+            errors.push(`jwks.keys[${index}].crv must be a non-empty string`);
+            return;
+          }
+          if (!requirements.curves.has(key.crv as never)) return;
+        }
+
+        for (const parameter of requirements.required) {
+          if (!isNonEmptyString(key[parameter])) {
+            errors.push(
+              `jwks.keys[${index}].${parameter} must be a non-empty string`
+            );
+          }
+        }
+        for (const parameter of requirements.private) {
+          if (key[parameter] !== undefined) {
+            errors.push(
+              `jwks.keys[${index}].${parameter} must not contain private key material`
+            );
+          }
+        }
+
+        for (const parameter of ['alg', 'kid', 'use']) {
+          if (
+            key[parameter] !== undefined &&
+            !isNonEmptyString(key[parameter])
+          ) {
+            errors.push(
+              `jwks.keys[${index}].${parameter} must be a non-empty string if provided`
+            );
+          }
+        }
+
+        if (
+          key.x5c !== undefined &&
+          (!Array.isArray(key.x5c) || !key.x5c.every(isNonEmptyString))
+        ) {
+          errors.push(
+            `jwks.keys[${index}].x5c must contain non-empty strings if provided`
+          );
+        }
+      });
+    }
+  }
+
+  if (
+    options.requirePrivateKeyJwtSource &&
+    data.token_endpoint_auth_method === 'private_key_jwt' &&
+    !hasJwks &&
+    !hasJwksUri
+  ) {
+    errors.push('jwks or jwks_uri is mandatory for private_key_jwt clients');
+  }
+
+  return errors;
+}
 
 /**
  * Validate client data before create/update.
@@ -113,6 +297,22 @@ export function validateClientData(
     errors.push(
       `Invalid token_endpoint_auth_method: ${data.token_endpoint_auth_method}`
     );
+  }
+
+  errors.push(
+    ...validateClientKeyMetadata(data, { requirePrivateKeyJwtSource: true })
+  );
+
+  for (const grantType of data.grant_types ?? []) {
+    if (!VALID_GRANT_TYPES.has(grantType)) {
+      errors.push(`Invalid grant_types: ${grantType}`);
+    }
+  }
+
+  for (const responseType of data.response_types ?? []) {
+    if (!VALID_RESPONSE_TYPES.has(responseType)) {
+      errors.push(`Invalid response_types: ${responseType}`);
+    }
   }
 
   if (
@@ -144,13 +344,7 @@ export function validateClientData(
           continue;
         }
       } catch {
-        // URL constructor failed — could be a custom scheme (myapp://callback)
-        // which is valid for native apps per RFC 8252 Section 7.1.
-        // Only reject if it matches a known dangerous pattern.
-        const lowerUri = uri.toLowerCase();
-        if (DANGEROUS_PROTOCOLS.has(`${lowerUri.split(':')[0]}:`)) {
-          errors.push(`Dangerous protocol not allowed in redirect_uri: ${uri}`);
-        }
+        errors.push(`Invalid redirect_uri: ${uri}`);
       }
     }
   }

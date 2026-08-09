@@ -5,6 +5,33 @@ import type { ITenantSettingsOverrideRepository } from '../interfaces/tenant-set
 import { serializeDocument } from '../../utils.js';
 
 const KEY = 'parako_config';
+const SAVE_MAX_ATTEMPTS = 16;
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 11000
+  );
+}
+
+const MANAGED_OVERRIDE_FIELDS = new Set([
+  '_id',
+  'id',
+  'tenant_id',
+  'key',
+  'version',
+  '_version',
+  'is_active',
+  'metadata',
+  'created_at',
+  'updated_at',
+  '__v',
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
 
 @injectable()
 export class MongooseTenantSettingsOverrideRepository implements ITenantSettingsOverrideRepository {
@@ -22,51 +49,59 @@ export class MongooseTenantSettingsOverrideRepository implements ITenantSettings
     value: Partial<ITenantSettingsOverride>,
     meta?: { modifiedBy?: string; reason?: string }
   ): Promise<ITenantSettingsOverride> {
-    // Phase 1: deactivate current active row
-    const previous = await this.model
-      .findOneAndUpdate(
-        { key: KEY, is_active: true },
-        { $set: { is_active: false } },
-        { returnDocument: 'before' }
-      )
-      .lean()
-      .exec();
-
-    const nextIntVersion = previous ? ((previous as any)._version ?? 0) + 1 : 0;
-    const nextSemver = previous
-      ? this.incrementPatch((previous as any).version ?? '1.0.0')
-      : '1.0.0';
-
-    // Phase 2: insert new active row
-    const MANAGED = new Set([
-      '_id',
-      'id',
-      'key',
-      'version',
-      '_version',
-      'is_active',
-      'created_at',
-      'updated_at',
-      '__v',
-      'tenant_id',
-    ]);
     const raw = value as Record<string, unknown>;
     const content = Object.fromEntries(
-      Object.entries(raw).filter(([k]) => !MANAGED.has(k))
+      Object.entries(raw).filter(([key]) => !MANAGED_OVERRIDE_FIELDS.has(key))
     );
 
-    const newDoc = await this.model.create({
-      ...content,
-      key: KEY,
-      version: nextSemver,
-      _version: nextIntVersion,
-      is_active: true,
-      metadata: meta
-        ? { last_modified_by: meta.modifiedBy, change_reason: meta.reason }
-        : (raw['metadata'] ?? {}),
-    });
+    for (let attempt = 0; attempt < SAVE_MAX_ATTEMPTS; attempt += 1) {
+      const previous = await this.model
+        .findOneAndUpdate(
+          { key: KEY, is_active: true },
+          { $set: { is_active: false } },
+          { returnDocument: 'before' }
+        )
+        .lean()
+        .exec();
+      const latest =
+        previous ??
+        (await this.model
+          .findOne({ key: KEY })
+          .sort({ _version: -1 })
+          .lean()
+          .exec());
 
-    return serializeDocument(newDoc as any) as ITenantSettingsOverride;
+      if (
+        previous === null &&
+        latest !== null &&
+        attempt < SAVE_MAX_ATTEMPTS - 1
+      ) {
+        continue;
+      }
+
+      try {
+        const newDoc = await this.model.create({
+          ...content,
+          key: KEY,
+          version: latest
+            ? this.incrementPatch((latest as any).version ?? '1.0.0')
+            : '1.0.0',
+          _version: latest ? ((latest as any)._version ?? 0) + 1 : 0,
+          is_active: true,
+          metadata: meta
+            ? { last_modified_by: meta.modifiedBy, change_reason: meta.reason }
+            : (raw['metadata'] ?? {}),
+        });
+
+        return serializeDocument(newDoc as any) as ITenantSettingsOverride;
+      } catch (error: unknown) {
+        if (!isDuplicateKeyError(error)) throw error;
+      }
+    }
+
+    throw new Error(
+      `Unable to save tenant settings after ${SAVE_MAX_ATTEMPTS} attempts`
+    );
   }
 
   private incrementPatch(semver: string): string {

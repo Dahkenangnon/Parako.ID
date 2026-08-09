@@ -44,8 +44,8 @@
     private authMethodSelect: HTMLSelectElement | null = null;
     private pkceCheckbox: HTMLInputElement | null = null;
     private scopeInput: HTMLInputElement | null = null;
-    private grantTypeCheckboxes: NodeListOf<HTMLInputElement> | null = null;
-    private responseTypeCheckboxes: NodeListOf<HTMLInputElement> | null = null;
+    private grantTypeCheckboxes: HTMLInputElement[] = [];
+    private responseTypeCheckboxes: HTMLInputElement[] = [];
     private toggleSensitiveFieldsButton: HTMLElement | null = null;
     private secretElement: HTMLElement | null = null;
     private secretHiddenElement: HTMLElement | null = null;
@@ -55,7 +55,7 @@
     private apiScopesSection: HTMLElement | null = null;
     private customResourceSubSection: HTMLElement | null = null;
     private mgmtApiScopeSubSection: HTMLElement | null = null;
-    private apiScopeCheckboxes: NodeListOf<HTMLInputElement> | null = null;
+    private apiScopeCheckboxes: HTMLInputElement[] = [];
     private allowedResourcesTextarea: HTMLTextAreaElement | null = null;
     private resourcesScopesTextarea: HTMLTextAreaElement | null = null;
 
@@ -171,11 +171,13 @@
       this.scopeInput = document.getElementById(
         'scope'
       ) as HTMLInputElement | null;
-      this.grantTypeCheckboxes = document.querySelectorAll<HTMLInputElement>(
-        'input[name="grant_types"]'
+      this.grantTypeCheckboxes = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[name="grant_types"]')
       );
-      this.responseTypeCheckboxes = document.querySelectorAll<HTMLInputElement>(
-        'input[name="response_types"]'
+      this.responseTypeCheckboxes = Array.from(
+        document.querySelectorAll<HTMLInputElement>(
+          'input[name="response_types"]'
+        )
       );
 
       // Preset hidden input (create form)
@@ -193,8 +195,8 @@
       this.mgmtApiScopeSubSection = document.getElementById(
         'mgmt-api-scope-sub-section'
       );
-      this.apiScopeCheckboxes = document.querySelectorAll<HTMLInputElement>(
-        'input[name="api_scopes"]'
+      this.apiScopeCheckboxes = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[name="api_scopes"]')
       );
       this.allowedResourcesTextarea = document.getElementById(
         'allowedResources'
@@ -279,7 +281,7 @@
         this.scopeInput.value = preset.scope;
       }
 
-      this.grantTypeCheckboxes?.forEach(cb => (cb.checked = false));
+      this.grantTypeCheckboxes.forEach(cb => (cb.checked = false));
       preset.grantTypes.forEach(gt => {
         const checkbox = document.querySelector<HTMLInputElement>(
           `input[name="grant_types"][value="${gt}"]`
@@ -287,7 +289,7 @@
         if (checkbox) checkbox.checked = true;
       });
 
-      this.responseTypeCheckboxes?.forEach(cb => (cb.checked = false));
+      this.responseTypeCheckboxes.forEach(cb => (cb.checked = false));
       preset.responseTypes.forEach(rt => {
         const checkbox = document.querySelector<HTMLInputElement>(
           `input[name="response_types"][value="${rt}"]`
@@ -304,14 +306,15 @@
      * (for edit form where application_type is a <select>)
      */
     private setupAppTypeAutoSelect(): void {
-      if (!this.appTypeSelect) return;
+      const appTypeSelect = this.appTypeSelect;
+      if (!appTypeSelect) return;
 
-      this.appTypeSelect.addEventListener('change', () => {
-        const appType = this.appTypeSelect?.value || '';
+      appTypeSelect.addEventListener('change', () => {
+        const appType = appTypeSelect.value;
         const defaults = this.quickStartPresets[appType];
 
-        this.grantTypeCheckboxes?.forEach(cb => (cb.checked = false));
-        this.responseTypeCheckboxes?.forEach(cb => (cb.checked = false));
+        this.grantTypeCheckboxes.forEach(cb => (cb.checked = false));
+        this.responseTypeCheckboxes.forEach(cb => (cb.checked = false));
 
         if (!defaults) return;
 
@@ -375,7 +378,7 @@
      * - Listen for grant type changes to show/hide the section.
      */
     private setupApiScopesPicker(): void {
-      this.grantTypeCheckboxes?.forEach(cb => {
+      this.grantTypeCheckboxes.forEach(cb => {
         cb.addEventListener('change', () => {
           this.syncApiScopesSectionVisibility();
         });
@@ -398,8 +401,6 @@
      * preserving any custom entries the admin has added manually.
      */
     private mergeApiScopesIntoTextareas(): void {
-      if (!this.apiScopeCheckboxes) return;
-
       const MGMT_RESOURCE_URI = 'urn:parako:api:v1';
 
       const checkedScopes: string[] = [];
@@ -417,16 +418,18 @@
       }
 
       if (this.allowedResourcesTextarea) {
-        const existing = this.allowedResourcesTextarea.value
+        const customResources = this.allowedResourcesTextarea.value
           .split('\n')
           .map(l => l.trim())
-          .filter(Boolean);
+          .filter(resource => resource && resource !== MGMT_RESOURCE_URI);
 
-        if (checkedScopes.length > 0 && !existing.includes(MGMT_RESOURCE_URI)) {
-          existing.push(MGMT_RESOURCE_URI);
+        if (checkedScopes.length > 0) {
+          customResources.push(MGMT_RESOURCE_URI);
         }
 
-        this.allowedResourcesTextarea.value = existing.join('\n');
+        this.allowedResourcesTextarea.value = [
+          ...new Set(customResources),
+        ].join('\n');
       }
     }
 

@@ -24,11 +24,18 @@ import { hasAnyScope } from '../scopes.js';
  *          an `ApiError` (403) on failure.
  */
 export function requireScope(...scopes: string[]): RequestHandler {
+  if (
+    scopes.length === 0 ||
+    scopes.some(scope => typeof scope !== 'string' || scope.trim() === '')
+  ) {
+    throw new TypeError('requireScope requires at least one non-empty scope');
+  }
+
   return (req, _res, next) => {
     const apiAuth = req.apiAuth;
 
     if (!apiAuth) {
-      throw scopeInsufficient('No authentication context', scopes);
+      throw scopeInsufficient('No authentication context', scopes, req.path);
     }
 
     if (!hasAnyScope(apiAuth.scope, ...scopes)) {

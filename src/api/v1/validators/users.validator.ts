@@ -8,15 +8,20 @@
 
 import { z } from 'zod';
 
+const emailSchema = z.string().trim().toLowerCase().email().max(254);
+const usernameSchema = z.string().trim().min(1).max(100);
+const shortProfileFieldSchema = z.string().trim().max(100);
+const roleSchema = z.string().trim().min(1).max(50);
+
 export const createUserSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(8).max(128),
-  username: z.string().min(1).max(100).optional(),
-  given_name: z.string().max(100).optional(),
-  family_name: z.string().max(100).optional(),
-  name: z.string().max(200).optional(),
-  nickname: z.string().max(100).optional(),
-  role: z.string().optional(),
+  username: usernameSchema.optional(),
+  given_name: shortProfileFieldSchema.optional(),
+  family_name: shortProfileFieldSchema.optional(),
+  name: z.string().trim().max(200).optional(),
+  nickname: shortProfileFieldSchema.optional(),
+  role: roleSchema.optional(),
   account_enabled: z.boolean().optional(),
 });
 
@@ -24,7 +29,7 @@ export const updateUserSchema = createUserSchema
   .omit({ password: true, email: true })
   .partial()
   .extend({
-    email: z.string().email().optional(),
+    email: emailSchema.optional(),
   });
 
 export const passwordResetSchema = z.object({

@@ -39,6 +39,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   interface CustomIdentifierInfo {
     slot: number;
     key: string;
@@ -132,12 +134,17 @@
     constructor(options: LoginManagerOptions) {
       this.config = this.validateConfig(options.config);
 
-      this.translations = {
-        ...this.defaultTranslations,
-        ...options.translations,
-      };
+      this.translations = Object.assign(
+        {},
+        this.defaultTranslations,
+        Object.fromEntries(
+          Object.entries(options.translations ?? {}).filter(
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
+          )
+        )
+      ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = Boolean(options.debug);
       this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
 
       this.initializeElements();
@@ -152,7 +159,7 @@
      * Validate configuration object
      */
     private validateConfig(config: LoginConfig): LoginConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           bothMethodsEnabled: false,
@@ -214,14 +221,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -304,8 +309,7 @@
     /**
      * Helper to set tab as active
      */
-    private setTabActive(tab: HTMLElement | null): void {
-      if (!tab) return;
+    private setTabActive(tab: HTMLElement): void {
       tab.classList.add(
         'bg-white',
         'dark:bg-card',
@@ -353,9 +357,7 @@
      * Switch to email input mode
      */
     private switchToEmail(): void {
-      if (this.isSubmitting) return;
-
-      this.setTabActive(this.emailTab);
+      this.setTabActive(this.emailTab!);
       this.setTabInactive(this.phoneTab);
 
       // Show/hide fields
@@ -377,9 +379,7 @@
      * Switch to phone input mode
      */
     private switchToPhone(): void {
-      if (this.isSubmitting) return;
-
-      this.setTabActive(this.phoneTab);
+      this.setTabActive(this.phoneTab!);
       this.setTabInactive(this.emailTab);
 
       // Show/hide fields
@@ -458,32 +458,40 @@
           const isPhoneActive =
             phoneField && !phoneField.classList.contains('hidden');
 
-          if (isEmailActive && emailInput && !emailInput.value) {
+          if (isEmailActive && emailInput && !emailInput.value.trim()) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('emailRequired'));
             return;
           }
 
-          if (isPhoneActive && phoneInput && !phoneInput.value) {
+          if (isPhoneActive && phoneInput && !phoneInput.value.trim()) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('phoneRequired'));
             return;
           }
         } else {
-          if (this.config.emailEnabled && emailInput && !emailInput.value) {
+          if (
+            this.config.emailEnabled &&
+            emailInput &&
+            !emailInput.value.trim()
+          ) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('emailRequired'));
             return;
           }
 
-          if (this.config.phoneEnabled && phoneInput && !phoneInput.value) {
+          if (
+            this.config.phoneEnabled &&
+            phoneInput &&
+            !phoneInput.value.trim()
+          ) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('phoneRequired'));
             return;
           }
         }
 
-        if (passwordInput && !passwordInput.value) {
+        if (passwordInput && !passwordInput.value.trim()) {
           e.preventDefault();
           this.showValidationError(this.getTranslation('passwordRequired'));
           return;
@@ -496,15 +504,13 @@
         this.submitButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
 ${this.getTranslation('signingIn')}
       `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -541,12 +547,13 @@ ${this.getTranslation('signingIn')}
             return;
           }
 
-          const buttonElement = (e.target as HTMLElement).closest(
+          const buttonElement = (e.target as HTMLElement | null)?.closest(
             'button[data-provider]'
-          ) as HTMLButtonElement;
-          const provider = buttonElement?.getAttribute('data-provider');
+          ) as HTMLButtonElement | null;
+          if (!buttonElement) return;
 
-          if (!provider || !buttonElement) return;
+          const provider = buttonElement.getAttribute('data-provider');
+          if (!provider) return;
 
           this.disableAllButtons();
 
@@ -569,7 +576,7 @@ ${this.getTranslation('signingIn')}
           path.setAttribute('fill', 'currentColor');
           path.setAttribute(
             'd',
-            'M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+            'M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
           );
 
           spinnerSvg.appendChild(circle);
@@ -605,16 +612,7 @@ ${this.getTranslation('signingIn')}
               url.searchParams.set('continue', continueUrl);
             }
 
-            if (this.isValidRedirectUrl(url.toString())) {
-              window.location.href = url.toString();
-            } else {
-              this.log(
-                'Invalid redirect URL detected',
-                { url: url.toString() },
-                'warn'
-              );
-              this.enableAllButtons();
-            }
+            window.location.href = url.toString();
           }, 100);
         });
       });
@@ -624,85 +622,23 @@ ${this.getTranslation('signingIn')}
      * Sanitize provider parameter to prevent injection
      */
     private sanitizeProvider(provider: string): string | null {
-      if (!provider || typeof provider !== 'string') {
+      if (!provider || !/^[a-zA-Z0-9-]{1,50}$/.test(provider)) {
         return null;
       }
 
-      // Only allow alphanumeric characters and hyphens
-      const sanitized = provider.replace(/[^a-zA-Z0-9-]/g, '');
-
-      // Must be non-empty and reasonable length
-      if (sanitized.length === 0 || sanitized.length > 50) {
-        return null;
-      }
-
-      return sanitized;
+      return provider;
     }
 
     /**
      * Validate continue URL to prevent open redirects
      */
     private isValidContinueUrl(url: string): boolean {
-      if (!url || typeof url !== 'string') {
-        return false;
-      }
-
       try {
         const parsedUrl = new URL(url, window.location.origin);
 
-        // Only allow same origin or relative URLs
-        return (
-          parsedUrl.origin === window.location.origin || url.startsWith('/')
-        );
-      } catch {
-        return false;
-      }
-    }
-
-    /**
-     * Validate redirect URL to prevent XSS and malicious redirects
-     */
-    private isValidRedirectUrl(url: string): boolean {
-      if (!url || typeof url !== 'string') {
-        return false;
-      }
-
-      try {
-        const parsedUrl = new URL(url);
-
-        // Only allow http and https protocols
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-          return false;
-        }
-
-        // Check for dangerous protocols in the URL
-        const dangerousProtocols = [
-          'javascript:',
-          'data:',
-          'vbscript:',
-          'file:',
-          'ftp:',
-        ];
-        if (
-          dangerousProtocols.some(protocol =>
-            url.toLowerCase().includes(protocol)
-          )
-        ) {
-          return false;
-        }
-
-        // Check for suspicious characters that could indicate XSS
-        const suspiciousChars = /[<>"'`]/;
-        if (suspiciousChars.test(url)) {
-          return false;
-        }
-
-        // Ensure the URL is not too long (prevent DoS)
-        if (url.length > 2048) {
-          return false;
-        }
-
-        return true;
+        // Relative URLs resolve against the current origin; protocol-relative
+        // URLs only pass when they resolve to that same origin.
+        return parsedUrl.origin === window.location.origin;
       } catch {
         return false;
       }
@@ -713,11 +649,6 @@ ${this.getTranslation('signingIn')}
      */
     private disableAllButtons(): void {
       this.isSubmitting = true;
-
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
 
       if (this.submitButton) {
         this.submitButton.disabled = true;
@@ -772,10 +703,8 @@ ${this.getTranslation('signingIn')}
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
       if (this.submitButton) {

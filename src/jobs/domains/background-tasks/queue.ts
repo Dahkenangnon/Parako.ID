@@ -10,13 +10,15 @@ import {
   type QueueRedisOptions,
 } from '../../redis.js';
 
-/** Cached reachability result — checked once per process lifetime. */
+/** Cached reachability result for the most recently checked configuration. */
 let redisReachable: boolean | null = null;
+let checkedRedisOptionsKey: string | null = null;
 
 /**
  * Factory for the background-tasks queue.
  *
- * Verifies Redis reachability on first call (cached for subsequent calls).
+ * Verifies Redis reachability for each distinct configuration (cached for
+ * subsequent calls with the same options).
  * Returns `null` when Redis is not configured or unreachable — callers
  * must handle this gracefully (skip enqueueing, return error to user, etc.).
  *
@@ -26,12 +28,24 @@ let redisReachable: boolean | null = null;
 export async function createBackgroundTaskQueue(
   redisOpts: QueueRedisOptions | undefined
 ): Promise<Queue | null> {
-  if (redisReachable === null) {
-    const check = await checkRedisAvailability(redisOpts);
-    redisReachable = check.available;
+  if (!redisOpts) {
+    return null;
   }
 
-  if (!redisReachable || !redisOpts) {
+  const redisOptionsKey = JSON.stringify([
+    redisOpts.host,
+    redisOpts.port,
+    redisOpts.password ?? null,
+    redisOpts.database ?? 0,
+  ]);
+
+  if (redisReachable === null || checkedRedisOptionsKey !== redisOptionsKey) {
+    const check = await checkRedisAvailability(redisOpts);
+    redisReachable = check.available;
+    checkedRedisOptionsKey = redisOptionsKey;
+  }
+
+  if (!redisReachable) {
     return null;
   }
 

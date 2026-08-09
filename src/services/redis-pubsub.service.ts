@@ -24,6 +24,26 @@ export function getTenantChannel(
 
 type MessageHandler = (msg: Record<string, unknown>) => void;
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function parseMessage(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed === null ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed)
+    ) {
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Redis Pub/Sub event bus for cross-process communication
  *
@@ -43,6 +63,12 @@ export class RedisPubSubService implements IRedisPubSubService {
   constructor(@inject(TYPES.Logger) private readonly logger: ILogger) {}
 
   async connect(redisUrl: string): Promise<void> {
+    if (this.pub || this.sub) {
+      const errors = await this.closeClients();
+      this.logDisconnectErrors(errors);
+    }
+    this.connected = false;
+
     try {
       this.pub = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
@@ -68,15 +94,35 @@ export class RedisPubSubService implements IRedisPubSubService {
       );
 
       this.connected = true;
+
+      await Promise.all([
+        ...Array.from(this.handlers.keys(), channel =>
+          this.sub!.subscribe(channel).catch(error => {
+            this.logger.warn('[RedisPubSub] Subscribe failed', {
+              channel,
+              error: errorMessage(error),
+            });
+          })
+        ),
+        ...Array.from(this.patternHandlers.keys(), pattern =>
+          this.sub!.psubscribe(pattern).catch(error => {
+            this.logger.warn('[RedisPubSub] Psubscribe failed', {
+              pattern,
+              error: errorMessage(error),
+            });
+          })
+        ),
+      ]);
+
       this.logger.info('[RedisPubSub] Connected');
     } catch (error) {
       this.connected = false;
-      this.pub = null;
-      this.sub = null;
+      const cleanupErrors = await this.closeClients();
+      this.logDisconnectErrors(cleanupErrors);
       this.logger.warn(
         '[RedisPubSub] Connection failed, operating in local-only mode',
         {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         }
       );
     }
@@ -93,7 +139,7 @@ export class RedisPubSubService implements IRedisPubSubService {
     } catch (error) {
       this.logger.warn('[RedisPubSub] Publish failed', {
         channel,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     }
   }
@@ -110,7 +156,7 @@ export class RedisPubSubService implements IRedisPubSubService {
         this.sub.subscribe(channel).catch(error => {
           this.logger.warn('[RedisPubSub] Subscribe failed', {
             channel,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
       }
@@ -133,7 +179,7 @@ export class RedisPubSubService implements IRedisPubSubService {
         this.sub.unsubscribe(channel).catch(error => {
           this.logger.warn('[RedisPubSub] Unsubscribe failed', {
             channel,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
       }
@@ -175,7 +221,7 @@ export class RedisPubSubService implements IRedisPubSubService {
         this.sub.psubscribe(pattern).catch(error => {
           this.logger.warn('[RedisPubSub] Psubscribe failed', {
             pattern,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
       }
@@ -197,7 +243,7 @@ export class RedisPubSubService implements IRedisPubSubService {
         this.sub.punsubscribe(pattern).catch(error => {
           this.logger.warn('[RedisPubSub] Punsubscribe failed', {
             pattern,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         });
       }
@@ -213,29 +259,40 @@ export class RedisPubSubService implements IRedisPubSubService {
     this.handlers.clear();
     this.patternHandlers.clear();
 
-    const errors: Error[] = [];
+    const errors = await this.closeClients();
+    this.logDisconnectErrors(errors);
+  }
 
-    if (this.sub) {
+  private async closeClients(): Promise<unknown[]> {
+    const errors: unknown[] = [];
+    const sub = this.sub;
+    const pub = this.pub;
+    this.sub = null;
+    this.pub = null;
+
+    if (sub) {
       try {
-        await this.sub.quit();
+        await sub.quit();
       } catch (error) {
-        errors.push(error as Error);
+        errors.push(error);
       }
-      this.sub = null;
     }
 
-    if (this.pub) {
+    if (pub) {
       try {
-        await this.pub.quit();
+        await pub.quit();
       } catch (error) {
-        errors.push(error as Error);
+        errors.push(error);
       }
-      this.pub = null;
     }
 
+    return errors;
+  }
+
+  private logDisconnectErrors(errors: unknown[]): void {
     if (errors.length > 0) {
       this.logger.warn('[RedisPubSub] Disconnect errors', {
-        errors: errors.map(e => e.message),
+        errors: errors.map(errorMessage),
       });
     }
   }
@@ -244,10 +301,8 @@ export class RedisPubSubService implements IRedisPubSubService {
     const patHandlers = this.patternHandlers.get(pattern);
     if (!patHandlers || patHandlers.size === 0) return;
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
+    const parsed = parseMessage(raw);
+    if (!parsed) {
       this.logger.warn('[RedisPubSub] Malformed pmessage', { pattern, raw });
       return;
     }
@@ -258,7 +313,7 @@ export class RedisPubSubService implements IRedisPubSubService {
       } catch (error) {
         this.logger.error('[RedisPubSub] Pattern handler error', {
           pattern,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -268,10 +323,8 @@ export class RedisPubSubService implements IRedisPubSubService {
     const channelHandlers = this.handlers.get(channel);
     if (!channelHandlers || channelHandlers.size === 0) return;
 
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
+    const parsed = parseMessage(raw);
+    if (!parsed) {
       this.logger.warn('[RedisPubSub] Malformed message', { channel, raw });
       return;
     }
@@ -282,7 +335,7 @@ export class RedisPubSubService implements IRedisPubSubService {
       } catch (error) {
         this.logger.error('[RedisPubSub] Handler error', {
           channel,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }

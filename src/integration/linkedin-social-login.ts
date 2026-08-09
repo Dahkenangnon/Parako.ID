@@ -116,14 +116,6 @@ export class LinkedInSocialLogin
       const providerSessionData = stateVerification.sessionData!;
       const { code } = req.query;
 
-      if (!code) {
-        this.cleanupSocialLoginSession(req);
-        return {
-          success: false,
-          error: 'Authorization code is missing from callback',
-        };
-      }
-
       // Exchange authorization code for access tokens
       const tokenResponse = await this.exchangeCodeForTokens(
         code as string,
@@ -152,10 +144,18 @@ export class LinkedInSocialLogin
       const tokens = this.mapTokenData(tokenResponse);
 
       // Use common user integration handling
-      return this.handleUserIntegration(mappedProviderData, tokens, req);
+      const result = await this.handleUserIntegration(
+        mappedProviderData,
+        tokens,
+        req
+      );
+      this.cleanupSocialLoginSession(req);
+      return result;
     } catch (error) {
-      const technicalError = (error as Error).message;
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      const technicalError = normalizedError.message;
+      this.logger.error(normalizedError, {
         context: `linkedin_oauth2_callback_failed`,
         provider: this.provider,
         technicalError,
@@ -198,12 +198,10 @@ export class LinkedInSocialLogin
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       this.logger.error(`LinkedIn token exchange failed`, {
         provider: this.provider,
         status: response.status,
         statusText: response.statusText,
-        technicalError: errorText,
       });
       throw new Error(
         getHttpStatusErrorMessage(
@@ -214,7 +212,17 @@ export class LinkedInSocialLogin
       );
     }
 
-    return response.json();
+    const tokenResponse = await response.json();
+    if (
+      typeof tokenResponse?.access_token !== 'string' ||
+      tokenResponse.access_token.trim().length === 0
+    ) {
+      throw new Error(
+        'LinkedIn token response did not include an access token'
+      );
+    }
+
+    return tokenResponse;
   }
 
   /**
@@ -249,10 +257,18 @@ export class LinkedInSocialLogin
    * LinkedIn userinfo follows OIDC standard with some LinkedIn-specific fields
    */
   mapProviderUserData(userInfo: any): ProviderUserData {
+    const subject =
+      typeof userInfo?.sub === 'string' ? userInfo.sub.trim() : '';
+    if (!subject) {
+      throw new Error(
+        'LinkedIn user info did not include a subject identifier'
+      );
+    }
+
     return {
-      sub: userInfo.sub,
+      sub: subject,
       email: userInfo.email,
-      email_verified: userInfo.email_verified || false,
+      email_verified: userInfo.email_verified === true,
       name: userInfo.name,
       given_name: userInfo.given_name,
       family_name: userInfo.family_name,
@@ -261,7 +277,7 @@ export class LinkedInSocialLogin
       // Use email prefix as username since LinkedIn doesn't expose usernames
       provider_username: userInfo.email?.split('@')[0],
       raw_data: {
-        sub: userInfo.sub,
+        sub: subject,
         locale: userInfo.locale,
       },
     };
@@ -271,14 +287,22 @@ export class LinkedInSocialLogin
    * Map LinkedIn token response to our standard format
    */
   mapTokenData(tokenResponse: any): TokenData {
+    const expiresIn =
+      typeof tokenResponse.expires_in === 'number' &&
+      Number.isFinite(tokenResponse.expires_in) &&
+      tokenResponse.expires_in >= 0
+        ? tokenResponse.expires_in
+        : undefined;
+
     return {
       access_token: tokenResponse.access_token,
       refresh_token: tokenResponse.refresh_token, // LinkedIn provides refresh tokens with r_liteprofile
       id_token: tokenResponse.id_token, // LinkedIn returns id_token with openid scope
       token_type: tokenResponse.token_type || 'Bearer',
-      expires_at: tokenResponse.expires_in
-        ? new Date(Date.now() + tokenResponse.expires_in * 1000)
-        : undefined,
+      expires_at:
+        expiresIn === undefined
+          ? undefined
+          : new Date(Date.now() + expiresIn * 1000),
       scope: tokenResponse.scope,
     };
   }

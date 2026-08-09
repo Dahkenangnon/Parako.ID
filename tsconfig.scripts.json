@@ -21,9 +21,8 @@
     "noImplicitThis": true,
     "noImplicitReturns": true,
     "isolatedModules": true,
-    "baseUrl": ".",
     "types": ["node"]
   },
-  "include": ["scripts/manage/**/*"],
+  "include": ["scripts/**/*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

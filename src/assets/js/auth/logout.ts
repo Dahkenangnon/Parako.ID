@@ -33,6 +33,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   // Local type definitions to prevent global pollution
   interface LogoutConfig {
     enableConfirmation: boolean;
@@ -49,8 +51,7 @@
   interface LogoutManagerOptions {
     config: LogoutConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
-    errorRecoveryTimeout?: number;
+    debug: boolean;
   }
 
   class LogoutManager {
@@ -59,11 +60,10 @@
     private debug: boolean;
 
     // DOM elements
-    private logoutForms: NodeListOf<HTMLFormElement> | null = null;
-    private submitButtons: NodeListOf<HTMLButtonElement> | null = null;
+    private logoutForms!: NodeListOf<HTMLFormElement>;
 
     // Default translations (fallback)
-    private readonly defaultTranslations: Partial<TranslationStrings> = {
+    private readonly defaultTranslations: TranslationStrings = {
       confirmSignOut: 'Confirm Sign Out',
       signingOut: 'Signing Out...',
       confirmSignOutAll:
@@ -81,12 +81,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
 
       this.initializeElements();
 
@@ -100,7 +100,7 @@
      * Validate configuration object
      */
     private validateConfig(config: LogoutConfig): LogoutConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           enableConfirmation: true,
@@ -144,7 +144,7 @@
           null,
           'warn'
         );
-        return fallback as string;
+        return fallback;
       }
 
       return translation;
@@ -154,8 +154,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -169,7 +167,7 @@
      * Initialize DOM elements and event listeners
      */
     public run(): void {
-      if (!this.logoutForms || this.logoutForms.length === 0) {
+      if (this.logoutForms.length === 0) {
         this.log('No logout forms found', null, 'error');
         return;
       }
@@ -184,18 +182,13 @@
       this.logoutForms = document.querySelectorAll(
         'form[action*="logout"]'
       ) as NodeListOf<HTMLFormElement>;
-      this.submitButtons = document.querySelectorAll(
-        'form[action*="logout"] button[type="submit"]'
-      ) as NodeListOf<HTMLButtonElement>;
     }
 
     /**
      * Setup logout form handling
      */
     private setupLogoutForms(): void {
-      if (!this.logoutForms) return;
-
-      this.logoutForms.forEach((form, index) => {
+      this.logoutForms.forEach(form => {
         const submitButton = form.querySelector(
           'button[type="submit"]'
         ) as HTMLButtonElement;
@@ -204,7 +197,7 @@
         ) as HTMLInputElement;
 
         if (submitButton && typeInput) {
-          this.setupFormSubmission(form, submitButton, typeInput, index);
+          this.setupFormSubmission(submitButton, typeInput);
         }
       });
     }
@@ -213,10 +206,8 @@
      * Setup form submission handling
      */
     private setupFormSubmission(
-      form: HTMLFormElement,
       submitButton: HTMLButtonElement,
-      typeInput: HTMLInputElement,
-      _index: number
+      typeInput: HTMLInputElement
     ): void {
       if (typeInput.value === 'all' && this.config.enableConfirmation) {
         submitButton.addEventListener('click', (e: Event) => {
@@ -249,11 +240,10 @@
         '[data-account-count]'
       );
       if (accountCountElement) {
-        const count = parseInt(
-          accountCountElement.getAttribute('data-account-count') || '1',
-          10
-        );
-        if (!isNaN(count)) return count;
+        const rawCount =
+          accountCountElement.getAttribute('data-account-count')?.trim() ?? '';
+        const count = Number(rawCount);
+        if (Number.isSafeInteger(count) && count > 0) return count;
       }
 
       const accountElements = document.querySelectorAll('[data-account-id]');

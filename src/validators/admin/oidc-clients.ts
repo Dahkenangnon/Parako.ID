@@ -15,6 +15,7 @@ import {
   searchSchema,
   sortOrderSchema,
 } from '../base-schemas.js';
+import { ADMIN_OIDC_CLIENT_SORT_FIELDS } from '../listing-query.js';
 
 const APPLICATION_TYPE_VALUES = ['web', 'native', 'spa'] as const;
 const ENVIRONMENT_FILTER_VALUES = [
@@ -25,13 +26,6 @@ const ENVIRONMENT_FILTER_VALUES = [
 ] as const;
 const STATUS_FILTER_VALUES = ['active', 'inactive', 'all'] as const;
 const SOURCE_FILTER_VALUES = ['static', 'dynamic', 'database'] as const;
-const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
-  'created_at',
-  'client_name',
-  'application_type',
-  'active',
-] as const;
-
 export const adminOidcClientListQuerySchema = z
   .object({
     page: pageSchema,

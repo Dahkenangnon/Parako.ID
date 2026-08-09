@@ -6,6 +6,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   class RecoverySecurityQuestionsManager {
     private form: HTMLFormElement | null = null;
     private submitBtn: HTMLButtonElement | null = null;

@@ -26,6 +26,7 @@ class MongoSanitizer {
   private static readonly TEST_REGEX = /\$|\./;
   private static readonly TEST_REGEX_WITHOUT_DOT = /\$/;
   private static readonly REPLACE_REGEX = /\$|\./g;
+  private static readonly REPLACE_REGEX_WITHOUT_DOT = /\$/g;
 
   /**
    * Check if an object is a plain object (not array, null, or primitive)
@@ -94,6 +95,9 @@ class MongoSanitizer {
     options: SanitizeOptions
   ): SanitizeResult {
     const regex = this.getTestRegex(options.allowDots || false);
+    const replaceRegex = options.allowDots
+      ? this.REPLACE_REGEX_WITHOUT_DOT
+      : this.REPLACE_REGEX;
     let isSanitized = false;
     let replaceWith: string | null = null;
     const dryRun = Boolean(options.dryRun);
@@ -104,6 +108,7 @@ class MongoSanitizer {
 
     this.withEach(target, (obj, val, key) => {
       let shouldRecurse = true;
+      let recurseKey = key;
 
       if (regex.test(key)) {
         isSanitized = true;
@@ -116,22 +121,26 @@ class MongoSanitizer {
         delete obj[key];
 
         if (replaceWith) {
-          const newKey = key.replace(this.REPLACE_REGEX, replaceWith);
+          const newKey = key.replace(replaceRegex, replaceWith);
 
           // Avoid prototype pollution
           if (
             newKey !== '__proto__' &&
             newKey !== 'constructor' &&
-            newKey !== 'prototype'
+            newKey !== 'prototype' &&
+            !Object.hasOwn(obj, newKey)
           ) {
             obj[newKey] = val;
+            recurseKey = newKey;
+          } else {
+            shouldRecurse = false;
           }
         } else {
           shouldRecurse = false;
         }
       }
 
-      return { shouldRecurse, key };
+      return { shouldRecurse, key: recurseKey };
     });
 
     return { isSanitized, target };
@@ -141,14 +150,14 @@ class MongoSanitizer {
    * Public sanitize method
    */
   public static sanitize(target: any, options: SanitizeOptions = {}): any {
-    return this.sanitizeInternal(target, options).target;
+    return MongoSanitizer.sanitizeInternal(target, options).target;
   }
 
   /**
    * Check if target contains prohibited keys
    */
   public static has(target: any, allowDots: boolean = false): boolean {
-    return this.hasProhibitedKeys(target, allowDots);
+    return MongoSanitizer.hasProhibitedKeys(target, allowDots);
   }
 
   /**
@@ -166,15 +175,11 @@ class MongoSanitizer {
         sanitizeTargets.forEach(key => {
           const targetValue = (req as any)[key];
           if (targetValue) {
-            const { target, isSanitized } = this.sanitizeInternal(
-              targetValue,
-              options
-            );
+            const { isSanitized } = this.sanitizeInternal(targetValue, options);
 
-            // Only update if sanitization occurred and we're not in dry run mode
+            // sanitizeInternal mutates populated request targets in place. Avoid
+            // assigning back because Express 5 exposes req.query as getter-only.
             if (isSanitized && !options.dryRun) {
-              (req as any)[key] = target;
-
               if (hasOnSanitize) {
                 options.onSanitize!({ req, key });
               }
@@ -183,9 +188,8 @@ class MongoSanitizer {
         });
 
         next();
-      } catch {
-        // Silently continue if sanitization fails - don't break the request flow
-        next();
+      } catch (error) {
+        next(error);
       }
     };
   }

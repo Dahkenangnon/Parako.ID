@@ -152,11 +152,9 @@ export class MainRoutesManager implements IMainRoutesManager {
       if (locale && availableLocales.includes(locale)) {
         // Valid locale - redirect to localized login
         res.redirect(`/${locale}${routes.auth}${authRoutesConfig.login}`);
-      } else if (!locale) {
-        // No locale - redirect to default login (shouldn't happen, caught by '/' route)
-        res.redirect(`${routes.auth}${authRoutesConfig.login}`);
       } else {
-        // Invalid locale - pass to next middleware (will 404)
+        // Missing locales are handled by the preceding root route. Invalid
+        // locale segments pass through to the application 404 handler.
         next();
       }
     });

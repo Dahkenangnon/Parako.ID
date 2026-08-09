@@ -67,6 +67,14 @@ export type AdapterBundle = PrismaAdapterBundle | MongooseAdapterBundle;
 export async function loadAdapterBundle(
   adapter: StorageAdapter
 ): Promise<AdapterBundle> {
+  if (
+    adapter !== 'sqlite' &&
+    adapter !== 'postgresql' &&
+    adapter !== 'mongodb'
+  ) {
+    throw new Error(`Unsupported storage adapter: ${String(adapter)}`);
+  }
+
   if (adapter === 'mongodb') {
     const [
       { MongooseUserRepository },

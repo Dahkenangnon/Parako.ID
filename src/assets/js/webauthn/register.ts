@@ -312,21 +312,20 @@
     /**
      * Show the friendly name input section
      */
-    private showFriendlyNameInput(credential?: PublicKeyCredential): void {
+    private showFriendlyNameInput(credential: PublicKeyCredential): void {
       if (this.friendlyNameSection) {
         this.friendlyNameSection.classList.remove('hidden');
       }
 
-      if (this.registerBtn) {
-        this.registerBtn.classList.add('hidden');
-      }
+      // This method is only reached from the register button's event handler.
+      this.registerBtn!.classList.add('hidden');
 
       if (this.saveBtn) {
         this.saveBtn.classList.remove('hidden');
       }
 
       // Pre-fill the friendly name with detected device name
-      if (this.friendlyNameInput && credential) {
+      if (this.friendlyNameInput) {
         const detectedName = this.detectDeviceName(credential);
         this.friendlyNameInput.value = detectedName;
         this.friendlyNameInput.select(); // Select the text so user can easily edit
@@ -346,10 +345,9 @@
       this.isProcessing = true;
       this.hideStatus();
 
-      if (this.saveBtn) {
-        this.saveBtn.disabled = true;
-        this.saveBtn.textContent = this.translations.saving;
-      }
+      // saveCredential is only bound when the save button exists.
+      this.saveBtn!.disabled = true;
+      this.saveBtn!.textContent = this.translations.saving;
 
       try {
         const credential = this.registrationResponse as PublicKeyCredential;
@@ -386,6 +384,10 @@
 
         const result: RegistrationVerifyResponse = await verifyResponse.json();
 
+        if (!verifyResponse.ok) {
+          throw new Error(result.error || `HTTP ${verifyResponse.status}`);
+        }
+
         if (!result.ok) {
           throw new Error(result.error || 'Failed to verify registration');
         }
@@ -394,16 +396,16 @@
 
         this.showSuccess(this.translations.successMessage);
 
-        setTimeout(() => {
-          window.location.href = this.config.successRedirectUrl;
-        }, 1500);
+        if (this.isValidRedirectUrl(this.config.successRedirectUrl)) {
+          setTimeout(() => {
+            window.location.href = this.config.successRedirectUrl;
+          }, 1500);
+        }
       } catch (error) {
         this.handleError(error);
 
-        if (this.saveBtn) {
-          this.saveBtn.disabled = false;
-          this.saveBtn.textContent = this.translations.registerButton;
-        }
+        this.saveBtn!.disabled = false;
+        this.saveBtn!.textContent = this.translations.registerButton;
       } finally {
         this.isProcessing = false;
       }
@@ -434,9 +436,8 @@
      * Set button loading state
      */
     private setButtonLoading(loading: boolean): void {
-      if (this.registerBtn) {
-        this.registerBtn.disabled = loading;
-      }
+      // startRegistration is only bound when the register button exists.
+      this.registerBtn!.disabled = loading;
 
       if (this.registerBtnText) {
         this.registerBtnText.textContent = loading
@@ -453,6 +454,7 @@
         this.statusEl.className =
           'mb-4 p-3 border-2 border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200';
         this.renderStatus(
+          this.statusEl,
           this.translations.successTitle,
           message,
           'M5 13l4 4L19 7'
@@ -469,6 +471,7 @@
         this.statusEl.className =
           'mb-4 p-3 border-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200';
         this.renderStatus(
+          this.statusEl,
           this.translations.errorTitle,
           message,
           'M6 18L18 6M6 6l12 12'
@@ -482,13 +485,13 @@
      * textContent (XSS-safe). Icon and title are constants from translations.
      */
     private renderStatus(
+      statusEl: HTMLElement,
       title: string,
       message: string,
       iconPath: string
     ): void {
-      if (!this.statusEl) return;
-      while (this.statusEl.firstChild) {
-        this.statusEl.removeChild(this.statusEl.firstChild);
+      while (statusEl.firstChild) {
+        statusEl.removeChild(statusEl.firstChild);
       }
       const SVG_NS = 'http://www.w3.org/2000/svg';
       const wrapper = document.createElement('div');
@@ -515,7 +518,7 @@
       inner.appendChild(msgEl);
       wrapper.appendChild(svg);
       wrapper.appendChild(inner);
-      this.statusEl.appendChild(wrapper);
+      statusEl.appendChild(wrapper);
     }
 
     /**
@@ -562,6 +565,20 @@
     private log(message: string, data?: unknown): void {
       if (this.config.debug) {
         console.log(`[WebAuthn Register] ${message}`, data || '');
+      }
+    }
+
+    /**
+     * Validate the post-registration redirect to prevent open redirects.
+     */
+    private isValidRedirectUrl(url: string): boolean {
+      if (!url || typeof url !== 'string') return false;
+      try {
+        const parsed = new URL(url, window.location.origin);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+        return parsed.origin === window.location.origin;
+      } catch {
+        return false;
       }
     }
   }

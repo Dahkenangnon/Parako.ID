@@ -1,7 +1,14 @@
 import type { Db } from 'mongodb';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
-import OIDCMongoAdapter from './index.js';
+import OIDCMongoAdapter, {
+  tenantScopedDocumentId,
+  tenantScopedIdentityFilter,
+} from './index.js';
 import type { OIDCDocument } from '../../interfaces/interface.js';
+import {
+  clientAuthMethodUsesSecret,
+  normalizeClientApplicationType,
+} from '../client.interface.js';
 import type {
   OidcClientData,
   ClientFilters,
@@ -23,6 +30,44 @@ import {
 } from '../client-crud-utils.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
 
+function grantSortField(sortBy: unknown): string {
+  switch (sortBy) {
+    case 'payload.accountId':
+    case 'username':
+      return 'payload.accountId';
+    case 'payload.clientId':
+      return 'payload.clientId';
+    case 'payload.exp':
+    case 'exp':
+    case 'expiresAt':
+      return 'payload.exp';
+    case 'created_at':
+    case 'createdAt':
+    case 'payload.iat':
+    default:
+      return 'payload.iat';
+  }
+}
+
+function currentTenantFilter<T extends Record<string, unknown>>(
+  filter: T
+): T & { tenant_id: string } {
+  return { ...filter, tenant_id: tenantContext.getTenantId() };
+}
+
+function currentTenantIdentityFilter(logicalId: string) {
+  return tenantScopedIdentityFilter(tenantContext.getTenantId(), logicalId);
+}
+
+function currentTenantIdentityListFilter(logicalIds: string[]) {
+  const tenant_id = tenantContext.getTenantId();
+  const physicalIds = logicalIds.flatMap(logicalId => {
+    const physicalId = tenantScopedDocumentId(tenant_id, logicalId);
+    return physicalId === logicalId ? [logicalId] : [physicalId, logicalId];
+  });
+  return { _id: { $in: physicalIds }, tenant_id };
+}
+
 /**
  * MongodbOidcAdminService
  *
@@ -41,11 +86,13 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     }
     try {
       const now = Math.floor(Date.now() / 1000);
+      const tenant_id = tenantContext.getTenantId();
       const sessions = await this.coll()
         .find({
           'payload.accountId': accountId,
           'payload.exp': { $gt: now },
           'payload.kind': 'Session',
+          tenant_id,
         })
         .toArray();
       return sessions || [];
@@ -62,8 +109,10 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       throw new TypeError('sessionId must be a string');
     }
     try {
+      const tenant_id = tenantContext.getTenantId();
       const result = await this.coll().deleteOne({
         'payload.jti': sessionId,
+        tenant_id,
       });
       return result.deletedCount > 0;
     } catch (error) {
@@ -77,11 +126,13 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     excludeSessionId: string
   ): Promise<number> {
     try {
-      const result = await this.coll().deleteMany({
-        'payload.accountId': accountId,
-        'payload.kind': 'Session',
-        'payload.jti': { $ne: excludeSessionId as any },
-      });
+      const result = await this.coll().deleteMany(
+        currentTenantFilter({
+          'payload.accountId': accountId,
+          'payload.kind': 'Session',
+          'payload.jti': { $ne: excludeSessionId as any },
+        })
+      );
       return result.deletedCount;
     } catch (error) {
       this.logger.error(error as Error, {
@@ -98,17 +149,23 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   }> {
     try {
       const now = Math.floor(Date.now() / 1000);
-      const total = await this.coll().countDocuments({
-        'payload.kind': 'Session',
-      });
-      const active = await this.coll().countDocuments({
-        'payload.kind': 'Session',
-        'payload.exp': { $gt: now },
-      });
-      const expired = await this.coll().countDocuments({
-        'payload.kind': 'Session',
-        'payload.exp': { $lte: now },
-      });
+      const total = await this.coll().countDocuments(
+        currentTenantFilter({
+          'payload.kind': 'Session',
+        })
+      );
+      const active = await this.coll().countDocuments(
+        currentTenantFilter({
+          'payload.kind': 'Session',
+          'payload.exp': { $gt: now },
+        })
+      );
+      const expired = await this.coll().countDocuments(
+        currentTenantFilter({
+          'payload.kind': 'Session',
+          'payload.exp': { $lte: now },
+        })
+      );
       return { total, active, expired };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -120,7 +177,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async countSessions(filters: any = {}): Promise<number> {
     try {
-      return await this.coll().countDocuments(filters);
+      return await this.coll().countDocuments(currentTenantFilter(filters));
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Error counting sessions',
@@ -142,7 +199,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         : 'createdAt';
     try {
       return (await this.coll()
-        .find(filters)
+        .find(currentTenantFilter(filters))
         .sort({ [safeSortBy]: sortOrder as 1 | -1 })
         .skip(skip)
         .limit(limit)
@@ -157,7 +214,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async findSessionById(sessionId: string): Promise<any | null> {
     try {
-      const result = await this.coll().findOne({ 'payload.jti': sessionId });
+      const result = await this.coll().findOne(
+        currentTenantFilter({ 'payload.jti': sessionId })
+      );
       return result as any | null;
     } catch (error) {
       this.logger.error(error as Error, {
@@ -169,7 +228,10 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async getDistinctValues(field: string, filters: any = {}): Promise<any[]> {
     try {
-      const results = await this.coll().distinct(field, filters);
+      const results = await this.coll().distinct(
+        field,
+        currentTenantFilter(filters)
+      );
       return results as any[];
     } catch (error) {
       this.logger.error(error as Error, {
@@ -182,7 +244,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async exportAllSessions(): Promise<any[]> {
     try {
       const results = await this.coll()
-        .find({ 'payload.kind': 'Session' })
+        .find(currentTenantFilter({ 'payload.kind': 'Session' }))
         .sort({ 'payload.iat': -1 as 1 | -1 })
         .toArray();
       return results as any[];
@@ -198,9 +260,11 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     accountId: string
   ): Promise<{ deletedCount: number }> {
     try {
-      const result = await this.coll().deleteMany({
-        'payload.accountId': accountId,
-      });
+      const result = await this.coll().deleteMany(
+        currentTenantFilter({
+          'payload.accountId': accountId,
+        })
+      );
       return { deletedCount: result.deletedCount || 0 };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -215,9 +279,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   ): Promise<{ deletedCount: number }> {
     try {
       if (sessionIds.length === 0) return { deletedCount: 0 };
-      const result = await this.coll().deleteMany({
-        _id: { $in: sessionIds as any },
-      });
+      const result = await this.coll().deleteMany(
+        currentTenantIdentityListFilter(sessionIds) as any
+      );
       return { deletedCount: result.deletedCount || 0 };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -235,7 +299,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       }
       const results = await this.coll()
         .find<OIDCDocument>(
-          { 'payload.accountId': accountId },
+          currentTenantFilter({ 'payload.accountId': accountId }),
           { projection: { payload: 1, expiresAt: 1, _id: 1 } }
         )
         .toArray();
@@ -259,7 +323,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       }
       const results = await this.coll()
         .find<OIDCDocument>(
-          { 'payload.clientId': clientId },
+          currentTenantFilter({ 'payload.clientId': clientId }),
           { projection: { payload: 1, expiresAt: 1, _id: 1 } }
         )
         .toArray();
@@ -285,7 +349,10 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         return null;
       }
       const result = await this.coll().findOne<OIDCDocument>(
-        { 'payload.accountId': accountId, 'payload.clientId': clientId },
+        currentTenantFilter({
+          'payload.accountId': accountId,
+          'payload.clientId': clientId,
+        }),
         { projection: { payload: 1, expiresAt: 1, _id: 1 } }
       );
       this.logger.info(
@@ -308,7 +375,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         this.logger.warn('revokeGrantById called with empty grantId');
         return;
       }
-      const result = await this.coll().deleteOne({ _id: grantId } as any);
+      const result = await this.coll().deleteOne(
+        currentTenantIdentityFilter(grantId) as any
+      );
       if (result.deletedCount > 0) {
         this.logger.info(`Successfully revoked grant ${grantId}`);
       } else {
@@ -331,7 +400,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         return 0;
       }
       const grants = await this.coll()
-        .find<OIDCDocument>({ 'payload.accountId': accountId })
+        .find<OIDCDocument>(
+          currentTenantFilter({ 'payload.accountId': accountId })
+        )
         .toArray();
       this.logger.info(
         `Found ${grants.length} grants for account ${accountId} before deletion`
@@ -374,7 +445,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         return 0;
       }
       const grants = await this.coll()
-        .find<OIDCDocument>({ 'payload.clientId': clientId })
+        .find<OIDCDocument>(
+          currentTenantFilter({ 'payload.clientId': clientId })
+        )
         .toArray();
       this.logger.info(
         `Found ${grants.length} grants for client ${clientId} before deletion`
@@ -417,10 +490,12 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         return false;
       }
       const grants = await this.coll()
-        .find<OIDCDocument>({
-          'payload.accountId': accountId,
-          'payload.clientId': clientId,
-        })
+        .find<OIDCDocument>(
+          currentTenantFilter({
+            'payload.accountId': accountId,
+            'payload.clientId': clientId,
+          })
+        )
         .toArray();
       this.logger.info(
         `Found ${grants.length} grants for account ${accountId} and client ${clientId} before deletion`
@@ -459,7 +534,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async countGrants(filters: any = {}): Promise<number> {
     try {
-      return await this.coll().countDocuments(filters);
+      return await this.coll().countDocuments(currentTenantFilter(filters));
     } catch (error) {
       this.logger.error(error as Error, { context: 'Error counting grants' });
       throw error;
@@ -473,13 +548,10 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     skip: number = 0,
     limit: number = 20
   ): Promise<OIDCDocument[]> {
-    const safeSortBy =
-      typeof sortBy === 'string' && /^[A-Za-z_][\w.]*$/.test(sortBy)
-        ? sortBy
-        : 'createdAt';
+    const safeSortBy = grantSortField(sortBy);
     try {
       return (await this.coll()
-        .find(filters)
+        .find(currentTenantFilter(filters))
         .sort({ [safeSortBy]: sortOrder as 1 | -1 })
         .skip(skip)
         .limit(limit)
@@ -494,7 +566,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async findGrantById(id: string): Promise<OIDCDocument | null> {
     try {
-      const result = await this.coll().findOne({ _id: id } as any);
+      const result = await this.coll().findOne(
+        currentTenantIdentityFilter(id) as any
+      );
       return result as unknown as OIDCDocument | null;
     } catch (error) {
       this.logger.error(error as Error, {
@@ -512,18 +586,23 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     byUser: Array<{ _id: string; count: number }>;
   }> {
     try {
-      const total = await this.coll().countDocuments();
+      const total = await this.coll().countDocuments(currentTenantFilter({}));
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const recent = await this.coll().countDocuments({
-        'payload.iat': { $gte: Math.floor(thirtyDaysAgo.getTime() / 1000) },
-      });
+      const recent = await this.coll().countDocuments(
+        currentTenantFilter({
+          'payload.iat': { $gte: Math.floor(thirtyDaysAgo.getTime() / 1000) },
+        })
+      );
       const now = Math.floor(Date.now() / 1000);
-      const expired = await this.coll().countDocuments({
-        'payload.exp': { $lt: now },
-      });
+      const expired = await this.coll().countDocuments(
+        currentTenantFilter({
+          'payload.exp': { $lt: now },
+        })
+      );
       const byClient = (await this.coll()
         .aggregate([
+          { $match: currentTenantFilter({}) },
           { $group: { _id: '$payload.clientId', count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $limit: 10 },
@@ -531,6 +610,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         .toArray()) as Array<{ _id: string; count: number }>;
       const byUser = (await this.coll()
         .aggregate([
+          { $match: currentTenantFilter({}) },
           { $group: { _id: '$payload.accountId', count: { $sum: 1 } } },
           { $sort: { count: -1 } },
           { $limit: 10 },
@@ -547,7 +627,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
   async exportAllGrants(): Promise<OIDCDocument[]> {
     try {
-      const results = await this.coll().find({}).toArray();
+      const results = await this.coll().find(currentTenantFilter({})).toArray();
       return results as any[];
     } catch (error) {
       this.logger.error(error as Error, {
@@ -564,9 +644,11 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
       throw new TypeError('accountId must be a string');
     }
     try {
-      const result = await this.coll().deleteMany({
-        'payload.accountId': accountId,
-      });
+      const result = await this.coll().deleteMany(
+        currentTenantFilter({
+          'payload.accountId': accountId,
+        })
+      );
       return { deletedCount: result.deletedCount || 0 };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -593,7 +675,7 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
         this.name === 'Interaction'
           ? { 'payload.session.accountId': accountId }
           : { 'payload.accountId': accountId };
-      const result = await this.coll().deleteMany(filter);
+      const result = await this.coll().deleteMany(currentTenantFilter(filter));
       return { deletedCount: result.deletedCount || 0 };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -618,18 +700,19 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
 
     const clientData = applyClientDefaults(data);
     const tenant_id = tenantContext.getTenantId();
+    const documentId = tenantScopedDocumentId(tenant_id, clientData.client_id);
 
-    const existing = await this.coll().findOne({
-      _id: clientData.client_id,
-      tenant_id,
-    } as any);
+    const existing = await this.coll().findOne(
+      tenantScopedIdentityFilter(tenant_id, clientData.client_id) as any
+    );
     if (existing) {
       throw new Error(`Client with ID ${clientData.client_id} already exists`);
     }
 
     const encrypted = encryptClientSecret(clientData);
     const result = await this.coll().insertOne({
-      _id: clientData.client_id,
+      _id: documentId,
+      logical_id: clientData.client_id,
       payload: encrypted,
       tenant_id,
     } as any);
@@ -649,10 +732,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async findClientById(clientId: string): Promise<OidcClientData | null> {
     try {
       const tenant_id = tenantContext.getTenantId();
-      const doc = await this.coll().findOne({
-        _id: clientId,
-        tenant_id,
-      } as any);
+      const doc = await this.coll().findOne(
+        tenantScopedIdentityFilter(tenant_id, clientId) as any
+      );
       if (!doc) {
         this.logger.debug(`Client ${clientId} not found`, {
           context: 'ClientCRUD',
@@ -703,26 +785,32 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     clientId: string,
     updates: Partial<OidcClientData>
   ): Promise<OidcClientData | null> {
+    const existing = await this.findClientById(clientId);
+    if (!existing) return null;
+
+    const merged: OidcClientData = normalizeClientApplicationType({
+      ...existing,
+      ...updates,
+      client_id: clientId, // immutable
+      updated_at: new Date().toISOString(),
+    });
+    const validation = validateClientData(merged);
+    if (!validation.isValid) {
+      throw new Error(
+        `Client validation failed: ${validation.errors.join(', ')}`
+      );
+    }
+
     try {
-      const existing = await this.findClientById(clientId);
-      if (!existing) return null;
-
-      const merged = {
-        ...existing,
-        ...updates,
-        client_id: clientId, // immutable
-        updated_at: new Date().toISOString(),
-      };
-
-      const encrypted = encryptClientSecret(merged as OidcClientData);
+      const encrypted = encryptClientSecret(merged);
       const tenant_id = tenantContext.getTenantId();
       await this.coll().updateOne(
-        { _id: clientId, tenant_id } as any,
+        tenantScopedIdentityFilter(tenant_id, clientId) as any,
         { $set: { payload: encrypted, tenant_id } },
-        { upsert: true }
+        { upsert: false }
       );
 
-      return merged as OidcClientData;
+      return merged;
     } catch (error) {
       this.logger.error(error as Error, {
         context: `Error updating client ${clientId}`,
@@ -737,10 +825,9 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   async deleteClient(clientId: string): Promise<boolean> {
     try {
       const tenant_id = tenantContext.getTenantId();
-      const result = await this.coll().deleteOne({
-        _id: clientId,
-        tenant_id,
-      } as any);
+      const result = await this.coll().deleteOne(
+        tenantScopedIdentityFilter(tenant_id, clientId) as any
+      );
       return result.deletedCount > 0;
     } catch (error) {
       this.logger.error(error as Error, {
@@ -780,6 +867,11 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
   ): Promise<RegenerateSecretResult | null> {
     const existing = await this.findClientById(clientId);
     if (!existing) return null;
+    if (!clientAuthMethodUsesSecret(existing.token_endpoint_auth_method)) {
+      throw new Error(
+        `Client "${existing.client_name}" does not use secret-based authentication`
+      );
+    }
 
     const newSecret = generateClientSecret();
     const updated = await this.updateClient(clientId, {

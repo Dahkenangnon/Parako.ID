@@ -2,11 +2,11 @@ import type { IBaseModel } from './base.js';
 
 export type TenantStatus = 'active' | 'suspended' | 'archived';
 
-export const TenantStatusValues: TenantStatus[] = [
+export const TenantStatusValues: readonly TenantStatus[] = Object.freeze([
   'active',
   'suspended',
   'archived',
-];
+]);
 
 export interface ITenant extends IBaseModel {
   slug: string;

@@ -6,6 +6,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   class RecoverySmsManager {
     private retrySecondsEl: HTMLElement | null = null;
     private sendBtn: HTMLButtonElement | null = null;
@@ -28,15 +30,15 @@
     }
 
     private setupRetryCountdown(): void {
-      if (!this.retrySecondsEl) return;
+      const retrySecondsEl = this.retrySecondsEl;
+      if (!retrySecondsEl) return;
 
-      let seconds = parseInt(this.retrySecondsEl.textContent || '0', 10);
+      const parsedSeconds = parseInt(retrySecondsEl.textContent || '0', 10);
+      let seconds = Number.isFinite(parsedSeconds) ? parsedSeconds : 0;
 
       const interval = setInterval(() => {
-        seconds--;
-        if (this.retrySecondsEl) {
-          this.retrySecondsEl.textContent = String(seconds);
-        }
+        seconds = Math.max(seconds - 1, 0);
+        retrySecondsEl.textContent = String(seconds);
 
         if (seconds <= 0) {
           clearInterval(interval);
@@ -52,13 +54,13 @@
     }
 
     private setupFormSubmission(): void {
-      if (!this.form || !this.sendBtn) return;
+      const form = this.form;
+      const sendBtn = this.sendBtn;
+      if (!form || !sendBtn) return;
 
-      this.form.addEventListener('submit', () => {
-        if (this.sendBtn) {
-          this.sendBtn.disabled = true;
-          this.sendBtn.textContent = this.getSendingText();
-        }
+      form.addEventListener('submit', () => {
+        sendBtn.disabled = true;
+        sendBtn.textContent = this.getSendingText();
       });
     }
 

@@ -14,6 +14,26 @@ import { ensureDecrypted } from '../../../utils/encryption.js';
 import { sanitizeClientPayload } from '../client-crud-utils.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
 
+export function tenantScopedDocumentId(
+  tenantId: string,
+  logicalId: string
+): string {
+  return tenantId === 'default'
+    ? logicalId
+    : `${tenantId.length}:${tenantId}:${logicalId}`;
+}
+
+export function tenantScopedIdentityFilter(
+  tenantId: string,
+  logicalId: string
+) {
+  const scopedId = tenantScopedDocumentId(tenantId, logicalId);
+  return {
+    _id: scopedId === logicalId ? logicalId : { $in: [scopedId, logicalId] },
+    tenant_id: tenantId,
+  };
+}
+
 /**
  * Custom Set implementation for managing MongoDB collections with automatic index creation.
  * Extends the native Set class to add MongoDB-specific functionality.
@@ -44,18 +64,53 @@ class CollectionSet extends Set<string> {
     super.add(name);
     if (isNew) {
       try {
-        this.db
-          .collection(name)
+        const collection = this.db.collection(name);
+        const legacyUniqueIndex =
+          name === 'DeviceCode'
+            ? 'payload.userCode_1'
+            : name === 'Session'
+              ? 'payload.uid_1'
+              : undefined;
+
+        collection
           .createIndexes([
-            ...(grantable.has(name) ? [{ key: { 'payload.grantId': 1 } }] : []),
+            ...(grantable.has(name)
+              ? [{ key: { tenant_id: 1, 'payload.grantId': 1 } }]
+              : []),
             ...(name === 'DeviceCode'
-              ? [{ key: { 'payload.userCode': 1 }, unique: true }]
+              ? [
+                  {
+                    key: { tenant_id: 1, 'payload.userCode': 1 },
+                    unique: true,
+                  },
+                ]
               : []),
             ...(name === 'Session'
-              ? [{ key: { 'payload.uid': 1 }, unique: true }]
+              ? [
+                  {
+                    key: { tenant_id: 1, 'payload.uid': 1 },
+                    unique: true,
+                  },
+                ]
               : []),
             { key: { expiresAt: 1 }, expireAfterSeconds: 0 },
           ])
+          .then(async () => {
+            if (!legacyUniqueIndex) return;
+            try {
+              await collection.dropIndex(legacyUniqueIndex);
+            } catch (err) {
+              const code = (err as { code?: number }).code;
+              if (code !== 27) {
+                this.logger.warn('Legacy OIDC unique index cleanup failed', {
+                  collection: name,
+                  index: legacyUniqueIndex,
+                  step: 'oidc-mongo-index-cleanup',
+                  err: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+          })
           .catch((err: unknown) => {
             this.logger.warn(
               'Background OIDC index creation failed; queries will use collection scan',
@@ -111,18 +166,23 @@ export default class OIDCMongoAdapter
   ): Promise<void> {
     try {
       const tenant_id = tenantContext.getTenantId();
+      const documentId = tenantScopedDocumentId(tenant_id, _id);
       let expiresAt: Date | undefined;
       if (expiresIn) {
         expiresAt = new Date(Date.now() + expiresIn * 1000);
       }
 
       await this.coll().updateOne(
-        { _id, tenant_id } as any,
+        tenantScopedIdentityFilter(tenant_id, _id) as any,
         {
           $set: {
             payload,
             tenant_id,
             ...(expiresAt ? { expiresAt } : undefined),
+          },
+          $setOnInsert: {
+            _id: documentId,
+            logical_id: _id,
           },
         },
         { upsert: true }
@@ -144,7 +204,7 @@ export default class OIDCMongoAdapter
 
       const tenant_id = tenantContext.getTenantId();
       const result = await this.coll().findOne<OIDCDocument>(
-        { _id, tenant_id } as any,
+        tenantScopedIdentityFilter(tenant_id, _id) as any,
         { projection: { payload: 1 } }
       );
 
@@ -167,6 +227,35 @@ export default class OIDCMongoAdapter
       this.logger.error(error as Error, {
         context: `Error in ${this.name}.find for id ${_id}`,
       });
+      throw error;
+    }
+  }
+
+  /** Return active records for this model in the current tenant. */
+  async findAll(): Promise<OIDCPayload[]> {
+    try {
+      const tenant_id = tenantContext.getTenantId();
+      const now = new Date();
+      const documents = await this.coll()
+        .find<OIDCDocument>(
+          {
+            tenant_id,
+            $or: [
+              { expiresAt: { $exists: false } },
+              { expiresAt: null },
+              { expiresAt: { $gt: now } },
+            ],
+          },
+          { projection: { _id: 1, logical_id: 1, payload: 1 } }
+        )
+        .toArray();
+
+      return documents.map(document => ({
+        ...document.payload,
+        _id: document.logical_id ?? String(document._id),
+      }));
+    } catch (error) {
+      this.logError(error as Error, 'findAll');
       throw error;
     }
   }
@@ -225,7 +314,9 @@ export default class OIDCMongoAdapter
       if (!_id) return;
 
       const tenant_id = tenantContext.getTenantId();
-      await this.coll().deleteOne({ _id, tenant_id } as any);
+      await this.coll().deleteOne(
+        tenantScopedIdentityFilter(tenant_id, _id) as any
+      );
     } catch (error) {
       this.logger.error(error as Error, {
         context: `Error in ${this.name}.destroy for id ${_id}`,
@@ -259,9 +350,12 @@ export default class OIDCMongoAdapter
       if (!_id) return;
 
       const tenant_id = tenantContext.getTenantId();
-      await this.coll().findOneAndUpdate({ _id, tenant_id } as any, {
-        $set: { 'payload.consumed': Math.floor(Date.now() / 1000) },
-      });
+      await this.coll().findOneAndUpdate(
+        tenantScopedIdentityFilter(tenant_id, _id) as any,
+        {
+          $set: { 'payload.consumed': Math.floor(Date.now() / 1000) },
+        }
+      );
     } catch (error) {
       this.logger.error(error as Error, {
         context: `Error in ${this.name}.consume for id ${_id}`,
@@ -305,7 +399,7 @@ export default class OIDCMongoAdapter
       const { includePayload = false, excludeFields = [] } = options;
 
       const result: MappedDocument = {
-        id: doc._id,
+        id: doc.logical_id || doc._id,
         expiresAt: doc.expiresAt,
         customData: doc.data || {},
       };
@@ -315,11 +409,13 @@ export default class OIDCMongoAdapter
       } else if (doc.payload) {
         if (doc.payload.accountId) result.accountId = doc.payload.accountId;
         if (doc.payload.uid) result.uid = doc.payload.uid;
-        if (doc.payload.loginTs)
+        if (doc.payload.loginTs !== undefined && doc.payload.loginTs !== null)
           result.loginTs = new Date(doc.payload.loginTs * 1000);
-        if (doc.payload.exp)
+        if (doc.payload.exp !== undefined && doc.payload.exp !== null)
           result.expiration = new Date(doc.payload.exp * 1000);
-        if (doc.payload.iat) result.issuedAt = new Date(doc.payload.iat * 1000);
+        if (doc.payload.iat !== undefined && doc.payload.iat !== null) {
+          result.issuedAt = new Date(doc.payload.iat * 1000);
+        }
         if (doc.payload.authorizations)
           result.authorizations = doc.payload.authorizations;
       }
@@ -333,7 +429,7 @@ export default class OIDCMongoAdapter
       this.logger.error(error as Error, {
         context: `Error mapping document to UI`,
       });
-      return { id: doc._id, customData: {} };
+      return { id: doc.logical_id || doc._id, customData: {} };
     }
   }
 
@@ -347,7 +443,7 @@ export default class OIDCMongoAdapter
     try {
       const tenant_id = tenantContext.getTenantId();
       return await this.coll().findOneAndUpdate(
-        { _id: id, tenant_id } as any,
+        tenantScopedIdentityFilter(tenant_id, id) as any,
         { $set: { data: customData } },
         { returnDocument: 'after' }
       );
@@ -367,7 +463,9 @@ export default class OIDCMongoAdapter
     value: unknown
   ): Promise<OIDCDocument[]> {
     try {
-      if (!field) return [];
+      if (!field || typeof field !== 'string' || field.trim().length === 0) {
+        return [];
+      }
 
       const tenant_id = tenantContext.getTenantId();
       const results = await this.coll()

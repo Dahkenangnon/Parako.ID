@@ -117,17 +117,11 @@ export const createSettingsModel = (): SettingsModel => {
       }
 
       this.version = this.incrementVersion();
+      this._version = (this._version ?? 0) + 1;
 
-      if (this.metadata) {
-        this.metadata.last_modified_by = modifiedBy;
-        this.metadata.change_reason = reason;
-      } else {
-        this.metadata = {
-          last_modified_by: modifiedBy,
-          change_reason: reason,
-          tags: [],
-        };
-      }
+      this.metadata.last_modified_by = modifiedBy;
+      this.metadata.change_reason = reason;
+      this.metadata.tags ??= [];
 
       return this.save();
     }
@@ -143,7 +137,7 @@ export const createSettingsModel = (): SettingsModel => {
   settingsSchema.method(
     'isNewerThan',
     function isNewerThan(this: any, timestamp: Date): boolean {
-      return this.updated_at && new Date(this.updated_at) > timestamp;
+      return Boolean(this.updated_at && new Date(this.updated_at) > timestamp);
     }
   );
 
@@ -166,7 +160,7 @@ export const createSettingsModel = (): SettingsModel => {
   });
 
   settingsSchema.static('getLatestVersion', function (key: string) {
-    return this.findOne({ key }).sort({ version: -1 });
+    return this.findOne({ key }).sort({ _version: -1 });
   });
 
   // Settings is global (NOT tenant-scoped) — opt out of tenant plugin

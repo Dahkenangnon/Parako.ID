@@ -26,9 +26,13 @@ const HKDF_INFO = 'aes-256-gcm-jwks-key';
  * phases, producing keys with a strong security proof.
  */
 export function deriveKeyFromSecret(secret: string): Buffer {
-  if (!secret || secret.length < 32) {
+  if (
+    typeof secret !== 'string' ||
+    secret.trim().length === 0 ||
+    secret.length < 32
+  ) {
     throw new Error(
-      'Secret must be at least 32 characters for secure key derivation'
+      'Secret must be a non-whitespace string of at least 32 characters for secure key derivation'
     );
   }
   return Buffer.from(hkdfSync('sha256', secret, HKDF_SALT, HKDF_INFO, 32));

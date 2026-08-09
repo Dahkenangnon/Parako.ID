@@ -179,6 +179,12 @@
                     <p class="mt-1 text-xs text-muted-foreground">How the client proves its identity to the token endpoint.</p>
                 </div>
 
+                <div>
+                    <label for="jwks_uri" class="block text-sm font-medium text-foreground mb-2">Client JWKS URI</label>
+                    <input type="url" id="jwks_uri" name="jwks_uri" value="{{ client.jwks_uri or '' }}" placeholder="https://client.example/.well-known/jwks.json" class="w-full px-3 py-2 border border-border focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <p class="mt-1 text-xs text-muted-foreground">Required for <code>private_key_jwt</code>. Leave blank only when this client uses an inline public JWKS registered through the API.</p>
+                </div>
+
                 <!-- PKCE -->
                 <div class="flex items-center">
                     <input type="checkbox" id="require_pkce" name="require_pkce" {{ 'checked' if client.require_pkce else '' }} class="border-border text-primary focus:ring-primary focus:ring-offset-0">

@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse as parseJsonc, ParseError } from 'jsonc-parser';
+import {
+  parse as parseJsonc,
+  printParseErrorCode,
+  type ParseError,
+  type ParseErrorCode,
+} from 'jsonc-parser';
 import { injectable, inject } from 'inversify';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type {
@@ -61,13 +66,9 @@ export class ConfigFileReader implements IConfigFileReader {
       const result = parseJsonc(fileContent, errors, parseOptions);
 
       if (errors.length > 0 && throwOnError) {
-        const errorMessages = errors
-          .map(
-            error =>
-              `${this.getErrorMessage(error.error)} at offset ${error.offset} (length: ${error.length})`
-          )
-          .join('; ');
-        throw new Error(`JSONC parsing errors: ${errorMessages}`);
+        throw new Error(
+          `JSONC parsing errors: ${this.formatParseErrors(errors)}`
+        );
       }
 
       return result as T;
@@ -109,13 +110,9 @@ export class ConfigFileReader implements IConfigFileReader {
       const result = parseJsonc(fileContent, errors, parseOptions);
 
       if (errors.length > 0 && throwOnError) {
-        const errorMessages = errors
-          .map(
-            error =>
-              `${this.getErrorMessage(error.error)} at offset ${error.offset} (length: ${error.length})`
-          )
-          .join('; ');
-        throw new Error(`JSONC parsing errors: ${errorMessages}`);
+        throw new Error(
+          `JSONC parsing errors: ${this.formatParseErrors(errors)}`
+        );
       }
 
       return result as T;
@@ -135,29 +132,17 @@ export class ConfigFileReader implements IConfigFileReader {
    * @param errorCode - Error code from jsonc-parser
    * @returns Human-readable error message
    */
-  private getErrorMessage(errorCode: number): string {
-    // Error codes from jsonc-parser
-    const errorMessages: Record<number, string> = {
-      1: 'Invalid symbol',
-      2: 'Invalid number',
-      3: 'Invalid string',
-      4: 'Invalid character',
-      5: 'Unexpected end of comment',
-      6: 'Unexpected end of string',
-      7: 'Unexpected end of number',
-      8: 'Invalid character in string escape sequence',
-      9: 'Invalid Unicode escape sequence',
-      10: 'Invalid escape character',
-      11: 'Unexpected end of array',
-      12: 'Unexpected end of object',
-      13: 'Unexpected token',
-      14: 'Property name expected',
-      15: 'Value expected',
-      16: 'Colon expected',
-      17: 'Comma expected',
-    };
+  private getErrorMessage(errorCode: ParseErrorCode): string {
+    return printParseErrorCode(errorCode).replace(/([a-z])([A-Z])/g, '$1 $2');
+  }
 
-    return errorMessages[errorCode] || `Unknown error (code: ${errorCode})`;
+  private formatParseErrors(errors: ParseError[]): string {
+    return errors
+      .map(
+        error =>
+          `${this.getErrorMessage(error.error)} at offset ${error.offset} (length: ${error.length})`
+      )
+      .join('; ');
   }
 
   /**
@@ -273,11 +258,19 @@ export class ConfigFileReader implements IConfigFileReader {
    */
   stripJsonComments(jsonString: string): string {
     try {
-      const parsed = parseJsonc(jsonString, [], {
+      const errors: ParseError[] = [];
+      const parsed = parseJsonc(jsonString, errors, {
         allowTrailingComma: true,
         disallowComments: false,
         allowEmptyContent: false,
       });
+
+      if (errors.length > 0) {
+        throw new Error(
+          `JSONC parsing errors: ${this.formatParseErrors(errors)}`
+        );
+      }
+
       return JSON.stringify(parsed, null, 2);
     } catch (error) {
       throw new Error(

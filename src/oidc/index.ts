@@ -218,12 +218,14 @@ export class OidcManager implements IOidcManager {
           const original = this.stripMountPath(req, currentOidcPath);
 
           const cb = this.getProviderCallback(tenantProvider);
-          // MUST await — cb() returns a Promise (Koa composed middleware).
-          // Dropping it causes unhandled rejections in Node.js 15+ (CRIT-2).
-          await cb(req, res);
-
-          req.url = original.url;
-          req.baseUrl = original.baseUrl;
+          try {
+            // MUST await — cb() returns a Promise (Koa composed middleware).
+            // Dropping it causes unhandled rejections in Node.js 15+ (CRIT-2).
+            await cb(req, res);
+          } finally {
+            req.url = original.url;
+            req.baseUrl = original.baseUrl;
+          }
 
           // Unmatched OIDC sub-path: the post-middleware in
           // `configureProvider` set `ctx.respond = false`, so the
@@ -276,10 +278,12 @@ export class OidcManager implements IOidcManager {
           const original = this.stripMountPath(req, currentOidcPath);
 
           const cb = this.getProviderCallback(currentProvider);
-          await cb(req, res);
-
-          req.url = original.url;
-          req.baseUrl = original.baseUrl;
+          try {
+            await cb(req, res);
+          } finally {
+            req.url = original.url;
+            req.baseUrl = original.baseUrl;
+          }
 
           // See multi-tenant branch above — `ctx.respond = false`
           // post-middleware leaves `res` untouched for unmatched

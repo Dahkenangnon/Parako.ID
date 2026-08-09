@@ -17,14 +17,20 @@ const NON_LOCALIZED_PATH_PREFIXES: ReadonlyArray<string> = [
 
 const isNonLocalizedPath = (path: string): boolean => {
   for (const prefix of NON_LOCALIZED_PATH_PREFIXES) {
-    if (path === prefix || path.startsWith(prefix)) return true;
+    const matches = prefix.endsWith('/')
+      ? path.startsWith(prefix)
+      : path === prefix;
+    if (matches) return true;
   }
   return false;
 };
 
 const isHtmlResponse = (res: Response): boolean => {
   const contentType = res.getHeader('Content-Type');
-  return typeof contentType === 'string' && contentType.includes('text/html');
+  return (
+    typeof contentType === 'string' &&
+    contentType.toLowerCase().includes('text/html')
+  );
 };
 
 /**

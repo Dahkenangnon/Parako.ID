@@ -26,15 +26,17 @@ export function toOrderBy(
  * This mapping is applied automatically in `paginateDelegate` so that
  * callers don't need to know which database backend is active.
  */
-const MONGO_OP_TO_PRISMA: Record<string, string> = {
-  $gt: 'gt',
-  $gte: 'gte',
-  $lt: 'lt',
-  $lte: 'lte',
-  $ne: 'not',
-  $in: 'in',
-  $nin: 'notIn',
-};
+const MONGO_OP_TO_PRISMA = new Map<string, string>([
+  ['$gt', 'gt'],
+  ['$gte', 'gte'],
+  ['$lt', 'lt'],
+  ['$lte', 'lte'],
+  ['$ne', 'not'],
+  ['$in', 'in'],
+  ['$nin', 'notIn'],
+]);
+
+const UNSAFE_FILTER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * Translate a filter from the cross-DB `$`-prefix convention into
@@ -44,12 +46,14 @@ const MONGO_OP_TO_PRISMA: Record<string, string> = {
  * - Operator objects like `{ $gt: v }` become `{ gt: v }`.
  * - Already-Prisma-format filters pass through unchanged (idempotent).
  */
-function normalizeToPrisma(
+export function normalizeToPrisma(
   filter: Record<string, unknown>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(filter)) {
+    if (UNSAFE_FILTER_KEYS.has(key)) continue;
+
     const pKey = key === '_id' ? 'id' : key;
 
     if (
@@ -59,12 +63,16 @@ function normalizeToPrisma(
       !(value instanceof Date)
     ) {
       const inner = value as Record<string, unknown>;
-      const hasMongoOps = Object.keys(inner).some(k => k in MONGO_OP_TO_PRISMA);
+      const hasMongoOps = Object.keys(inner).some(k =>
+        MONGO_OP_TO_PRISMA.has(k)
+      );
 
       if (hasMongoOps) {
         const mapped: Record<string, unknown> = {};
         for (const [op, val] of Object.entries(inner)) {
-          const pOp = MONGO_OP_TO_PRISMA[op];
+          if (UNSAFE_FILTER_KEYS.has(op)) continue;
+
+          const pOp = MONGO_OP_TO_PRISMA.get(op);
           mapped[pOp ?? op] = val;
         }
         out[pKey] = mapped;

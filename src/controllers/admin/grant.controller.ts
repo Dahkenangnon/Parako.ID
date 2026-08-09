@@ -8,13 +8,17 @@ import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device
 import type { IAdminUserGrantsController } from '../../di/interfaces/admin-user-grants-controller.interface.js';
 import { TYPES } from '../../di/types.js';
 import {
+  ADMIN_GRANT_SORT_FIELDS,
   escapeRegExp,
   extractListingQuery,
 } from '../../validators/listing-query.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { GuardError } from '../../utils/guard-error.js';
 
-const ADMIN_GRANT_SORT_FIELDS = ['created_at', 'exp'] as const;
+function firstQueryString(value: unknown): string {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === 'string' ? candidate : '';
+}
 
 @injectable()
 export class AdminUserGrantsController implements IAdminUserGrantsController {
@@ -46,16 +50,8 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       ADMIN_GRANT_SORT_FIELDS,
       { sortBy: 'created_at' }
     );
-    const clientId = (
-      Array.isArray(req.query.clientId)
-        ? req.query.clientId[0]
-        : (req.query.clientId as string) || ''
-    ).toString();
-    const username = (
-      Array.isArray(req.query.username)
-        ? req.query.username[0]
-        : (req.query.username as string) || ''
-    ).toString();
+    const clientId = firstQueryString(req.query.clientId);
+    const username = firstQueryString(req.query.username);
 
     const filters: any = {};
 
@@ -63,10 +59,13 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     // to neutralise ReDoS attacks. The 200-char cap above bounds parser
     // work even in pathological inputs.
     if (search) {
-      const safeSearch = new RegExp(escapeRegExp(search), 'i');
+      const safeSearch = {
+        $regex: escapeRegExp(search),
+        $options: 'i',
+      };
       filters.$or = [
-        { 'payload.accountId': { $regex: safeSearch } },
-        { 'payload.clientId': { $regex: safeSearch } },
+        { 'payload.accountId': safeSearch },
+        { 'payload.clientId': safeSearch },
       ];
     }
 
@@ -145,18 +144,13 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
           return 'Just now';
         };
 
-        const formatDate = (timestamp: number | null): string => {
-          if (!timestamp) return 'Unknown';
-          return new Date(timestamp * 1000).toLocaleDateString();
-        };
-
         return {
           id: grant._id,
           grantId: payload.jti || grant._id,
           username: payload.accountId || 'Unknown',
           client: clientInfo,
           scopes: Array.from(scopesSet),
-          grantedAt: formatDate(payload.iat),
+          grantedAt: payload.iat ? new Date(payload.iat * 1000) : 'Unknown',
           lastUsed: formatTime(payload.iat),
           expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
           expiresIn: formatTime(payload.exp),
@@ -207,7 +201,7 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         totalGrants,
         hasNext: page < totalPages,
         hasPrev: page > 1,
-        startIndex: (page - 1) * limit + 1,
+        startIndex: totalGrants > 0 ? (page - 1) * limit + 1 : 0,
         endIndex: Math.min(page * limit, totalGrants),
       },
       filters: {
@@ -290,7 +284,7 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       username: payload.accountId || 'Unknown',
       client: clientInfo,
       scopes: Array.from(scopesSet),
-      grantedAt: formatDate(payload.iat),
+      grantedAt: payload.iat ? new Date(payload.iat * 1000) : 'Unknown',
       expiresAt: payload.exp ? new Date(payload.exp * 1000) : null,
       expiresIn: formatDate(payload.exp),
       isExpired: payload.exp ? Date.now() > payload.exp * 1000 : false,

@@ -1,3 +1,11 @@
+const TOKEN_REDACTION_PATHS = [
+  'token.access_token',
+  'token.refresh_token',
+  'token.authorization_code',
+  'token.id_token',
+  'token.device_code',
+] as const;
+
 /**
  * Get environment-based default configuration for logger
  */
@@ -42,11 +50,7 @@ export function getEnvironmentDefaults(environment: string) {
                 'user.password',
                 'user.client_secret',
                 'client.client_secret',
-                'token.access_token',
-                'token.refresh_token',
-                'token.authorization_code',
-                'token.id_token',
-                'token.device_code',
+                ...TOKEN_REDACTION_PATHS,
                 'session.secret',
 
                 // Configuration fields (wildcard patterns)
@@ -119,8 +123,7 @@ export function getEnvironmentDefaults(environment: string) {
                 'user.password',
                 'user.client_secret',
                 'client.client_secret',
-                'token.access_token',
-                'token.refresh_token',
+                ...TOKEN_REDACTION_PATHS,
                 'session.secret',
 
                 // Configuration fields (wildcard patterns)
@@ -193,6 +196,7 @@ export function getEnvironmentDefaults(environment: string) {
                 'user.password',
                 'user.client_secret',
                 'client.client_secret',
+                ...TOKEN_REDACTION_PATHS,
                 'session.secret',
 
                 // Configuration fields (wildcard patterns)
@@ -263,6 +267,7 @@ export function getEnvironmentDefaults(environment: string) {
                 'user.password',
                 'user.client_secret',
                 'client.client_secret',
+                ...TOKEN_REDACTION_PATHS,
                 'session.secret',
 
                 // Configuration fields (wildcard patterns)

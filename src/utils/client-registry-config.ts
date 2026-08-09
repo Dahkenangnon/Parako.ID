@@ -7,6 +7,26 @@ import type { IConfigFileReader } from '../di/interfaces/config-file-reader.inte
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type { IClientRegistryManager } from '../di/interfaces/client-registry-manager.interface.js';
 import { TYPES } from '../di/types.js';
+import {
+  clientAuthMethodUsesSecret,
+  normalizeClientApplicationType,
+  SUPPORTED_GRANT_TYPES,
+  SUPPORTED_RESPONSE_TYPES,
+} from '../oidc/adapter/client.interface.js';
+import type { OidcClientData } from '../oidc/adapter/client.interface.js';
+import { validateClientKeyMetadata } from '../oidc/adapter/client-crud-utils.js';
+
+const JsonWebKeySchema = z
+  .object({
+    kty: z.string().min(1, 'JWK key type cannot be empty'),
+  })
+  .passthrough();
+
+const JsonWebKeySetSchema = z
+  .object({
+    keys: z.array(JsonWebKeySchema),
+  })
+  .passthrough();
 
 /**
  * Zod schema for OIDC Client configuration validation
@@ -14,112 +34,114 @@ import { TYPES } from '../di/types.js';
  * Based on OpenID Connect Core 1.0 specification and OAuth 2.0 Dynamic Client Registration
  * @see https://openid.net/specs/openid-connect-registration-1_0.html
  */
-export const OidcClientSchema = z.object({
-  client_id: z.string().min(1, 'Client ID cannot be empty'),
-  client_secret: z
-    .string()
-    .min(32, 'Client secret should be at least 32 characters for security')
-    .optional(),
+export const OidcClientSchema = z
+  .object({
+    client_id: z.string().trim().min(1, 'Client ID cannot be empty'),
+    client_secret: z
+      .string()
+      .min(32, 'Client secret should be at least 32 characters for security')
+      .optional(),
 
-  client_name: z.string().min(1, 'Client name cannot be empty').optional(),
-  client_uri: z.url('Client URI must be a valid URL').optional(),
-  logo_uri: z.url('Logo URI must be a valid URL').optional(),
-  tos_uri: z
-    .string()
-    .url('Terms of Service URI must be a valid URL')
-    .optional(),
-  policy_uri: z
-    .string()
-    .url('Privacy Policy URI must be a valid URL')
-    .optional(),
+    client_name: z
+      .string()
+      .trim()
+      .min(1, 'Client name cannot be empty')
+      .optional(),
+    client_uri: z.url('Client URI must be a valid URL').optional(),
+    logo_uri: z.url('Logo URI must be a valid URL').optional(),
+    tos_uri: z
+      .string()
+      .url('Terms of Service URI must be a valid URL')
+      .optional(),
+    policy_uri: z
+      .string()
+      .url('Privacy Policy URI must be a valid URL')
+      .optional(),
 
-  // Application type and authentication
-  application_type: z.enum(['web', 'native', 'spa'], {
-    error: 'Application type must be one of: web, native, spa',
-  }),
-  token_endpoint_auth_method: z
-    .enum([
-      'client_secret_basic',
-      'client_secret_post',
-      'client_secret_jwt',
-      'private_key_jwt',
-      'none',
-    ])
-    .default('client_secret_basic'),
-
-  grant_types: z
-    .array(
-      z.enum([
-        'authorization_code',
-        'implicit',
-        'refresh_token',
-        'client_credentials',
-        'password',
-        'urn:ietf:params:oauth:grant-type:device_code',
-        'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    // Application type and authentication
+    application_type: z.enum(['web', 'native', 'spa'], {
+      error: 'Application type must be one of: web, native, spa',
+    }),
+    preset: z
+      .enum(['web', 'spa', 'native', 'm2m', 'device', 'api_management'])
+      .optional(),
+    token_endpoint_auth_method: z
+      .enum([
+        'client_secret_basic',
+        'client_secret_post',
+        'client_secret_jwt',
+        'private_key_jwt',
+        'none',
       ])
-    )
-    .default(['authorization_code']),
+      .default('client_secret_basic'),
+    token_endpoint_auth_signing_alg: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{1,64}$/u)
+      .optional(),
 
-  response_types: z
-    .array(
-      z.enum([
-        'code',
-        'token',
-        'id_token',
-        'code token',
-        'code id_token',
-        'token id_token',
-        'code token id_token',
-      ])
-    )
-    .default(['code']),
+    grant_types: z
+      .array(z.enum(SUPPORTED_GRANT_TYPES))
+      .default(['authorization_code']),
 
-  // URIs
-  redirect_uris: z.array(z.url('Redirect URI must be a valid URL')).default([]),
-  post_logout_redirect_uris: z
-    .array(z.url('Post logout redirect URI must be a valid URL'))
-    .default([]),
+    response_types: z.array(z.enum(SUPPORTED_RESPONSE_TYPES)).default(['code']),
 
-  scope: z.string().default('openid'),
-  audience: z.url('Audience must be a valid URL').optional(),
+    // URIs
+    redirect_uris: z
+      .array(z.url('Redirect URI must be a valid URL'))
+      .default([]),
+    post_logout_redirect_uris: z
+      .array(z.url('Post logout redirect URI must be a valid URL'))
+      .default([]),
 
-  // Token format and TTL
-  accessTokenFormat: z.enum(['jwt', 'opaque']).default('jwt'),
-  id_token_signed_response_alg: z.string().default('RS256'),
-  userinfo_signed_response_alg: z.string().optional(),
+    scope: z.string().default('openid'),
+    audience: z.url('Audience must be a valid URL').optional(),
 
-  // PKCE
-  require_pkce: z.boolean().default(false),
+    // Token format and TTL
+    accessTokenFormat: z.enum(['jwt', 'opaque']).default('jwt'),
+    id_token_signed_response_alg: z.string().default('RS256'),
+    userinfo_signed_response_alg: z.string().optional(),
 
-  // Custom fields for internal use
-  allowedResources: z
-    .array(z.url('Allowed resource must be a valid URL'))
-    .default([]),
-  resourcesScopes: z.string().default(''),
-  isInternalClient: z.boolean().default(false),
+    // PKCE
+    require_pkce: z.boolean().default(false),
 
-  contacts: z.array(z.email('Contact must be a valid email')).default([]),
-  jwks_uri: z.url('JWKS URI must be a valid URL').optional(),
-  jwks: z.object({}).optional(),
+    // Custom fields for internal use
+    allowedResources: z
+      .array(z.url('Allowed resource must be a valid URL'))
+      .default([]),
+    resourcesScopes: z.string().default(''),
+    isInternalClient: z.boolean().default(false),
 
-  // Creation and modification timestamps
-  created_at: z.number().optional(),
-  updated_at: z.number().optional(),
+    contacts: z.array(z.email('Contact must be a valid email')).default([]),
+    jwks_uri: z.url('JWKS URI must be a valid URL').optional(),
+    jwks: JsonWebKeySetSchema.optional(),
 
-  // Client description and tags for management
-  description: z.string().optional(),
-  tags: z.array(z.string()).default([]),
+    // Creation and modification timestamps
+    created_at: z.number().optional(),
+    updated_at: z.number().optional(),
 
-  active: z.boolean().default(true),
+    // Client description and tags for management
+    description: z.string().optional(),
+    tags: z.array(z.string()).default([]),
 
-  // Device flow specific properties (RFC 8628)
-  device_authorization_endpoint: z.string().optional(),
-  device_code_lifetime: z.number().min(60).max(3600).optional(),
-  user_code_lifetime: z.number().min(60).max(3600).optional(),
-  verification_uri_complete: z.boolean().optional(),
-  user_code_challenge_method: z.string().optional(),
-});
+    active: z.boolean().default(true),
+
+    // Device flow specific properties (RFC 8628)
+    device_authorization_endpoint: z.string().optional(),
+    device_code_lifetime: z.number().min(60).max(3600).optional(),
+    user_code_lifetime: z.number().min(60).max(3600).optional(),
+    verification_uri_complete: z.boolean().optional(),
+    user_code_challenge_method: z.string().optional(),
+  })
+  .superRefine((client, context) => {
+    for (const message of validateClientKeyMetadata(
+      client as unknown as Partial<OidcClientData>,
+      { requirePrivateKeyJwtSource: true }
+    )) {
+      context.addIssue({ code: 'custom', message });
+    }
+  })
+  .transform(client => normalizeClientApplicationType(client));
 
 /**
  * Schema for the client registry configuration (parako-rp.jsonc)
@@ -183,6 +205,12 @@ export default class ClientRegistryManager implements IClientRegistryManager {
    * @returns Secure random string
    */
   generateSecureRandom(length: number = 64): string {
+    if (!Number.isFinite(length) || !Number.isInteger(length) || length <= 0) {
+      throw new RangeError(
+        'Secure random length must be a positive finite integer'
+      );
+    }
+
     const charset =
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     let result = '';
@@ -217,6 +245,12 @@ export default class ClientRegistryManager implements IClientRegistryManager {
    * @returns Secure client secret
    */
   generateClientSecret(length: number = 64): string {
+    if (length < 32) {
+      throw new RangeError(
+        'Client secret length must be at least 32 characters'
+      );
+    }
+
     return this.generateSecureRandom(length);
   }
 
@@ -341,9 +375,10 @@ export default class ClientRegistryManager implements IClientRegistryManager {
    */
   saveConfig(config: ClientRegistryConfig): void {
     try {
-      config.updated_at = Date.now();
-
-      const validatedConfig = ClientRegistrySchema.parse(config);
+      const validatedConfig = ClientRegistrySchema.parse({
+        ...config,
+        updated_at: Date.now(),
+      });
 
       const dir = path.dirname(this.configPath);
       if (!fs.existsSync(dir)) {
@@ -432,23 +467,27 @@ ${jsonContent}`;
    */
   addClient(client: Partial<OidcClient>): OidcClient {
     const config = this.loadConfig();
+    const candidate = { ...client };
 
-    if (!client.client_id) {
-      client.client_id = this.generateClientId();
+    if (!candidate.client_id) {
+      candidate.client_id = this.generateClientId();
     }
 
-    if (this.findClientById(client.client_id)) {
-      throw new Error(`Client with ID '${client.client_id}' already exists`);
+    if (this.findClientById(candidate.client_id)) {
+      throw new Error(`Client with ID '${candidate.client_id}' already exists`);
     }
 
-    if (!client.client_secret && client.application_type !== 'spa') {
-      client.client_secret = this.generateClientSecret();
+    if (
+      !candidate.client_secret &&
+      clientAuthMethodUsesSecret(candidate.token_endpoint_auth_method)
+    ) {
+      candidate.client_secret = this.generateClientSecret();
     }
 
-    client.created_at = Date.now();
-    client.updated_at = Date.now();
+    candidate.created_at = Date.now();
+    candidate.updated_at = Date.now();
 
-    const validatedClient = OidcClientSchema.parse(client);
+    const validatedClient = OidcClientSchema.parse(candidate);
 
     config.clients.push(validatedClient);
 

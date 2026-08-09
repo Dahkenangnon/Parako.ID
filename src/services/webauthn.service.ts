@@ -34,6 +34,16 @@ export class WebAuthnService implements IWebAuthnService {
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager
   ) {}
 
+  private async updateUser(
+    userId: string,
+    data: Parameters<IUserService['updateById']>[1]
+  ): Promise<void> {
+    const updatedUser = await this.userService.updateById(userId, data);
+    if (!updatedUser) {
+      throw new Error('Failed to update user');
+    }
+  }
+
   public getConfig(): WebAuthnConfig {
     const config = this.configManager.getConfig();
     const webauthn = config.security?.authentication?.multi_factor?.webauthn;
@@ -61,6 +71,11 @@ export class WebAuthnService implements IWebAuthnService {
     userDisplayName: string,
     existingCredentialIds?: string[]
   ): Promise<PublicKeyCredentialCreationOptionsJSON> {
+    const normalizedUserId = userId.trim();
+    if (!normalizedUserId) {
+      throw new Error('WebAuthn user ID is required');
+    }
+
     const config = this.getConfig();
 
     this.logger.info('Generating WebAuthn registration options', {
@@ -89,6 +104,7 @@ export class WebAuthnService implements IWebAuthnService {
     const options = await generateRegistrationOptions({
       rpName: config.rpName,
       rpID: config.rpId,
+      userID: Buffer.from(normalizedUserId, 'utf8'),
       userName,
       userDisplayName,
       attestationType: config.attestation as 'none' | 'direct' | 'enterprise',
@@ -280,7 +296,7 @@ export class WebAuthnService implements IWebAuthnService {
 
     const updatedCreds = [...existingCreds, credential];
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: true,
@@ -326,7 +342,7 @@ export class WebAuthnService implements IWebAuthnService {
       !!(user.mfa?.methods?.totp?.enabled && user.mfa?.methods?.totp?.secret) ||
       !!user.mfa?.methods?.email?.enabled;
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: hasOtherMethods || updatedCreds.length > 0,
@@ -355,6 +371,11 @@ export class WebAuthnService implements IWebAuthnService {
     credentialId: string,
     newName: string
   ): Promise<boolean> {
+    const normalizedName = newName.trim();
+    if (!normalizedName) {
+      throw new Error('Friendly name is required');
+    }
+
     const user = await this.userService.findByUsername(username);
     if (!user) {
       throw new Error('User not found');
@@ -367,7 +388,7 @@ export class WebAuthnService implements IWebAuthnService {
     const updatedCreds = existingCreds.map(c => {
       if (c.credential_id === credentialId) {
         found = true;
-        return { ...c, friendly_name: newName.trim() };
+        return { ...c, friendly_name: normalizedName };
       }
       return c;
     });
@@ -376,7 +397,7 @@ export class WebAuthnService implements IWebAuthnService {
       return false;
     }
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: user.mfa?.enabled ?? false,
@@ -394,7 +415,7 @@ export class WebAuthnService implements IWebAuthnService {
     this.logger.info('WebAuthn credential renamed', {
       username,
       credentialId,
-      newName,
+      newName: normalizedName,
     });
 
     return true;
@@ -428,6 +449,10 @@ export class WebAuthnService implements IWebAuthnService {
     credentialId: string,
     newCounter: number
   ): Promise<void> {
+    if (!Number.isSafeInteger(newCounter) || newCounter < 0) {
+      throw new Error('Credential counter must be a non-negative safe integer');
+    }
+
     const user = await this.userService.findByUsername(username);
     if (!user) {
       throw new Error('User not found');
@@ -435,6 +460,16 @@ export class WebAuthnService implements IWebAuthnService {
 
     const existingCreds =
       (user.mfa?.methods?.webauthn?.credentials as WebAuthnCredential[]) ?? [];
+    const existingCredential = existingCreds.find(
+      credential => credential.credential_id === credentialId
+    );
+    if (!existingCredential) {
+      throw new Error('Credential not found');
+    }
+    if (newCounter < existingCredential.counter) {
+      throw new Error('Credential counter cannot move backwards');
+    }
+
     const updatedCreds = existingCreds.map(c => {
       if (c.credential_id === credentialId) {
         return { ...c, counter: newCounter };
@@ -442,7 +477,7 @@ export class WebAuthnService implements IWebAuthnService {
       return c;
     });
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: user.mfa?.enabled ?? false,
@@ -469,6 +504,10 @@ export class WebAuthnService implements IWebAuthnService {
 
     const existingCreds =
       (user.mfa?.methods?.webauthn?.credentials as WebAuthnCredential[]) ?? [];
+    if (!existingCreds.some(c => c.credential_id === credentialId)) {
+      throw new Error('Credential not found');
+    }
+
     const updatedCreds = existingCreds.map(c => {
       if (c.credential_id === credentialId) {
         return { ...c, last_used_at: new Date() };
@@ -476,7 +515,7 @@ export class WebAuthnService implements IWebAuthnService {
       return c;
     });
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: user.mfa?.enabled ?? false,
@@ -500,6 +539,9 @@ export class WebAuthnService implements IWebAuthnService {
       'mfa.methods.webauthn.credentials.credential_id': credentialId,
     });
 
+    let match: { username: string; credential: WebAuthnCredential } | null =
+      null;
+
     for (const user of users) {
       const credentials =
         (user.mfa?.methods?.webauthn?.credentials as WebAuthnCredential[]) ??
@@ -508,11 +550,18 @@ export class WebAuthnService implements IWebAuthnService {
         c => c.credential_id === credentialId
       );
       if (credential) {
-        return { username: user.username, credential };
+        if (match) {
+          this.logger.error(
+            'WebAuthn credential is assigned to multiple users',
+            { credentialId }
+          );
+          return null;
+        }
+        match = { username: user.username, credential };
       }
     }
 
-    return null;
+    return match;
   }
 
   public async hasReachedMaxCredentials(username: string): Promise<boolean> {
@@ -535,7 +584,7 @@ export class WebAuthnService implements IWebAuthnService {
       );
     }
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: true,
@@ -563,7 +612,7 @@ export class WebAuthnService implements IWebAuthnService {
       !!(user.mfa?.methods?.totp?.enabled && user.mfa?.methods?.totp?.secret) ||
       !!user.mfa?.methods?.email?.enabled;
 
-    await this.userService.updateById(user._id as string, {
+    await this.updateUser(user._id as string, {
       mfa: {
         ...user.mfa,
         enabled: hasOtherMethods,

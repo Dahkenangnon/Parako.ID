@@ -28,6 +28,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   // Local type definitions to prevent global pollution
   interface EmailVerificationConfig {
     enableLoadingStates: boolean;
@@ -43,8 +45,7 @@
   interface EmailVerificationManagerOptions {
     config: EmailVerificationConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
-    errorRecoveryTimeout?: number;
+    debug: boolean;
   }
 
   class EmailVerificationManager {
@@ -56,10 +57,10 @@
     private submissionTimeout: number | null = null;
 
     // DOM elements
-    private forms: NodeListOf<HTMLFormElement> | null = null;
+    private forms!: NodeListOf<HTMLFormElement>;
 
     // Default translations (fallback)
-    private readonly defaultTranslations: Partial<TranslationStrings> = {
+    private readonly defaultTranslations: TranslationStrings = {
       resendVerificationEmail: 'Resend Verification Email',
       sendVerificationLink: 'Send Verification Link',
       sending: 'Sending...',
@@ -73,13 +74,13 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
-      this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
+      this.debug = options.debug;
+      this.errorRecoveryTimeout = this.config.errorRecoveryTimeout;
 
       this.initializeElements();
 
@@ -95,7 +96,7 @@
     private validateConfig(
       config: EmailVerificationConfig
     ): EmailVerificationConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           enableLoadingStates: true,
@@ -144,7 +145,7 @@
           null,
           'warn'
         );
-        return fallback as string;
+        return fallback;
       }
 
       return translation;
@@ -154,14 +155,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -169,10 +168,12 @@
      * Initialize DOM elements and event listeners
      */
     public run(): void {
-      if (!this.forms || this.forms.length === 0) {
+      if (this.forms.length === 0) {
         this.log('No forms found', null, 'error');
         return;
       }
+
+      if (!this.config.enableLoadingStates) return;
 
       this.setupForms();
     }
@@ -188,8 +189,6 @@
      * Setup form handling
      */
     private setupForms(): void {
-      if (!this.forms) return;
-
       this.forms.forEach((form, index) => {
         const submitButton = form.querySelector(
           'button[type="submit"]'
@@ -229,7 +228,7 @@
           submitButton.innerHTML = `
             <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700 dark:text-gray-200 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             ${this.getTranslation('sending')}
           `;
@@ -238,17 +237,13 @@
           submitButton.innerHTML = `
             <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             ${this.getTranslation('sending')}
           `;
         }
 
-        setTimeout(() => {
-          if (form) {
-            form.submit();
-          }
-        }, 100);
+        setTimeout(() => form.submit(), 100);
       });
     }
 
@@ -258,30 +253,21 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
-      if (this.forms) {
-        this.forms.forEach(form => {
-          const submitButton = form.querySelector(
-            'button[type="submit"]'
-          ) as HTMLButtonElement;
-          if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.classList.add('disabled-button');
-          }
-        });
-      }
+      this.forms.forEach(form => {
+        const submitButton = form.querySelector(
+          'button[type="submit"]'
+        ) as HTMLButtonElement;
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.classList.add('disabled-button');
+        }
+      });
 
       // Disable all forms to prevent any submission
-      if (this.forms) {
-        this.forms.forEach(form => {
-          form.style.pointerEvents = 'none';
-          form.classList.add('form-disabled');
-        });
-      }
+      this.forms.forEach(form => {
+        form.style.pointerEvents = 'none';
+        form.classList.add('form-disabled');
+      });
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -297,41 +283,35 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout as number);
+      this.submissionTimeout = null;
 
       // Re-enable all form submit buttons and restore visual state
-      if (this.forms) {
-        this.forms.forEach(form => {
-          const submitButton = form.querySelector(
-            'button[type="submit"]'
-          ) as HTMLButtonElement;
-          if (submitButton) {
-            submitButton.disabled = false;
-            submitButton.classList.remove('disabled-button');
+      this.forms.forEach(form => {
+        const submitButton = form.querySelector(
+          'button[type="submit"]'
+        ) as HTMLButtonElement;
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.classList.remove('disabled-button');
 
-            if (form.action.includes('/resend')) {
-              submitButton.innerHTML = this.getTranslation(
-                'resendVerificationEmail'
-              );
-            } else {
-              submitButton.innerHTML = this.getTranslation(
-                'sendVerificationLink'
-              );
-            }
+          if (form.action.includes('/resend')) {
+            submitButton.innerHTML = this.getTranslation(
+              'resendVerificationEmail'
+            );
+          } else {
+            submitButton.innerHTML = this.getTranslation(
+              'sendVerificationLink'
+            );
           }
-        });
-      }
+        }
+      });
 
       // Re-enable all forms
-      if (this.forms) {
-        this.forms.forEach(form => {
-          form.style.pointerEvents = 'auto';
-          form.classList.remove('form-disabled');
-        });
-      }
+      this.forms.forEach(form => {
+        form.style.pointerEvents = 'auto';
+        form.classList.remove('form-disabled');
+      });
     }
   }
 

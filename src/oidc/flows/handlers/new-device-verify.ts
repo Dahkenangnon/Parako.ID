@@ -19,6 +19,8 @@ import {
   oidcUidParamsSchema,
 } from '../../../validators/oidc/handlers.js';
 
+const NEW_DEVICE_VERIFICATION_TTL_MS = 10 * 60 * 1000;
+
 /**
  * Pending new device verification data stored in session
  */
@@ -114,6 +116,12 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
         return res.redirect(`${this.oidcPath}/interaction/${uid}`);
       }
 
+      if (this.isPendingVerificationExpired(pendingVerification)) {
+        this.logger.debug('Pending new device verification expired', { uid });
+        this.sessionManager.remove(req, 'pendingNewDeviceVerification');
+        return res.redirect(`${this.oidcPath}/interaction/${uid}`);
+      }
+
       const client = await provider.Client.find(pendingVerification.clientId);
 
       return res.render(this.viewResolver.views.auth.oidc.newDeviceVerify, {
@@ -171,6 +179,12 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
         return res.redirect(`${this.oidcPath}/interaction/${uid}`);
       }
 
+      if (this.isPendingVerificationExpired(pendingVerification)) {
+        this.logger.debug('Pending new device verification expired', { uid });
+        this.sessionManager.remove(req, 'pendingNewDeviceVerification');
+        return res.redirect(`${this.oidcPath}/interaction/${uid}`);
+      }
+
       let isValid = false;
 
       if (pendingVerification.method === 'totp') {
@@ -214,12 +228,13 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
         config.security.protection.device_matching.trust_duration_days || 30;
 
       const shouldTrustDevice = trust_this_device === 'true';
+      const verifiedAt = Date.now();
       const deviceTrust = shouldTrustDevice
         ? {
             trusted: true,
-            trusted_at: new Date(),
+            trusted_at: new Date(verifiedAt),
             trusted_until: new Date(
-              Date.now() + trustDurationDays * 24 * 60 * 60 * 1000
+              verifiedAt + trustDurationDays * 24 * 60 * 60 * 1000
             ),
             fingerprint: clientDetails.fingerprint,
           }
@@ -326,6 +341,17 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     const [local, domain] = email.split('@');
     if (local.length <= 2) return `${local[0]}***@${domain}`;
     return `${local[0]}${'*'.repeat(Math.min(local.length - 1, 4))}@${domain}`;
+  }
+
+  private isPendingVerificationExpired(
+    pendingVerification: PendingNewDeviceVerification
+  ): boolean {
+    const age = Date.now() - pendingVerification.created_at;
+    return (
+      !Number.isFinite(pendingVerification.created_at) ||
+      age < 0 ||
+      age > NEW_DEVICE_VERIFICATION_TTL_MS
+    );
   }
 }
 

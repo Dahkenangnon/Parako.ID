@@ -69,6 +69,15 @@ export class ConfigValidationMiddleware {
 
       if (smtp_host && smtp_port) {
         try {
+          const currentEmailConfig =
+            this.configManager.getConfig().integrations.email;
+          const bootstrapConfig =
+            (await this.configManager.getBootstrapConfig()) as unknown as BootstrapConfig;
+          const rejectUnauthorized =
+            data.email.tls_reject_unauthorized ??
+            currentEmailConfig.tls_reject_unauthorized ??
+            bootstrapConfig.deployment.environment === 'production';
+
           this.logger.debug('Testing SMTP connection', {
             host: smtp_host,
             port: smtp_port,
@@ -86,7 +95,7 @@ export class ConfigValidationMiddleware {
                   }
                 : undefined,
             tls: {
-              rejectUnauthorized: false,
+              rejectUnauthorized,
             },
           });
 
@@ -477,7 +486,13 @@ export class ConfigValidationMiddleware {
       } else {
         for (const origin of origins) {
           try {
-            new URL(origin);
+            const parsedOrigin = new URL(origin);
+            if (
+              parsedOrigin.protocol !== 'http:' &&
+              parsedOrigin.protocol !== 'https:'
+            ) {
+              throw new Error('Unsupported origin protocol');
+            }
           } catch {
             errors.push(`Invalid origin URL: ${origin}`);
           }
@@ -493,7 +508,13 @@ export class ConfigValidationMiddleware {
       } else {
         for (const origin of devOrigins) {
           try {
-            new URL(origin);
+            const parsedOrigin = new URL(origin);
+            if (
+              parsedOrigin.protocol !== 'http:' &&
+              parsedOrigin.protocol !== 'https:'
+            ) {
+              throw new Error('Unsupported origin protocol');
+            }
           } catch {
             errors.push(`Invalid dev origin URL: ${origin}`);
           }

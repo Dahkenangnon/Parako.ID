@@ -305,11 +305,11 @@
       ) as HTMLFormElement | null;
       if (!form) return;
 
-      form.addEventListener('submit', async e => {
-        const isValid = await this.validateCreateForm();
-        if (!isValid) {
-          e.preventDefault();
-        }
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        void this.validateCreateForm().then(isValid => {
+          if (isValid) form.submit();
+        });
       });
     }
 
@@ -395,11 +395,11 @@
       const form = document.querySelector('form') as HTMLFormElement | null;
       if (!form) return;
 
-      form.addEventListener('submit', async e => {
-        const isValid = await this.validateEditForm();
-        if (!isValid) {
-          e.preventDefault();
-        }
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        void this.validateEditForm().then(isValid => {
+          if (isValid) form.submit();
+        });
       });
     }
 

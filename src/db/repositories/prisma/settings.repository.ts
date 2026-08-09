@@ -25,6 +25,7 @@ function toISettings(row: SettingsRow): ISettings {
   const parsed = JSON.parse(row.value) as Partial<ISettings>;
   const meta = JSON.parse(row.metadata) as SettingsMeta;
   return {
+    ...parsed,
     id: row.id,
     _id: row.id,
     key: row.key,
@@ -34,22 +35,59 @@ function toISettings(row: SettingsRow): ISettings {
     is_active: row.is_active,
     metadata: Object.keys(meta).length > 0 ? meta : undefined,
     created_at: row.created_at.toISOString(),
-    ...parsed,
   } as ISettings;
 }
 
-const FIELD_MAP: Record<string, string> = {
-  is_active: 'is_active',
-  schema_version: 'schema_version',
-  _version: 'int_version',
-};
+const FIELD_MAP = new Map<string, string>([
+  ['is_active', 'is_active'],
+  ['schema_version', 'schema_version'],
+  ['_version', 'int_version'],
+]);
+
+const MANAGED_SETTINGS_FIELDS = new Set([
+  '_id',
+  'id',
+  'key',
+  'version',
+  'schema_version',
+  '_version',
+  'is_active',
+  'metadata',
+  'created_at',
+  'updated_at',
+  '__v',
+]);
+
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const SETTINGS_SAVE_MAX_ATTEMPTS = 16;
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2002'
+  );
+}
+
+function settingsContent(
+  value: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([key]) =>
+        !MANAGED_SETTINGS_FIELDS.has(key) && !UNSAFE_OBJECT_KEYS.has(key)
+    )
+  );
+}
 
 function toPrismaFilter(
   filter: Record<string, unknown>
 ): Record<string, unknown> {
   const mapped: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(filter)) {
-    mapped[FIELD_MAP[key] ?? key] = value;
+    if (UNSAFE_OBJECT_KEYS.has(key)) continue;
+    mapped[FIELD_MAP.get(key) ?? key] = value;
   }
   return mapped;
 }
@@ -88,6 +126,7 @@ export class PrismaSettingsRepository
   }
 
   async create(data: CreateSettingsDto): Promise<ISettings> {
+    const content = settingsContent(data as unknown as Record<string, unknown>);
     const row = await this.prisma.settings.create({
       data: {
         key: data.key,
@@ -95,7 +134,7 @@ export class PrismaSettingsRepository
         schema_version: data.schema_version ?? '1.0.0',
         int_version: data._version ?? 0,
         is_active: data.is_active ?? true,
-        value: JSON.stringify(data),
+        value: JSON.stringify(content),
         metadata: JSON.stringify(data.metadata ?? {}),
       },
     });
@@ -108,10 +147,25 @@ export class PrismaSettingsRepository
   ): Promise<ISettings> {
     const current = await this.prisma.settings.findUnique({ where: { id } });
     if (!current) throw new Error(`Settings not found: ${id}`);
-    const merged = { ...JSON.parse(current.value), ...data };
+    const currentContent = settingsContent(
+      JSON.parse(current.value) as Record<string, unknown>
+    );
+    const updateContent = settingsContent(
+      data as unknown as Record<string, unknown>
+    );
+    const merged = { ...currentContent, ...updateContent };
+    const managedUpdates: Record<string, unknown> = {};
+    if (data.key !== undefined) managedUpdates.key = data.key;
+    if (data.version !== undefined) managedUpdates.version = data.version;
+    if (data.schema_version !== undefined)
+      managedUpdates.schema_version = data.schema_version;
+    if (data._version !== undefined) managedUpdates.int_version = data._version;
+    if (data.is_active !== undefined) managedUpdates.is_active = data.is_active;
+    if (data.metadata !== undefined)
+      managedUpdates.metadata = JSON.stringify(data.metadata);
     const row = await this.prisma.settings.update({
       where: { id },
-      data: { value: JSON.stringify(merged) },
+      data: { ...managedUpdates, value: JSON.stringify(merged) },
     });
     return toISettings(row);
   }
@@ -154,33 +208,51 @@ export class PrismaSettingsRepository
     value: Partial<ISettings>,
     meta?: SettingsMeta
   ): Promise<ISettings> {
-    // Get latest for version increment (outside transaction — SQLite is file-locked)
-    const latest = await this.prisma.settings.findFirst({
-      where: { key },
-      orderBy: { int_version: 'desc' },
-    });
+    const content = settingsContent(value as Record<string, unknown>);
 
-    await this.prisma.settings.updateMany({
-      where: { key, is_active: true },
-      data: { is_active: false },
-    });
+    for (let attempt = 0; attempt < SETTINGS_SAVE_MAX_ATTEMPTS; attempt += 1) {
+      const deactivated = await this.prisma.settings.updateMany({
+        where: { key, is_active: true },
+        data: { is_active: false },
+      });
+      const latest = await this.prisma.settings.findFirst({
+        where: { key },
+        orderBy: { int_version: 'desc' },
+      });
 
-    const nextVersion = this.incrementPatch(latest?.version ?? '0.0.0');
-    const nextIntVersion = (latest?.int_version ?? 0) + 1;
+      // Another writer owns the interval between deactivation and insertion.
+      // Let it publish its revision, then claim that active row on a retry.
+      // The final attempt also recovers a key left inactive by a crashed writer.
+      if (
+        deactivated.count === 0 &&
+        latest !== null &&
+        attempt < SETTINGS_SAVE_MAX_ATTEMPTS - 1
+      ) {
+        continue;
+      }
 
-    const created = await this.prisma.settings.create({
-      data: {
-        key,
-        version: nextVersion,
-        schema_version: '1.0.0',
-        int_version: nextIntVersion,
-        is_active: true,
-        value: JSON.stringify(value),
-        metadata: JSON.stringify(meta ?? {}),
-      },
-    });
+      try {
+        const created = await this.prisma.settings.create({
+          data: {
+            key,
+            version: this.incrementPatch(latest?.version ?? '0.0.0'),
+            schema_version: '1.0.0',
+            int_version: (latest?.int_version ?? 0) + 1,
+            is_active: true,
+            value: JSON.stringify(content),
+            metadata: JSON.stringify(meta ?? {}),
+          },
+        });
 
-    return toISettings(created);
+        return toISettings(created);
+      } catch (error: unknown) {
+        if (!isUniqueConstraintError(error)) throw error;
+      }
+    }
+
+    throw new Error(
+      `Unable to save settings for key "${key}" after ${SETTINGS_SAVE_MAX_ATTEMPTS} attempts`
+    );
   }
 
   async getLatestVersion(key: string): Promise<string | null> {

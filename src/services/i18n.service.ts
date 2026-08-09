@@ -18,6 +18,8 @@ import { Request, Response, NextFunction } from 'express';
 export class I18nService implements II18nService {
   private isConfigured = false;
 
+  private readonly safeLocalePattern = /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/;
+
   constructor(
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager,
     @inject(TYPES.FileSystemUtils)
@@ -45,14 +47,16 @@ export class I18nService implements II18nService {
         'runtime/locales'
       );
 
-      const mergedPath = this.writeMergedLocales(
-        localesPath,
-        updatedConfig.application.locales.available
+      const { availableLocales, defaultLocale } = this.normalizeLocaleSettings(
+        updatedConfig.application.locales.available,
+        updatedConfig.application.locales.default
       );
 
+      const mergedPath = this.writeMergedLocales(localesPath, availableLocales);
+
       i18n.configure({
-        locales: updatedConfig.application.locales.available,
-        defaultLocale: updatedConfig.application.locales.default,
+        locales: availableLocales,
+        defaultLocale,
         directory: mergedPath,
         objectNotation: true,
         updateFiles: false,
@@ -70,14 +74,43 @@ export class I18nService implements II18nService {
       });
 
       this.logger.info('[I18nService] i18n reconfigured successfully', {
-        availableLocales: updatedConfig.application.locales.available,
-        defaultLocale: updatedConfig.application.locales.default,
+        availableLocales,
+        defaultLocale,
       });
     } catch (error) {
       this.logger.error(error as Error, {
         context: '[I18nService] Failed to reconfigure i18n',
       });
     }
+  }
+
+  private normalizeLocaleSettings(
+    configuredLocales: string[],
+    configuredDefault: string
+  ): { availableLocales: string[]; defaultLocale: string } {
+    const unsafeLocales = configuredLocales.filter(
+      locale => !this.safeLocalePattern.test(locale)
+    );
+    if (unsafeLocales.length > 0) {
+      this.logger.warn('[I18nService] Ignoring unsafe locale identifiers', {
+        locales: unsafeLocales,
+      });
+    }
+
+    const availableLocales = [
+      ...new Set(
+        configuredLocales.filter(locale => this.safeLocalePattern.test(locale))
+      ),
+    ];
+    if (availableLocales.length === 0) {
+      availableLocales.push('en');
+    }
+
+    const defaultLocale = availableLocales.includes(configuredDefault)
+      ? configuredDefault
+      : availableLocales[0];
+
+    return { availableLocales, defaultLocale };
   }
 
   /**
@@ -106,7 +139,16 @@ export class I18nService implements II18nService {
         if (fs.existsSync(localeFile)) {
           try {
             const content = fs.readFileSync(localeFile, 'utf-8');
-            const translations = JSON.parse(content);
+            const translations: unknown = JSON.parse(content);
+            if (
+              translations === null ||
+              typeof translations !== 'object' ||
+              Array.isArray(translations)
+            ) {
+              throw new TypeError(
+                `Locale namespace ${namespace}/${locale} must contain a JSON object`
+              );
+            }
             mergedTranslations[namespace] = translations;
           } catch (error) {
             this.logger.error(error as Error, {
@@ -173,14 +215,16 @@ export class I18nService implements II18nService {
       'runtime/locales'
     );
 
-    const mergedPath = this.writeMergedLocales(
-      localesPath,
-      config.application.locales.available
+    const { availableLocales, defaultLocale } = this.normalizeLocaleSettings(
+      config.application.locales.available,
+      config.application.locales.default
     );
 
+    const mergedPath = this.writeMergedLocales(localesPath, availableLocales);
+
     i18n.configure({
-      locales: config.application.locales.available,
-      defaultLocale: config.application.locales.default,
+      locales: availableLocales,
+      defaultLocale,
       directory: mergedPath,
       objectNotation: true,
       updateFiles: false,
@@ -227,7 +271,12 @@ export class I18nService implements II18nService {
       i18n.setLocale(localeOrReq);
     } else {
       // Request-specific locale set (preferred for per-request locale)
-      i18n.setLocale(localeOrReq, locale!);
+      if (locale === undefined) {
+        throw new TypeError(
+          'A locale is required for request-specific locale changes'
+        );
+      }
+      i18n.setLocale(localeOrReq, locale);
     }
   }
 

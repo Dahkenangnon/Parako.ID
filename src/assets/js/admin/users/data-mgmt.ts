@@ -11,6 +11,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   interface DialogApi {
     showAlert: (
       title: string,
@@ -42,8 +44,8 @@
     private clearLogForm: HTMLFormElement | null = null;
     private includePasswordsCheckbox: HTMLInputElement | null = null;
     private includeSensitiveDataCheckbox: HTMLInputElement | null = null;
-    private tabs: NodeListOf<HTMLButtonElement> | null = null;
-    private panels: NodeListOf<HTMLElement> | null = null;
+    private tabs!: NodeListOf<HTMLButtonElement>;
+    private panels!: NodeListOf<HTMLElement>;
 
     private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
@@ -83,14 +85,12 @@
     }
 
     private setupTabs(): void {
-      if (!this.tabs || !this.panels) return;
-
       this.tabs.forEach(tab => {
         tab.addEventListener('click', () => {
           const targetTab = tab.dataset.tab;
           if (!targetTab) return;
 
-          this.tabs?.forEach(t => {
+          this.tabs.forEach(t => {
             const isActive = t.dataset.tab === targetTab;
             t.setAttribute('aria-selected', isActive ? 'true' : 'false');
             t.classList.toggle('border-primary', isActive);
@@ -99,7 +99,7 @@
             t.classList.toggle('text-muted-foreground', !isActive);
           });
 
-          this.panels?.forEach(panel => {
+          this.panels.forEach(panel => {
             const isActive = panel.id === targetTab + '-panel';
             panel.classList.toggle('hidden', !isActive);
           });
@@ -224,20 +224,19 @@
     }
 
     private showExportLoadingState(): void {
-      if (this.exportBtn) {
-        this.exportBtn.disabled = true;
-        this.exportBtn.innerHTML = this.getLoadingSpinner() + 'Exporting...';
+      const exportBtn = this.exportBtn;
+      if (!exportBtn) return;
 
-        // Re-enable button after download starts (file downloads don't reload page)
-        setTimeout(() => {
-          if (this.exportBtn) {
-            this.exportBtn.disabled = false;
-            this.exportBtn.innerHTML =
-              '<i data-lucide="download" class="h-4 w-4 mr-2"></i>Export to CSV';
-            this.refreshIcons();
-          }
-        }, 2000);
-      }
+      exportBtn.disabled = true;
+      exportBtn.innerHTML = this.getLoadingSpinner() + 'Exporting...';
+
+      // Re-enable button after download starts (file downloads don't reload page)
+      setTimeout(() => {
+        exportBtn.disabled = false;
+        exportBtn.innerHTML =
+          '<i data-lucide="download" class="h-4 w-4 mr-2"></i>Export to CSV';
+        this.refreshIcons();
+      }, 2000);
     }
 
     private async handleClearLogSubmit(e: Event): Promise<void> {

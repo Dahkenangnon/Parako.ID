@@ -48,10 +48,6 @@ export class GoogleSocialLogin
    * Initialize Google OpenID Connect client using the new discovery API
    */
   private async initializeGoogleClient(): Promise<void> {
-    if (this.remoteConfig) {
-      return;
-    }
-
     try {
       const providerConfig = this.getDefaultProviderConfig<OidcProviderConfig>(
         this.provider
@@ -80,7 +76,9 @@ export class GoogleSocialLogin
         }
       );
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'google_oidc_client_init_failed',
         provider: 'google',
       });
@@ -116,15 +114,6 @@ export class GoogleSocialLogin
 
       const providerSessionData = stateVerification.sessionData!;
 
-      // Additional validation for required parameters
-      if (!req.query.code) {
-        this.cleanupSocialLoginSession(req);
-        return {
-          success: false,
-          error: 'Authorization code is missing from callback',
-        };
-      }
-
       const getCurrentUrl = () => {
         const protocol = req.get('x-forwarded-proto') || req.protocol;
         const host = req.get('x-forwarded-host') || req.get('host');
@@ -143,8 +132,12 @@ export class GoogleSocialLogin
           }
         );
       } catch (callbackError) {
-        const technicalError = (callbackError as Error).message;
-        this.logger.error(callbackError as Error, {
+        const normalizedError =
+          callbackError instanceof Error
+            ? callbackError
+            : new Error(String(callbackError));
+        const technicalError = normalizedError.message;
+        this.logger.error(normalizedError, {
           context: 'google_oidc_callback_exchange_failed',
           provider: 'google',
           hasCode: !!req.query.code,
@@ -157,6 +150,15 @@ export class GoogleSocialLogin
           success: false,
           error: getUserFriendlyError('google', technicalError),
         };
+      }
+
+      if (
+        typeof tokenSet.access_token !== 'string' ||
+        tokenSet.access_token.trim().length === 0
+      ) {
+        throw new Error(
+          'Google token response did not include an access token'
+        );
       }
 
       this.logger.info('Google token exchange successful', {
@@ -173,15 +175,25 @@ export class GoogleSocialLogin
       try {
         const userInfoResponse = await client.fetchProtectedResource(
           this.remoteConfig!,
-          tokenSet.access_token!,
+          tokenSet.access_token,
           new URL('https://www.googleapis.com/oauth2/v2/userinfo'),
           'GET'
         );
 
+        if (!userInfoResponse.ok) {
+          throw new Error(
+            `Google userinfo request failed: ${userInfoResponse.status} ${userInfoResponse.statusText}`
+          );
+        }
+
         userInfo = await userInfoResponse.json();
       } catch (userInfoError) {
-        const technicalError = (userInfoError as Error).message;
-        this.logger.error(userInfoError as Error, {
+        const normalizedError =
+          userInfoError instanceof Error
+            ? userInfoError
+            : new Error(String(userInfoError));
+        const technicalError = normalizedError.message;
+        this.logger.error(normalizedError, {
           context: 'google_oidc_userinfo_failed',
           provider: 'google',
           hasAccessToken: !!tokenSet.access_token,
@@ -207,13 +219,21 @@ export class GoogleSocialLogin
       const mappedTokens = this.mapTokenData(tokenSet);
 
       // Use common user integration handling
-      return this.handleUserIntegration(mappedProviderData, mappedTokens, req);
+      const result = await this.handleUserIntegration(
+        mappedProviderData,
+        mappedTokens,
+        req
+      );
+      this.cleanupSocialLoginSession(req);
+      return result;
     } catch (error) {
-      const technicalError = (error as Error).message;
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      const technicalError = normalizedError.message;
+      this.logger.error(normalizedError, {
         context: 'google_oidc_callback_failed',
         provider: 'google',
-        errorName: (error as Error).name,
+        errorName: normalizedError.name,
         errorMessage: technicalError,
         // Redact sensitive query params - don't log the authorization code
         hasCode: !!req.query.code,
@@ -273,15 +293,14 @@ export class GoogleSocialLogin
 
       this.logger.info('Generated Google OpenID Connect authorization URL', {
         provider: 'google',
-        state,
-        codeVerifier: `${codeVerifier.substring(0, 8)}...`, // Log partial for debugging
-        url: redirectTo.href,
         scopes: providerConfig.scopes,
       });
 
       return redirectTo.href;
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'google_oidc_authorization_url_failed',
         provider: 'google',
       });
@@ -293,11 +312,17 @@ export class GoogleSocialLogin
    * Map Google OpenID Connect user info to our standard format
    */
   mapProviderUserData(userInfo: any): ProviderUserData {
+    const rawSubject = userInfo?.sub ?? userInfo?.id;
+    const subject = typeof rawSubject === 'string' ? rawSubject.trim() : '';
+    if (!subject) {
+      throw new Error('Google user info did not include a subject identifier');
+    }
+
     return {
-      sub: userInfo.sub || userInfo.id,
+      sub: subject,
       email: userInfo.email,
       email_verified:
-        userInfo.email_verified || userInfo.verified_email || false,
+        userInfo.email_verified === true || userInfo.verified_email === true,
       name: userInfo.name,
       given_name: userInfo.given_name,
       family_name: userInfo.family_name,
@@ -305,7 +330,7 @@ export class GoogleSocialLogin
       locale: userInfo.locale,
       provider_username: userInfo.email?.split('@')[0],
       raw_data: {
-        id: userInfo.sub || userInfo.id,
+        id: subject,
         email_verified: userInfo.email_verified || userInfo.verified_email,
         hd: userInfo.hd, // Hosted domain (for Google Workspace)
         link: userInfo.link,
@@ -322,14 +347,22 @@ export class GoogleSocialLogin
    * Map Google OpenID Connect tokens to our standard format
    */
   mapTokenData(tokenSet: any): TokenData {
+    const expiresAtSeconds =
+      typeof tokenSet.expires_at === 'number' &&
+      Number.isFinite(tokenSet.expires_at) &&
+      tokenSet.expires_at >= 0
+        ? tokenSet.expires_at
+        : undefined;
+
     return {
       access_token: tokenSet.access_token,
       refresh_token: tokenSet.refresh_token,
       id_token: tokenSet.id_token,
       token_type: tokenSet.token_type || 'Bearer',
-      expires_at: tokenSet.expires_at
-        ? new Date(tokenSet.expires_at * 1000)
-        : undefined,
+      expires_at:
+        expiresAtSeconds === undefined
+          ? undefined
+          : new Date(expiresAtSeconds * 1000),
       scope: tokenSet.scope,
     };
   }
@@ -374,7 +407,9 @@ export class GoogleSocialLogin
 
       return newTokens;
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'google_token_refresh_failed',
         integrationId,
       });
@@ -398,9 +433,8 @@ export class GoogleSocialLogin
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       throw new Error(
-        `Google token revocation failed: ${response.status} - ${errorText}`
+        `Google token revocation failed: ${response.status} ${response.statusText}`
       );
     }
 

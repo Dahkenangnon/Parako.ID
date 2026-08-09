@@ -28,12 +28,16 @@ type PaginatedServiceResult<T> = {
   totalPages: number;
 };
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Settings service for managing application configuration in database
  */
 @injectable()
 export class SettingsService implements ISettingsService {
-  private static readonly MAIN_CONFIG_KEY = 'parako_config';
+  static readonly MAIN_CONFIG_KEY = 'parako_config';
   private static readonly CONFIG_VERSION = '1.0.0';
 
   // Mutex lock for configuration updates to prevent race conditions
@@ -122,16 +126,22 @@ export class SettingsService implements ISettingsService {
       sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
     }
   ): Promise<PaginatedServiceResult<ISettings>> {
-    const docs = await this.settingsRepo.findMany(
-      filter as Record<string, unknown>,
-      { sort: options.sort, limit: options.limit }
-    );
+    const normalizedFilter = filter as Record<string, unknown>;
+    const skip = (options.page - 1) * options.limit;
+    const [docs, totalResults] = await Promise.all([
+      this.settingsRepo.findMany(normalizedFilter, {
+        sort: options.sort,
+        limit: options.limit,
+        skip,
+      }),
+      this.settingsRepo.count(normalizedFilter),
+    ]);
     return {
       results: docs,
-      page: 1,
-      limit: options.limit || docs.length,
-      totalResults: docs.length,
-      totalPages: 1,
+      page: options.page,
+      limit: options.limit,
+      totalResults,
+      totalPages: Math.ceil(totalResults / options.limit),
     };
   }
 
@@ -220,7 +230,7 @@ export class SettingsService implements ISettingsService {
         } catch (error) {
           this.logger.error(
             `[SettingsService] Failed to decrypt field: ${fieldPath}`,
-            { error: error instanceof Error ? error.message : String(error) }
+            { error: errorMessage(error) }
           );
         }
       }
@@ -242,7 +252,11 @@ export class SettingsService implements ISettingsService {
 
     const isValidHex =
       encryptionKey.length === 64 && /^[0-9a-fA-F]{64}$/.test(encryptionKey);
-    const isValidBase64 = encryptionKey.length === 44;
+    const base64Buffer = Buffer.from(encryptionKey, 'base64');
+    const isValidBase64 =
+      encryptionKey.length === 44 &&
+      base64Buffer.length === 32 &&
+      base64Buffer.toString('base64') === encryptionKey;
     const isValidBuffer = Buffer.from(encryptionKey).length === 32;
 
     if (!isValidHex && !isValidBase64 && !isValidBuffer) {
@@ -634,12 +648,6 @@ export class SettingsService implements ISettingsService {
     }
   }
 
-  private incrementVersion(version: string): string {
-    const versionParts = version.split('.').map(Number);
-    versionParts[2] = (versionParts[2] || 0) + 1;
-    return versionParts.join('.');
-  }
-
   // Keep for external callers (admin panel uses this)
   public generateConfigDiff(
     oldConfig: any,
@@ -707,29 +715,27 @@ export class SettingsService implements ISettingsService {
         continue;
       }
 
-      if (oldValue !== undefined && newValue !== undefined) {
-        if (
-          typeof oldValue === 'object' &&
-          !Array.isArray(oldValue) &&
-          oldValue !== null &&
-          typeof newValue === 'object' &&
-          !Array.isArray(newValue) &&
-          newValue !== null
-        ) {
-          const nestedChanges = this.generateConfigDiff(
-            oldValue,
-            newValue,
-            fieldPath
-          );
-          changes.push(...nestedChanges);
-        } else if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-          changes.push({
-            field: fieldPath,
-            oldValue: maskIfSensitive(fieldPath, oldValue),
-            newValue: maskIfSensitive(fieldPath, newValue),
-            changeType: 'modified',
-          });
-        }
+      if (
+        typeof oldValue === 'object' &&
+        !Array.isArray(oldValue) &&
+        oldValue !== null &&
+        typeof newValue === 'object' &&
+        !Array.isArray(newValue) &&
+        newValue !== null
+      ) {
+        const nestedChanges = this.generateConfigDiff(
+          oldValue,
+          newValue,
+          fieldPath
+        );
+        changes.push(...nestedChanges);
+      } else if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes.push({
+          field: fieldPath,
+          oldValue: maskIfSensitive(fieldPath, oldValue),
+          newValue: maskIfSensitive(fieldPath, newValue),
+          changeType: 'modified',
+        });
       }
     }
 
@@ -947,7 +953,7 @@ export class SettingsService implements ISettingsService {
         } catch (error) {
           this.logger.error('[SettingsService] Failed to deactivate config', {
             version: config.version,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         }
       }
@@ -989,7 +995,7 @@ export class SettingsService implements ISettingsService {
       }
     } catch (error) {
       this.logger.error('[SettingsService] Validation failed with error', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
         context: 'validate_and_fix_active_configs',
       });
 
@@ -1036,7 +1042,7 @@ export class SettingsService implements ISettingsService {
         } catch (error) {
           this.logger.error('[SettingsService] Failed to delete old version', {
             id,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         }
       }

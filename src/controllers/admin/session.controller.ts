@@ -21,6 +21,11 @@ import {
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
+function firstQueryString(value: unknown): string {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === 'string' ? candidate : '';
+}
+
 /**
  * Admin Sessions Controller
  * Handles displaying and managing all user sessions (OIDC + Express) for admin panel
@@ -87,10 +92,8 @@ export class AdminSessionsController implements IAdminSessionsController {
       ADMIN_SESSION_SORT_FIELDS,
       { sortBy: 'loginTime' }
     );
-    const username = ((req.query.username as string) || '')
-      .trim()
-      .slice(0, 100);
-    const status = ((req.query.status as string) || 'all').trim();
+    const username = firstQueryString(req.query.username).trim().slice(0, 100);
+    const status = firstQueryString(req.query.status).trim() || 'all';
 
     const expressPage = parsePositiveInt(req.query.expressPage, {
       default: 1,
@@ -113,7 +116,8 @@ export class AdminSessionsController implements IAdminSessionsController {
     // https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
     if (username) {
       filters['payload.accountId'] = {
-        $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
+        $regex: `^${escapeRegExp(username)}`,
+        $options: 'i',
       };
     }
 

@@ -1,4 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
+import {
+  clientAuthMethodUsesSecret,
+  normalizeClientApplicationType,
+} from '../client.interface.js';
 import type {
   OidcClientData,
   ClientFilters,
@@ -33,6 +37,41 @@ type OidcStoreRow = {
   created_at: Date;
 };
 
+const REGEX_ESCAPE_SEQUENCE = /\\([.*+?^${}()|[\]\\])/g;
+
+function regexLiteral(value: unknown): string | undefined {
+  const pattern = value instanceof RegExp ? value.source : value;
+  return typeof pattern === 'string'
+    ? pattern.replace(REGEX_ESCAPE_SEQUENCE, '$1')
+    : undefined;
+}
+
+function indexedStringFilter(value: unknown): unknown {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object' || !('$regex' in value)) {
+    return undefined;
+  }
+
+  const literal = regexLiteral((value as Record<string, unknown>).$regex);
+  return literal === undefined ? undefined : { contains: literal };
+}
+
+function indexedSortColumn(sortBy: string): string {
+  switch (sortBy) {
+    case 'payload.accountId':
+    case 'username':
+      return 'account_id';
+    case 'payload.clientId':
+      return 'client_id';
+    case 'payload.exp':
+    case 'exp':
+    case 'expiresAt':
+      return 'expires_at';
+    default:
+      return 'created_at';
+  }
+}
+
 /**
  * Prisma-backed admin service for OIDC store management.
  *
@@ -65,6 +104,15 @@ export class PrismaOidcAdminService {
     return { OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }] };
   }
 
+  /** Base predicate shared by every tenant-owned OIDC model operation. */
+  private modelWhere(additional: Record<string, unknown> = {}): any {
+    return {
+      model: this.model,
+      tenant_id: tenantContext.getTenantId(),
+      ...additional,
+    };
+  }
+
   /**
    * Translate MongoDB-style filters (used by session/grant controllers) into
    * Prisma where clauses using denormalized indexed columns.
@@ -75,17 +123,36 @@ export class PrismaOidcAdminService {
    *   - 'payload.exp'       → expires_at column ({ $gt } or { $lte })
    */
   private buildPrismaWhere(filters: Record<string, any>): any {
-    const where: any = { model: this.model };
+    const where: any = this.modelWhere();
 
     for (const [key, value] of Object.entries(filters)) {
       if (key === 'payload.kind') continue;
 
       if (key === 'payload.accountId') {
-        if (typeof value === 'string') {
-          where.account_id = value;
-        } else if (value && typeof value === 'object' && '$regex' in value) {
-          where.account_id = { contains: value.$regex };
-        }
+        const accountFilter = indexedStringFilter(value);
+        if (accountFilter !== undefined) where.account_id = accountFilter;
+      } else if (key === 'payload.clientId') {
+        const clientFilter = indexedStringFilter(value);
+        if (clientFilter !== undefined) where.client_id = clientFilter;
+      } else if (key === '$or' && Array.isArray(value)) {
+        const orFilters = value.flatMap(condition => {
+          if (!condition || typeof condition !== 'object') return [];
+
+          return Object.entries(condition).flatMap(([field, fieldValue]) => {
+            const column =
+              field === 'payload.accountId'
+                ? 'account_id'
+                : field === 'payload.clientId'
+                  ? 'client_id'
+                  : undefined;
+            if (!column) return [];
+
+            const fieldFilter = indexedStringFilter(fieldValue);
+            return fieldFilter === undefined ? [] : [{ [column]: fieldFilter }];
+          });
+        });
+
+        if (orFilters.length > 0) where.OR = orFilters;
       } else if (key === 'payload.exp') {
         if (value && typeof value === 'object') {
           const expFilter: any = {};
@@ -104,14 +171,14 @@ export class PrismaOidcAdminService {
   async findByAccountId(accountId: string): Promise<any[]> {
     if (!accountId) return [];
     const rows = await this.prisma.oidcStore.findMany({
-      where: { model: this.model, account_id: accountId, ...this.notExpired },
+      where: this.modelWhere({ account_id: accountId, ...this.notExpired }),
     });
     return (rows as OidcStoreRow[]).map(r => this.parsePayload(r));
   }
 
   async countSessions(filters: any = {}): Promise<number> {
     if (Object.keys(filters).length === 0) {
-      return this.prisma.oidcStore.count({ where: { model: this.model } });
+      return this.prisma.oidcStore.count({ where: this.modelWhere() });
     }
     return this.prisma.oidcStore.count({
       where: this.buildPrismaWhere(filters),
@@ -120,19 +187,21 @@ export class PrismaOidcAdminService {
 
   async findSessionsWithPagination(
     filters: any = {},
-    _sortBy: string = 'created_at',
+    sortBy: string = 'created_at',
     sortOrder: number = -1,
     skip: number = 0,
     limit: number = 20
   ): Promise<any[]> {
     const where =
       Object.keys(filters).length === 0
-        ? { model: this.model }
+        ? this.modelWhere()
         : this.buildPrismaWhere(filters);
 
     const rows = await this.prisma.oidcStore.findMany({
       where,
-      orderBy: { created_at: sortOrder === -1 ? 'desc' : 'asc' },
+      orderBy: {
+        [indexedSortColumn(sortBy)]: sortOrder === -1 ? 'desc' : 'asc',
+      },
       skip,
       take: limit,
     });
@@ -145,7 +214,7 @@ export class PrismaOidcAdminService {
    */
   async findSessionById(sessionId: string): Promise<any | null> {
     const row = await this.prisma.oidcStore.findFirst({
-      where: { id: sessionId, model: this.model },
+      where: this.modelWhere({ id: sessionId }),
     });
     return row ? this.parsePayload(row as OidcStoreRow) : null;
   }
@@ -156,7 +225,7 @@ export class PrismaOidcAdminService {
    */
   async revokeSession(sessionId: string): Promise<boolean> {
     const { count } = await this.prisma.oidcStore.deleteMany({
-      where: { id: sessionId, model: this.model },
+      where: this.modelWhere({ id: sessionId }),
     });
     return count > 0;
   }
@@ -166,11 +235,10 @@ export class PrismaOidcAdminService {
     excludeSessionId: string
   ): Promise<number> {
     const { count } = await this.prisma.oidcStore.deleteMany({
-      where: {
-        model: this.model,
+      where: this.modelWhere({
         account_id: accountId,
         id: { not: excludeSessionId },
-      },
+      }),
     });
     return count;
   }
@@ -185,12 +253,11 @@ export class PrismaOidcAdminService {
   }> {
     const now = new Date();
     const [total, expired] = await Promise.all([
-      this.prisma.oidcStore.count({ where: { model: this.model } }),
+      this.prisma.oidcStore.count({ where: this.modelWhere() }),
       this.prisma.oidcStore.count({
-        where: {
-          model: this.model,
+        where: this.modelWhere({
           expires_at: { not: null, lt: now },
-        },
+        }),
       }),
     ]);
     return { total, active: total - expired, expired };
@@ -201,7 +268,7 @@ export class PrismaOidcAdminService {
     if (field === 'payload.accountId') {
       const where =
         Object.keys(filters).length === 0
-          ? { model: this.model }
+          ? this.modelWhere()
           : this.buildPrismaWhere(filters);
 
       const rows = await this.prisma.oidcStore.findMany({
@@ -216,7 +283,7 @@ export class PrismaOidcAdminService {
 
     // Fallback for other fields — must parse payload
     const rows = await this.prisma.oidcStore.findMany({
-      where: { model: this.model },
+      where: this.modelWhere(),
     });
     const values = new Set<any>();
     for (const r of rows as OidcStoreRow[]) {
@@ -231,7 +298,7 @@ export class PrismaOidcAdminService {
 
   async exportAllSessions(): Promise<any[]> {
     const rows = await this.prisma.oidcStore.findMany({
-      where: { model: this.model },
+      where: this.modelWhere(),
     });
     return (rows as OidcStoreRow[]).map(r => this.parsePayload(r));
   }
@@ -240,7 +307,7 @@ export class PrismaOidcAdminService {
     accountId: string
   ): Promise<{ deletedCount: number }> {
     const { count } = await this.prisma.oidcStore.deleteMany({
-      where: { model: this.model, account_id: accountId },
+      where: this.modelWhere({ account_id: accountId }),
     });
     return { deletedCount: count };
   }
@@ -255,7 +322,7 @@ export class PrismaOidcAdminService {
     if (sessionIds.length === 0) return { deletedCount: 0 };
 
     const { count } = await this.prisma.oidcStore.deleteMany({
-      where: { id: { in: sessionIds }, model: this.model },
+      where: this.modelWhere({ id: { in: sessionIds } }),
     });
     return { deletedCount: count };
   }
@@ -263,7 +330,7 @@ export class PrismaOidcAdminService {
   async findGrantsByAccountId(accountId: string): Promise<any[]> {
     if (!accountId) return [];
     const rows = await this.prisma.oidcStore.findMany({
-      where: { model: this.model, account_id: accountId },
+      where: this.modelWhere({ account_id: accountId }),
     });
     return (rows as OidcStoreRow[]).map(r => this.parsePayload(r));
   }
@@ -271,7 +338,7 @@ export class PrismaOidcAdminService {
   async findGrantsByClientId(clientId: string): Promise<any[]> {
     if (!clientId) return [];
     const rows = await this.prisma.oidcStore.findMany({
-      where: { model: this.model, client_id: clientId },
+      where: this.modelWhere({ client_id: clientId }),
     });
     return (rows as OidcStoreRow[]).map(r => this.parsePayload(r));
   }
@@ -298,7 +365,7 @@ export class PrismaOidcAdminService {
 
   async findGrantById(id: string): Promise<any | null> {
     const row = await this.prisma.oidcStore.findFirst({
-      where: { id, model: this.model },
+      where: this.modelWhere({ id }),
     });
     return row ? this.parsePayload(row as OidcStoreRow) : null;
   }
@@ -306,7 +373,7 @@ export class PrismaOidcAdminService {
   /** Base OIDC `find` — returns payload (what oidc-provider expects). */
   async find(id: string): Promise<any | undefined> {
     const row = await this.prisma.oidcStore.findFirst({
-      where: { id, model: this.model },
+      where: this.modelWhere({ id }),
     });
     if (!row) return undefined;
     return JSON.parse(row.payload);
@@ -315,7 +382,7 @@ export class PrismaOidcAdminService {
   /** Base OIDC `destroy`. */
   async destroy(id: string): Promise<void> {
     await this.prisma.oidcStore.deleteMany({
-      where: { id, model: this.model },
+      where: this.modelWhere({ id }),
     });
   }
 
@@ -336,32 +403,30 @@ export class PrismaOidcAdminService {
 
     // Use indexed columns for aggregate counts.
     const [total, expired, recent] = await Promise.all([
-      this.prisma.oidcStore.count({ where: { model: this.model } }),
+      this.prisma.oidcStore.count({ where: this.modelWhere() }),
       this.prisma.oidcStore.count({
-        where: {
-          model: this.model,
+        where: this.modelWhere({
           expires_at: { not: null, lt: now },
-        },
+        }),
       }),
       this.prisma.oidcStore.count({
-        where: {
-          model: this.model,
+        where: this.modelWhere({
           created_at: { gte: thirtyDaysAgo },
-        },
+        }),
       }),
     ]);
 
     const [clientGroups, userGroups] = await Promise.all([
       this.prisma.oidcStore.groupBy({
         by: ['client_id'],
-        where: { model: this.model, client_id: { not: null } },
+        where: this.modelWhere({ client_id: { not: null } }),
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 10,
       }),
       this.prisma.oidcStore.groupBy({
         by: ['account_id'],
-        where: { model: this.model, account_id: { not: null } },
+        where: this.modelWhere({ account_id: { not: null } }),
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
         take: 10,
@@ -392,7 +457,7 @@ export class PrismaOidcAdminService {
 
   async deleteByAccountId(accountId: string): Promise<void> {
     await this.prisma.oidcStore.deleteMany({
-      where: { model: this.model, account_id: accountId },
+      where: this.modelWhere({ account_id: accountId }),
     });
   }
 
@@ -460,12 +525,19 @@ export class PrismaOidcAdminService {
     const existing = await this.findClientById(clientId);
     if (!existing) return null;
 
-    const merged: OidcClientData = {
+    const merged: OidcClientData = normalizeClientApplicationType({
       ...existing,
       ...updates,
       client_id: clientId,
       updated_at: new Date().toISOString(),
-    };
+    });
+
+    const validation = validateClientData(merged);
+    if (!validation.isValid) {
+      throw new Error(
+        `Client validation failed: ${validation.errors.join(', ')}`
+      );
+    }
 
     const tenant_id = tenantContext.getTenantId();
     const encrypted = encryptClientSecret(merged);
@@ -503,6 +575,11 @@ export class PrismaOidcAdminService {
   ): Promise<RegenerateSecretResult | null> {
     const existing = await this.findClientById(clientId);
     if (!existing) return null;
+    if (!clientAuthMethodUsesSecret(existing.token_endpoint_auth_method)) {
+      throw new Error(
+        `Client "${existing.client_name}" does not use secret-based authentication`
+      );
+    }
 
     const newSecret = generateClientSecret();
     const updated = await this.updateClient(clientId, {

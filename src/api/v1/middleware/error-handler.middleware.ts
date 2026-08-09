@@ -11,8 +11,26 @@
  */
 
 import type { ErrorRequestHandler } from 'express';
+import { ZodError } from 'zod';
 
 import { ApiError, internal } from '../errors.js';
+
+const UNIQUE_CONSTRAINT_ERROR_CODES = new Set<unknown>([
+  11000, // MongoDB duplicate key
+  'P2002', // Prisma unique constraint
+  '23505', // PostgreSQL unique_violation
+  'SQLITE_CONSTRAINT_UNIQUE',
+  'SQLITE_CONSTRAINT_PRIMARYKEY',
+]);
+
+function hasErrorCode(error: unknown, codes: ReadonlySet<unknown>): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    codes.has((error as { code: unknown }).code)
+  );
+}
 
 /** Subset of application services required by the error handler middleware. */
 export interface ErrorHandlerDependencies {
@@ -31,11 +49,16 @@ export interface ErrorHandlerDependencies {
 export function createApiErrorHandler(
   deps: ErrorHandlerDependencies
 ): ErrorRequestHandler {
-  return (err, req, res, _next) => {
+  return (err, req, res, next) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+
     // 1. ApiError instances — serialise directly
     if (err instanceof ApiError) {
       const body = err.toJSON();
-      body.instance = body.instance || req.path;
+      body.instance = body.instance ?? req.path;
 
       if (err.status >= 500) {
         deps.logger.error(err, { path: req.path });
@@ -53,18 +76,10 @@ export function createApiErrorHandler(
         .json(body);
     }
 
-    // 2. Zod validation errors (ZodError has `issues` array)
-    if (
-      err &&
-      typeof err === 'object' &&
-      'issues' in err &&
-      Array.isArray((err as any).issues)
-    ) {
-      const zodErr = err as {
-        issues: Array<{ path: (string | number)[]; message: string }>;
-      };
-      const errors = zodErr.issues.map(issue => ({
-        field: issue.path.join('.'),
+    // 2. Genuine Zod validation errors.
+    if (err instanceof ZodError) {
+      const errors = err.issues.map(issue => ({
+        field: issue.path.map(segment => String(segment)).join('.') || '(root)',
         message: issue.message,
       }));
 
@@ -83,15 +98,8 @@ export function createApiErrorHandler(
         });
     }
 
-    // 3. Duplicate key / unique constraint error (MongoDB 11000, Prisma P2002)
-    if (
-      err &&
-      typeof err === 'object' &&
-      ((err as any).code === 11000 ||
-        (err as any).code === 'P2002' ||
-        ((err as any).message &&
-          (err as any).message.includes('Unique constraint')))
-    ) {
+    // 3. Duplicate key / unique constraint errors across supported adapters.
+    if (hasErrorCode(err, UNIQUE_CONSTRAINT_ERROR_CODES)) {
       deps.logger.warn('API conflict error', { path: req.path });
 
       return res

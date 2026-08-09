@@ -384,7 +384,8 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
                     context: 'Failed to send new device OTP',
                     username: user.username,
                   });
-                  // Continue without new device verification if email fails
+                  // Do not create a challenge the user cannot complete.
+                  throw err;
                 }
               }
 
@@ -424,8 +425,8 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
             context: 'Failed to regenerate session after OIDC login',
             username: userAccount.username,
           });
-          // Continue with authentication even if regeneration fails
-          // The security middleware will catch suspicious sessions
+          // Authentication must not continue on the pre-login session ID.
+          throw err;
         }
 
         const sessionSuccess = this.oidcUtils.addOrUpdateAccountInSession(

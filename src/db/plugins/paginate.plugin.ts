@@ -1,4 +1,5 @@
 import { Schema, type QueryFilter } from 'mongoose';
+import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 
 export interface PaginateOptions {
   sortBy?: string;
@@ -34,7 +35,18 @@ export interface PaginateResult<T> {
   links?: PaginationLinks;
 }
 
-const cache: Record<string, { data: any; expires: number }> = {};
+type CacheEntry = { data: any; expires: number };
+
+const modelCaches = new WeakMap<object, Map<string, CacheEntry>>();
+
+function getModelCache(model: object): Map<string, CacheEntry> {
+  let modelCache = modelCaches.get(model);
+  if (!modelCache) {
+    modelCache = new Map();
+    modelCaches.set(model, modelCache);
+  }
+  return modelCache;
+}
 
 /**
  * A plugin that adds pagination capabilities to mongoose schemas.
@@ -79,8 +91,13 @@ const paginate = (
         links,
       } = mergedOptions;
 
-      if (cacheKey) {
-        const cacheEntry = cache[cacheKey];
+      const scopedCacheKey = cacheKey
+        ? JSON.stringify([tenantContext.getTenantId(), cacheKey])
+        : undefined;
+      const modelCache = scopedCacheKey ? getModelCache(this) : undefined;
+
+      if (scopedCacheKey && modelCache) {
+        const cacheEntry = modelCache.get(scopedCacheKey);
         const now = Date.now();
         if (cacheEntry && cacheEntry.expires > now) {
           return cacheEntry.data;
@@ -120,7 +137,7 @@ const paginate = (
         }
       }
 
-      const combinedFilter = search ? { ...filter, ...searchFilter } : filter;
+      const combinedFilter = search ? { $and: [filter, searchFilter] } : filter;
 
       const countPromise = this.countDocuments(combinedFilter).exec();
 
@@ -186,12 +203,12 @@ const paginate = (
         };
       }
 
-      if (cacheKey) {
+      if (scopedCacheKey && modelCache) {
         const expireSeconds = cacheExpireSeconds || 60;
-        cache[cacheKey] = {
+        modelCache.set(scopedCacheKey, {
           data: result,
           expires: Date.now() + expireSeconds * 1000,
-        };
+        });
       }
 
       return result;

@@ -2,6 +2,7 @@ import { injectable } from 'inversify';
 import crypto from 'node:crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { IActivity } from '../../../models/activity.model.js';
+import type { ActivityCursor } from '../../../types/activity.js';
 import type {
   IActivityRepository,
   ActivityFilter,
@@ -138,6 +139,15 @@ function toIActivity(row: ActivityFull): IActivity {
   };
 }
 
+function normalizeActivityOrderBy(
+  orderBy: Record<string, unknown>
+): Record<string, unknown> {
+  const { username, ...remaining } = orderBy;
+  return username === undefined
+    ? orderBy
+    : { ...remaining, actor: { username } };
+}
+
 @injectable()
 export class PrismaActivityRepository
   extends AbstractPrismaRepository
@@ -192,7 +202,10 @@ export class PrismaActivityRepository
         device: data.device_infos
           ? {
               create: {
-                fingerprint: data.device_infos.fingerprint ?? null,
+                fingerprint:
+                  data.device_infos.fingerprint ??
+                  data.device_infos.device_trust?.fingerprint ??
+                  null,
                 fingerprint_js_id: data.device_infos.fingerprint_js_id ?? null,
                 browser_name: data.device_infos.browser?.name ?? null,
                 browser_version: data.device_infos.browser?.version ?? null,
@@ -222,6 +235,12 @@ export class PrismaActivityRepository
                 geo_lat: data.device_infos.geo_location?.latitude ?? null,
                 geo_lon: data.device_infos.geo_location?.longitude ?? null,
                 geo_timezone: data.device_infos.geo_location?.timezone ?? null,
+                device_trust_trusted:
+                  data.device_infos.device_trust?.trusted ?? null,
+                device_trust_trusted_at:
+                  data.device_infos.device_trust?.trusted_at ?? null,
+                device_trust_until:
+                  data.device_infos.device_trust?.trusted_until ?? null,
               },
             }
           : undefined,
@@ -247,7 +266,13 @@ export class PrismaActivityRepository
     return this.paginateDelegate(
       {
         findMany: args =>
-          this.prisma.activity.findMany({ ...args, include: ACTIVITY_INCLUDE }),
+          this.prisma.activity.findMany({
+            ...args,
+            orderBy: normalizeActivityOrderBy(
+              args.orderBy as Record<string, unknown>
+            ),
+            include: ACTIVITY_INCLUDE,
+          }),
         count: args => this.prisma.activity.count(args as any),
       },
       where,
@@ -258,9 +283,33 @@ export class PrismaActivityRepository
 
   async findByUser(
     userId: string,
-    opts?: PaginationOptions
+    opts?: PaginationOptions,
+    cursor?: ActivityCursor
   ): Promise<PaginatedResult<IActivity>> {
-    return this.findMany({ 'actor.user_id': userId }, opts);
+    const where: Record<string, unknown> = {
+      actor: { user_id: userId },
+    };
+
+    if (cursor) {
+      where.OR = [
+        { timestamp: { lt: cursor.timestamp } },
+        {
+          timestamp: { equals: cursor.timestamp },
+          id: { lt: cursor.id },
+        },
+      ];
+    }
+
+    return this.paginateDelegate(
+      {
+        findMany: args =>
+          this.prisma.activity.findMany({ ...args, include: ACTIVITY_INCLUDE }),
+        count: args => this.prisma.activity.count(args as any),
+      },
+      where,
+      opts,
+      row => toIActivity(row as ActivityFull)
+    );
   }
 
   async findByDevice(fingerprint: string): Promise<IActivity[]> {
@@ -278,7 +327,7 @@ export class PrismaActivityRepository
 
   async deleteOlderThan(date: Date): Promise<number> {
     const result = await this.prisma.activity.deleteMany({
-      where: { created_at: { lt: date } },
+      where: { timestamp: { lt: date } },
     });
     return result.count;
   }
@@ -288,6 +337,12 @@ export class PrismaActivityRepository
     if (filter?.status) where.status = filter.status;
     if (filter?.['actor.user_id']) {
       where.actor = { user_id: String(filter['actor.user_id']) };
+    }
+    if (filter?.['actor.username']) {
+      where.actor = {
+        ...(where.actor as object),
+        username: filter['actor.username'],
+      };
     }
     const groups = await this.prisma.activity.groupBy({
       by: ['type'],
@@ -310,6 +365,12 @@ export class PrismaActivityRepository
 
   private buildWhere(filter: ActivityFilter): Record<string, unknown> {
     const where: Record<string, unknown> = {};
+    if (filter.search) {
+      where.OR = [
+        { description: { contains: filter.search } },
+        { actor: { username: { contains: filter.search } } },
+      ];
+    }
     if (filter.type) {
       where.type = Array.isArray(filter.type)
         ? { in: filter.type }

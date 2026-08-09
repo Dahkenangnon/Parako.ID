@@ -1,4 +1,4 @@
-const FORM_ACTION_DIRECTIVE = /(^|;)form-action\s+([^;]*)/i;
+const FORM_ACTION_DIRECTIVE = /(^|;)(\s*)form-action\s+([^;]*)/i;
 
 /**
  * Extend an existing CSP form-action directive with a validated web redirect
@@ -25,11 +25,11 @@ export function allowFormActionRedirectOrigin(
   const redirectOrigin = redirectUrl.origin;
   return policy.replace(
     FORM_ACTION_DIRECTIVE,
-    (directive, prefix: string, sources: string) => {
+    (directive, prefix: string, whitespace: string, sources: string) => {
       const currentSources = sources.trim().split(/\s+/);
       if (currentSources.includes(redirectOrigin)) return directive;
 
-      return `${prefix}form-action ${sources.trim()} ${redirectOrigin}`;
+      return `${prefix}${whitespace}form-action ${sources.trim()} ${redirectOrigin}`;
     }
   );
 }

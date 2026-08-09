@@ -98,7 +98,7 @@ export function clientRoutes(controller: IClientsRouteController): Router {
   // POST /clients/:client_id/secret — regenerate
   router.post(
     '/:client_id/secret',
-    requireScope(SCOPES.CLIENTS_DELETE),
+    requireScope(SCOPES.CLIENTS_WRITE),
     apiRateLimiter('sensitive'),
     controller.regenerateSecret
   );

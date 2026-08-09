@@ -58,7 +58,9 @@ export class OIDCSocialLoginHandler implements IOIDCSocialLoginHandler {
         return res.status(400).render('auth/oidc/error.njk', {
           title: 'Invalid Request',
           error: 'Missing required OIDC parameters',
-          redirectUrl: `${this.oidcPath}/interaction/${uid}`,
+          redirectUrl: uid
+            ? `${this.oidcPath}/interaction/${uid}`
+            : '/auth/login',
         });
       }
 

@@ -136,7 +136,10 @@ export class SocialLoginManager implements ISocialLoginManager {
         client_id?: string;
         client_secret?: string;
       };
-      return !!(providerConfig.client_id && providerConfig.client_secret);
+      return [providerConfig.client_id, providerConfig.client_secret].every(
+        credential =>
+          typeof credential === 'string' && credential.trim().length > 0
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to check configuration for provider ${provider}`,

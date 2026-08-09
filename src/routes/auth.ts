@@ -34,8 +34,6 @@ import {
 } from '../validators/auth/social.js';
 import { asyncHandler } from '../middlewares/async-handler.js';
 
-const router = express.Router();
-
 /**
  * Register auth routes with the DI injectable services
  */
@@ -49,6 +47,7 @@ export const authRoutes = (
   sessionManager: ISessionManager,
   logger: ILogger
 ): Router => {
+  const router = express.Router();
   const config = configManager.getConfig();
   const routes = config.deployment.routes.auth_routes;
   const htmlDeps = { sessionManager, logger };
@@ -239,12 +238,14 @@ export const authRoutes = (
   router.get(
     '/social/:provider/login',
     socialLoginLimiter,
+    validateSocialProviderParams,
     validateAuthQuery,
     asyncHandler('auth.social.login', authController.socialLogin)
   );
   router.get(
     '/social/:provider/register',
     socialLoginLimiter,
+    validateSocialProviderParams,
     validateAuthQuery,
     asyncHandler('auth.social.register', authController.socialRegister)
   );
@@ -253,6 +254,7 @@ export const authRoutes = (
   router.get(
     '/social/:provider/callback',
     socialLoginLimiter,
+    validateSocialProviderParams,
     validateOauthCallbackQuery,
     asyncHandler('auth.social.callback', authController.socialCallback)
   );

@@ -15,6 +15,10 @@ import { PrismaOidcAdminService } from './prisma/admin-service.js';
 import { MongodbOidcAdminService } from './mongodb/admin-service.js';
 import { RedisOidcAdminService } from './redis/admin-service.js';
 
+function redactConnectionUrl(value: string | undefined): string | undefined {
+  return value?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@');
+}
+
 /**
  * OIDC Adapter Bridge
  *
@@ -384,23 +388,46 @@ export class OIDCAdapterBridge {
 
     const adapterType = this.adapterType;
     const config = this.configManager.getConfig();
-    const adapterConfig =
-      adapterType === 'redis'
-        ? config.oidc_storage.oidc_adapter.redis
-        : config.oidc_storage.oidc_adapter.mongodb;
+    let adapterConfig: unknown;
+
+    switch (adapterType) {
+      case 'mongodb': {
+        const mongodb = config.oidc_storage.oidc_adapter.mongodb;
+        adapterConfig = {
+          ...mongodb,
+          uri: redactConnectionUrl(mongodb.uri),
+        };
+        break;
+      }
+      case 'redis': {
+        const redis = config.oidc_storage.oidc_adapter.redis;
+        adapterConfig = {
+          ...redis,
+          password: redis.password ? '***' : redis.password,
+        };
+        break;
+      }
+      case 'sqlite':
+        adapterConfig = config.storage.sqlite;
+        break;
+      case 'postgresql': {
+        const postgresql = config.storage.postgresql;
+        if (!postgresql) {
+          adapterConfig = postgresql;
+          break;
+        }
+        adapterConfig = {
+          ...postgresql,
+          url: redactConnectionUrl(postgresql.url),
+        };
+        break;
+      }
+    }
 
     return {
       type: adapterType,
       status: 'connected',
-      config:
-        adapterType === 'mongodb'
-          ? {
-              ...adapterConfig,
-              uri: (
-                adapterConfig as typeof config.oidc_storage.oidc_adapter.mongodb
-              ).uri?.replace(/\/\/[^:]+:[^@]+@/, '//***:***@'),
-            }
-          : adapterConfig,
+      config: adapterConfig,
     };
   }
 

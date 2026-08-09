@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   class UserActivitiesManager {
     private typeSelect: HTMLSelectElement | null = null;
     private limitSelect: HTMLSelectElement | null = null;

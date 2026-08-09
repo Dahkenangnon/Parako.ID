@@ -11,6 +11,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   interface LucideApi {
     createIcons: () => void;
   }
@@ -135,10 +137,12 @@
     }
 
     public async testEmail(event: Event): Promise<void> {
+      const testButton = (event.currentTarget ??
+        event.target) as HTMLButtonElement;
       const testEmailInput = document.getElementById(
         'test-email'
       ) as HTMLInputElement | null;
-      const testEmail = testEmailInput?.value;
+      const testEmail = testEmailInput?.value.trim();
 
       if (!testEmail) {
         this.showNotification(
@@ -161,7 +165,6 @@
         return;
       }
 
-      const testButton = event.target as HTMLButtonElement;
       const originalButtonHtml = testButton.innerHTML;
       testButton.disabled = true;
       testButton.innerHTML =
@@ -219,9 +222,8 @@
     private showConfirmDialog(
       title: string,
       message: string,
-      confirmText = 'Confirm',
-      cancelText = 'Cancel',
-      isDanger = false
+      confirmText: string,
+      cancelText: string
     ): Promise<boolean> {
       return new Promise(resolve => {
         const backdrop = document.createElement('div');
@@ -238,9 +240,7 @@
         iconContainer.className = 'flex-shrink-0 mt-0.5';
         const icon = document.createElement('i');
         icon.setAttribute('data-lucide', 'alert-triangle');
-        icon.className = isDanger
-          ? 'h-6 w-6 text-red-500'
-          : 'h-6 w-6 text-amber-500';
+        icon.className = 'h-6 w-6 text-amber-500';
         iconContainer.appendChild(icon);
 
         const titleElement = document.createElement('h3');
@@ -270,10 +270,8 @@
 
         const confirmButton = document.createElement('button');
         confirmButton.type = 'button';
-        const buttonColor = isDanger
-          ? 'bg-red-600 hover:bg-red-700'
-          : 'bg-primary hover:bg-primary/90';
-        confirmButton.className = `px-4 py-2 text-sm font-medium text-white ${buttonColor}`;
+        confirmButton.className =
+          'px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90';
         confirmButton.textContent = confirmText;
 
         footer.appendChild(cancelButton);
@@ -284,7 +282,10 @@
         modal.appendChild(footer);
         backdrop.appendChild(modal);
 
-        const cleanup = () => backdrop.remove();
+        const cleanup = () => {
+          backdrop.remove();
+          document.removeEventListener('keydown', handleEscape);
+        };
 
         cancelButton.addEventListener('click', () => {
           cleanup();
@@ -306,7 +307,6 @@
         const handleEscape = (e: KeyboardEvent) => {
           if (e.key === 'Escape') {
             cleanup();
-            document.removeEventListener('keydown', handleEscape);
             resolve(false);
           }
         };

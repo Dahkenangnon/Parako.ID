@@ -12,6 +12,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   interface LucideApi {
     createIcons: () => void;
   }

@@ -11,6 +11,15 @@ import type { II18nService } from '../di/interfaces/i18n-service.interface.js';
 import { TYPES } from '../di/types.js';
 import { escapeHtml } from './views.js';
 
+function isOutsideRoot(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  );
+}
+
 export interface EmailAction {
   text: string;
   url: string;
@@ -89,18 +98,43 @@ export default class EmailUtils implements IEmailService {
     const uiConfig = this.configManager.getConfig().branding?.ui?.customization;
 
     if (uiConfig?.enabled && uiConfig?.views?.email?.mail) {
-      const customTemplatePath = path.join(
+      const customTemplateRoot = path.resolve(
         this.fileSystemUtils.rootDir,
-        uiConfig.rootPath || 'runtime/views',
+        uiConfig.rootPath || 'runtime/views'
+      );
+      const customTemplatePath = path.resolve(
+        customTemplateRoot,
         uiConfig.views.email.mail
       );
+      let resolvedTemplatePath: string | null = null;
 
-      if (this.isValidTemplateFile(customTemplatePath)) {
-        this.customEmailTemplate = customTemplatePath;
-        this.templatePath = path.dirname(customTemplatePath);
+      if (!isOutsideRoot(customTemplateRoot, customTemplatePath)) {
+        try {
+          const canonicalRoot = fs.realpathSync(customTemplateRoot);
+          const canonicalTemplatePath = fs.realpathSync(customTemplatePath);
+          if (!isOutsideRoot(canonicalRoot, canonicalTemplatePath)) {
+            resolvedTemplatePath = canonicalTemplatePath;
+          }
+        } catch (error) {
+          const err = error as NodeJS.ErrnoException;
+          if (err.code !== 'ENOENT' && err.code !== 'EISDIR') {
+            this.logger.error(err.message, {
+              context: 'failed_to_check_if_template_file_exists',
+              filePath: customTemplatePath,
+            });
+          }
+        }
+      }
+
+      if (
+        resolvedTemplatePath &&
+        this.isValidTemplateFile(resolvedTemplatePath)
+      ) {
+        this.customEmailTemplate = resolvedTemplatePath;
+        this.templatePath = path.dirname(resolvedTemplatePath);
 
         this.logger.info('Custom email template loaded', {
-          customTemplate: path.basename(customTemplatePath),
+          customTemplate: path.basename(resolvedTemplatePath),
         });
 
         this.nunjucksEnv = new nunjucks.Environment(
@@ -608,7 +642,8 @@ export default class EmailUtils implements IEmailService {
     notificationTitle: string,
     notificationContent: string,
     actionUrl?: string,
-    actionText?: string
+    actionText?: string,
+    locale?: string
   ): Promise<void> {
     const templateData: Record<string, any> = {
       title: notificationTitle,
@@ -629,7 +664,8 @@ export default class EmailUtils implements IEmailService {
       to,
       notificationTitle,
       'email/mail.njk',
-      templateData
+      templateData,
+      locale
     );
   }
 
@@ -655,10 +691,6 @@ export default class EmailUtils implements IEmailService {
    * This prevents incomplete sanitization where partial tags can be left behind.
    */
   private stripHtmlTags(input: string): string {
-    if (!input || typeof input !== 'string') {
-      return '';
-    }
-
     let result = '';
     let insideTag = false;
 

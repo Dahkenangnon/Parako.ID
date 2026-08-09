@@ -12,7 +12,9 @@ declare module 'oidc-provider/lib/helpers/initialize_keystore.js' {
    */
   export default function initializeKeyStore(
     this: import('oidc-provider').Provider,
-    jwks: { keys: JsonWebKey[] }
+    jwks: {
+      keys: import('./key-store/constants.js').JWKWithMetadata[];
+    }
   ): void;
 }
 

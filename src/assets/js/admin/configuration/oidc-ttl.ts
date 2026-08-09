@@ -1,4 +1,6 @@
 (function () {
+  if (typeof document === 'undefined') return;
+
   const ttlInputs = document.querySelectorAll<HTMLInputElement>('.ttl-input');
   ttlInputs.forEach(input => {
     input.addEventListener('change', function () {

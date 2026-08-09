@@ -34,6 +34,10 @@ export interface LoggerConfig {
   readonly environment: string;
   readonly level: string;
   readonly prettyPrint: boolean;
+  readonly fileLogging: {
+    readonly enabled: boolean;
+    readonly directory: string;
+  };
   readonly redact?: {
     readonly paths: string[];
     readonly remove: boolean;
@@ -69,7 +73,20 @@ function maskObject(obj: Record<string, unknown>): void {
 }
 
 function deepClone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
+  const ancestors: object[] = [];
+  return JSON.parse(
+    JSON.stringify(value, function (this: object, _key, nestedValue: unknown) {
+      if (typeof nestedValue === 'bigint') return nestedValue.toString();
+      if (nestedValue && typeof nestedValue === 'object') {
+        while (ancestors.length > 0 && ancestors.at(-1) !== this) {
+          ancestors.pop();
+        }
+        if (ancestors.includes(nestedValue)) return '[Circular]';
+        ancestors.push(nestedValue);
+      }
+      return nestedValue;
+    })
+  );
 }
 
 const serializers = {
@@ -111,7 +128,7 @@ const serializers = {
     if (!config || typeof config !== 'object') return null;
     const masked = deepClone(config) as Record<string, unknown>;
     maskObject(masked);
-    return { _masked: true, ...masked };
+    return { ...masked, _masked: true };
   },
 };
 
@@ -179,6 +196,8 @@ export class AppLogger implements ILogger {
       level: overrides?.level ?? defaults.security.logging.level,
       prettyPrint:
         overrides?.prettyPrint ?? defaults.security.logging.pretty_print,
+      fileLogging:
+        overrides?.fileLogging ?? defaults.security.logging.file_logging,
       redact: overrides?.redact ?? {
         paths: defaults.security.logging.redaction.paths,
         remove: true,
@@ -204,10 +223,7 @@ export class AppLogger implements ILogger {
 
     // Development with pretty printing
     if (this.config.environment === 'development' && this.config.prettyPrint) {
-      const prettyOptions = this.tryGetPrettyTransport();
-      if (prettyOptions) {
-        options.transport = prettyOptions;
-      }
+      options.transport = this.getPrettyTransport();
       return { logger: pino(options) };
     }
 
@@ -240,25 +256,19 @@ export class AppLogger implements ILogger {
     };
   }
 
-  private tryGetPrettyTransport(): LoggerOptions['transport'] | null {
-    try {
-      require.resolve('pino-pretty');
-      return {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          ignore: 'pid,hostname',
-        },
-      };
-    } catch {
-      return null;
-    }
+  private getPrettyTransport(): LoggerOptions['transport'] {
+    return {
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+      },
+    };
   }
 
   private tryCreateFileDestination(): FlushableDestination | null {
-    const defaults = getEnvironmentDefaults(this.config.environment);
-    const { enabled, directory } = defaults.security.logging.file_logging;
+    const { enabled, directory } = this.config.fileLogging;
 
     if (!enabled) return null;
 
@@ -293,44 +303,46 @@ export class AppLogger implements ILogger {
   }
 
   info(message: string, context?: LogContext): void {
-    this.logger.info({ message, ...context });
+    this.logger.info({ ...context, message });
   }
 
   warn(message: string, context?: LogContext): void {
-    this.logger.warn({ message, ...context });
+    this.logger.warn({ ...context, message });
   }
 
   debug(message: string, context?: LogContext): void {
-    this.logger.debug({ message, ...context });
+    this.logger.debug({ ...context, message });
   }
 
   trace(message: string, context?: LogContext): void {
-    this.logger.trace({ message, ...context });
+    this.logger.trace({ ...context, message });
   }
 
   fatal(message: string, context?: LogContext): void {
-    this.logger.fatal({ message, ...context });
+    this.logger.fatal({ ...context, message });
   }
 
   error(error: Error, context?: LogContext): void;
   error(message: string, context?: LogContext): void;
   error(errorOrMessage: Error | string, context?: LogContext): void {
     if (errorOrMessage instanceof Error) {
-      this.logger.error({ err: errorOrMessage, ...context });
+      this.logger.error({ ...context, err: errorOrMessage });
     } else {
-      this.logger.error({ message: errorOrMessage, ...context });
+      this.logger.error({ ...context, message: errorOrMessage });
     }
   }
 
   async flush(): Promise<void> {
-    if (!this.destination?.flush) return;
+    const flush = this.destination?.flush
+      ? this.destination.flush.bind(this.destination)
+      : this.logger.flush.bind(this.logger);
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Logger flush timeout'));
       }, FLUSH_TIMEOUT_MS);
 
-      this.destination!.flush!(err => {
+      flush(err => {
         clearTimeout(timeout);
         if (err) {
           reject(err);
@@ -344,11 +356,16 @@ export class AppLogger implements ILogger {
   async shutdown(): Promise<void> {
     try {
       await this.flush();
-      this.destination?.end?.();
     } catch (error) {
       // console.error here (not the structured logger): this IS the
       // logger, and it is shutting down. Falling back to stderr is the
       // only way to surface a failure during teardown.
+      console.error('Logger shutdown error:', error);
+    }
+
+    try {
+      this.destination?.end?.();
+    } catch (error) {
       console.error('Logger shutdown error:', error);
     }
   }

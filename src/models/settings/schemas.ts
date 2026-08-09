@@ -139,7 +139,7 @@ const brandingViewsSchema = new Schema(
     errorpage: brandingErrorsViewsSchema,
     email: new Schema(
       {
-        index: { type: String },
+        mail: { type: String },
       },
       { _id: false }
     ),
@@ -380,6 +380,12 @@ const deploymentAccountRoutesSchema = new Schema(
     recovery_setup: { type: String, required: true },
     security_questions_setup: { type: String, required: true },
     update_notification_preferences: { type: String, required: true },
+    settings_profile: { type: String, required: true },
+    settings_preferences: { type: String, required: true },
+    settings_notifications: { type: String, required: true },
+    settings_security: { type: String, required: true },
+    settings_recovery: { type: String, required: true },
+    settings_social: { type: String, required: true },
   },
   { _id: false }
 );
@@ -453,6 +459,7 @@ const securitySecretsSchema = new Schema(
     jwt_secret: { type: String, required: true },
     jwt_expires_in: { type: String, required: true },
     cookie_secrets: { type: [String], required: true },
+    hmac_secret: { type: String },
   },
   { _id: false }
 );
@@ -1214,10 +1221,51 @@ const featuresSocialProvidersSchema = new Schema(
   { _id: false }
 );
 
+const featuresMetricsSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    path: { type: String, default: '/metrics' },
+    include_default_metrics: { type: Boolean, default: true },
+    prefix: { type: String, default: 'parako_' },
+  },
+  { _id: false }
+);
+
+const featuresProviderPoolSchema = new Schema(
+  {
+    max_size: { type: Number, default: 50, min: 1 },
+    idle_ttl_ms: { type: Number, default: 1_800_000, min: 60_000 },
+    cleanup_interval_ms: { type: Number, default: 60_000, min: 10_000 },
+  },
+  { _id: false }
+);
+
+const featuresMultiTenancySchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    extraction_priority: {
+      type: [String],
+      enum: ['header', 'subdomain'],
+      default: ['header', 'subdomain'],
+    },
+    tenant_header: { type: String, default: 'x-tenant-id' },
+    provider_pool: {
+      type: featuresProviderPoolSchema,
+      default: () => ({}),
+    },
+  },
+  { _id: false }
+);
+
 export const featuresSchema = new Schema(
   {
     oidc: featuresOidcSchema,
     social_providers: featuresSocialProvidersSchema,
+    metrics: { type: featuresMetricsSchema, default: () => ({}) },
+    multi_tenancy: {
+      type: featuresMultiTenancySchema,
+      default: () => ({}),
+    },
   },
   { _id: false }
 );
@@ -1367,6 +1415,28 @@ const integrationsFingerprintjsSchema = new Schema(
   { _id: false }
 );
 
+const integrationsS3StorageSchema = new Schema(
+  {
+    region: { type: String, default: 'us-east-1' },
+    bucket: { type: String, default: '' },
+    access_key_id: { type: String, default: '' },
+    secret_access_key: { type: String, default: '' },
+    endpoint: { type: String, default: '' },
+    force_path_style: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const integrationsFileStorageSchema = new Schema(
+  {
+    provider: { type: String, enum: ['local', 's3'], default: 'local' },
+    upload_dir: { type: String, default: './runtime/uploads' },
+    signed_url_expiry_seconds: { type: Number, default: 3600, min: 1 },
+    s3: { type: integrationsS3StorageSchema, default: () => ({}) },
+  },
+  { _id: false }
+);
+
 export const integrationsSchema = new Schema(
   {
     email: integrationsEmailSchema,
@@ -1381,6 +1451,10 @@ export const integrationsSchema = new Schema(
     // FingerprintJS Pro service for enhanced fingerprinting
     fingerprintjs: {
       type: integrationsFingerprintjsSchema,
+      default: () => ({}),
+    },
+    file_storage: {
+      type: integrationsFileStorageSchema,
       default: () => ({}),
     },
   },

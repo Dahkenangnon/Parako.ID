@@ -15,7 +15,10 @@
 import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
-import type { ITenantRepository } from '../db/repositories/interfaces/tenant.repository.js';
+import type {
+  ITenantRepository,
+  UpdateTenantDto,
+} from '../db/repositories/interfaces/tenant.repository.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IActivityService } from '../di/interfaces/activity-service.interface.js';
@@ -59,7 +62,7 @@ export interface IPlatformAdminService {
   }>;
   updateTenant(
     slug: string,
-    data: { display_name?: string; domain?: string }
+    data: Pick<UpdateTenantDto, 'display_name' | 'domain'>
   ): Promise<ITenant>;
   updateTenantStatus(slug: string, status: TenantStatus): Promise<ITenant>;
 }
@@ -153,7 +156,7 @@ export class PlatformAdminService implements IPlatformAdminService {
 
   async updateTenant(
     slug: string,
-    data: { display_name?: string; domain?: string }
+    data: Pick<UpdateTenantDto, 'display_name' | 'domain'>
   ): Promise<ITenant> {
     const tenant = await this.tenantRepo.findBySlug(slug);
     if (!tenant) {

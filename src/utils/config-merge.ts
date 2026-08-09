@@ -53,6 +53,13 @@ export interface MergeOptions {
   skipNull?: boolean;
 }
 
+/** Recursive update shape accepted by configuration merges. */
+export type DeepPartial<T> = T extends readonly unknown[]
+  ? T
+  : T extends object
+    ? { [Key in keyof T]?: DeepPartial<T[Key]> }
+    : T;
+
 /**
  * Default merge options
  */
@@ -117,19 +124,24 @@ function isPlainObject(value: any): boolean {
  */
 export function mergeConfig<T = any>(
   existing: T,
-  updates: Partial<T>,
+  updates: DeepPartial<T>,
   options?: MergeOptions
 ): T {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
   // If existing is not a plain object, return updates as-is (or existing if updates is empty)
   if (!isPlainObject(existing)) {
+    if (isPlainObject(updates) && Object.keys(updates as object).length === 0) {
+      return existing;
+    }
     return (updates ?? existing) as T;
   }
 
   const result: any = { ...existing };
 
-  for (const key of Object.keys(updates) as (keyof typeof updates)[]) {
+  for (const key of Object.keys(
+    updates as object
+  ) as (keyof typeof updates)[]) {
     // Block prototype-polluting keys explicitly when `updates` is untrusted JSON.
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
       continue;
@@ -202,7 +214,7 @@ export function mergeConfig<T = any>(
  * ```
  */
 export function mergeConfigs<T = any>(
-  configs: Array<Partial<T>>,
+  configs: Array<DeepPartial<T>>,
   options?: MergeOptions
 ): T {
   if (configs.length === 0) {
@@ -285,7 +297,11 @@ export function areConfigsEqual(a: any, b: any): boolean {
       return false;
     }
 
-    return keysA.every(key => areConfigsEqual(a[key], b[key]));
+    return keysA.every(
+      key =>
+        Object.prototype.hasOwnProperty.call(b, key) &&
+        areConfigsEqual(a[key], b[key])
+    );
   }
 
   return false;

@@ -35,6 +35,10 @@ export interface OptionalDepsHandles {
 export async function loadOptionalDeps(
   storageProvider: StorageProviderName
 ): Promise<OptionalDepsHandles> {
+  if (storageProvider !== 'local' && storageProvider !== 's3') {
+    throw new Error(`Unsupported storage provider: ${String(storageProvider)}`);
+  }
+
   if (storageProvider === 's3') {
     const { S3StorageProvider } =
       await import('../../storage/s3-storage.provider.js');

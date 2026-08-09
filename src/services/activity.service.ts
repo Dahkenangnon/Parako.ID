@@ -53,6 +53,25 @@ type QueuedActivityDto = CreateActivityDto & {
   _tenant_id: string;
 };
 
+function assertPositiveInteger(value: number, fieldName: string): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new RangeError(`${fieldName} must be a positive integer`);
+  }
+}
+
+function assertFiniteNumber(value: number, fieldName: string): void {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`${fieldName} must be finite`);
+  }
+}
+
+function assertPositiveFiniteNumber(value: number, fieldName: string): void {
+  assertFiniteNumber(value, fieldName);
+  if (value <= 0) {
+    throw new RangeError(`${fieldName} must be positive`);
+  }
+}
+
 @injectable()
 export class ActivityService implements IActivityService {
   private activityQueue: QueuedActivityDto[] = [];
@@ -200,6 +219,15 @@ export class ActivityService implements IActivityService {
         encrypted.fingerprint_js_id = encryptValue(encrypted.fingerprint_js_id);
       }
 
+      if (encrypted.device_trust?.fingerprint) {
+        encrypted.device_trust = {
+          ...encrypted.device_trust,
+          fingerprint: isEncrypted(encrypted.device_trust.fingerprint)
+            ? encrypted.device_trust.fingerprint
+            : encryptValue(encrypted.device_trust.fingerprint),
+        };
+      }
+
       if (
         encrypted.geo_location &&
         typeof encrypted.geo_location === 'object'
@@ -214,7 +242,7 @@ export class ActivityService implements IActivityService {
       this.logger.error(error as Error, {
         context: 'error_encrypting_device_fields',
       });
-      return deviceInfos;
+      return undefined;
     }
   }
 
@@ -239,6 +267,16 @@ export class ActivityService implements IActivityService {
         decrypted.fingerprint_js_id = decryptValue(decrypted.fingerprint_js_id);
       }
 
+      if (
+        decrypted.device_trust?.fingerprint &&
+        isEncrypted(decrypted.device_trust.fingerprint)
+      ) {
+        decrypted.device_trust = {
+          ...decrypted.device_trust,
+          fingerprint: decryptValue(decrypted.device_trust.fingerprint),
+        };
+      }
+
       if ((decrypted as any)._encryptedGeoLocation) {
         const geoString = decryptValue(
           (decrypted as any)._encryptedGeoLocation
@@ -252,7 +290,7 @@ export class ActivityService implements IActivityService {
       this.logger.error(error as Error, {
         context: 'error_decrypting_device_fields',
       });
-      return deviceInfos;
+      return undefined;
     }
   }
 
@@ -265,16 +303,14 @@ export class ActivityService implements IActivityService {
       this.activityQueue = [];
 
       try {
-        if (batch.length > 0) {
-          await Promise.all(
-            batch.map(item =>
-              tenantContext.run(item._tenant_id, () =>
-                this.activityRepo.create(item)
-              )
+        await Promise.all(
+          batch.map(item =>
+            tenantContext.run(item._tenant_id, () =>
+              this.activityRepo.create(item)
             )
-          );
-          this.logger.debug(`Batch processed ${batch.length} activity logs`);
-        }
+          )
+        );
+        this.logger.debug(`Batch processed ${batch.length} activity logs`);
       } catch (error) {
         const err = error as Error;
         this.logger.error(err, {
@@ -331,18 +367,16 @@ export class ActivityService implements IActivityService {
     this.activityQueue = [];
 
     try {
-      if (batch.length > 0) {
-        await Promise.all(
-          batch.map(item =>
-            tenantContext.run(item._tenant_id, () =>
-              this.activityRepo.create(item)
-            )
+      await Promise.all(
+        batch.map(item =>
+          tenantContext.run(item._tenant_id, () =>
+            this.activityRepo.create(item)
           )
-        );
-        this.logger.debug(
-          `Immediate batch processed ${batch.length} activity logs`
-        );
-      }
+        )
+      );
+      this.logger.debug(
+        `Immediate batch processed ${batch.length} activity logs`
+      );
     } catch (error) {
       const err = error as Error;
       this.logger.error(err, {
@@ -547,9 +581,15 @@ export class ActivityService implements IActivityService {
       }
 
       if (target) {
+        const extractedTarget = this.extractUserData(target);
         dto.target = {
           target_type: target.target_type || 'none',
-          ...this.extractUserData(target),
+          user_id: extractedTarget.user_id ?? target.user_id,
+          username: extractedTarget.username ?? target.username,
+          email: extractedTarget.email ?? target.email,
+          full_name: extractedTarget.full_name ?? target.full_name,
+          given_name: extractedTarget.given_name ?? target.given_name,
+          family_name: extractedTarget.family_name ?? target.family_name,
           entity_id: target.entity_id,
           entity_name: target.entity_name,
           entity_data: target.entity_data,
@@ -625,11 +665,16 @@ export class ActivityService implements IActivityService {
   }> {
     try {
       this.logger.info('Getting user activities', { userId });
-      const result = await this.activityRepo.findByUser(userId, {
+      const pagination = {
         page: options.page || 1,
         limit: options.limit || 20,
-        sort: options.sort || { timestamp: -1 },
-      });
+        sort:
+          options.sort ||
+          (options.cursor ? { timestamp: -1, id: -1 } : { timestamp: -1 }),
+      };
+      const result = options.cursor
+        ? await this.activityRepo.findByUser(userId, pagination, options.cursor)
+        : await this.activityRepo.findByUser(userId, pagination);
       return {
         results: result.results,
         totalResults: result.totalResults,
@@ -696,6 +741,9 @@ export class ActivityService implements IActivityService {
     timeWindow: number = 300
   ): Promise<IActivity[]> {
     try {
+      assertFiniteNumber(targetTime, 'targetTime');
+      assertPositiveFiniteNumber(timeWindow, 'timeWindow');
+
       const startTime = new Date((targetTime - timeWindow) * 1000);
       const endTime = new Date((targetTime + timeWindow) * 1000);
 
@@ -802,8 +850,8 @@ export class ActivityService implements IActivityService {
       const filter: ActivityFilter = {};
       if (userId) {
         filter['actor.user_id'] = userId;
-      } else if (username) {
-        (filter as any)['actor.username'] = username;
+      } else {
+        (filter as any)['actor.username'] = username!;
       }
 
       const result = await this.activityRepo.findMany(filter, {
@@ -858,8 +906,8 @@ export class ActivityService implements IActivityService {
       const filter: ActivityFilter = {};
       if (userId) {
         filter['actor.user_id'] = userId;
-      } else if (username) {
-        (filter as any)['actor.username'] = username;
+      } else {
+        (filter as any)['actor.username'] = username!;
       }
 
       const result = await this.activityRepo.findMany(filter, {
@@ -968,6 +1016,8 @@ export class ActivityService implements IActivityService {
   }
 
   public async deleteOldActivities(olderThanDays = 90): Promise<DeleteResult> {
+    assertPositiveInteger(olderThanDays, 'olderThanDays');
+
     try {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
@@ -1060,6 +1110,8 @@ export class ActivityService implements IActivityService {
 
   public async findOlderThan(days = 90): Promise<IActivity[]> {
     try {
+      assertPositiveInteger(days, 'days');
+
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
 
@@ -1089,6 +1141,8 @@ export class ActivityService implements IActivityService {
     logId: string,
     minAgeDays = 90
   ): Promise<IActivity | null> {
+    assertPositiveInteger(minAgeDays, 'minAgeDays');
+
     try {
       this.logger.info('Attempting to delete audit log', {
         logId,
@@ -1142,6 +1196,8 @@ export class ActivityService implements IActivityService {
     userId: string,
     limit = 20
   ): Promise<ClientDetails[]> {
+    assertPositiveInteger(limit, 'limit');
+
     try {
       this.logger.debug('Getting device history for user', { userId, limit });
 
@@ -1243,16 +1299,27 @@ export class ActivityService implements IActivityService {
       const result = await this.activityRepo.findMany(
         {
           'actor.user_id': userId,
-          'device_infos.fingerprint': fingerprint,
+          type: 'new_device_verified',
+          status: 'success',
         },
         { page: 1, limit: 50, sort: { timestamp: -1 } }
       );
 
       const isTrusted = result.results.some(activity => {
-        const trust = activity.device_infos?.device_trust;
+        const deviceInfos = this.decryptSensitiveDeviceFields(
+          activity.device_infos
+        );
+        const trust = deviceInfos?.device_trust;
+        const trustFingerprint = trust?.fingerprint
+          ? this.decryptSensitiveDeviceFields({
+              fingerprint: trust.fingerprint,
+            })?.fingerprint
+          : deviceInfos?.fingerprint;
+
         return (
+          deviceInfos?.fingerprint === fingerprint &&
           trust?.trusted === true &&
-          trust?.fingerprint === fingerprint &&
+          trustFingerprint === fingerprint &&
           trust?.trusted_until instanceof Date &&
           trust.trusted_until > now
         );

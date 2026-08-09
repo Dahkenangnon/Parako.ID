@@ -1,3 +1,4 @@
+import path from 'node:path';
 import inquirer from 'inquirer';
 import { log } from '../shared/logger.js';
 import rootDir from '../shared/file.js';
@@ -9,6 +10,61 @@ import {
   NODE_ARGS,
 } from './constants.js';
 import type { SystemdConfig, UnitFiles } from './types.js';
+import { assertServiceName, validateServiceName } from './validation.js';
+
+function validateServiceUser(input: string): true | string {
+  if (!input) return 'Service user is required';
+  return /^(?:[A-Za-z_][A-Za-z0-9_.@-]*|[0-9]+)$/u.test(input)
+    ? true
+    : 'Service user contains unsupported characters';
+}
+
+function assertServiceUser(input: string): void {
+  const result = validateServiceUser(input);
+  if (result !== true) {
+    throw new Error(result);
+  }
+}
+
+function containsUnsafeUnitText(input: string): boolean {
+  return [...input].some(character => {
+    const codePoint = character.codePointAt(0)!;
+    return /\s/u.test(character) || codePoint < 32 || codePoint === 127;
+  });
+}
+
+function validateAbsoluteUnitPath(input: string, label: string): true | string {
+  if (!input) return `${label} is required`;
+  if (!path.isAbsolute(input)) return `${label} must be an absolute path`;
+  if (containsUnsafeUnitText(input)) {
+    return `${label} must not contain whitespace or control characters`;
+  }
+  return true;
+}
+
+function assertAbsoluteUnitPath(input: string, label: string): void {
+  const result = validateAbsoluteUnitPath(input, label);
+  if (result !== true) {
+    throw new Error(result);
+  }
+}
+
+function assertSingleUnitValue(input: string | undefined, label: string): void {
+  if (input !== undefined && containsUnsafeUnitText(input)) {
+    throw new Error(`${label} must be a single unit value`);
+  }
+}
+
+function assertSystemdConfig(config: SystemdConfig): void {
+  assertServiceName(config.serviceName || SERVICE_NAME);
+  assertServiceUser(config.user);
+  assertAbsoluteUnitPath(config.workingDirectory, 'Working directory');
+  assertAbsoluteUnitPath(config.runtimeDirectory, 'Runtime directory');
+  assertAbsoluteUnitPath(config.envFile, 'Environment file path');
+  assertAbsoluteUnitPath(config.nodePath, 'Node.js path');
+  assertSingleUnitValue(config.memoryApp, 'Main app memory limit');
+  assertSingleUnitValue(config.memoryWorker, 'Worker memory limit');
+}
 
 /**
  * Auto-detect the Node.js binary path
@@ -40,67 +96,46 @@ export async function promptForConfig(): Promise<SystemdConfig> {
       name: 'serviceName',
       message: 'Service name:',
       default: SERVICE_NAME,
-      validate: (input: string) => {
-        if (!input) return 'Service name is required';
-        if (!/^[a-z0-9][a-z0-9._-]*$/.test(input)) {
-          return 'Service name must start with a letter/digit and contain only lowercase letters, digits, dots, hyphens, or underscores';
-        }
-        return true;
-      },
+      validate: validateServiceName,
     },
     {
       type: 'input',
       name: 'user',
       message: 'Service user:',
       default: defaultUser,
-      validate: (input: string) => {
-        if (!input) return 'User is required';
-        return true;
-      },
+      validate: validateServiceUser,
     },
     {
       type: 'input',
       name: 'workingDirectory',
       message: 'Working directory:',
       default: rootDir,
-      validate: (input: string) => {
-        if (!input) return 'Working directory is required';
-        if (!input.startsWith('/')) return 'Must be an absolute path';
-        return true;
-      },
+      validate: (input: string) =>
+        validateAbsoluteUnitPath(input, 'Working directory'),
     },
     {
       type: 'input',
       name: 'envFile',
       message: 'Environment file path:',
       default: `${rootDir}/runtime/.env`,
-      validate: (input: string) => {
-        if (!input) return 'Environment file path is required';
-        if (!input.startsWith('/')) return 'Must be an absolute path';
-        return true;
-      },
+      validate: (input: string) =>
+        validateAbsoluteUnitPath(input, 'Environment file path'),
     },
     {
       type: 'input',
       name: 'runtimeDirectory',
       message: 'Mutable runtime directory:',
       default: `${rootDir}/runtime`,
-      validate: (input: string) => {
-        if (!input) return 'Runtime directory is required';
-        if (!input.startsWith('/')) return 'Must be an absolute path';
-        return true;
-      },
+      validate: (input: string) =>
+        validateAbsoluteUnitPath(input, 'Runtime directory'),
     },
     {
       type: 'input',
       name: 'nodePath',
       message: 'Node.js binary path:',
       default: defaultNodePath,
-      validate: (input: string) => {
-        if (!input) return 'Node.js path is required';
-        if (!input.startsWith('/')) return 'Must be an absolute path';
-        return true;
-      },
+      validate: (input: string) =>
+        validateAbsoluteUnitPath(input, 'Node.js path'),
     },
   ]);
 
@@ -120,22 +155,26 @@ export function getConfigFromFlags(
     return null;
   }
 
-  return {
+  const serviceName = options.name ?? SERVICE_NAME;
+  const config = {
     user,
     workingDirectory: dir,
     runtimeDirectory: runtimeDir,
     envFile,
     nodePath,
-    serviceName: options.name || SERVICE_NAME,
+    serviceName,
     memoryApp: options.memoryApp,
     memoryWorker: options.memoryWorker,
   };
+  assertSystemdConfig(config);
+  return config;
 }
 
 /**
  * Generate systemd unit file contents from configuration
  */
 export function generateUnitFiles(config: SystemdConfig): UnitFiles {
+  assertSystemdConfig(config);
   const serviceName = config.serviceName || SERVICE_NAME;
   const workerServiceName = `${serviceName}-worker`;
   const memoryApp = config.memoryApp || '1G';

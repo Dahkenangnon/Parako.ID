@@ -18,6 +18,7 @@ export interface IJwksKeyRepository {
   findCurrent(tenantId: string): Promise<JwksKeyRecord[]>;
   findAll(tenantId: string): Promise<JwksKeyRecord[]>;
   findNewestActive(tenantId: string): Promise<JwksKeyRecord | null>;
+  insertInitial(keys: JwksKeyRecord[]): Promise<boolean>;
   insertMany(keys: JwksKeyRecord[]): Promise<void>;
   markPromotedActiveExpiring(
     tenantId: string,
@@ -25,4 +26,5 @@ export interface IJwksKeyRepository {
   ): Promise<number>;
   promoteUnpromotedActive(tenantId: string): Promise<number>;
   retireExpired(tenantId: string, cutoff: Date): Promise<number>;
+  retireByKid(tenantId: string, kid: string): Promise<boolean>;
 }

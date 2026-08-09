@@ -257,7 +257,8 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
     const config = this.configManager.getConfig();
 
     // Priority: 1. explicit issuer_url  2. custom domain  3. subdomain of base domain
-    const deploymentUrl = config.deployment.url || '';
+    const deploymentUrl =
+      config.deployment.url || new URL(config.oidc.issuer).origin;
     const oidcPath = config.oidc.path || '/oidc/v1';
     const issuer = deriveTenantIssuerUrl(
       tenantId,
@@ -272,6 +273,10 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
 
     // Get OIDC configuration (shared across tenants — features, claims, TTLs)
     const oidcConfiguration = this.oidcConfig.getConfig();
+
+    // Resource indicators are assembled as part of getConfig(), then enriched
+    // with dynamically registered clients before the Provider captures them.
+    await this.oidcConfig.initializeResourceServers();
 
     // Get tenant-scoped JWKS — each tenant has its own signing keys.
     // IMPORTANT: Must pass tenantId explicitly. oidcConfig.getJwks() would
@@ -361,12 +366,7 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
         tenantId,
         phase: 'rotated',
       });
-      this.reloadProviderJWKS(tenantId).catch(err => {
-        this.logger.error('tenant_jwks_reload_after_rotation_failed', {
-          tenantId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
+      void this.reloadProviderJWKS(tenantId);
     };
 
     const promotedHandler = () => {
@@ -374,12 +374,7 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
         tenantId,
         phase: 'promoted',
       });
-      this.reloadProviderJWKS(tenantId).catch(err => {
-        this.logger.error('tenant_jwks_reload_after_promotion_failed', {
-          tenantId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
+      void this.reloadProviderJWKS(tenantId);
     };
 
     this.pubsub.subscribe(rotatedChannel, rotatedHandler);
@@ -397,8 +392,7 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
    * Unsubscribe from JWKS events for a tenant being evicted.
    */
   private unsubscribeJwksForTenant(tenantId: string): void {
-    const handlers = this.jwksHandlers.get(tenantId);
-    if (!handlers) return;
+    const handlers = this.jwksHandlers.get(tenantId)!;
 
     this.pubsub.unsubscribe(handlers.rotatedChannel, handlers.rotatedHandler);
     this.pubsub.unsubscribe(handlers.promotedChannel, handlers.promotedHandler);
@@ -443,14 +437,16 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
       }
     }
 
-    if (lruKey) {
-      this.unsubscribeJwksForTenant(lruKey);
-      this.pool.delete(lruKey);
-      this.logger.info('tenant_provider_evicted_lru', {
-        tenantId: lruKey,
-        poolSize: this.pool.size,
-      });
-    }
+    // The validated pool configuration requires max_size >= 1, and this method
+    // is called only after the pool reaches that limit. An entry therefore
+    // always exists here.
+    const tenantId = lruKey!;
+    this.unsubscribeJwksForTenant(tenantId);
+    this.pool.delete(tenantId);
+    this.logger.info('tenant_provider_evicted_lru', {
+      tenantId,
+      poolSize: this.pool.size,
+    });
   }
 }
 

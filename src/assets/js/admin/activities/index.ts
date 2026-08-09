@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   // Type Definitions
 
   interface ActivitiesConfig {
@@ -81,6 +83,8 @@
      * Expose global methods for inline onclick handlers
      */
     private exposeGlobalMethods(): void {
+      if (typeof window === 'undefined') return;
+
       (window as any).showClearOldModal = this.showModal.bind(this);
       (window as any).hideClearOldModal = this.hideModal.bind(this);
       (window as any).clearOldActivities = this.clearOldActivities.bind(this);
@@ -112,9 +116,10 @@
         return;
       }
 
-      const days = parseInt(this.daysInput.value, 10);
+      const daysValue = this.daysInput.value.trim();
+      const days = Number(daysValue);
 
-      if (!days || days < 1) {
+      if (!daysValue || !Number.isSafeInteger(days) || days < 1) {
         alert(this.translations.invalidDays);
         return;
       }
@@ -147,7 +152,7 @@
       const csrfInput = document.querySelector<HTMLInputElement>(
         'input[name="_csrf"]'
       );
-      if (csrfInput) {
+      if (csrfInput?.value) {
         return csrfInput.value;
       }
 
@@ -155,7 +160,10 @@
         'meta[name="csrf-token"]'
       ) as HTMLElement | null;
       if (csrfMeta) {
-        return csrfMeta.getAttribute('content') || '';
+        const metaToken = csrfMeta.getAttribute('content');
+        if (metaToken) {
+          return metaToken;
+        }
       }
 
       return this.config.csrfToken || '';

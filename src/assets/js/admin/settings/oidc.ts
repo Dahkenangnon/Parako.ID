@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   interface DialogApi {
     showAlert: (
       title: string,

@@ -8,4 +8,6 @@
  * Entry point for keys CLI module
  */
 
-import './keys/commands.js';
+import { runKeysCli } from './keys/commands.js';
+
+void runKeysCli();

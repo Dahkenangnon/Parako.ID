@@ -21,6 +21,18 @@ export interface RegistrationTokensControllerDeps {
   providerService: {
     getProviderForTenant(tenantId: string): Promise<Provider>;
   };
+  oidcAdapter: {
+    readonly adapter: (modelName: string) => {
+      destroy(id: string): Promise<void>;
+      find(id: string): Promise<unknown>;
+      findAll(): Promise<unknown[]>;
+      upsert(
+        id: string,
+        payload: Record<string, unknown>,
+        expiresIn?: number
+      ): Promise<void>;
+    };
+  };
   getTenantId: () => string;
   logger: {
     error(error: Error, context?: Record<string, unknown>): void;
@@ -62,11 +74,13 @@ function toTokenInfo(payload: Record<string, unknown>): RegistrationTokenInfo {
 
 export class RegistrationTokensController {
   private readonly providerService: RegistrationTokensControllerDeps['providerService'];
+  private readonly oidcAdapter: RegistrationTokensControllerDeps['oidcAdapter'];
   private readonly getTenantId: RegistrationTokensControllerDeps['getTenantId'];
   private readonly logger: RegistrationTokensControllerDeps['logger'];
 
   constructor(deps: RegistrationTokensControllerDeps) {
     this.providerService = deps.providerService;
+    this.oidcAdapter = deps.oidcAdapter;
     this.getTenantId = deps.getTenantId;
     this.logger = deps.logger;
   }
@@ -89,14 +103,48 @@ export class RegistrationTokensController {
         policies: body.policies,
         expiresIn: body.expires_in,
       });
-
-      (iat as unknown as Record<string, unknown>).policies_metadata = {
+      const policiesMetadata = {
         max_usage_count: body.max_usage_count,
         current_usage_count: 0,
-        note: body.note,
+        ...(body.note !== undefined ? { note: body.note } : {}),
       };
 
       const tokenValue = await iat.save();
+      const jti = String(
+        (iat as unknown as Record<string, unknown>).jti ?? tokenValue
+      );
+      const adapter = this.oidcAdapter.adapter('InitialAccessToken');
+
+      try {
+        const storedPayload = await adapter.find(jti);
+        if (!storedPayload) {
+          throw new Error('Unable to persist registration token metadata');
+        }
+
+        const payload = storedPayload as Record<string, unknown>;
+        const now = Math.floor(Date.now() / 1000);
+        const remainingTtl =
+          typeof payload.exp === 'number' && payload.exp > now
+            ? payload.exp - now
+            : body.expires_in;
+
+        await adapter.upsert(
+          jti,
+          { ...payload, policies_metadata: policiesMetadata },
+          remainingTtl
+        );
+      } catch (error) {
+        try {
+          await adapter.destroy(jti);
+        } catch (cleanupError) {
+          this.logger.error(cleanupError as Error, {
+            context: 'registration_token_metadata_cleanup',
+            tenantId,
+            jti,
+          });
+        }
+        throw error;
+      }
 
       this.logger.info('DCR initial access token created via API', {
         tenantId,
@@ -105,7 +153,6 @@ export class RegistrationTokensController {
         maxUsageCount: body.max_usage_count,
       });
 
-      const jti = (iat as unknown as Record<string, unknown>).jti ?? tokenValue;
       apiCreated(res, {
         jti,
         token: tokenValue,
@@ -129,15 +176,17 @@ export class RegistrationTokensController {
   ): Promise<void> => {
     try {
       const tenantId = this.getTenantId();
+      const adapter = this.oidcAdapter.adapter('InitialAccessToken');
+      const payloads = await adapter.findAll();
 
       this.logger.info('DCR initial access tokens listed via API', {
         tenantId,
       });
 
-      // The OIDC adapter's find() method only looks up by ID — listing
-      // requires direct collection access via the oidcAdapter bridge.
       apiList(res, {
-        data: [],
+        data: payloads.map(payload =>
+          toTokenInfo(payload as Record<string, unknown>)
+        ),
         pagination: { has_more: false, next_cursor: null },
       });
     } catch (error) {
@@ -152,24 +201,8 @@ export class RegistrationTokensController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const tenantId = this.getTenantId();
-      const provider =
-        await this.providerService.getProviderForTenant(tenantId);
       const { jti } = req.params;
-
-      // Use node-oidc-provider's adapter to find the token
-      const AdapterFactory = (provider as unknown as Record<string, unknown>)
-        .Adapter;
-      if (!AdapterFactory) {
-        throw notFound(`Registration token '${jti}' not found`);
-      }
-
-      const adapter = new (
-        AdapterFactory as new (name: string) => {
-          find(id: string): Promise<unknown>;
-          destroy(id: string): Promise<void>;
-        }
-      )('InitialAccessToken');
+      const adapter = this.oidcAdapter.adapter('InitialAccessToken');
       const payload = await adapter.find(jti);
 
       if (!payload) {
@@ -190,25 +223,13 @@ export class RegistrationTokensController {
   ): Promise<void> => {
     try {
       const tenantId = this.getTenantId();
-      const provider =
-        await this.providerService.getProviderForTenant(tenantId);
       const { jti } = req.params;
-
-      const AdapterFactory = (provider as unknown as Record<string, unknown>)
-        .Adapter;
-      if (AdapterFactory) {
-        const adapter = new (
-          AdapterFactory as new (name: string) => {
-            find(id: string): Promise<unknown>;
-            destroy(id: string): Promise<void>;
-          }
-        )('InitialAccessToken');
-        const existing = await adapter.find(jti);
-        if (!existing) {
-          throw notFound(`Registration token '${jti}' not found`);
-        }
-        await adapter.destroy(jti);
+      const adapter = this.oidcAdapter.adapter('InitialAccessToken');
+      const existing = await adapter.find(jti);
+      if (!existing) {
+        throw notFound(`Registration token '${jti}' not found`);
       }
+      await adapter.destroy(jti);
 
       this.logger.info('DCR initial access token revoked via API', {
         tenantId,

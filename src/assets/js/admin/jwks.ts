@@ -34,9 +34,8 @@ function refreshLucideIcons(): void {
 function showConfirmDialog(
   title: string,
   message: string,
-  confirmText: string = 'Confirm',
-  cancelText: string = 'Cancel',
-  isDanger: boolean = false
+  confirmText: string,
+  cancelText: string
 ): Promise<boolean> {
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -52,10 +51,9 @@ function showConfirmDialog(
 
     const iconContainer = document.createElement('div');
     iconContainer.className = 'flex-shrink-0 mt-0.5';
-    const iconClass = isDanger
-      ? 'h-6 w-6 text-red-500'
-      : 'h-6 w-6 text-amber-500';
-    iconContainer.appendChild(createIcon('alert-triangle', iconClass));
+    iconContainer.appendChild(
+      createIcon('alert-triangle', 'h-6 w-6 text-amber-500')
+    );
 
     const titleElement = document.createElement('h3');
     titleElement.className = 'font-semibold text-lg flex-1';
@@ -83,10 +81,8 @@ function showConfirmDialog(
 
     const confirmButton = document.createElement('button');
     confirmButton.type = 'button';
-    const buttonColor = isDanger
-      ? 'bg-red-600 hover:bg-red-700'
-      : 'bg-amber-500 hover:bg-amber-600';
-    confirmButton.className = `px-4 py-2 text-sm font-medium text-white ${buttonColor} rounded-md transition-colors`;
+    confirmButton.className =
+      'px-4 py-2 text-sm font-medium text-white bg-amber-500 hover:bg-amber-600 rounded-md transition-colors';
     confirmButton.textContent = confirmText;
 
     footer.appendChild(cancelButton);
@@ -97,7 +93,10 @@ function showConfirmDialog(
     modal.appendChild(footer);
     backdrop.appendChild(modal);
 
-    const cleanup = () => backdrop.remove();
+    const cleanup = () => {
+      backdrop.remove();
+      document.removeEventListener('keydown', handleEscape);
+    };
 
     cancelButton.addEventListener('click', () => {
       cleanup();
@@ -119,7 +118,6 @@ function showConfirmDialog(
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         cleanup();
-        document.removeEventListener('keydown', handleEscape);
         resolve(false);
       }
     };
@@ -183,8 +181,7 @@ async function confirmRotateKeys(event: Event): Promise<boolean> {
     'Rotate JWKS Keys',
     'This will generate new signing keys and move current active keys to "expiring" status.\n\nActive tokens signed with old keys will remain valid during the overlap window.\n\nAre you sure you want to rotate the keys?',
     'Yes, Rotate Keys',
-    'Cancel',
-    false
+    'Cancel'
   );
 
   if (confirmed) {
@@ -205,8 +202,7 @@ async function confirmRetireExpired(event: Event): Promise<boolean> {
     'Retire Expired Keys',
     'This will permanently retire keys that have passed the overlap window.\n\nRetired keys will no longer be used for token verification. Tokens signed with these keys will become invalid.\n\nAre you sure?',
     'Yes, Retire Expired',
-    'Cancel',
-    false
+    'Cancel'
   );
 
   if (confirmed) {
@@ -218,21 +214,23 @@ async function confirmRetireExpired(event: Event): Promise<boolean> {
 }
 
 // Auto-initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  const isAdminJwks = window.location.pathname.includes('/admin/jwks');
-  if (!isAdminJwks) return;
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const isAdminJwks = window.location.pathname.includes('/admin/jwks');
+    if (!isAdminJwks) return;
 
-  // Make functions globally accessible for inline event handlers
-  (window as any).confirmRotateKeys = confirmRotateKeys;
-  (window as any).confirmRetireExpired = confirmRetireExpired;
-  (window as any).copyToClipboard = copyToClipboard;
+    // Make functions globally accessible for inline event handlers
+    (window as any).confirmRotateKeys = confirmRotateKeys;
+    (window as any).confirmRetireExpired = confirmRetireExpired;
+    (window as any).copyToClipboard = copyToClipboard;
 
-  const copyJwkButton = document.getElementById('copy-public-jwk');
-  const jwkJsonElement = document.getElementById('public-jwk-json');
+    const copyJwkButton = document.getElementById('copy-public-jwk');
+    const jwkJsonElement = document.getElementById('public-jwk-json');
 
-  if (copyJwkButton && jwkJsonElement) {
-    copyJwkButton.addEventListener('click', () => {
-      copyToClipboard(jwkJsonElement.textContent || '', copyJwkButton);
-    });
-  }
-});
+    if (copyJwkButton && jwkJsonElement) {
+      copyJwkButton.addEventListener('click', () => {
+        copyToClipboard(jwkJsonElement.textContent || '', copyJwkButton);
+      });
+    }
+  });
+}

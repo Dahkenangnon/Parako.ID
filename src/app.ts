@@ -220,14 +220,21 @@ export class Application implements IApplication {
           });
           return;
         }
-        const databaseReady =
-          this.databaseConnectionManager.isConnected() &&
-          (await Promise.race([
-            this.databaseConnectionManager.ping(),
-            new Promise<false>(resolve =>
-              setTimeout(() => resolve(false), 3_000)
-            ),
-          ]));
+        let databaseReady = false;
+        try {
+          databaseReady =
+            this.databaseConnectionManager.isConnected() &&
+            (await Promise.race([
+              this.databaseConnectionManager.ping(),
+              new Promise<false>(resolve =>
+                setTimeout(() => resolve(false), 3_000)
+              ),
+            ]));
+        } catch (error) {
+          this.logger.warn('Readiness database check failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
         if (!databaseReady) {
           res.status(503).json({
             status: 'db_disconnected',
@@ -404,15 +411,22 @@ export class Application implements IApplication {
       );
     }
 
-    this.app.use(
-      cors({
-        origin: corsAllowlist,
-        methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-        allowedHeaders: ['Content-Type', 'Authorization', tenantHeader],
-        credentials: true,
-        maxAge: 86400,
-      })
-    );
+    const applicationCors = cors({
+      origin: corsAllowlist,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+      allowedHeaders: ['Content-Type', 'Authorization', tenantHeader],
+      credentials: true,
+      maxAge: 86400,
+    });
+    this.app.use((req, res, next) => {
+      // oidc-provider owns CORS for its protocol endpoints. Adding any
+      // Access-Control-* header here causes the provider to intentionally
+      // bypass its clientBasedCORS policy, including registered-origin
+      // validation. Parako-owned interaction and social routes continue to
+      // use the application allowlist.
+      if (this.isProviderOwnedOidcPath(req.path)) return next();
+      return applicationCors(req, res, next);
+    });
 
     // Helmet sets a defense-in-depth header bundle (X-Content-Type-Options,
     // X-Frame-Options, Referrer-Policy, Cross-Origin-*, Origin-Agent-Cluster,
@@ -531,6 +545,16 @@ export class Application implements IApplication {
       if (req.path.includes('/admin/settings/import/')) {
         return next();
       }
+
+      // oidc-provider must consume its own request streams. Parsing these
+      // bodies here forces the provider into its documented compatibility
+      // fallback and can change how form values are interpreted. Parako's
+      // interaction and social routes are Express-owned, so they continue to
+      // use the application parsers below.
+      if (this.isProviderOwnedOidcPath(req.path)) {
+        return next();
+      }
+
       jsonParser(req, res, err => {
         if (err) return next(err);
         urlencodedParser(req, res, next);
@@ -588,6 +612,17 @@ export class Application implements IApplication {
     );
 
     this.app.use(this.localsMiddleware.configLocals);
+  }
+
+  private isProviderOwnedOidcPath(requestPath: string): boolean {
+    const oidcPath = this.configManager.getConfig().oidc.path || '/oidc/v1';
+    const isOidcRequest =
+      requestPath === oidcPath || requestPath.startsWith(`${oidcPath}/`);
+    const isParakoOidcRoute =
+      requestPath.startsWith(`${oidcPath}/interaction/`) ||
+      requestPath.startsWith(`${oidcPath}/social/`);
+
+    return isOidcRequest && !isParakoOidcRoute;
   }
 
   private setupSession(): void {
@@ -702,7 +737,7 @@ export class Application implements IApplication {
     this.app.use('/*notfound', (req, res) => {
       res.status(404).render(this.viewResolver.views.errors.notfound, {
         title: 'Page Not Found',
-        url: req.path,
+        url: req.originalUrl,
       });
     });
 

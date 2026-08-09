@@ -156,13 +156,18 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
-      this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
+      this.debug = Boolean(options.debug);
+      const configuredRecoveryTimeout = Number(options.errorRecoveryTimeout);
+      this.errorRecoveryTimeout =
+        Number.isFinite(configuredRecoveryTimeout) &&
+        configuredRecoveryTimeout > 0
+          ? Math.min(Math.max(configuredRecoveryTimeout, 1000), 300000)
+          : 120000;
 
       this.initializeElements();
 
@@ -269,14 +274,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -377,21 +380,8 @@
      * Switch to email input mode
      */
     private switchToEmail(): void {
-      if (this.isSubmitting) {
-        return;
-      }
-
-      if (
-        !this.emailTab ||
-        !this.phoneTab ||
-        !this.emailField ||
-        !this.phoneField
-      ) {
-        return;
-      }
-
       // Style email tab as active
-      this.emailTab.classList.add(
+      this.emailTab!.classList.add(
         'bg-white',
         'dark:bg-card',
         'text-primary',
@@ -399,7 +389,7 @@
         'border-primary',
         'font-semibold'
       );
-      this.emailTab.classList.remove(
+      this.emailTab!.classList.remove(
         'text-gray-600',
         'dark:text-gray-300',
         'hover:text-gray-900',
@@ -410,14 +400,14 @@
       );
 
       // Style phone tab as inactive
-      this.phoneTab.classList.remove(
+      this.phoneTab!.classList.remove(
         'bg-white',
         'dark:bg-card',
         'text-primary',
         'border-primary',
         'font-semibold'
       );
-      this.phoneTab.classList.add(
+      this.phoneTab!.classList.add(
         'text-gray-600',
         'dark:text-gray-300',
         'hover:text-gray-900',
@@ -429,8 +419,8 @@
       );
 
       // Show/hide fields with animation
-      this.emailField.classList.remove('hidden');
-      this.phoneField.classList.add('hidden');
+      this.emailField!.classList.remove('hidden');
+      this.phoneField!.classList.add('hidden');
 
       const emailInput = document.getElementById('email') as HTMLInputElement;
       const phoneInput = document.getElementById('phone') as HTMLInputElement;
@@ -445,21 +435,8 @@
      * Switch to phone input mode
      */
     private switchToPhone(): void {
-      if (this.isSubmitting) {
-        return;
-      }
-
-      if (
-        !this.emailTab ||
-        !this.phoneTab ||
-        !this.emailField ||
-        !this.phoneField
-      ) {
-        return;
-      }
-
       // Style phone tab as active
-      this.phoneTab.classList.add(
+      this.phoneTab!.classList.add(
         'bg-white',
         'dark:bg-card',
         'text-primary',
@@ -467,7 +444,7 @@
         'border-primary',
         'font-semibold'
       );
-      this.phoneTab.classList.remove(
+      this.phoneTab!.classList.remove(
         'text-gray-600',
         'dark:text-gray-300',
         'hover:text-gray-900',
@@ -478,14 +455,14 @@
       );
 
       // Style email tab as inactive
-      this.emailTab.classList.remove(
+      this.emailTab!.classList.remove(
         'bg-white',
         'dark:bg-card',
         'text-primary',
         'border-primary',
         'font-semibold'
       );
-      this.emailTab.classList.add(
+      this.emailTab!.classList.add(
         'text-gray-600',
         'dark:text-gray-300',
         'hover:text-gray-900',
@@ -497,8 +474,8 @@
       );
 
       // Show/hide fields with animation
-      this.phoneField.classList.remove('hidden');
-      this.emailField.classList.add('hidden');
+      this.phoneField!.classList.remove('hidden');
+      this.emailField!.classList.add('hidden');
 
       const emailInput = document.getElementById('email') as HTMLInputElement;
       const phoneInput = document.getElementById('phone') as HTMLInputElement;
@@ -595,7 +572,7 @@
         } else if (strengthPercentage < 50) {
           this.passwordStrength!.className =
             'h-full bg-orange-500 dark:bg-orange-600';
-        } else if (strengthPercentage < 75) {
+        } else if (strengthPercentage < 75 || unmetRequirements.length > 0) {
           this.passwordStrength!.className =
             'h-full bg-yellow-500 dark:bg-yellow-600';
         } else {
@@ -717,6 +694,9 @@
               }
             } catch (patternError) {
               this.log('Invalid pattern regex', { patternError }, 'error');
+              e.preventDefault();
+              this.showValidationError(`Invalid ${ciField.name} format`);
+              return;
             }
           }
         }
@@ -734,9 +714,7 @@
       `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -816,11 +794,6 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
       if (this.submitButton) {
         this.submitButton.disabled = true;
         this.submitButton.style.opacity = '0.6';
@@ -874,10 +847,8 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
       if (this.submitButton) {
@@ -971,15 +942,42 @@
      * Validate continue URL to prevent open redirect — same-origin only.
      */
     private isValidContinueUrl(url: string): boolean {
-      if (!url || typeof url !== 'string') return false;
       try {
         const parsed = new URL(url, window.location.origin);
-        return parsed.origin === window.location.origin || url.startsWith('/');
+        return parsed.origin === window.location.origin;
       } catch {
         return false;
       }
     }
   }
+
+  const runFallbackManager = (): void => {
+    try {
+      const registerManager = new RegisterManager({
+        config: {
+          bothMethodsEnabled: false,
+          emailEnabled: true,
+          phoneEnabled: false,
+          requireFullName: false,
+          customIdentifierFields: [],
+        },
+        passwordPolicy: {
+          minLength: 8,
+          requireUppercase: false,
+          requireLowercase: false,
+          requireNumbers: false,
+          requireSymbols: false,
+        },
+        debug: true,
+      });
+      registerManager.run();
+    } catch (fallbackError) {
+      console.error(
+        '[RegisterManager] Fallback initialization failed:',
+        fallbackError
+      );
+    }
+  };
 
   // Auto-initialize when DOM is ready
   document.addEventListener('DOMContentLoaded', () => {
@@ -1011,62 +1009,11 @@
         registerManager.run();
       } catch (error) {
         console.error('[RegisterManager] Failed to initialize:', error);
-
-        // Fallback initialization with minimal config
-        try {
-          const registerManager = new RegisterManager({
-            config: {
-              bothMethodsEnabled: false,
-              emailEnabled: true,
-              phoneEnabled: false,
-              requireFullName: false,
-              customIdentifierFields: [],
-            },
-            passwordPolicy: {
-              minLength: 8,
-              requireUppercase: false,
-              requireLowercase: false,
-              requireNumbers: false,
-              requireSymbols: false,
-            },
-            debug: true,
-          });
-          registerManager.run();
-        } catch (fallbackError) {
-          console.error(
-            '[RegisterManager] Fallback initialization failed:',
-            fallbackError
-          );
-        }
+        runFallbackManager();
       }
     } else {
       console.error('[RegisterManager] No configuration data found in DOM');
-
-      try {
-        const registerManager = new RegisterManager({
-          config: {
-            bothMethodsEnabled: false,
-            emailEnabled: true,
-            phoneEnabled: false,
-            requireFullName: false,
-            customIdentifierFields: [],
-          },
-          passwordPolicy: {
-            minLength: 8,
-            requireUppercase: false,
-            requireLowercase: false,
-            requireNumbers: false,
-            requireSymbols: false,
-          },
-          debug: true,
-        });
-        registerManager.run();
-      } catch (fallbackError) {
-        console.error(
-          '[RegisterManager] Fallback initialization failed:',
-          fallbackError
-        );
-      }
+      runFallbackManager();
     }
   });
 })();

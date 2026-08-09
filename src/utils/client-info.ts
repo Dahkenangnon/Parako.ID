@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import { UAParser } from 'ua-parser-js';
 import crypto from 'node:crypto';
+import { BlockList, isIP } from 'node:net';
 import { injectable, inject } from 'inversify';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../di/interfaces/client-device-info-manager.interface.js';
@@ -190,10 +191,8 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
           this.logger.warn('Failed to parse device data from request', {
             fieldName: deviceFieldName,
             dataLength: deviceData.length,
-            jsonError:
-              jsonError instanceof Error ? jsonError.message : 'Unknown',
-            base64Error:
-              base64Error instanceof Error ? base64Error.message : 'Unknown',
+            jsonError: String(jsonError),
+            base64Error: String(base64Error),
             sessionId: req.session?.id,
             ip: req.ip,
           });
@@ -258,11 +257,6 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
     errors: string[];
   } {
     const errors: string[] = [];
-
-    if (!deviceInfo || typeof deviceInfo !== 'object') {
-      errors.push('Device info must be an object');
-      return { isValid: false, errors };
-    }
 
     if (
       !deviceInfo.visitor_id ||
@@ -608,43 +602,42 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
    */
   isIPInRange(ip: string, range: string): boolean {
     const normalizedIP = ip.replace(/^::ffff:/, '');
+    const normalizedRange = range.replace(/^::ffff:/, '');
 
     // If range doesn't have CIDR notation, it's an exact match
-    if (!range.includes('/')) {
-      return normalizedIP === range;
+    if (!normalizedRange.includes('/')) {
+      return (
+        isIP(normalizedIP) !== 0 &&
+        isIP(normalizedRange) !== 0 &&
+        normalizedIP === normalizedRange
+      );
     }
 
-    const [rangeIP, prefixStr] = range.split('/');
-    const prefix = parseInt(prefixStr, 10);
+    const parts = normalizedRange.split('/');
+    if (parts.length !== 2) return false;
 
-    const ipNum = this.ipToNumber(normalizedIP);
-    const rangeNum = this.ipToNumber(rangeIP);
-
-    if (ipNum === null || rangeNum === null) {
-      // If conversion fails, fall back to string comparison
-      return normalizedIP === rangeIP;
+    const [rangeIP, prefixText] = parts;
+    const ipFamily = isIP(normalizedIP);
+    const rangeFamily = isIP(rangeIP);
+    if (ipFamily === 0 || rangeFamily === 0 || ipFamily !== rangeFamily) {
+      return false;
     }
 
-    const mask = ~(0xffffffff >>> prefix);
-    return (ipNum & mask) === (rangeNum & mask);
-  }
-
-  /**
-   * Convert IPv4 address string to number
-   * @param ip - IPv4 address string (e.g., '192.168.1.1')
-   * @returns 32-bit number representation or null if invalid
-   */
-  private ipToNumber(ip: string): number | null {
-    const parts = ip.split('.');
-    if (parts.length !== 4) return null;
-
-    let num = 0;
-    for (const part of parts) {
-      const octet = parseInt(part, 10);
-      if (isNaN(octet) || octet < 0 || octet > 255) return null;
-      num = (num << 8) | octet;
+    const prefix = Number(prefixText);
+    const maxPrefix = ipFamily === 4 ? 32 : 128;
+    if (
+      prefixText.trim().length === 0 ||
+      !Number.isInteger(prefix) ||
+      prefix < 0 ||
+      prefix > maxPrefix
+    ) {
+      return false;
     }
-    return num >>> 0; // Convert to unsigned 32-bit
+
+    const blockList = new BlockList();
+    const family = ipFamily === 4 ? 'ipv4' : 'ipv6';
+    blockList.addSubnet(rangeIP, prefix, family);
+    return blockList.check(normalizedIP, family);
   }
 
   /**
@@ -744,7 +737,7 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
 
     const distance = matrix[len1][len2];
     const maxLength = Math.max(len1, len2);
-    return maxLength === 0 ? 1 : (maxLength - distance) / maxLength;
+    return (maxLength - distance) / maxLength;
   }
 
   /**
@@ -863,7 +856,7 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
     totalScore += browserOSSimilarity * 0.05;
     totalWeight += 0.05;
 
-    return totalWeight > 0 ? totalScore / totalWeight : 0;
+    return totalScore / totalWeight;
   }
 
   /**

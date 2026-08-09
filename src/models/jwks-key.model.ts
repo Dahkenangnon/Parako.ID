@@ -46,6 +46,13 @@ export const createJwksKeyModel = (): JwksKeyModel => {
 
   jwksKeySchema.index({ tenant_id: 1, status: 1 });
   jwksKeySchema.index({ tenant_id: 1, kid: 1 }, { unique: true });
+  jwksKeySchema.index(
+    { tenant_id: 1, alg: 1 },
+    {
+      unique: true,
+      partialFilterExpression: { status: 'active', promoted: true },
+    }
+  );
 
   // Avoid OverwriteModelError in tests / hot-reload
   return (

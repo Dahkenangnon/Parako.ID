@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
@@ -51,37 +52,34 @@ export class RecoveryService implements IRecoveryService {
     method: RecoveryMethod,
     deviceInfo: RecoveryDeviceInfo
   ): Promise<RecoveryInitiationResult> {
+    const publicResult: RecoveryInitiationResult = {
+      success: true,
+      attemptId: randomUUID(),
+      method,
+      requiresVerification: true,
+    };
+
     try {
       const user = await this.findUserByIdentifier(identifier);
       if (!user) {
         // Don't reveal if user exists
-        return {
-          success: false,
-          error:
-            'Recovery request submitted. Check your email for instructions.',
-        };
+        return publicResult;
       }
 
       const methods = await this.getAvailableMethods(user._id!.toString());
       const methodStatus = methods.find(m => m.method === method);
 
       if (!methodStatus?.available) {
-        return {
-          success: false,
-          error: 'This recovery method is not available for your account',
-        };
+        // Keep the response indistinguishable from an unknown account to
+        // prevent identifier and recovery-method enumeration.
+        return publicResult;
       }
 
       await this.logAttempt(user._id!.toString(), method, false, deviceInfo, {
         stage: 'initiated',
       });
 
-      return {
-        success: true,
-        attemptId: user._id!.toString(), // In production, use a proper session/attempt ID
-        method,
-        requiresVerification: true,
-      };
+      return publicResult;
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'recovery_initiation_failed',
@@ -290,8 +288,9 @@ export class RecoveryService implements IRecoveryService {
         };
       }
 
-      const storedCode = user.recovery?.sms?.verification_code;
-      const expiresAt = user.recovery?.sms?.verification_expires;
+      const smsState = user.recovery?.sms;
+      const storedCode = smsState?.verification_code;
+      const expiresAt = smsState?.verification_expires;
 
       if (!storedCode || !expiresAt) {
         return {
@@ -320,10 +319,9 @@ export class RecoveryService implements IRecoveryService {
         };
       }
 
-      if (user.recovery?.sms) {
-        user.recovery.sms.verification_code = undefined;
-        user.recovery.sms.verification_expires = undefined;
-      }
+      // The pending-code guard above establishes that SMS state exists.
+      smsState.verification_code = undefined;
+      smsState.verification_expires = undefined;
 
       this.recoveryUtils.clearRecoveryLockout(user);
       this.recoveryUtils.setLastRecoveredAt(user);
@@ -488,10 +486,11 @@ export class RecoveryService implements IRecoveryService {
         method,
       });
       return {
-        locked: false,
-        failedAttempts: 0,
+        locked: true,
+        minutesRemaining: 1,
+        failedAttempts: 5,
         maxAttempts: 5,
-        remainingAttempts: 5,
+        remainingAttempts: 0,
       };
     }
   }
@@ -509,7 +508,7 @@ export class RecoveryService implements IRecoveryService {
         context: 'cooldown_check_failed',
         userId,
       });
-      return false;
+      return true;
     }
   }
 
@@ -670,6 +669,10 @@ export class RecoveryService implements IRecoveryService {
         ...user.recovery,
       };
 
+      updateData.methods = updateData.methods.filter(
+        configuredMethod => configuredMethod !== method
+      );
+
       switch (method) {
         case 'backup_codes':
           updateData.backup_codes = undefined;
@@ -680,6 +683,9 @@ export class RecoveryService implements IRecoveryService {
         case 'security_questions':
           updateData.security_questions = undefined;
           break;
+        case 'sms':
+          updateData.sms = undefined;
+          break;
         default:
           return { success: false, error: 'Invalid recovery method' };
       }
@@ -687,7 +693,8 @@ export class RecoveryService implements IRecoveryService {
       const hasAnyMethod =
         updateData.backup_codes ||
         updateData.secondary_email?.verified ||
-        updateData.security_questions;
+        updateData.security_questions ||
+        updateData.sms?.verified;
 
       updateData.enabled = !!hasAnyMethod;
 

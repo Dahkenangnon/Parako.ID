@@ -16,6 +16,8 @@ interface CustomIdentifierOptions {
 const setupCustomIdentifierFields = (
   options: CustomIdentifierOptions
 ): void => {
+  if (typeof document === 'undefined') return;
+
   const container = document.getElementById(options.containerId);
   const addBtn = document.getElementById(options.addBtnId);
   if (!container) return;
@@ -61,12 +63,6 @@ const setupCustomIdentifierFields = (
     });
   };
 
-  const setAddBtnContent = (label: string): void => {
-    if (!addBtn) return;
-    addBtn.replaceChildren();
-    addBtn.insertAdjacentHTML('beforeend', label);
-  };
-
   const updateAddBtn = (): void => {
     if (!addBtn) return;
     const count = getFieldCount();
@@ -74,7 +70,8 @@ const setupCustomIdentifierFields = (
       addBtn.style.display = 'none';
     } else {
       addBtn.style.display = '';
-      setAddBtnContent(options.addBtnLabel(count));
+      addBtn.replaceChildren();
+      addBtn.insertAdjacentHTML('beforeend', options.addBtnLabel(count));
     }
     window.lucide?.createIcons();
   };

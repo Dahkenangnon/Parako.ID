@@ -28,10 +28,24 @@ const activityTypeFilterSchema = z
   .max(50, 'Activity type must be 50 characters or fewer')
   .optional();
 
-/** ISO 8601 date string used by the date-range pickers. */
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const isoTimestampSchema = z.string().datetime();
+
+function isValidActivityDate(value: string): boolean {
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime())) return false;
+    return date.toISOString().slice(0, 10) === value;
+  }
+  return isoTimestampSchema.safeParse(value).success;
+}
+
+/** ISO date or timestamp accepted from the date-range pickers and API. */
 const isoDateSchema = z
   .string()
-  .datetime({ message: 'Date must be a valid ISO 8601 timestamp' })
+  .refine(isValidActivityDate, {
+    message: 'Date must be a valid ISO 8601 date or timestamp',
+  })
   .optional();
 
 export const adminActivityListQuerySchema = z

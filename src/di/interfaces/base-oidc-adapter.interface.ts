@@ -10,6 +10,7 @@ export interface IBaseOIDCAdapter {
   isConsumable(): boolean;
   upsert(id: string, payload: OIDCPayload, expiresIn?: number): Promise<void>;
   find(id: string): Promise<OIDCPayload | undefined>;
+  findAll(): Promise<OIDCPayload[]>;
   findByUserCode(userCode: string): Promise<OIDCPayload | undefined>;
   findByUid(uid: string): Promise<OIDCPayload | undefined>;
   consume(id: string): Promise<void>;

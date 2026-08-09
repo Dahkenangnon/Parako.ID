@@ -38,6 +38,23 @@ export class MongooseJwksKeyRepository implements IJwksKeyRepository {
       .lean()) as unknown as JwksKeyRecord | null;
   }
 
+  async insertInitial(keys: JwksKeyRecord[]): Promise<boolean> {
+    try {
+      await this.insertMany(keys);
+      return true;
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 11000
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async insertMany(keys: JwksKeyRecord[]): Promise<void> {
     await this.model.insertMany(keys);
   }
@@ -76,5 +93,22 @@ export class MongooseJwksKeyRepository implements IJwksKeyRepository {
       { $set: { status: 'retired' as KeyStatus } }
     );
     return result.modifiedCount;
+  }
+
+  async retireByKid(tenantId: string, kid: string): Promise<boolean> {
+    const result = await this.model.updateOne(
+      {
+        tenant_id: tenantId,
+        kid,
+        status: { $ne: 'retired' },
+      },
+      {
+        $set: {
+          status: 'retired' as KeyStatus,
+          promoted: false,
+        },
+      }
+    );
+    return result.modifiedCount === 1;
   }
 }

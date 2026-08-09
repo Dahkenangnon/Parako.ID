@@ -1,5 +1,6 @@
 import { injectable } from 'inversify';
 import type { IActivity } from '../../../models/activity.model.js';
+import type { ActivityCursor } from '../../../types/activity.js';
 import type { TypedModel } from '../../../models/base.model.js';
 import type {
   IActivityRepository,
@@ -13,6 +14,10 @@ import type {
 import { AbstractMongooseRepository } from './base.repository.js';
 
 type ActivityModel = TypedModel<IActivity, object>;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 @injectable()
 export class MongooseActivityRepository
@@ -30,14 +35,45 @@ export class MongooseActivityRepository
     filter: ActivityFilter,
     opts?: PaginationOptions
   ): Promise<PaginatedResult<IActivity>> {
-    return this.paginate(filter as Record<string, unknown>, opts);
+    const sort = opts?.sort
+      ? Object.fromEntries(
+          Object.entries(opts.sort).map(([key, direction]) => [
+            key === 'username' ? 'actor.username' : key,
+            direction,
+          ])
+        )
+      : undefined;
+
+    return this.paginate(
+      this.toMongoFilter(filter),
+      opts?.sort ? { ...opts, sort } : opts
+    );
   }
 
   async findByUser(
     userId: string,
-    opts?: PaginationOptions
+    opts?: PaginationOptions,
+    cursor?: ActivityCursor
   ): Promise<PaginatedResult<IActivity>> {
-    return this.paginate({ 'actor.user_id': userId }, opts);
+    const filter: Record<string, unknown> = { 'actor.user_id': userId };
+
+    if (cursor) {
+      filter.$or = [
+        { timestamp: { $lt: cursor.timestamp } },
+        { timestamp: cursor.timestamp, _id: { $lt: cursor.id } },
+      ];
+    }
+
+    const sort = opts?.sort
+      ? Object.fromEntries(
+          Object.entries(opts.sort).map(([key, direction]) => [
+            key === 'id' ? '_id' : key,
+            direction,
+          ])
+        )
+      : undefined;
+
+    return this.paginate(filter, opts ? { ...opts, sort } : undefined);
   }
 
   async findByDevice(fingerprint: string): Promise<IActivity[]> {
@@ -45,7 +81,7 @@ export class MongooseActivityRepository
   }
 
   async count(filter?: ActivityFilter): Promise<number> {
-    return super.count(filter as Record<string, unknown>);
+    return super.count(this.toMongoFilter(filter ?? {}));
   }
 
   async deleteOlderThan(date: Date): Promise<number> {
@@ -63,5 +99,19 @@ export class MongooseActivityRepository
     if (filter?.['actor.user_id'])
       mongoFilter['actor.user_id'] = filter['actor.user_id'];
     return this.model.distinct('type', mongoFilter);
+  }
+
+  private toMongoFilter(filter: ActivityFilter): Record<string, unknown> {
+    const { search, ...mongoFilter } = filter;
+    if (!search) return mongoFilter;
+
+    const safeSearch = new RegExp(escapeRegExp(search), 'i');
+    return {
+      ...mongoFilter,
+      $or: [
+        { description: { $regex: safeSearch } },
+        { 'actor.username': { $regex: safeSearch } },
+      ],
+    };
   }
 }

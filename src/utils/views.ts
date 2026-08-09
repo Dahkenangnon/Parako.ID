@@ -16,6 +16,15 @@ type AssetManifest = Readonly<Record<string, string>>;
 const MANIFEST_PATH = resolve(process.cwd(), 'public/manifest.json');
 let cachedManifest: AssetManifest | null = null;
 
+function isAssetManifest(value: unknown): value is AssetManifest {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every(entry => typeof entry === 'string')
+  );
+}
+
 function loadManifest(): AssetManifest {
   if (cachedManifest !== null) return cachedManifest;
 
@@ -31,8 +40,15 @@ function loadManifest(): AssetManifest {
   }
 
   try {
-    cachedManifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8'));
-    return cachedManifest as AssetManifest;
+    const parsedManifest: unknown = JSON.parse(
+      readFileSync(MANIFEST_PATH, 'utf-8')
+    );
+    if (!isAssetManifest(parsedManifest)) {
+      throw new TypeError('expected an object mapping asset paths to strings');
+    }
+
+    cachedManifest = parsedManifest;
+    return cachedManifest;
   } catch (err) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error(
@@ -55,7 +71,9 @@ function loadManifest(): AssetManifest {
 export function resolveAssetPath(logicalPath: string): string {
   const normalized = logicalPath.replace(/^\/+/, '');
   const manifest = loadManifest();
-  const resolved = manifest[normalized];
+  const resolved = Object.hasOwn(manifest, normalized)
+    ? manifest[normalized]
+    : undefined;
   return `/${resolved ?? normalized}`;
 }
 
@@ -215,8 +233,8 @@ const htmlEscapes: Record<string, string> = {
  * @returns Escaped string safe for HTML output
  */
 export function escapeHtml(str: any): string {
-  if (!str || typeof str !== 'string') return str ?? '';
-  return str.replace(/[&<>"'/]/g, match => htmlEscapes[match]);
+  if (str === undefined || str === null) return '';
+  return String(str).replace(/[&<>"'/]/g, match => htmlEscapes[match]);
 }
 
 /**
@@ -249,6 +267,8 @@ export function isValidPictureUrl(url: string): boolean {
   if (!url || typeof url !== 'string') return false;
   // Accept absolute HTTP(S) URLs (e.g. social login avatars)
   if (isValidHttpUrl(url)) return true;
+  // Protocol-relative URLs resolve to an external origin in the browser.
+  if (url.startsWith('//') || url.startsWith('\\\\')) return false;
   // Block dangerous schemes by rejecting anything containing ":"
   if (url.includes(':')) return false;
   // Accept relative paths with or without leading /
@@ -272,13 +292,12 @@ export function configureNunjucks(env: nunjucks.Environment): void {
  */
 function addGlobalFunctions(env: nunjucks.Environment): void {
   env.addGlobal('hasFlash', function (this: any) {
-    return (
-      this.ctx &&
-      this.ctx.flash &&
-      (this.ctx.flash.success.length ||
-        this.ctx.flash.error.length ||
-        this.ctx.flash.info.length ||
-        this.ctx.flash.warning.length)
+    const flash = this.ctx?.flash;
+    return Boolean(
+      flash &&
+      [flash.success, flash.error, flash.info, flash.warning].some(
+        messages => Array.isArray(messages) && messages.length > 0
+      )
     );
   });
 
@@ -488,13 +507,24 @@ function addCustomFilters(env: nunjucks.Environment): void {
   });
 
   env.addFilter('fileSize', function (bytes: any) {
-    if (bytes === undefined || bytes === null || isNaN(bytes)) return '0 B';
+    const numericBytes = Number(bytes);
+    if (
+      bytes === undefined ||
+      bytes === null ||
+      !Number.isFinite(numericBytes) ||
+      numericBytes <= 0
+    ) {
+      return '0 B';
+    }
 
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const i = Math.min(
+      Math.floor(Math.log(numericBytes) / Math.log(1024)),
+      sizes.length - 1
+    );
 
-    if (i === 0) return `${bytes} ${sizes[i]}`;
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+    if (i === 0) return `${numericBytes} ${sizes[i]}`;
+    return `${(numericBytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
   });
 
   env.addFilter(

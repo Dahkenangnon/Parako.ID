@@ -59,6 +59,23 @@ export class PrismaJwksKeyRepository implements IJwksKeyRepository {
     return row ? toRecord(row) : null;
   }
 
+  async insertInitial(keys: JwksKeyRecord[]): Promise<boolean> {
+    try {
+      await this.insertMany(keys);
+      return true;
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async insertMany(keys: JwksKeyRecord[]): Promise<void> {
     await this.prisma.jwksKey.createMany({
       data: keys.map(key => ({
@@ -112,5 +129,17 @@ export class PrismaJwksKeyRepository implements IJwksKeyRepository {
       data: { status: 'retired' },
     });
     return result.count;
+  }
+
+  async retireByKid(tenantId: string, kid: string): Promise<boolean> {
+    const result = await this.prisma.jwksKey.updateMany({
+      where: {
+        tenant_id: tenantId,
+        kid,
+        status: { not: 'retired' },
+      },
+      data: { status: 'retired', promoted: false },
+    });
+    return result.count === 1;
   }
 }

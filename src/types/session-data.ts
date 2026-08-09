@@ -1,4 +1,8 @@
-import type { SocialProvider } from './social-integration.js';
+import type {
+  ProviderUserData,
+  SocialProvider,
+  TokenData,
+} from './social-integration.js';
 
 /**
  * Type for pending MFA user stored in session
@@ -79,6 +83,10 @@ export type SocialRegisterData = Record<
  */
 export interface SocialPasswordSetup {
   userId: string;
+  provider: SocialProvider;
+  providerData?: ProviderUserData;
+  tokens?: TokenData;
+  integrationId?: string;
   timestamp: number;
 }
 
@@ -87,9 +95,10 @@ export interface SocialPasswordSetup {
  * Stored under key: 'socialRegistrationPending'
  */
 export interface SocialContactData {
+  provider: SocialProvider;
   timestamp: number;
-  providerData: Record<string, any>;
-  tokens?: Record<string, any>;
+  providerData: ProviderUserData;
+  tokens?: TokenData;
 }
 
 /**

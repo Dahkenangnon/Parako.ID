@@ -13,6 +13,12 @@ export class FileSystemUtils implements IFileSystemUtils {
   constructor() {
     this.__dirname = path.dirname(fileURLToPath(import.meta.url));
 
+    const configuredRoot = process.env.PARAKO_ROOT?.trim();
+    if (configuredRoot) {
+      this.projectRoot = path.resolve(configuredRoot);
+      return;
+    }
+
     // Go up until we find package.json, fallback to cwd if not found
     let currentDir = this.__dirname;
     let found = false;
@@ -74,13 +80,7 @@ export class FileSystemUtils implements IFileSystemUtils {
   }
 
   public async createDir(dirPath: string): Promise<void> {
-    try {
-      await fs.mkdir(dirPath, { recursive: true });
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
-        throw error;
-      }
-    }
+    await fs.mkdir(dirPath, { recursive: true });
   }
 
   public async removeFile(filePath: string): Promise<boolean> {
@@ -97,7 +97,11 @@ export class FileSystemUtils implements IFileSystemUtils {
 
   public async removeDir(dirPath: string, recursive = false): Promise<boolean> {
     try {
-      await fs.rm(dirPath, { recursive, force: true });
+      if (recursive) {
+        await fs.rm(dirPath, { recursive: true, force: false });
+      } else {
+        await fs.rmdir(dirPath);
+      }
       return true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

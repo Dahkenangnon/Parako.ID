@@ -20,15 +20,29 @@ import type { TenantModel } from '../../models/tenant.model.js';
 import type { TenantSettingsOverrideModel } from '../../models/tenant-settings-override/model.js';
 import type { IConfigProvider } from '../interfaces/config-provider.interface.js';
 import type { BootstrapConfig } from '../../config/schemas/bootstrap-schema.js';
-import type { AdapterBundle } from '../loaders/adapter-loader.js';
+import type {
+  AdapterBundle,
+  StorageAdapter,
+} from '../loaders/adapter-loader.js';
 
-function getAdapter(provider: IConfigProvider<BootstrapConfig>): string {
-  return provider.getConfigValue<string>('storage.adapter', 'mongodb');
+function getAdapter(
+  provider: IConfigProvider<BootstrapConfig>
+): StorageAdapter {
+  const adapter = provider.getConfigValue<string>('storage.adapter', 'mongodb');
+  if (
+    adapter === 'sqlite' ||
+    adapter === 'postgresql' ||
+    adapter === 'mongodb'
+  ) {
+    return adapter;
+  }
+
+  throw new Error(`Unsupported storage adapter: ${adapter}`);
 }
 
 function buildBootstrapConfig(
   provider: IConfigProvider<BootstrapConfig>,
-  adapter: string
+  adapter: Exclude<StorageAdapter, 'mongodb'>
 ): BootstrapConfig {
   return {
     deployment: {
@@ -41,11 +55,8 @@ function buildBootstrapConfig(
       },
     },
     storage: {
-      adapter: adapter as BootstrapConfig['storage']['adapter'],
-      mongodb:
-        adapter === 'mongodb'
-          ? { uri: provider.getConfigValue('storage.mongodb.uri', '') }
-          : undefined,
+      adapter,
+      mongodb: undefined,
       sqlite:
         adapter === 'sqlite'
           ? {
@@ -59,6 +70,14 @@ function buildBootstrapConfig(
         adapter === 'postgresql'
           ? { url: provider.getConfigValue('storage.postgresql.url') }
           : undefined,
+    },
+    integrations: {
+      file_storage: {
+        provider: provider.getConfigValue(
+          'integrations.file_storage.provider',
+          'local'
+        ),
+      },
     },
     multiTenancy: {
       enabled: provider.getConfigValue('multiTenancy.enabled', false),
@@ -93,9 +112,17 @@ export const databaseModule: ContainerModule = new ContainerModule(
           TYPES.BootstrapConfigProvider
         );
         const adapter = getAdapter(provider);
-        if (adapter === 'mongodb') return null;
-
         const bundle = context.get<AdapterBundle>(TYPES.AdapterBundle);
+
+        if (adapter === 'mongodb') {
+          if (bundle.kind !== 'mongoose') {
+            throw new Error(
+              `AdapterBundle kind "${bundle.kind}" does not match storage adapter "${adapter}"`
+            );
+          }
+          return null;
+        }
+
         if (bundle.kind !== 'prisma') {
           throw new Error(
             `AdapterBundle kind "${bundle.kind}" does not provide a Prisma client`

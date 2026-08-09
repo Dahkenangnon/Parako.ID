@@ -4,12 +4,13 @@ import type {
   DeviceCode,
   KoaContextWithOIDC,
 } from 'oidc-provider';
+import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 
 /**
  * Factory function to create expires with session function
  * @returns Expires with session function
  */
-export default function ExpiresWithSession() {
+export default function ExpiresWithSession(configManager: IConfigManager) {
   /**
    * Function used to decide whether the given authorization code, device code,
    *  or authorization-endpoint returned opaque access token be bound to the user session.
@@ -26,6 +27,10 @@ export default function ExpiresWithSession() {
     _ctx: KoaContextWithOIDC,
     token: AccessToken | AuthorizationCode | DeviceCode
   ) {
+    if (!configManager.getConfig().features.oidc.expires_with_session) {
+      return false;
+    }
+
     // Only AuthorizationCode has scopes, others don't need session binding
     if ('scopes' in token) {
       return !token.scopes.has('offline_access');

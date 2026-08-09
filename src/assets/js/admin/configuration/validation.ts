@@ -10,6 +10,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   const ERROR_CLASS = 'config-validation-error';
   const ERROR_BORDER = 'border-destructive';
 

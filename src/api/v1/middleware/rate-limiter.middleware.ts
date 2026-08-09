@@ -31,8 +31,10 @@ export type RateLimitTier = keyof typeof RATE_LIMIT_TIERS;
  * Create an Express middleware that rate-limits requests according to
  * the specified tier.
  *
- * The key generator identifies callers by `req.apiAuth.client_id`
- * (set by the upstream JWT middleware) or falls back to `req.ip`.
+ * The key generator identifies authenticated callers by their verified issuer
+ * and `req.apiAuth.client_id` (set by the upstream JWT middleware), or falls
+ * back to `req.ip` for unauthenticated requests. Including the issuer prevents
+ * clients in different tenants from consuming each other's quota.
  * When the limit is exceeded, a 429 JSON response in RFC 9457 format
  * is returned directly — no error is thrown.
  *
@@ -49,8 +51,9 @@ export function apiRateLimiter(tier: RateLimitTier): RequestHandler {
     legacyHeaders: false,
 
     keyGenerator: req =>
-      req.apiAuth?.client_id ||
-      ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? '127.0.0.1'),
+      req.apiAuth
+        ? JSON.stringify([req.apiAuth.iss, req.apiAuth.client_id])
+        : ipKeyGenerator(req.ip ?? req.socket.remoteAddress ?? '127.0.0.1'),
 
     handler: (_req, res, _next, _options) => {
       const retryAfter = Math.ceil(config.windowMs / 1000);

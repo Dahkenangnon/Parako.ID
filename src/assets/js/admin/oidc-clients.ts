@@ -17,37 +17,23 @@
  * Admin OIDC Clients Manager - Handles client action confirmation and execution
  */
 class AdminOidcClientsManager {
-  private debug: boolean;
-
-  constructor(debug: boolean = false) {
-    this.debug = debug;
-  }
-
-  /**
-   * Logging utility (only in debug mode)
-   */
-  private log(message: string, data?: any): void {
-    if (!this.debug) return;
-    console.log('[AdminOidcClients]', message, data);
-  }
-
   /**
    * Create a custom confirmation dialog
    * Matches the style from admin settings
    *
    * @param title - Dialog title
    * @param message - Dialog message
-   * @param confirmText - Confirm button text (default: "Confirm")
-   * @param cancelText - Cancel button text (default: "Cancel")
+   * @param confirmText - Confirm button text
+   * @param cancelText - Cancel button text
    * @param isDanger - Whether this is a dangerous action (affects button color)
    * @returns Promise that resolves to true if confirmed, false if canceled
    */
   private async showConfirmDialog(
     title: string,
     message: string,
-    confirmText: string = 'Confirm',
-    cancelText: string = 'Cancel',
-    isDanger: boolean = true
+    confirmText: string,
+    cancelText: string,
+    isDanger: boolean
   ): Promise<boolean> {
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
@@ -111,7 +97,10 @@ class AdminOidcClientsManager {
       modal.appendChild(footer);
       backdrop.appendChild(modal);
 
-      const cleanup = () => backdrop.remove();
+      const cleanup = () => {
+        backdrop.remove();
+        document.removeEventListener('keydown', handleEscape);
+      };
 
       cancelButton.addEventListener('click', () => {
         cleanup();
@@ -133,7 +122,6 @@ class AdminOidcClientsManager {
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           cleanup();
-          document.removeEventListener('keydown', handleEscape);
           resolve(false);
         }
       };
@@ -157,31 +145,16 @@ class AdminOidcClientsManager {
    * Show a notification message to the user
    * @param title - Notification title
    * @param message - Notification message
-   * @param type - Notification type ('success', 'error', 'info')
+   * @param type - Notification type ('success' or 'error')
    */
   private showNotification(
     title: string,
     message: string,
-    type: 'success' | 'error' | 'info' = 'info'
+    type: 'success' | 'error'
   ): void {
     const notificationDiv = document.createElement('div');
-    let bgColor = 'bg-blue-500';
-    let iconName = 'info';
-
-    switch (type) {
-      case 'success':
-        bgColor = 'bg-green-500';
-        iconName = 'check-circle';
-        break;
-      case 'error':
-        bgColor = 'bg-red-500';
-        iconName = 'alert-circle';
-        break;
-      case 'info':
-        bgColor = 'bg-blue-500';
-        iconName = 'info';
-        break;
-    }
+    const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    const iconName = type === 'success' ? 'check-circle' : 'alert-circle';
 
     notificationDiv.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg z-50 max-w-md`;
 
@@ -357,44 +330,34 @@ class AdminOidcClientsManager {
 }
 
 // Auto-initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  const isAdminOidcClients = window.location.pathname.includes(
-    '/admin/oidc-clients'
-  );
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const oidcClientsPath = '/admin/oidc-clients';
+    const isAdminOidcClients =
+      window.location.pathname === oidcClientsPath ||
+      window.location.pathname.startsWith(`${oidcClientsPath}/`);
 
-  if (isAdminOidcClients) {
-    const dataElement = document.getElementById('___MAIN_STATE___');
-    let debug = false;
+    if (isAdminOidcClients) {
+      const adminOidcClientsManager = new AdminOidcClientsManager();
 
-    if (dataElement) {
-      try {
-        const data = JSON.parse(dataElement.textContent || '{}');
-        debug = data.debug || false;
-      } catch {
-        debug =
-          document.documentElement.getAttribute('data-env') === 'development';
-      }
+      // Make functions globally accessible for inline event handlers
+      (window as any).confirmDeactivateClient = (event: Event) => {
+        return adminOidcClientsManager.confirmDeactivateClient(event);
+      };
+
+      (window as any).confirmDeleteClient = (event: Event) => {
+        return adminOidcClientsManager.confirmDeleteClient(event);
+      };
+
+      (window as any).confirmRegenerateSecret = (event: Event) => {
+        return adminOidcClientsManager.confirmRegenerateSecret(event);
+      };
+
+      (window as any).copyToClipboard = (text: string, el?: HTMLElement) => {
+        return adminOidcClientsManager.copyToClipboard(text, el);
+      };
+
+      (window as any).adminOidcClientsManager = adminOidcClientsManager;
     }
-
-    const adminOidcClientsManager = new AdminOidcClientsManager(debug);
-
-    // Make functions globally accessible for inline event handlers
-    (window as any).confirmDeactivateClient = (event: Event) => {
-      return adminOidcClientsManager.confirmDeactivateClient(event);
-    };
-
-    (window as any).confirmDeleteClient = (event: Event) => {
-      return adminOidcClientsManager.confirmDeleteClient(event);
-    };
-
-    (window as any).confirmRegenerateSecret = (event: Event) => {
-      return adminOidcClientsManager.confirmRegenerateSecret(event);
-    };
-
-    (window as any).copyToClipboard = (text: string, el?: HTMLElement) => {
-      return adminOidcClientsManager.copyToClipboard(text, el);
-    };
-
-    (window as any).adminOidcClientsManager = adminOidcClientsManager;
-  }
-});
+  });
+}

@@ -13,7 +13,7 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { TYPES } from '../di/types.js';
 import { applyComputedDefaults } from './computed-fields.js';
 import { getDefaultFullConfig } from './constants.js';
-import { mergeConfig } from '../utils/config-merge.js';
+import { mergeConfig, type DeepPartial } from '../utils/config-merge.js';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 
@@ -33,7 +33,16 @@ function buildOidcStorageFromBootstrap(
   const adapter = bootstrap.oidcStorage?.adapter ?? bootstrap.storage.adapter;
   const mongoUri =
     bootstrap.storage.mongodb?.uri ?? 'mongodb://localhost:27017';
-  const mongoDb = mongoUri.split('/').pop()?.split('?')[0] || 'parako-id-dev';
+  let mongoDb = 'parako-id-dev';
+  try {
+    const databasePath = new URL(mongoUri).pathname.replace(/^\/+/, '');
+    if (databasePath) {
+      mongoDb = decodeURIComponent(databasePath);
+    }
+  } catch {
+    // Invalid URIs are rejected by bootstrap validation. Keep a safe fallback
+    // here because this function also protects programmatic callers.
+  }
   const redis = bootstrap.redis;
 
   return {
@@ -211,9 +220,9 @@ export class ConfigManager implements IConfigManager {
     // section has sensible values before computed fields run.
     const base: AppConfig =
       configProvider === 'bootstrap'
-        ? mergeConfig(
+        ? mergeConfig<AppConfig>(
             getDefaultFullConfig(),
-            persistedConfig as unknown as Partial<AppConfig>
+            persistedConfig as unknown as DeepPartial<AppConfig>
           )
         : (persistedConfig as AppConfig);
 
@@ -407,8 +416,11 @@ export class ConfigManager implements IConfigManager {
 
     if (cached && now - cached.timestamp < this.SECTION_CACHE_TTL) {
       this.metrics.sectionCacheHits++;
-      const accessCount =
-        this.metrics.sectionAccessCount.get(section as string) || 0;
+      // A section enters sectionCache only through the miss path below, which
+      // initializes its access counter in the same operation.
+      const accessCount = this.metrics.sectionAccessCount.get(
+        section as string
+      )!;
       this.metrics.sectionAccessCount.set(section as string, accessCount + 1);
 
       console.debug(
@@ -682,7 +694,11 @@ export class ConfigManager implements IConfigManager {
 
     let value: unknown = current;
     for (const key of keys) {
-      if (value && typeof value === 'object' && key in value) {
+      if (
+        value !== null &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, key)
+      ) {
         value = (value as Record<string, unknown>)[key];
       } else {
         return defaultValue as T;

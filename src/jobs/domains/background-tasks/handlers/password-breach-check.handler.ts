@@ -98,7 +98,7 @@ export function createPasswordBreachCheckHandler(
     } catch (error) {
       logger.error('Failed to send breach notification email', {
         userId,
-        error: (error as Error).message,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
 

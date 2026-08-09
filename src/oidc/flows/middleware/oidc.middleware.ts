@@ -157,7 +157,17 @@ export class OIDCMiddleware implements IOIDCMiddleware {
    * Executes after the OIDC provider has processed the request
    */
   postMiddleware = async (ctx: KoaContextWithOIDC): Promise<void> => {
-    // Do any action after the OIDC provider has processed the request
+    // oidc-provider owns its OP session, while Parako also keeps an Express
+    // application session for the account UI. A confirmed RP-initiated logout
+    // must clear both; otherwise the next authorization request silently
+    // rebuilds the OP session from the still-authenticated application session.
+    if (
+      ctx.oidc?.route === 'end_session_confirm' &&
+      ctx.status === 303 &&
+      ctx.req
+    ) {
+      await this.sessionManager.destroy(ctx.req as Request);
+    }
 
     this.logger.info('oidc_post_processing', {
       endpoint: ctx.path,

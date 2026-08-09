@@ -1,10 +1,60 @@
 import type { EntityConfigDeps } from './index.js';
+import type { IActivity } from '../../../types/activity.js';
 import type {
   EntityTransferConfig,
   EntityColumnDef,
   ExportContext,
   ExportFilters,
 } from '../types.js';
+
+function parseDateFilter(
+  value: unknown,
+  fieldName: 'dateFrom' | 'dateTo',
+  endOfDay = false
+): Date {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error(`Invalid ${fieldName} filter: expected YYYY-MM-DD`);
+  }
+
+  const time = endOfDay ? '23:59:59.999' : '00:00:00.000';
+  const date = new Date(`${normalized}T${time}Z`);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== normalized
+  ) {
+    throw new Error(`Invalid ${fieldName} filter: expected YYYY-MM-DD`);
+  }
+  return date;
+}
+
+function parseTypeFilter(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') {
+    throw new Error('Invalid type filter: expected a string');
+  }
+
+  const normalized = value.trim();
+  return normalized && normalized !== 'all' ? normalized : undefined;
+}
+
+function parseStatusFilter(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') {
+    throw new Error(
+      'Invalid status filter: expected all, success, failed, warning, or info'
+    );
+  }
+
+  const normalized = value.trim();
+  if (!normalized || normalized === 'all') return undefined;
+  if (!['success', 'failed', 'warning', 'info'].includes(normalized)) {
+    throw new Error(
+      'Invalid status filter: expected all, success, failed, warning, or info'
+    );
+  }
+  return normalized;
+}
 
 export function createActivityEntityConfig(
   deps: EntityConfigDeps
@@ -63,48 +113,49 @@ export function createActivityEntityConfig(
       ): Promise<Record<string, unknown>[]> {
         const filter: Record<string, unknown> = {};
 
-        if (filters.type && filters.type !== 'all') {
-          filter.type = filters.type;
-        }
-        if (filters.status && filters.status !== 'all') {
-          filter.status = filters.status;
-        }
-        if (filters.username && filters.username !== '') {
-          // Escape regex special chars to prevent ReDoS
-          const escaped = String(filters.username).replace(
-            /[.*+?^${}()|[\]\\]/g,
-            '\\$&'
-          );
-          filter.username = { $regex: escaped, $options: 'i' };
+        const type = parseTypeFilter(filters.type);
+        if (type) filter.type = type;
+        const status = parseStatusFilter(filters.status);
+        if (status) filter.status = status;
+        const username =
+          typeof filters.username === 'string' ? filters.username.trim() : '';
+        if (username) {
+          filter['actor.username'] = username;
         }
         if (filters.dateFrom || filters.dateTo) {
           const timestamp: Record<string, unknown> = {};
           if (filters.dateFrom) {
-            timestamp.$gte = new Date(filters.dateFrom as string);
+            timestamp.$gte = parseDateFilter(filters.dateFrom, 'dateFrom');
           }
           if (filters.dateTo) {
-            timestamp.$lte = new Date(`${filters.dateTo}T23:59:59.999Z`);
+            timestamp.$lte = parseDateFilter(filters.dateTo, 'dateTo', true);
           }
           filter.timestamp = timestamp;
         }
 
-        const result = await activityService.queryActivities(filter, {
-          page: 1,
-          limit: 10000,
-        });
+        const activities: IActivity[] = [];
+        let page = 1;
+        let totalPages = 1;
+        do {
+          const result = await activityService.queryActivities(filter, {
+            page,
+            limit: 10000,
+          });
+          activities.push(...result.results);
+          totalPages = result.totalPages;
+          page += 1;
+        } while (page <= totalPages);
 
-        return result.results.map(activity => {
+        return activities.map(activity => {
           const record: Record<string, unknown> = {};
           for (const col of exportColumns) {
             record[col.field] = (
               activity as unknown as Record<string, unknown>
             )[col.field];
           }
-          // Fallback for username from nested user object
+          // Username is stored on the activity actor, not at the top level.
           if (!record.username) {
-            const user = (activity as unknown as Record<string, unknown>)
-              .user as Record<string, unknown> | undefined;
-            record.username = user?.username ?? 'N/A';
+            record.username = activity.actor?.username ?? 'N/A';
           }
           return record;
         });

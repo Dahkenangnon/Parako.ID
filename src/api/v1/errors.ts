@@ -12,7 +12,7 @@ import type { ProblemDetail } from './types.js';
 // URN catalog
 
 /** URN type identifiers for every API error category. */
-export const ERROR_TYPES = {
+export const ERROR_TYPES = Object.freeze({
   UNAUTHORIZED: 'urn:parako:error:unauthorized',
   FORBIDDEN: 'urn:parako:error:forbidden',
   NOT_FOUND: 'urn:parako:error:not-found',
@@ -27,7 +27,7 @@ export const ERROR_TYPES = {
   SECTION_NOT_ALLOWED: 'urn:parako:error:section-not-allowed',
   CONSTRAINT_VIOLATION: 'urn:parako:error:constraint-violation',
   BODY_TOO_LARGE: 'urn:parako:error:body-too-large',
-} as const;
+} as const);
 
 // ApiError class
 
@@ -60,13 +60,9 @@ export class ApiError extends Error {
 
     // Collect extension members — everything that is not a core field.
     const coreKeys = new Set(['type', 'title', 'status', 'detail', 'instance']);
-    const extensions: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(problem)) {
-      if (!coreKeys.has(key)) {
-        extensions[key] = value;
-      }
-    }
-    this.extensions = extensions;
+    this.extensions = Object.fromEntries(
+      Object.entries(problem).filter(([key]) => !coreKeys.has(key))
+    );
   }
 
   /** Serialise to a plain RFC 9457 Problem Detail object. */
@@ -83,7 +79,12 @@ export class ApiError extends Error {
     }
 
     for (const [key, value] of Object.entries(this.extensions)) {
-      json[key] = value;
+      Object.defineProperty(json, key, {
+        value,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
 
     return json;

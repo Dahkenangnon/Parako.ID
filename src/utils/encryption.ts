@@ -45,6 +45,24 @@ const AUTH_TAG_LENGTH = 16;
  */
 const ENCRYPTED_PREFIX = 'ENCRYPTED:';
 
+const HEX_PATTERN = /^[0-9a-fA-F]+$/;
+
+function assertHexComponent(
+  name: string,
+  value: string,
+  expectedBytes?: number
+): void {
+  if (!value || value.length % 2 !== 0 || !HEX_PATTERN.test(value)) {
+    throw new Error(`Invalid ${name}. Expected non-empty, even-length hex`);
+  }
+
+  if (expectedBytes !== undefined && value.length !== expectedBytes * 2) {
+    throw new Error(
+      `Invalid ${name} length. Expected ${expectedBytes} bytes, got ${value.length / 2}`
+    );
+  }
+}
+
 /**
  * Result of encryption operation
  */
@@ -216,6 +234,10 @@ export function decrypt(
 export function generateEncryptionKey(
   format: 'hex' | 'base64' = 'hex'
 ): string {
+  if (format !== 'hex' && format !== 'base64') {
+    throw new Error(`Unsupported encryption key format: ${format}`);
+  }
+
   const key = randomBytes(KEY_LENGTH);
   return format === 'base64' ? key.toString('base64') : key.toString('hex');
 }
@@ -281,14 +303,19 @@ export function parseEncrypted(serialized: string): EncryptionResult {
 
   const [versionPart, iv, authTag, encrypted] = parts;
 
-  if (!versionPart.startsWith('v')) {
+  const versionMatch = /^v([1-9]\d*)$/.exec(versionPart);
+  if (!versionMatch) {
     throw new Error('Invalid version format. Expected format: v1, v2, etc.');
   }
 
-  const version = parseInt(versionPart.substring(1), 10);
-  if (isNaN(version)) {
+  const version = Number(versionMatch[1]);
+  if (!Number.isSafeInteger(version)) {
     throw new Error(`Invalid version number: ${versionPart}`);
   }
+
+  assertHexComponent('IV', iv, IV_LENGTH);
+  assertHexComponent('auth tag', authTag, AUTH_TAG_LENGTH);
+  assertHexComponent('ciphertext', encrypted);
 
   return {
     version,
@@ -346,6 +373,7 @@ export function decryptValue(serialized: string): string {
  */
 export function ensureEncrypted(value: string): string {
   if (isEncrypted(value)) {
+    parseEncrypted(value);
     return value;
   }
   return encryptValue(value);
@@ -384,7 +412,10 @@ export function encryptWithKey(plaintext: string, key: Buffer): string {
   if (!plaintext || typeof plaintext !== 'string') {
     throw new Error('Plaintext must be a non-empty string');
   }
-  if (!key || key.length !== KEY_LENGTH) {
+  if (!Buffer.isBuffer(key)) {
+    throw new Error(`Key must be a ${KEY_LENGTH}-byte Buffer`);
+  }
+  if (key.length !== KEY_LENGTH) {
     throw new Error(`Key must be ${KEY_LENGTH} bytes`);
   }
 
@@ -408,7 +439,10 @@ export function encryptWithKey(plaintext: string, key: Buffer): string {
  * @returns The decrypted plaintext
  */
 export function decryptWithKey(serialized: string, key: Buffer): string {
-  if (!key || key.length !== KEY_LENGTH) {
+  if (!Buffer.isBuffer(key)) {
+    throw new Error(`Key must be a ${KEY_LENGTH}-byte Buffer`);
+  }
+  if (key.length !== KEY_LENGTH) {
     throw new Error(`Key must be ${KEY_LENGTH} bytes`);
   }
 

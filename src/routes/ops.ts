@@ -37,11 +37,15 @@ export function opsRoutes(
     async (req: Request, res: Response) => {
       try {
         const { provider } = req.params;
-        const code = (req.query.code as string) || '';
-        const state = (req.query.state as string) || '';
+        const { code, state } = req.query;
 
         if (!code || !state) {
           res.status(400).json({ error: 'Missing code or state parameter' });
+          return;
+        }
+
+        if (typeof code !== 'string' || typeof state !== 'string') {
+          res.status(400).json({ error: 'Invalid code or state parameter' });
           return;
         }
 

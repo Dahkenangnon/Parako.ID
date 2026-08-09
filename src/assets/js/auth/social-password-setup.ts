@@ -54,7 +54,7 @@
   interface SocialPasswordSetupManagerOptions {
     passwordPolicy: any;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
+    debug: boolean;
     errorRecoveryTimeout?: number;
     csrfToken?: string;
   }
@@ -100,12 +100,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
       this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
 
       this.initializeElements();
@@ -186,8 +186,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -220,11 +218,9 @@
       this.confirmPasswordInput = document.getElementById(
         'confirmPassword'
       ) as HTMLInputElement;
-      this.passwordToggle = document.querySelector(
-        'button[onclick*="togglePassword(\'password\')"]'
-      );
+      this.passwordToggle = document.querySelector('#password-toggle');
       this.confirmPasswordToggle = document.querySelector(
-        'button[onclick*="togglePassword(\'confirmPassword\')"]'
+        '#confirm-password-toggle'
       );
 
       // Password requirement check elements
@@ -293,9 +289,7 @@
      * Validate password strength and update visual indicators
      */
     private validatePasswordStrength(): void {
-      if (!this.passwordInput) return;
-
-      const password = this.passwordInput.value;
+      const password = this.passwordInput!.value;
 
       if (this.lengthCheck) {
         this.lengthCheck.textContent =
@@ -325,17 +319,15 @@
      * Validate password confirmation
      */
     private validatePasswordConfirmation(): void {
-      if (!this.passwordInput || !this.confirmPasswordInput) return;
-
-      const password = this.passwordInput.value;
-      const confirmPassword = this.confirmPasswordInput.value;
+      const password = this.passwordInput!.value;
+      const confirmPassword = this.confirmPasswordInput!.value;
 
       if (confirmPassword && password !== confirmPassword) {
-        this.confirmPasswordInput.setCustomValidity(
+        this.confirmPasswordInput!.setCustomValidity(
           this.getTranslation('passwordsDoNotMatch')
         );
       } else {
-        this.confirmPasswordInput.setCustomValidity('');
+        this.confirmPasswordInput!.setCustomValidity('');
       }
     }
 
@@ -395,9 +387,7 @@
       `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -424,17 +414,10 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.style.opacity = '0.6';
-        this.submitButton.style.cursor = 'not-allowed';
-        this.submitButton.style.pointerEvents = 'none';
-      }
+      this.submitButton!.disabled = true;
+      this.submitButton!.style.opacity = '0.6';
+      this.submitButton!.style.cursor = 'not-allowed';
+      this.submitButton!.style.pointerEvents = 'none';
 
       if (this.passwordToggle) {
         const passwordBtn = this.passwordToggle as HTMLButtonElement;
@@ -453,10 +436,8 @@
       }
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -472,22 +453,17 @@
     private enableAllButtons(): void {
       this.isSubmitting = false;
 
-      // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = this.getTranslation(
-          'completeRegistration'
-        );
-        this.submitButton.style.opacity = '1';
-        this.submitButton.style.cursor = 'pointer';
-        this.submitButton.style.pointerEvents = 'auto';
-      }
+      this.submitButton!.disabled = false;
+      this.submitButton!.innerHTML = this.getTranslation(
+        'completeRegistration'
+      );
+      this.submitButton!.style.opacity = '1';
+      this.submitButton!.style.cursor = 'pointer';
+      this.submitButton!.style.pointerEvents = 'auto';
 
       // Re-enable password toggle buttons
       if (this.passwordToggle) {
@@ -507,10 +483,8 @@
       }
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
     }
 
     /**

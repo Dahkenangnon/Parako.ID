@@ -25,6 +25,10 @@ const INTEGRATION_METHODS: IntegrationMethod[] = [
   'apple',
 ];
 
+function normalizeError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 /**
  * Service for user integration-related database operations
  * Provides integration-specific methods beyond the standard CRUD operations
@@ -37,6 +41,31 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     private readonly socialIntegrationRepo: ISocialIntegrationRepository,
     @inject(TYPES.UserService) private readonly userService: IUserService
   ) {}
+
+  private encryptTokens(tokens: TokenData): TokenData {
+    return {
+      ...tokens,
+      access_token: tokens.access_token
+        ? ensureEncrypted(tokens.access_token)
+        : tokens.access_token,
+      refresh_token: tokens.refresh_token
+        ? ensureEncrypted(tokens.refresh_token)
+        : tokens.refresh_token,
+      id_token: tokens.id_token
+        ? ensureEncrypted(tokens.id_token)
+        : tokens.id_token,
+    };
+  }
+
+  private requireIntegrationId(integration: ISocialIntegration): string {
+    const id = integration.id || integration._id;
+    if (!id) throw new Error('Integration id is required');
+    return id;
+  }
+
+  private isValidDate(value: Date): boolean {
+    return value instanceof Date && Number.isFinite(value.getTime());
+  }
 
   public async findById(id: string): Promise<ISocialIntegration | null> {
     return this.socialIntegrationRepo.findById(id);
@@ -58,7 +87,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration || undefined;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integration_by_user_and_method',
         userId,
@@ -85,7 +114,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration || undefined;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integration_by_provider_sub',
         providerSub,
@@ -108,7 +137,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integrations_by_user',
         userId,
@@ -132,7 +161,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integrations_by_method',
         method,
@@ -152,6 +181,10 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     tokens?: TokenData
   ): Promise<ISocialIntegration> {
     try {
+      if (!providerData.sub?.trim()) {
+        throw new Error('Provider subject is required');
+      }
+
       const user = await this.userService.findById(userId);
       if (!user) {
         throw new Error('User not found');
@@ -181,7 +214,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
         provider_sub: providerData.sub,
         provider_username: providerData.provider_username,
         provider_data: providerData,
-        tokens,
+        tokens: tokens ? this.encryptTokens(tokens) : undefined,
         is_active: true,
         last_used: new Date(),
         metadata: {
@@ -203,7 +236,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_creating_user_integration',
         userId,
@@ -277,7 +310,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration || undefined;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_user_integration_including_inactive',
         userId,
@@ -301,7 +334,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       await Promise.all(
         active.map(integration =>
           this.socialIntegrationRepo.update(
-            integration.id || integration._id || '',
+            this.requireIntegrationId(integration),
             {
               is_active: false,
             } as any
@@ -316,7 +349,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return active.length;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_deactivating_user_integrations',
         userId,
@@ -358,7 +391,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       };
     } catch (error) {
       this.logger.error('Error getting integration statistics', {
-        error: (error as Error).message,
+        error: normalizeError(error).message,
       });
       return {
         totalIntegrations: 0,
@@ -390,7 +423,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       });
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integrations_with_user_data',
         filter,
@@ -412,7 +445,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       const integration = await this.findByUserAndMethod(userId, method);
       return !!integration;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_checking_user_integration',
         userId,
@@ -433,7 +466,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
         is_active: true,
       });
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_getting_user_integration_count',
         userId,
@@ -464,7 +497,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       );
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_getting_all_active_integrations',
         options,
@@ -490,7 +523,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration || undefined;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_finding_integration_by_provider_username',
         providerUsername,
@@ -510,8 +543,8 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     method?: IntegrationMethod
   ): Promise<ISocialIntegration[]> {
     try {
-      if (!startDate || !endDate) {
-        throw new Error('Start date and end date are required');
+      if (!this.isValidDate(startDate) || !this.isValidDate(endDate)) {
+        throw new Error('Start date and end date must be valid dates');
       }
 
       if (startDate >= endDate) {
@@ -536,7 +569,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_getting_integrations_by_date_range',
         startDate,
@@ -556,8 +589,12 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     limit: number = 10
   ): Promise<ISocialIntegration[]> {
     try {
-      if (days <= 0) {
-        throw new Error('Days must be greater than 0');
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new Error('Days must be a finite number greater than 0');
+      }
+
+      if (!Number.isInteger(limit) || limit <= 0) {
+        throw new Error('Limit must be a positive integer');
       }
 
       const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -575,7 +612,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integrations || [];
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_getting_recently_used_integrations',
         days,
@@ -618,7 +655,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       await Promise.all(
         integrations.map(integration =>
           this.socialIntegrationRepo.update(
-            integration.id || integration._id || '',
+            this.requireIntegrationId(integration),
             {
               is_active: false,
             } as any
@@ -633,7 +670,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integrations.length;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_bulk_deactivating_integrations',
         criteria,
@@ -666,7 +703,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return updated;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_marking_integration_as_used',
         integrationId,
@@ -699,7 +736,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return updated;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_activating_integration',
         integrationId,
@@ -732,7 +769,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return updated;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_deactivating_integration',
         integrationId,
@@ -757,18 +794,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
         throw new Error('Integration not found');
       }
 
-      const encryptedTokens: TokenData = {
-        ...tokens,
-        access_token: tokens.access_token
-          ? ensureEncrypted(tokens.access_token)
-          : tokens.access_token,
-        refresh_token: tokens.refresh_token
-          ? ensureEncrypted(tokens.refresh_token)
-          : tokens.refresh_token,
-        id_token: tokens.id_token
-          ? ensureEncrypted(tokens.id_token)
-          : tokens.id_token,
-      };
+      const encryptedTokens = this.encryptTokens(tokens);
 
       const updated = await this.socialIntegrationRepo.update(integrationId, {
         tokens: { ...integration.tokens, ...encryptedTokens },
@@ -783,7 +809,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return updated;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_updating_integration_tokens',
         integrationId,
@@ -820,7 +846,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return updated;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_updating_integration_provider_data',
         integrationId,
@@ -862,7 +888,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return integration;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_checking_token_refresh_needed',
         integrationId,
@@ -910,7 +936,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
 
       return newTokens;
     } catch (error) {
-      const err = error as Error;
+      const err = normalizeError(error);
       this.logger.error(err, {
         context: 'error_refreshing_token',
         integrationId,
@@ -937,7 +963,7 @@ export class SocialIntegrationService implements ISocialIntegrationService {
       return Object.fromEntries(counts.filter(([, count]) => count > 0));
     } catch (error) {
       this.logger.error('Error getting integrations by method', {
-        error: (error as Error).message,
+        error: normalizeError(error).message,
       });
       return {};
     }

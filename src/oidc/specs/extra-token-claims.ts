@@ -51,9 +51,6 @@ export default function ExtraTokenClaims() {
     _ctx: KoaContextWithOIDC,
     _token: any
   ) {
-    return {
-      // This is an example of a custom claim that will be added to the Access Token
-      'urn:idp:parako_id:foo': 'bar',
-    };
+    return {};
   };
 }

@@ -191,7 +191,11 @@ export class AdminDataTransferController implements IAdminDataTransferController
           validCount: validation.validCount,
         });
       } finally {
-        await queue.close();
+        await this.closeResourceSafely(
+          queue,
+          'data_import_queue_close_failed',
+          { entityId }
+        );
       }
     } catch (error) {
       this.logger.error(error as Error, {
@@ -207,7 +211,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
    * GET /admin/data-transfer/:entityId/import/:jobId/status
    */
   public importStatus = async (req: Request, res: Response): Promise<void> => {
-    const { jobId } = req.params;
+    const { entityId, jobId } = req.params;
     const currentTenantId = tenantContext.getTenantId();
 
     const redisOpts = this.getRedisOpts();
@@ -220,7 +224,11 @@ export class AdminDataTransferController implements IAdminDataTransferController
 
     try {
       const job = await Job.fromId(queue, jobId);
-      if (!job || job.data.tenantId !== currentTenantId) {
+      if (
+        !job ||
+        job.data.tenantId !== currentTenantId ||
+        job.data.entityId !== entityId
+      ) {
         res.status(404).json({ error: 'Import job not found' });
         return;
       }
@@ -236,7 +244,11 @@ export class AdminDataTransferController implements IAdminDataTransferController
         res.json({ state, progress });
       }
     } finally {
-      await queue.close();
+      await this.closeResourceSafely(
+        queue,
+        'data_import_status_queue_close_failed',
+        { jobId }
+      );
     }
   };
 
@@ -248,7 +260,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
     req: Request,
     res: Response
   ): Promise<void> => {
-    const { jobId } = req.params;
+    const { entityId, jobId } = req.params;
     const currentTenantId = tenantContext.getTenantId();
 
     const redisOpts = this.getRedisOpts();
@@ -259,17 +271,49 @@ export class AdminDataTransferController implements IAdminDataTransferController
       return;
     }
 
-    const job = await Job.fromId(queue, jobId);
-    if (!job || job.data.tenantId !== currentTenantId) {
-      await queue.close();
+    let job;
+    try {
+      job = await Job.fromId(queue, jobId);
+    } catch (error) {
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
+      throw error;
+    }
+    if (
+      !job ||
+      job.data.tenantId !== currentTenantId ||
+      job.data.entityId !== entityId
+    ) {
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
       res.status(404).json({ error: 'Import job not found' });
       return;
     }
 
-    const state = await job.getState();
+    let state;
+    try {
+      state = await job.getState();
+    } catch (error) {
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
+      throw error;
+    }
     if (state === 'completed') {
       const result = job.returnvalue;
-      await queue.close();
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -281,7 +325,11 @@ export class AdminDataTransferController implements IAdminDataTransferController
       return;
     }
     if (state === 'failed') {
-      await queue.close();
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -295,35 +343,71 @@ export class AdminDataTransferController implements IAdminDataTransferController
       return;
     }
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'X-Accel-Buffering': 'no',
-    });
+    let queueEvents: QueueEvents;
+    try {
+      queueEvents = new QueueEvents(QUEUE_NAMES.BACKGROUND_TASKS, {
+        connection: buildQueueRedisOptions(redisOpts),
+        prefix: QUEUE_PREFIX,
+      });
+    } catch (error) {
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
+      throw error;
+    }
 
-    res.write(`event: connected\ndata: ${JSON.stringify({ jobId })}\n\n`);
+    try {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
 
-    const queueEvents = new QueueEvents(QUEUE_NAMES.BACKGROUND_TASKS, {
-      connection: buildQueueRedisOptions(redisOpts),
-      prefix: QUEUE_PREFIX,
-    });
+      res.write(`event: connected\ndata: ${JSON.stringify({ jobId })}\n\n`);
+    } catch (error) {
+      await this.closeResourceSafely(
+        queueEvents,
+        'data_import_progress_events_close_failed',
+        { jobId }
+      );
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
+      throw error;
+    }
 
     let cleaned = false;
-    let sseTimeout: ReturnType<typeof setTimeout> | null = null;
     const cleanup = async () => {
       if (cleaned) return;
       cleaned = true;
-      if (sseTimeout) clearTimeout(sseTimeout);
-      try {
-        await queueEvents.close();
-        await queue.close();
-      } catch {
-        // best-effort: the SSE client already disconnected — closing
-        // already-closed queue handles can throw but is harmless here.
-      }
+      clearTimeout(sseTimeout);
+      await this.closeResourceSafely(
+        queueEvents,
+        'data_import_progress_events_close_failed',
+        { jobId }
+      );
+      await this.closeResourceSafely(
+        queue,
+        'data_import_progress_queue_close_failed',
+        { jobId }
+      );
       res.end();
     };
+
+    // Start the timeout before event listeners can request cleanup, so cleanup
+    // always has a valid timer handle to clear.
+    const sseTimeout = setTimeout(
+      () => {
+        res.write(`event: timeout\ndata: {}\n\n`);
+        cleanup();
+      },
+      5 * 60 * 1000
+    );
 
     queueEvents.on(
       'progress',
@@ -363,15 +447,6 @@ export class AdminDataTransferController implements IAdminDataTransferController
     );
 
     req.on('close', cleanup);
-
-    // Timeout after 5 minutes
-    sseTimeout = setTimeout(
-      () => {
-        res.write(`event: timeout\ndata: {}\n\n`);
-        cleanup();
-      },
-      5 * 60 * 1000
-    );
   };
 
   /**
@@ -403,11 +478,11 @@ export class AdminDataTransferController implements IAdminDataTransferController
       const filters = {
         includeSensitive: req.query.includeSensitive === 'true',
         includeSecrets: req.query.includeSecrets === 'true',
-        dateFrom: req.query.dateFrom as string | undefined,
-        dateTo: req.query.dateTo as string | undefined,
-        type: req.query.type as string | undefined,
-        status: req.query.status as string | undefined,
-        username: req.query.username as string | undefined,
+        dateFrom: this.getScalarQueryValue(req.query.dateFrom),
+        dateTo: this.getScalarQueryValue(req.query.dateTo),
+        type: this.getScalarQueryValue(req.query.type),
+        status: this.getScalarQueryValue(req.query.status),
+        username: this.getScalarQueryValue(req.query.username),
       };
 
       if (filters.includeSecrets) {
@@ -550,5 +625,23 @@ export class AdminDataTransferController implements IAdminDataTransferController
       password: redis.password,
       database: redis.database,
     };
+  }
+
+  private async closeResourceSafely(
+    resource: { close(): Promise<void> },
+    context: string,
+    metadata: Record<string, unknown>
+  ): Promise<void> {
+    try {
+      await resource.close();
+    } catch (error) {
+      this.logger.error(error as Error, { context, ...metadata });
+    }
+  }
+
+  private getScalarQueryValue(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.trim();
+    return normalized || undefined;
   }
 }

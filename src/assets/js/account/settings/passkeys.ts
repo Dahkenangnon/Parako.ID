@@ -89,7 +89,6 @@
     private passkeyItemTemplate: HTMLTemplateElement | null = null;
 
     private credentials: PasskeyCredential[] = [];
-    private isLoading = false;
     private currentRenameId: string | null = null;
 
     constructor(state: PasskeysState) {
@@ -149,9 +148,6 @@
      * Load credentials from the server
      */
     private async loadCredentials(): Promise<void> {
-      if (this.isLoading) return;
-
-      this.isLoading = true;
       this.showLoading();
 
       try {
@@ -175,7 +171,6 @@
         this.log('Error loading credentials', error);
         this.showToast(this.translations.errorLoading, 'error');
       } finally {
-        this.isLoading = false;
         this.hideLoading();
       }
     }
@@ -487,9 +482,7 @@
           credential.friendly_name = newName;
         }
 
-        const item = this.listEl?.querySelector(
-          `[data-credential-id="${credentialId}"]`
-        );
+        const item = this.findCredentialItem(credentialId);
         const nameEl = item?.querySelector('.passkey-name');
         if (nameEl) {
           nameEl.textContent = newName;
@@ -537,9 +530,7 @@
           c => c.credential_id !== credentialId
         );
 
-        const item = this.listEl?.querySelector(
-          `[data-credential-id="${credentialId}"]`
-        );
+        const item = this.findCredentialItem(credentialId);
         if (item) {
           item.remove();
         }
@@ -553,6 +544,17 @@
         this.log('Error deleting credential', error);
         this.showToast(this.translations.errorDeleting, 'error');
       }
+    }
+
+    /**
+     * Find a rendered credential without interpreting its opaque ID as CSS.
+     */
+    private findCredentialItem(credentialId: string): HTMLElement | undefined {
+      return Array.from(this.listEl!.children).find(
+        child =>
+          child instanceof HTMLElement &&
+          child.dataset.credentialId === credentialId
+      ) as HTMLElement | undefined;
     }
 
     /**
@@ -586,9 +588,7 @@
       if (this.emptyStateEl) {
         this.emptyStateEl.classList.remove('hidden');
       }
-      if (this.listEl) {
-        this.listEl.classList.add('hidden');
-      }
+      this.listEl!.classList.add('hidden');
     }
 
     /**
@@ -649,7 +649,7 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     const stateEl = document.getElementById('___PASSKEYS_STATE___');
     if (!stateEl) {
       console.error('[Passkeys] State element not found');
@@ -659,7 +659,7 @@
     try {
       const state: PasskeysState = JSON.parse(stateEl.textContent || '{}');
       const manager = new PasskeysManager(state);
-      manager.init();
+      await manager.init();
     } catch (error) {
       console.error('[Passkeys] Failed to initialize:', error);
     }

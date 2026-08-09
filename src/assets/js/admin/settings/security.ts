@@ -12,6 +12,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   interface DialogApi {
     showAlert: (
       title: string,
@@ -76,10 +78,13 @@
         'authentication.recovery.backup_codes.count'
       ) as HTMLInputElement | null;
       if (backupCodesElement) {
-        const backupCodesCount = parseInt(backupCodesElement.value || '0', 10);
+        const backupCodesValue = backupCodesElement.value.trim();
+        const backupCodesCount = Number(backupCodesValue);
         if (
-          backupCodesCount &&
-          (backupCodesCount < 1 || backupCodesCount > 50)
+          backupCodesValue &&
+          (!Number.isInteger(backupCodesCount) ||
+            backupCodesCount < 1 ||
+            backupCodesCount > 50)
         ) {
           await this.showError(
             'Invalid Backup Codes Count',

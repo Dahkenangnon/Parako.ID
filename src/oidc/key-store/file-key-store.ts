@@ -51,12 +51,22 @@ export class FileKeyStore implements IKeyStore {
     }
 
     if (
+      !parsed ||
       !parsed.keys ||
       !Array.isArray(parsed.keys) ||
       parsed.keys.length === 0
     ) {
       throw new Error(
         'JWKS file contains no keys. Generate keys with: yarn keys generate --file'
+      );
+    }
+
+    const invalidKeyIndex = parsed.keys.findIndex(
+      key => !key || typeof key !== 'object' || Array.isArray(key)
+    );
+    if (invalidKeyIndex !== -1) {
+      throw new Error(
+        `JWKS file contains an invalid key at index ${invalidKeyIndex}`
       );
     }
 
@@ -67,11 +77,13 @@ export class FileKeyStore implements IKeyStore {
     });
   }
 
-  async getJWKS(_tenantId?: string): Promise<{ keys: JsonWebKey[] }> {
+  async getJWKS(_tenantId?: string): Promise<{ keys: JWKWithMetadata[] }> {
     return { keys: [...this.keys] };
   }
 
-  async getPublicJWKS(_tenantId?: string): Promise<{ keys: JsonWebKey[] }> {
+  async getPublicJWKS(
+    _tenantId?: string
+  ): Promise<{ keys: JWKWithMetadata[] }> {
     const publicKeys = this.keys.map(key => {
       const pub: Record<string, unknown> = { ...key };
       for (const field of PRIVATE_KEY_FIELDS) {
@@ -89,6 +101,12 @@ export class FileKeyStore implements IKeyStore {
       'ES256',
       'EdDSA',
     ];
+
+    if (algorithms.length === 0) {
+      throw new Error(
+        'At least one signing algorithm is required to rotate file-based keys'
+      );
+    }
 
     const newKeys: JWKWithMetadata[] = [];
 
@@ -139,6 +157,38 @@ export class FileKeyStore implements IKeyStore {
     return 0;
   }
 
+  async retireKey(kid: string, _tenantId?: string): Promise<boolean> {
+    const keyIndex = this.keys.findIndex(key => key.kid === kid);
+    if (keyIndex === -1) {
+      return false;
+    }
+    if (this.keys.length === 1) {
+      throw new Error('Cannot retire the last promoted active signing key');
+    }
+
+    const projectDir = this.fileSystemUtils.getProjectDir();
+    const jwksPath = `${projectDir}/runtime/jwks/jwks.json`;
+    const backupPath = `${jwksPath}.backup-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+    const remainingKeys = this.keys.filter((_, index) => index !== keyIndex);
+
+    await this.fileSystemUtils.saveFile(
+      backupPath,
+      JSON.stringify({ keys: this.keys }, null, 2)
+    );
+    await this.fileSystemUtils.saveFile(
+      jwksPath,
+      JSON.stringify({ keys: remainingKeys }, null, 2)
+    );
+
+    this.keys = remainingKeys;
+    this.loadedAt = new Date();
+    this.logger.info('Retired file-backed JWKS key', {
+      kid,
+      backupPath,
+    });
+    return true;
+  }
+
   async listKeys(_tenantId?: string): Promise<StoredKey[]> {
     return this.keys.map(key => {
       const pub: Record<string, unknown> = { ...key };
@@ -153,7 +203,7 @@ export class FileKeyStore implements IKeyStore {
         promoted: true,
         privateKey: key,
         publicKey: pub as JsonWebKey,
-        createdAt: this.loadedAt ?? new Date(),
+        createdAt: this.loadedAt!,
         tenantId: 'default',
       };
     });

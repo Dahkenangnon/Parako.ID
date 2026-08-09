@@ -7,13 +7,62 @@ import type {
   ExportFilters,
 } from '../types.js';
 import { z } from 'zod';
-import { applyClientDefaults } from '../../../oidc/adapter/client-crud-utils.js';
+import {
+  applyClientDefaults,
+  validateClientData,
+} from '../../../oidc/adapter/client-crud-utils.js';
 import type { OidcClientData } from '../../../oidc/adapter/client.interface.js';
 
 export function createOidcClientEntityConfig(
   deps: EntityConfigDeps
 ): EntityTransferConfig {
   const { oidcAdapterBridge } = deps;
+  const redirectUrisValidator = z
+    .array(z.string().url())
+    .superRefine((uris, ctx) => {
+      const validation = validateClientData({
+        client_name: 'Imported Client',
+        redirect_uris: uris,
+      });
+      for (const error of validation.errors) {
+        ctx.addIssue({ code: 'custom', message: error });
+      }
+    })
+    .optional();
+  const clientUriValidator = z
+    .string()
+    .superRefine((uri, ctx) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(uri);
+      } catch {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Client URI must be a valid URL',
+        });
+        return;
+      }
+
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Client URI must use the http or https protocol',
+        });
+      }
+      if (parsed.username || parsed.password) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Client URI must not include credentials',
+        });
+      }
+      if (parsed.hostname.includes('*')) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Client URI must not include a wildcard hostname',
+        });
+      }
+    })
+    .optional();
 
   const columns: EntityColumnDef[] = [
     {
@@ -21,7 +70,7 @@ export function createOidcClientEntityConfig(
       header: 'Client Name',
       required: true,
       group: 'core',
-      validator: z.string().min(1).max(255),
+      validator: z.string().trim().min(1).max(255),
     },
     {
       field: 'application_type',
@@ -34,13 +83,13 @@ export function createOidcClientEntityConfig(
       field: 'redirect_uris',
       header: 'Redirect URIs',
       group: 'core',
-      validator: z.array(z.string().url()).optional(),
+      validator: redirectUrisValidator,
     },
     {
       field: 'post_logout_redirect_uris',
       header: 'Post Logout Redirect URIs',
       group: 'core',
-      validator: z.array(z.string().url()).optional(),
+      validator: redirectUrisValidator,
     },
     {
       field: 'grant_types',
@@ -78,7 +127,7 @@ export function createOidcClientEntityConfig(
       field: 'client_uri',
       header: 'Client URI',
       group: 'core',
-      validator: z.string().url().optional(),
+      validator: clientUriValidator,
     },
     {
       field: 'description',
@@ -123,6 +172,7 @@ export function createOidcClientEntityConfig(
     // Internal (secrets)
     { field: 'client_secret', header: 'Client Secret', group: 'internal' },
   ];
+  const importColumns = columns.filter(column => column.validator);
 
   return {
     entityId: 'oidc-clients',
@@ -131,7 +181,7 @@ export function createOidcClientEntityConfig(
       'Import and export OIDC/OAuth2 client registrations (JSON format)',
     importConfig: {
       format: 'json',
-      columns: columns.filter(c => c.validator), // Only columns with validators are importable
+      columns: importColumns,
       requiredFields: ['client_name', 'application_type'],
       maxRows: 500,
 
@@ -147,10 +197,26 @@ export function createOidcClientEntityConfig(
         row: Record<string, unknown>,
         _ctx: ImportContext
       ): Promise<Record<string, unknown>> {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips any incoming client_id/client_secret so the importer always mints fresh credentials.
-        const { client_id: _id, client_secret: _secret, ...rest } = row;
+        const importableData: Record<string, unknown> = {};
+        for (const column of importColumns) {
+          if (Object.prototype.hasOwnProperty.call(row, column.field)) {
+            importableData[column.field] = row[column.field];
+          }
+        }
+        const clientName =
+          typeof importableData.client_name === 'string'
+            ? importableData.client_name.trim()
+            : '';
+        const applicationType = importableData.application_type;
+        if (!clientName || typeof applicationType !== 'string') {
+          throw new Error(
+            'Client name and application type are required for OIDC client import'
+          );
+        }
+        importableData.client_name = clientName;
+
         return applyClientDefaults(
-          rest as unknown as Partial<OidcClientData>
+          importableData as unknown as Partial<OidcClientData>
         ) as unknown as Record<string, unknown>;
       },
 
@@ -182,7 +248,7 @@ export function createOidcClientEntityConfig(
               )[col.field];
             }
           }
-          if (filters.includeSecrets) {
+          if (filters.includeSecrets === true) {
             record.client_secret = client.client_secret;
           }
           return record;

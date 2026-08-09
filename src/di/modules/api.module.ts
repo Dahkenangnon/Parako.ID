@@ -161,6 +161,7 @@ export const apiModule: ContainerModule = new ContainerModule(
 
         const registrationTokensController = new RegistrationTokensController({
           providerService: providerService as any,
+          oidcAdapter,
           getTenantId,
           logger,
         });

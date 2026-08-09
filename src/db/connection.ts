@@ -185,7 +185,11 @@ export default class DatabaseConnectionManager implements IDatabaseConnectionMan
    */
   async disconnect(): Promise<void> {
     try {
-      await mongoose.connection.close();
+      if (this.config.storage?.adapter === 'mongodb') {
+        await mongoose.connection.close();
+      } else if (this.prisma) {
+        await this.prisma.$disconnect();
+      }
       this.logger.info('Database connection closed');
       this.isInitialized = false;
     } catch (error) {

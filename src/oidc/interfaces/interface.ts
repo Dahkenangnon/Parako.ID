@@ -1,4 +1,4 @@
-import { type Db } from 'mongodb';
+import { type Db, type Document } from 'mongodb';
 import { Client } from 'oidc-provider';
 
 /**
@@ -22,6 +22,8 @@ export interface OIDCPayload {
  */
 export interface OIDCDocument extends Document {
   _id: string;
+  logical_id?: string;
+  tenant_id?: string;
   payload: OIDCPayload;
   expiresAt?: Date;
   data?: Record<string, unknown>;

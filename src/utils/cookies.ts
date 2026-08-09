@@ -46,7 +46,7 @@ export class CookieManager implements ICookieManager {
     const defaultConfig =
       this.configManager.getConfig().deployment.cookies.defaults;
 
-    res.cookie(cookieConfig.name, value, {
+    res.cookie(options?.name ?? cookieConfig.name, value, {
       maxAge: options?.maxAge ?? cookieConfig.maxAge,
       httpOnly: options?.httpOnly ?? cookieConfig.httpOnly,
       secure:

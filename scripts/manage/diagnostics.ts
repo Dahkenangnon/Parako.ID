@@ -7,6 +7,7 @@ import { Command } from 'commander';
 import { checkRedisAvailability } from '../../src/jobs/redis.js';
 import { findProjectRoot, loadRuntimeEnvironment } from './database.js';
 import { isMainModule } from './shared/entrypoint.js';
+import { getPackageInfo } from './shared/utils.js';
 
 export interface RedisDiagnosticConfig {
   host: string;
@@ -27,7 +28,7 @@ export function resolveRedisDiagnosticConfig(
   }
 
   const database = Number(env.REDIS_DATABASE ?? '0');
-  if (!Number.isInteger(database) || database < 0) {
+  if (!Number.isSafeInteger(database) || database < 0) {
     throw new Error('REDIS_DATABASE must be a non-negative integer.');
   }
 
@@ -56,7 +57,7 @@ export function buildProgram(): Command {
   program
     .name('parako-diagnostics')
     .description('Check required Parako.ID production dependencies')
-    .version('1');
+    .version(getPackageInfo().version);
 
   program
     .command('redis')
@@ -66,13 +67,18 @@ export function buildProgram(): Command {
   return program;
 }
 
+/** Execute diagnostics and translate failures to process status. */
+export async function runDiagnosticsCli(argv = process.argv): Promise<void> {
+  try {
+    await buildProgram().parseAsync(argv);
+  } catch (error) {
+    console.error(
+      `Diagnostic failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    process.exitCode = 1;
+  }
+}
+
 if (isMainModule(import.meta.url)) {
-  buildProgram()
-    .parseAsync(process.argv)
-    .catch(error => {
-      console.error(
-        `Diagnostic failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-      process.exitCode = 1;
-    });
+  void runDiagnosticsCli();
 }

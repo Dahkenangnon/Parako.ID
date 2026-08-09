@@ -108,9 +108,9 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
       : 'server_error';
 
     // Nunjucks autoescape will handle HTML encoding
-    const rawMessage = err.message || err.error_description || '';
+    const rawMessage = err.error_description || err.message;
     const errorMessage =
-      typeof rawMessage === 'string'
+      typeof rawMessage === 'string' && rawMessage.length > 0
         ? rawMessage.slice(0, 500) // Limit message length
         : 'An error occurred during the authentication process.';
 

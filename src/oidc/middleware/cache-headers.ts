@@ -14,6 +14,14 @@ const sha256Hex = (input: string): string =>
 const stringifyBody = (body: unknown): string =>
   typeof body === 'string' ? body : JSON.stringify(body);
 
+const weakEntityTag = (etag: string): string => etag.trim().replace(/^W\//, '');
+
+const matchesIfNoneMatch = (header: string, etag: string): boolean =>
+  header.split(',').some(candidate => {
+    const tag = candidate.trim();
+    return tag === '*' || weakEntityTag(tag) === etag;
+  });
+
 /**
  * Drop the entity-representation headers a 304 response is not permitted to
  * carry. RFC 7232 section 4.1 enumerates the headers a server may send with
@@ -47,7 +55,7 @@ const applyCacheableResponse = (
   ctx.vary('Accept-Encoding');
 
   const ifNoneMatch = ctx.get('If-None-Match');
-  if (ifNoneMatch && ifNoneMatch === etag) {
+  if (ifNoneMatch && matchesIfNoneMatch(ifNoneMatch, etag)) {
     ctx.status = 304;
     ctx.body = null;
     strip304RepresentationHeaders(ctx);

@@ -12,6 +12,7 @@ import {
   stripBootstrapFields,
 } from '../validation/persistence-validator.js';
 import { applyComputedDefaults } from '../computed-fields.js';
+import { mergeConfig } from '../../utils/config-merge.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -71,9 +72,13 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
         return false;
       }
 
-      const topologyType = topology.constructor?.name;
+      const topologyType =
+        topology.description?.type ?? topology.constructor?.name;
       const supportsStreams =
-        topologyType === 'ReplicaSet' || topologyType === 'Sharded';
+        topologyType === 'Sharded' ||
+        topologyType === 'ReplicaSet' ||
+        (typeof topologyType === 'string' &&
+          topologyType.startsWith('ReplicaSet'));
 
       if (supportsStreams) {
         console.info(
@@ -110,7 +115,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
           {
             $match: {
               operationType: { $in: ['insert', 'update', 'replace'] },
-              'fullDocument.key': 'main', // Only watch main config changes
+              'fullDocument.key': SettingsService.MAIN_CONFIG_KEY,
             },
           },
         ],
@@ -479,7 +484,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     try {
       const currentConfig = await this.loadConfiguration();
 
-      const updatedConfig = { ...currentConfig, ...partial };
+      const updatedConfig = mergeConfig(currentConfig, partial);
 
       // Bootstrap fields (deployment.environment, deployment.server.port, storage.adapter + storage.mongodb|sqlite|postgresql.*)
       // must ONLY come from .env and should NEVER be persisted to database
@@ -625,7 +630,11 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     for (const key of keys) {
       partialPath = partialPath ? `${partialPath}.${key}` : key;
 
-      if (current && typeof current === 'object' && key in current) {
+      if (
+        current !== null &&
+        typeof current === 'object' &&
+        Object.hasOwn(current, key)
+      ) {
         current = current[key];
       } else {
         console.warn(`[CONFIG WARNING] Accessing undefined configuration key: "${path}"

@@ -17,6 +17,33 @@ import {
   DEFAULT_TENANT_ID,
 } from '../multi-tenancy/tenant-context.js';
 
+const CANONICAL_PATH_BASE = 'https://parako.local';
+
+function canonicalPath(originalUrl: string): string {
+  try {
+    return new URL(originalUrl, CANONICAL_PATH_BASE).pathname;
+  } catch {
+    return '/';
+  }
+}
+
+function supportedLocale(
+  value: unknown,
+  availableLocales: readonly string[]
+): string | undefined {
+  return typeof value === 'string' && availableLocales.includes(value)
+    ? value
+    : undefined;
+}
+
+function supportedTheme(value: unknown): 'light' | 'dark' | undefined {
+  return value === 'light' || value === 'dark' ? value : undefined;
+}
+
+function booleanPreference(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
 @injectable()
 export class UIMiddleware implements IUIMiddleware {
   constructor(
@@ -42,7 +69,7 @@ export class UIMiddleware implements IUIMiddleware {
     next: NextFunction
   ): Promise<void> => {
     try {
-      let theme = this.sessionManager.get(req, 'userTheme');
+      let theme = supportedTheme(this.sessionManager.get(req, 'userTheme'));
 
       if (!theme && (await this.sessionManager.isAuthenticated(req))) {
         try {
@@ -52,13 +79,8 @@ export class UIMiddleware implements IUIMiddleware {
               userData.username
             );
 
-            if (dbUser && dbUser.theme) {
-              theme = dbUser.theme;
-              this.sessionManager.set(req, 'userTheme', dbUser.theme);
-            } else {
-              theme = 'light';
-              this.sessionManager.set(req, 'userTheme', theme);
-            }
+            theme = supportedTheme(dbUser?.theme) || 'light';
+            this.sessionManager.set(req, 'userTheme', theme);
           }
         } catch (error) {
           this.logger.error(error as Error, {
@@ -101,19 +123,21 @@ export class UIMiddleware implements IUIMiddleware {
         return;
       }
 
-      // Always set the theme in the session, even if not authenticated
-      this.sessionManager.set(req, 'userTheme', theme);
-
-      this.cookieManager.setThemeCookie(res, theme);
-
       const userData = this.sessionManager.getActiveUser(req);
 
       if (userData && userData.id) {
         await this.userService.updateProfile(userData.id, { theme });
+      }
 
-        res.locals.userTheme = theme;
-        res.locals.htmlClass = theme === 'dark' ? 'dark' : '';
+      // Persist locally for both authenticated and anonymous sessions only
+      // after an authenticated profile update succeeds.
+      this.sessionManager.set(req, 'userTheme', theme);
+      this.cookieManager.setThemeCookie(res, theme);
 
+      res.locals.userTheme = theme;
+      res.locals.htmlClass = theme === 'dark' ? 'dark' : '';
+
+      if (userData && userData.id) {
         this.activityService.success(
           'theme_changed',
           'User changed theme',
@@ -133,10 +157,6 @@ export class UIMiddleware implements IUIMiddleware {
             },
           }
         );
-      } else {
-        // For unauthenticated users, just set locals for this request
-        res.locals.userTheme = theme;
-        res.locals.htmlClass = theme === 'dark' ? 'dark' : '';
       }
 
       res.json({ success: true, theme });
@@ -155,7 +175,9 @@ export class UIMiddleware implements IUIMiddleware {
     next: NextFunction
   ): Promise<void> => {
     try {
-      let sidebarExpanded = this.sessionManager.get(req, 'sidebar_expanded');
+      let sidebarExpanded = booleanPreference(
+        this.sessionManager.get(req, 'sidebar_expanded')
+      );
 
       if (
         sidebarExpanded === undefined &&
@@ -168,13 +190,9 @@ export class UIMiddleware implements IUIMiddleware {
               userData.username
             );
 
-            if (dbUser && dbUser.sidebar_expanded !== undefined) {
-              sidebarExpanded = dbUser.sidebar_expanded;
-              this.sessionManager.set(req, 'sidebar_expanded', sidebarExpanded);
-            } else {
-              sidebarExpanded = true;
-              this.sessionManager.set(req, 'sidebar_expanded', sidebarExpanded);
-            }
+            sidebarExpanded =
+              booleanPreference(dbUser?.sidebar_expanded) ?? true;
+            this.sessionManager.set(req, 'sidebar_expanded', sidebarExpanded);
           }
         } catch (error) {
           this.logger.error(error as Error, {
@@ -213,18 +231,19 @@ export class UIMiddleware implements IUIMiddleware {
         return;
       }
 
-      // Always set in session
-      this.sessionManager.set(req, 'sidebar_expanded', expanded);
-
       const userData = this.sessionManager.getActiveUser(req);
 
       if (userData && userData.id) {
         await this.userService.updateProfile(userData.id, {
           sidebar_expanded: expanded,
         });
+      }
 
-        res.locals.sidebar_expanded = expanded;
+      // Persist locally only after an authenticated profile update succeeds.
+      this.sessionManager.set(req, 'sidebar_expanded', expanded);
+      res.locals.sidebar_expanded = expanded;
 
+      if (userData && userData.id) {
         this.activityService.success(
           'sidebar_state_changed',
           'User changed sidebar state',
@@ -244,8 +263,6 @@ export class UIMiddleware implements IUIMiddleware {
             },
           }
         );
-      } else {
-        res.locals.sidebar_expanded = expanded;
       }
 
       res.json({ success: true, expanded });
@@ -266,8 +283,11 @@ export class UIMiddleware implements IUIMiddleware {
     next: NextFunction
   ): Promise<void> => {
     try {
-      let userLocale = this.sessionManager.get(req, 'userLocale');
       const config = this.configManager.getConfig();
+      let userLocale = supportedLocale(
+        this.sessionManager.get(req, 'userLocale'),
+        config.application.locales.available
+      );
 
       if (!userLocale && (await this.sessionManager.isAuthenticated(req))) {
         try {
@@ -277,13 +297,12 @@ export class UIMiddleware implements IUIMiddleware {
               userData.username
             );
 
-            if (dbUser && dbUser.locale) {
-              userLocale = dbUser.locale;
-              this.sessionManager.set(req, 'userLocale', userLocale);
-            } else {
-              userLocale = config.application.locales.default;
-              this.sessionManager.set(req, 'userLocale', userLocale);
-            }
+            userLocale =
+              supportedLocale(
+                dbUser?.locale,
+                config.application.locales.available
+              ) || config.application.locales.default;
+            this.sessionManager.set(req, 'userLocale', userLocale);
           }
         } catch (error) {
           this.logger.error(error as Error, {
@@ -327,41 +346,42 @@ export class UIMiddleware implements IUIMiddleware {
         return;
       }
 
-      // Always set locale in session (works for both authenticated and unauthenticated)
-      this.sessionManager.set(req, 'userLocale', locale);
+      const isAuthenticated = await this.sessionManager.isAuthenticated(req);
+      const userData = isAuthenticated
+        ? this.sessionManager.getActiveUser(req)
+        : undefined;
 
+      if (userData && userData.id) {
+        await this.userService.updateProfile(userData.id, { locale });
+      }
+
+      // Persist locally only after an authenticated profile update succeeds.
+      this.sessionManager.set(req, 'userLocale', locale);
       this.cookieManager.setLocaleCookie(res, locale);
 
       res.locals.userLocale = locale;
       res.locals.currentLocale = locale;
 
-      const isAuthenticated = await this.sessionManager.isAuthenticated(req);
-      if (isAuthenticated) {
-        const userData = this.sessionManager.getActiveUser(req);
-
-        if (userData && userData.id) {
-          await this.userService.updateProfile(userData.id, { locale });
-
-          this.activityService.success(
-            'locale_changed',
-            'User changed locale',
-            null,
-            {
-              ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
-              user_agent: req.get('User-Agent') || 'unknown',
-              actor: {
-                ...userData,
-                actor_type: 'user',
+      if (userData && userData.id) {
+        this.activityService.success(
+          'locale_changed',
+          'User changed locale',
+          null,
+          {
+            ip_address: req.ip || req.socket?.remoteAddress || 'unknown',
+            user_agent: req.get('User-Agent') || 'unknown',
+            actor: {
+              ...userData,
+              actor_type: 'user',
+            },
+            target: {
+              target_type: 'config',
+              entity_data: {
+                locale,
               },
-              target: {
-                target_type: 'config',
-                entity_data: {
-                  locale,
-                },
-              },
-            }
-          );
-        }
+            },
+          }
+        );
       }
 
       res.json({ success: true, locale });
@@ -538,8 +558,21 @@ export class UIMiddleware implements IUIMiddleware {
     const queryParams = ['ui_locales', 'locale', 'lang', 'hl', 'l'];
 
     for (const param of queryParams) {
-      const value = req.query[param] as string;
-      if (value && availableLocales.includes(value)) {
+      const value = req.query[param];
+
+      if (param === 'ui_locales' && typeof value === 'string') {
+        const preferredLocale = value
+          .split(/\s+/)
+          .find(locale => availableLocales.includes(locale));
+
+        if (preferredLocale) {
+          return preferredLocale;
+        }
+
+        continue;
+      }
+
+      if (typeof value === 'string' && availableLocales.includes(value)) {
         return value;
       }
     }
@@ -571,17 +604,27 @@ export class UIMiddleware implements IUIMiddleware {
       const pathLocale = this.extractPathLocale(req, availableLocales);
 
       // Priority 3: Session locale (persistent)
-      const sessionLocale = this.sessionManager.get(req, 'userLocale');
+      const sessionLocale = supportedLocale(
+        this.sessionManager.get(req, 'userLocale'),
+        availableLocales
+      );
 
       // Priority 4: Cookie locale
-      const cookieLocale = localeCookieConfig.name
-        ? req.cookies[localeCookieConfig.name]
-        : undefined;
+      const cookieLocale = supportedLocale(
+        localeCookieConfig.name
+          ? req.cookies[localeCookieConfig.name]
+          : undefined,
+        availableLocales
+      );
 
       // Priority 5: Accept-Language header (user-agent locale)
       const acceptLanguage = req.acceptsLanguages(availableLocales);
       const userAgentLocale =
         typeof acceptLanguage === 'string' ? acceptLanguage : null;
+      const i18nLocale = supportedLocale(
+        this.i18nService.getLocale(),
+        availableLocales
+      );
 
       const locale =
         queryLocale ||
@@ -589,7 +632,7 @@ export class UIMiddleware implements IUIMiddleware {
         sessionLocale ||
         cookieLocale ||
         userAgentLocale ||
-        this.i18nService.getLocale() ||
+        i18nLocale ||
         defaultLocale;
 
       this.i18nService.setLocale(req, locale);
@@ -647,8 +690,7 @@ export class UIMiddleware implements IUIMiddleware {
         };
         res.locals.tn = reqWithTn.tn ? reqWithTn.tn.bind(reqWithTn) : null;
       } else {
-        // Fallback if i18n is not initialized
-        res.locals.t = (key: string) => key;
+        // The normalized translation helper below provides the fallback.
         res.locals.tn = null;
       }
 
@@ -698,9 +740,14 @@ export class UIMiddleware implements IUIMiddleware {
       const config = this.configManager.getConfig();
       const defaultLocale = config.application.locales.default;
 
-      let theme = this.sessionManager.get(req, 'userTheme');
-      let sidebarExpanded = this.sessionManager.get(req, 'sidebar_expanded');
-      let userLocale = this.sessionManager.get(req, 'userLocale');
+      let theme = supportedTheme(this.sessionManager.get(req, 'userTheme'));
+      let sidebarExpanded = booleanPreference(
+        this.sessionManager.get(req, 'sidebar_expanded')
+      );
+      let userLocale = supportedLocale(
+        this.sessionManager.get(req, 'userLocale'),
+        config.application.locales.available
+      );
 
       // Only fetch from DB if any value is missing AND user is authenticated
       const needsDbFetch =
@@ -718,15 +765,13 @@ export class UIMiddleware implements IUIMiddleware {
 
             if (dbUser) {
               if (!theme) {
-                theme = dbUser.theme || 'light';
+                theme = supportedTheme(dbUser.theme) || 'light';
                 this.sessionManager.set(req, 'userTheme', theme);
               }
 
               if (sidebarExpanded === undefined) {
                 sidebarExpanded =
-                  dbUser.sidebar_expanded !== undefined
-                    ? dbUser.sidebar_expanded
-                    : true;
+                  booleanPreference(dbUser.sidebar_expanded) ?? true;
                 this.sessionManager.set(
                   req,
                   'sidebar_expanded',
@@ -735,7 +780,11 @@ export class UIMiddleware implements IUIMiddleware {
               }
 
               if (!userLocale) {
-                userLocale = dbUser.locale || defaultLocale;
+                userLocale =
+                  supportedLocale(
+                    dbUser.locale,
+                    config.application.locales.available
+                  ) || defaultLocale;
                 this.sessionManager.set(req, 'userLocale', userLocale);
               }
             }
@@ -832,6 +881,19 @@ export class UIMiddleware implements IUIMiddleware {
 
       // Re-build authentication locals
       const authConfig = tenantConfig.security.authentication;
+      const customIdentifiers = (
+        authConfig.custom_identifiers?.enabled
+          ? (authConfig.custom_identifiers.fields ?? []).filter(
+              (field: any) => field.usable_for_login
+            )
+          : []
+      ).map((field: any) => ({
+        slot: field.slot,
+        key: field.key,
+        name: field.name,
+        hint: field.hint_for_user,
+      }));
+
       res.locals.authentication = {
         loginMethods: {
           email:
@@ -847,6 +909,7 @@ export class UIMiddleware implements IUIMiddleware {
             authConfig.login.login_methods.some((cred: string) =>
               cred.includes('custom_identifier')
             ) || false,
+          customIdentifiers,
           bothEnabled: authConfig.login.login_methods.length > 1 || false,
         },
         signupMethods: {
@@ -854,17 +917,7 @@ export class UIMiddleware implements IUIMiddleware {
           requireFullName:
             authConfig.signup.contact_channels?.full_name?.required ?? true,
         },
-        customIdentifiers: (authConfig.custom_identifiers?.enabled
-          ? (authConfig.custom_identifiers.fields ?? []).filter(
-              (f: any) => f.usable_for_login
-            )
-          : []
-        ).map((f: any) => ({
-          slot: f.slot,
-          key: f.key,
-          name: f.name,
-          hint: f.hint_for_user,
-        })),
+        customIdentifiers,
         emailVerificationRequired:
           authConfig.signup.require_email_verification || false,
         phoneVerificationRequired:
@@ -889,9 +942,7 @@ export class UIMiddleware implements IUIMiddleware {
 
       const baseUrl =
         tenantConfig.deployment.url || `${req.protocol}://${req.hostname}`;
-      const pathOnly = req.originalUrl.split('?')[0];
-      const safePath = encodeURI(pathOnly);
-      res.locals.canonical_url = `${baseUrl}${safePath}`;
+      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
 
       res.locals.og = {
         title: tenantConfig.application.title,

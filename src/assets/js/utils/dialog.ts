@@ -133,7 +133,14 @@ export async function showAlert(
 
     setTimeout(() => okButton.focus(), 100);
 
+    function handleKeydown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        cleanup();
+      }
+    }
+
     const cleanup = () => {
+      document.removeEventListener('keydown', handleKeydown);
       backdrop.remove();
       resolve();
     };
@@ -146,15 +153,7 @@ export async function showAlert(
       }
     });
 
-    document.addEventListener(
-      'keydown',
-      e => {
-        if (e.key === 'Escape') {
-          cleanup();
-        }
-      },
-      { once: true }
-    );
+    document.addEventListener('keydown', handleKeydown, { once: true });
   });
 }
 
@@ -244,7 +243,14 @@ export async function showConfirm(
 
     setTimeout(() => confirmButton.focus(), 100);
 
+    function handleKeydown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        cleanup(false);
+      }
+    }
+
     const cleanup = (result: boolean) => {
+      document.removeEventListener('keydown', handleKeydown);
       backdrop.remove();
       resolve(result);
     };
@@ -258,15 +264,7 @@ export async function showConfirm(
       }
     });
 
-    document.addEventListener(
-      'keydown',
-      e => {
-        if (e.key === 'Escape') {
-          cleanup(false);
-        }
-      },
-      { once: true }
-    );
+    document.addEventListener('keydown', handleKeydown, { once: true });
   });
 }
 

@@ -81,26 +81,29 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
 
     // Set SQLite performance/correctness pragmas — log failures instead of
     // silently swallowing them so misconfigurations surface during startup.
-    const pragmas: Array<[ReturnType<typeof client.$executeRaw>, string]> = [
-      [client.$executeRaw`PRAGMA journal_mode = WAL`, 'journal_mode=WAL'],
-      [client.$executeRaw`PRAGMA foreign_keys = ON`, 'foreign_keys=ON'],
+    const pragmas: Array<
+      [() => ReturnType<typeof client.$executeRaw>, string]
+    > = [
+      [() => client.$executeRaw`PRAGMA journal_mode = WAL`, 'journal_mode=WAL'],
+      [() => client.$executeRaw`PRAGMA foreign_keys = ON`, 'foreign_keys=ON'],
       [
         // FULL in production: guarantees durability at slight write cost.
         // NORMAL in dev: faster writes, acceptable risk for local data.
-        isProduction
-          ? client.$executeRaw`PRAGMA synchronous = FULL`
-          : client.$executeRaw`PRAGMA synchronous = NORMAL`,
+        () =>
+          isProduction
+            ? client.$executeRaw`PRAGMA synchronous = FULL`
+            : client.$executeRaw`PRAGMA synchronous = NORMAL`,
         `synchronous=${isProduction ? 'FULL' : 'NORMAL'}`,
       ],
-      [client.$executeRaw`PRAGMA cache_size = -8000`, 'cache_size=-8000'],
+      [() => client.$executeRaw`PRAGMA cache_size = -8000`, 'cache_size=-8000'],
     ];
 
     // Await PRAGMAs sequentially so failures are surfaced
     // during startup rather than silently swallowed.
     void (async () => {
-      for (const [promise, label] of pragmas) {
+      for (const [execute, label] of pragmas) {
         try {
-          await promise;
+          await execute();
         } catch (err: unknown) {
           // console.error here (not the structured logger): this runs at
           // module load before the DI container has bound the logger, so

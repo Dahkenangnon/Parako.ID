@@ -602,7 +602,7 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
             reason: 'Boolean floor: platform requires enabled',
           });
         }
-      } else if (type === 'numeric') {
+      } else {
         const tVal = Number(tenantValue);
         const pVal = Number(platformValue);
         if (!isNaN(tVal) && !isNaN(pVal) && tVal < pVal) {
@@ -759,12 +759,9 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
         try {
           setNestedValue(result, fieldPath, ensureEncrypted(value));
         } catch (err) {
-          this.logger.warn(
-            `Failed to encrypt field '${fieldPath}', storing as-is`,
-            {
-              error: (err as Error).message,
-            }
-          );
+          const message = `Failed to encrypt sensitive tenant setting '${fieldPath}'`;
+          this.logger.error(message, { error: String(err) });
+          throw new Error(message, { cause: err });
         }
       }
     }

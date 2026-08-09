@@ -417,6 +417,7 @@
         this.statusEl.className =
           'mb-4 p-3 border-2 border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200';
         this.renderStatus(
+          this.statusEl,
           this.translations.successTitle,
           message,
           'M5 13l4 4L19 7'
@@ -433,6 +434,7 @@
         this.statusEl.className =
           'mb-4 p-3 border-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200';
         this.renderStatus(
+          this.statusEl,
           this.translations.errorTitle,
           message,
           'M6 18L18 6M6 6l12 12'
@@ -446,13 +448,13 @@
      * textContent (XSS-safe). Icon and title are constants from translations.
      */
     private renderStatus(
+      statusEl: HTMLElement,
       title: string,
       message: string,
       iconPath: string
     ): void {
-      if (!this.statusEl) return;
-      while (this.statusEl.firstChild) {
-        this.statusEl.removeChild(this.statusEl.firstChild);
+      while (statusEl.firstChild) {
+        statusEl.removeChild(statusEl.firstChild);
       }
       const SVG_NS = 'http://www.w3.org/2000/svg';
       const wrapper = document.createElement('div');
@@ -479,7 +481,7 @@
       inner.appendChild(msgEl);
       wrapper.appendChild(svg);
       wrapper.appendChild(inner);
-      this.statusEl.appendChild(wrapper);
+      statusEl.appendChild(wrapper);
     }
 
     /**
@@ -537,7 +539,7 @@
       try {
         const parsed = new URL(url, window.location.origin);
         if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-        return parsed.origin === window.location.origin || url.startsWith('/');
+        return parsed.origin === window.location.origin;
       } catch {
         return false;
       }

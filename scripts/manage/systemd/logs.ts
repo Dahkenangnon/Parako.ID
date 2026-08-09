@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { assertServiceName } from './validation.js';
 
 export interface LogsOptions {
   /** Follow the journal in real-time (`-f`). Default: true */
@@ -19,6 +20,7 @@ export async function showLogs(
   serviceName: string,
   options: LogsOptions = {}
 ): Promise<void> {
+  assertServiceName(serviceName);
   const workerServiceName = `${serviceName}-worker`;
   const follow = options.follow !== false;
 
@@ -41,19 +43,37 @@ export async function showLogs(
   await new Promise<void>((resolve, reject) => {
     const child = spawn('journalctl', args, { stdio: 'inherit' });
 
-    child.on('error', reject);
-    child.on('exit', code => {
-      if (code === 0 || code === null) {
-        resolve();
-      } else {
-        reject(new Error(`journalctl exited with code ${code}`));
-      }
-    });
-
-    // Forward SIGINT/SIGTERM to the child so Ctrl-C cleanly stops follow mode
-    const forward = (sig: NodeJS.Signals) => {
-      child.kill(sig);
+    // Forward SIGINT/SIGTERM to the child so Ctrl-C cleanly stops follow mode.
+    const forward = (signal: NodeJS.Signals) => {
+      child.kill(signal);
     };
+    const cleanup = () => {
+      process.removeListener('SIGINT', forward);
+      process.removeListener('SIGTERM', forward);
+      child.removeListener('error', onError);
+      child.removeListener('exit', onExit);
+    };
+    const settle = (error?: Error) => {
+      cleanup();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    const onError = (error: Error) => {
+      settle(error);
+    };
+    const onExit = (code: number | null) => {
+      if (code === 0 || code === null) {
+        settle();
+      } else {
+        settle(new Error(`journalctl exited with code ${code}`));
+      }
+    };
+
+    child.on('error', onError);
+    child.on('exit', onExit);
     process.on('SIGINT', forward);
     process.on('SIGTERM', forward);
   });

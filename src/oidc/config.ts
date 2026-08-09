@@ -41,6 +41,8 @@ import Scopes from './specs/scopes.js';
 import SubjectTypes from './specs/subject-type.js';
 import Ttl from './specs/ttl.js';
 import type { Configuration } from 'oidc-provider';
+import type { JWKWithMetadata } from './key-store/constants.js';
+import { fetch as undiciFetch } from 'undici';
 import type { IOIDCUtils } from '../di/interfaces/oidc-utils.interface.js';
 import type { IOIDCConfig } from '../di/interfaces/oidc-config.interface.js';
 import type { IKeyStore } from '../di/interfaces/key-store.interface.js';
@@ -83,7 +85,7 @@ export default class OIDCConfig implements IOIDCConfig {
   /**
    * Get JWKS from the key store (async — call before provider creation)
    */
-  public async getJwks(): Promise<{ keys: JsonWebKey[] }> {
+  public async getJwks(): Promise<{ keys: JWKWithMetadata[] }> {
     return this.keyStore.getJWKS();
   }
 
@@ -130,7 +132,7 @@ export default class OIDCConfig implements IOIDCConfig {
       extraTokenClaims: ExtraTokenClaims(),
       pairwiseIdentifier: PairwiseIdentifier(this.configManager, this.logger),
       pkce: Pkce(this.configManager),
-      rotateRefreshToken: RotateRefreshToken(this.logger),
+      rotateRefreshToken: RotateRefreshToken(this.configManager, this.logger),
       ttl: Ttl(this.configManager, this.logger),
     };
   }
@@ -142,7 +144,7 @@ export default class OIDCConfig implements IOIDCConfig {
     return {
       issueRefreshToken: IssueRefreshToken(),
       loadExistingGrant: LoadExistingGrant(this.logger),
-      expiresWithSession: ExpiresWithSession(),
+      expiresWithSession: ExpiresWithSession(this.configManager),
     };
   }
 
@@ -204,7 +206,7 @@ export default class OIDCConfig implements IOIDCConfig {
       clients: Clients(this.clientMerger),
       allowOmittingSingleRegisteredRedirectUri:
         AllowOmittingSingleRegisteredRedirectUri(this.configManager),
-      clientBasedCORS: ClientBasedCORS(),
+      clientBasedCORS: ClientBasedCORS(this.configManager),
       discovery: Discovery(this.configManager),
       enableHttpPostMethods: EnableHttpPostMethods(this.configManager),
     };
@@ -215,6 +217,11 @@ export default class OIDCConfig implements IOIDCConfig {
    */
   private getMiscConfig() {
     return {
+      // oidc-provider supplies an Undici dispatcher to enforce SSRF protection.
+      // Use the matching Fetch implementation instead of Node's built-in Fetch;
+      // transitive Undici consumers may install a dispatcher whose handler API
+      // is incompatible with Node's bundled Undici version.
+      fetch: undiciFetch as unknown as typeof globalThis.fetch,
       routes: Routes(this.configManager),
       findAccount: createAccountFactory(
         this.logger,

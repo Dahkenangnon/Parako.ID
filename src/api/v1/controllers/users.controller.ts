@@ -11,7 +11,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
-import { notFound } from '../errors.js';
+import { notFound, validationError } from '../errors.js';
 import { apiSuccess, apiCreated, apiList, apiNoContent } from '../response.js';
 import {
   buildCursorQuery,
@@ -37,6 +37,7 @@ export interface UsersControllerDeps {
   };
   authService: {
     registerUser(data: any): Promise<any>;
+    registerManagedUser(data: CreateUserInput): Promise<any>;
     adminChangeUserPassword(
       adminUsername: string,
       userId: string,
@@ -61,27 +62,95 @@ export interface UsersControllerDeps {
 /**
  * Strip sensitive fields from a user document.
  *
- * Handles both plain objects and Mongoose documents (which expose
- * `.toJSON()`). Returns the input untouched when it is falsy.
+ * Handles both plain objects and Mongoose documents. Nested credential
+ * containers are copied before redaction so service-owned values are never
+ * mutated.
  */
 function stripSensitiveFields(user: any): any {
-  if (!user) return user;
+  const serialized =
+    typeof user.toJSON === 'function'
+      ? user.toJSON()
+      : typeof user.toObject === 'function'
+        ? user.toObject()
+        : user;
 
-  const obj = { ...user };
+  const obj = { ...serialized };
 
   delete obj.password;
   delete obj.hashedPassword;
+  delete obj.reset_password_token;
+  delete obj.email_verification_token;
 
   if (obj.mfa) {
-    delete obj.mfa.secret;
-    delete obj.mfa.recovery_codes;
+    const mfa = { ...obj.mfa };
+    delete mfa.secret;
+    delete mfa.recovery_codes;
+    delete mfa.email_otp;
+
+    if (mfa.methods) {
+      const methods = { ...mfa.methods };
+
+      if (methods.totp) {
+        methods.totp = { ...methods.totp };
+        delete methods.totp.secret;
+      }
+
+      if (methods.webauthn) {
+        methods.webauthn = { ...methods.webauthn };
+        delete methods.webauthn.credentials;
+      }
+
+      mfa.methods = methods;
+    }
+
+    obj.mfa = mfa;
   }
 
   if (obj.webauthn) {
+    obj.webauthn = { ...obj.webauthn };
     delete obj.webauthn.credentials;
   }
 
+  if (obj.recovery) {
+    const recovery = { ...obj.recovery };
+
+    if (recovery.backup_codes) {
+      recovery.backup_codes = { ...recovery.backup_codes };
+      delete recovery.backup_codes.codes;
+    }
+
+    if (recovery.secondary_email) {
+      recovery.secondary_email = { ...recovery.secondary_email };
+      delete recovery.secondary_email.verification_token;
+    }
+
+    if (recovery.sms) {
+      recovery.sms = { ...recovery.sms };
+      delete recovery.sms.verification_code;
+    }
+
+    if (recovery.security_questions) {
+      recovery.security_questions = { ...recovery.security_questions };
+      if (Array.isArray(recovery.security_questions.questions)) {
+        recovery.security_questions.questions =
+          recovery.security_questions.questions.map((question: any) => {
+            const sanitizedQuestion = { ...question };
+            delete sanitizedQuestion.answer_hash;
+            return sanitizedQuestion;
+          });
+      }
+    }
+
+    obj.recovery = recovery;
+  }
+
   return obj;
+}
+
+function toUserUpdate(body: UpdateUserInput): Record<string, unknown> {
+  const { role, ...update } = body;
+
+  return role === undefined ? update : { ...update, roles: [role] };
 }
 
 export class UsersController {
@@ -177,7 +246,7 @@ export class UsersController {
     try {
       // Body already validated by validateBody(createUserSchema) at the route.
       const body = req.body as CreateUserInput;
-      const user = await this.authService.registerUser(body);
+      const user = await this.authService.registerManagedUser(body);
 
       this.logger.info('User created via API', {
         user_id: user.id ?? user._id,
@@ -218,7 +287,10 @@ export class UsersController {
   ): Promise<void> => {
     try {
       const body = req.body as UpdateUserInput;
-      const user = await this.userService.updateById(req.params.user_id, body);
+      const user = await this.userService.updateById(
+        req.params.user_id,
+        toUserUpdate(body)
+      );
 
       if (!user) {
         throw notFound(`User '${req.params.user_id}' not found`);
@@ -240,7 +312,10 @@ export class UsersController {
   ): Promise<void> => {
     try {
       const body = req.body as UpdateUserInput;
-      const user = await this.userService.updateById(req.params.user_id, body);
+      const user = await this.userService.updateById(
+        req.params.user_id,
+        toUserUpdate(body)
+      );
 
       if (!user) {
         throw notFound(`User '${req.params.user_id}' not found`);
@@ -397,16 +472,45 @@ export class UsersController {
         throw notFound(`User '${req.params.user_id}' not found`);
       }
 
-      const { limit, includeCount } = parsePaginationParams(
+      const { limit, cursor, includeCount } = parsePaginationParams(
         req.query as Record<string, unknown>
       );
 
+      let activityCursor: { timestamp: Date; id: string } | undefined;
+      if (cursor) {
+        const cursorFilter = buildCursorQuery(cursor, 'timestamp', 'desc');
+        const timestampValue = (cursorFilter.timestamp as { $lt: string }).$lt;
+        const id = (cursorFilter.id as { $lt: string }).$lt;
+        const timestamp = new Date(timestampValue);
+
+        if (Number.isNaN(timestamp.getTime())) {
+          throw validationError(
+            'Invalid activity cursor timestamp',
+            [
+              {
+                field: 'after',
+                message: 'Cursor timestamp must be a valid date',
+              },
+            ],
+            req.path
+          );
+        }
+
+        activityCursor = { timestamp, id };
+      }
+
+      const options: Record<string, unknown> = {
+        limit: limit + 1,
+        page: 1,
+        sort: { timestamp: -1, id: -1 },
+      };
+      if (activityCursor) {
+        options.cursor = activityCursor;
+      }
+
       const result = await this.activityService.getUserActivities(
         req.params.user_id,
-        {
-          limit: limit + 1,
-          page: 1,
-        }
+        options
       );
 
       const docs = Array.isArray(result) ? result : (result.results ?? []);
@@ -414,7 +518,7 @@ export class UsersController {
         ? (result.totalResults ?? undefined)
         : undefined;
 
-      const page = buildCursorResponse(docs, limit, 'id', totalCount);
+      const page = buildCursorResponse(docs, limit, 'timestamp', totalCount);
 
       apiList(res, page);
     } catch (error) {

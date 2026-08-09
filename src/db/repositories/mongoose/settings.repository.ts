@@ -9,6 +9,17 @@ import type {
 import { AbstractMongooseRepository } from './base.repository.js';
 import { serializeDocument, serializeDocuments } from '../../utils.js';
 
+const SETTINGS_SAVE_MAX_ATTEMPTS = 16;
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 11000
+  );
+}
+
 @injectable()
 export class MongooseSettingsRepository
   extends AbstractMongooseRepository<ISettings, CreateSettingsDto>
@@ -41,27 +52,6 @@ export class MongooseSettingsRepository
     value: Partial<ISettings>,
     meta?: SettingsMeta
   ): Promise<ISettings> {
-    // Atomic phase 1: deactivate the current active row and learn its _version.
-    // findOneAndUpdate is a single atomic op — no session needed.
-    const previous = await this.settingsModel
-      .findOneAndUpdate(
-        { key, is_active: true },
-        { $set: { is_active: false } },
-        { returnDocument: 'before' } // return old doc (before update) to read _version
-      )
-      .lean()
-      .exec();
-
-    const nextIntVersion = previous ? ((previous as any)._version ?? 0) + 1 : 0;
-    const nextSemver = previous
-      ? this.incrementPatch((previous as any).version ?? '1.0.0')
-      : '1.0.0';
-
-    // Phase 2: insert the new active row.
-    // Strip managed/identity fields before spreading so that:
-    //   - _id / id don't cause duplicate key errors (rollback passes a full doc)
-    //   - is_active, key, version, _version, schema_version always come from
-    //     our computed values, not whatever the caller passed in
     const MANAGED = new Set([
       '_id',
       'id',
@@ -73,23 +63,64 @@ export class MongooseSettingsRepository
       'created_at',
       'updated_at',
       '__v',
+      '__proto__',
+      'constructor',
+      'prototype',
     ]);
     const raw = value as Record<string, unknown>;
     const content = Object.fromEntries(
       Object.entries(raw).filter(([k]) => !MANAGED.has(k))
     );
 
-    const newDoc = await this.settingsModel.create({
-      ...content,
-      key,
-      version: nextSemver,
-      schema_version: '1.0.0',
-      _version: nextIntVersion,
-      is_active: true,
-      metadata: meta ?? raw['metadata'] ?? {},
-    });
+    for (let attempt = 0; attempt < SETTINGS_SAVE_MAX_ATTEMPTS; attempt += 1) {
+      // Atomically claim the current active row. A missing row with existing
+      // history means another writer currently owns the hand-off interval.
+      const previous = await this.settingsModel
+        .findOneAndUpdate(
+          { key, is_active: true },
+          { $set: { is_active: false } },
+          { returnDocument: 'before' }
+        )
+        .lean()
+        .exec();
+      const latest =
+        previous ??
+        (await this.settingsModel
+          .findOne({ key })
+          .sort({ _version: -1 })
+          .lean()
+          .exec());
 
-    return serializeDocument(newDoc as any) as ISettings;
+      if (
+        previous === null &&
+        latest !== null &&
+        attempt < SETTINGS_SAVE_MAX_ATTEMPTS - 1
+      ) {
+        continue;
+      }
+
+      try {
+        const newDoc = await this.settingsModel.create({
+          ...content,
+          key,
+          version: latest
+            ? this.incrementPatch((latest as any).version ?? '1.0.0')
+            : '1.0.0',
+          schema_version: '1.0.0',
+          _version: latest ? ((latest as any)._version ?? 0) + 1 : 0,
+          is_active: true,
+          metadata: meta ?? raw['metadata'] ?? {},
+        });
+
+        return serializeDocument(newDoc as any) as ISettings;
+      } catch (error: unknown) {
+        if (!isDuplicateKeyError(error)) throw error;
+      }
+    }
+
+    throw new Error(
+      `Unable to save settings for key "${key}" after ${SETTINGS_SAVE_MAX_ATTEMPTS} attempts`
+    );
   }
 
   async getLatestVersion(key: string): Promise<string | null> {

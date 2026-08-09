@@ -62,6 +62,7 @@ export const createTenantSettingsOverrideModel =
         notifications: { type: Schema.Types.Mixed },
       },
       {
+        collection: 'tenantsettingsoverrides',
         timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
       }
     );

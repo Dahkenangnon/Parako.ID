@@ -202,15 +202,15 @@ export function getUserFriendlyError(
 ): string {
   const errorLower = technicalError.toLowerCase();
 
-  for (const [code, message] of Object.entries(OAUTH_ERROR_MAP)) {
-    if (errorLower.includes(code)) {
+  const providerPatterns = PROVIDER_ERROR_PATTERNS[provider] || [];
+  for (const { pattern, message } of providerPatterns) {
+    if (pattern.test(technicalError)) {
       return message;
     }
   }
 
-  const providerPatterns = PROVIDER_ERROR_PATTERNS[provider] || [];
-  for (const { pattern, message } of providerPatterns) {
-    if (pattern.test(technicalError)) {
+  for (const [code, message] of Object.entries(OAUTH_ERROR_MAP)) {
+    if (errorLower.includes(code)) {
       return message;
     }
   }

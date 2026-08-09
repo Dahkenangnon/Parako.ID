@@ -133,6 +133,7 @@ class AdminUsersManager {
 
       const cleanup = () => {
         backdrop.remove();
+        document.removeEventListener('keydown', handleEscape);
       };
 
       cancelButton.addEventListener('click', () => {
@@ -155,7 +156,6 @@ class AdminUsersManager {
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
           cleanup();
-          document.removeEventListener('keydown', handleEscape);
           resolve(false);
         }
       };
@@ -179,31 +179,16 @@ class AdminUsersManager {
    * Show a notification message to the user
    * @param title - Notification title
    * @param message - Notification message
-   * @param type - Notification type ('success', 'error', 'info')
+   * @param type - Notification type ('success' or 'error')
    */
   private showNotification(
     title: string,
     message: string,
-    type: 'success' | 'error' | 'info' = 'info'
+    type: 'success' | 'error'
   ): void {
     const notificationDiv = document.createElement('div');
-    let bgColor = 'bg-blue-500';
-    let iconName = 'info';
-
-    switch (type) {
-      case 'success':
-        bgColor = 'bg-green-500';
-        iconName = 'check-circle';
-        break;
-      case 'error':
-        bgColor = 'bg-red-500';
-        iconName = 'alert-circle';
-        break;
-      case 'info':
-        bgColor = 'bg-blue-500';
-        iconName = 'info';
-        break;
-    }
+    const bgColor = type === 'success' ? 'bg-green-500' : 'bg-red-500';
+    const iconName = type === 'success' ? 'check-circle' : 'alert-circle';
 
     notificationDiv.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg z-50 max-w-md`;
 
@@ -423,7 +408,9 @@ class AdminUsersManager {
 
 // Auto-initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  const isAdminUsers = window.location.pathname.includes('/admin/users');
+  const { pathname } = window.location;
+  const isAdminUsers =
+    pathname === '/admin/users' || pathname.startsWith('/admin/users/');
 
   if (isAdminUsers) {
     const dataElement = document.getElementById('___MAIN_STATE___');

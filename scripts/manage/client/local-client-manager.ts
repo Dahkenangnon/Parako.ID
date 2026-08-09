@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { parse, type ParseError } from 'jsonc-parser';
 import { OidcClient, ClientRegistryConfig } from './local-types.js';
 import { log } from '../shared/utils.js';
 import rootDir from '../shared/file.js';
@@ -53,15 +54,20 @@ function getConfigPath(): string {
 }
 
 /**
- * Parse JSONC content (simple implementation)
+ * Parse JSONC content while preserving comment-like text inside strings.
  */
 function parseJsonc(content: string): any {
-  const cleaned = content
-    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove /* */ comments
-    .replace(/\/\/.*$/gm, '') // Remove // comments
-    .replace(/,(\s*[}\]])/g, '$1'); // Remove trailing commas
-
-  return JSON.parse(cleaned);
+  const errors: ParseError[] = [];
+  const parsed = parse(content, errors, {
+    allowTrailingComma: true,
+    disallowComments: false,
+  });
+  if (errors.length > 0) {
+    throw new Error(
+      `Invalid JSONC configuration at offset ${errors[0]!.offset}`
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -131,7 +137,11 @@ export function saveClientRegistryConfig(config: ClientRegistryConfig): void {
 
 ${jsonContent}`;
 
-    fs.writeFileSync(configPath, contentWithComments, 'utf8');
+    fs.writeFileSync(configPath, contentWithComments, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    fs.chmodSync(configPath, 0o600);
   } catch (error) {
     throw new Error(
       `Failed to save client configuration: ${error instanceof Error ? error.message : String(error)}`
@@ -157,7 +167,9 @@ export function addClient(client: Partial<OidcClient>): OidcClient {
     client.client_id = generateClientId();
   }
 
-  if (findClientById(client.client_id)) {
+  if (
+    config.clients.some(existing => existing.client_id === client.client_id)
+  ) {
     throw new Error(`Client with ID '${client.client_id}' already exists`);
   }
 

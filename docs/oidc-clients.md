@@ -37,7 +37,9 @@ For inspecting, updating, removing, importing, or exporting clients, use the adm
 
 Sign in at `/admin` with an admin account. Under **OIDC Clients**, choose a preset, fill in the quick-start fields (name, description, redirect URIs, post-logout redirect URIs), and optionally expand OIDC Configuration / Advanced Settings / Resource Indicators / Management API Scope pickers. The secret is displayed once on save.
 
-Edit, activate / deactivate, regenerate secret, and delete are all available from the same panel. See [Admin Panel](admin-panel.md).
+Edit, activate / deactivate, and delete are available from the same panel.
+Secret regeneration is available for clients that use a `client_secret_*`
+authentication method. See [Admin Panel](admin-panel.md).
 
 ### Static clients
 
@@ -47,24 +49,27 @@ Clients defined in `runtime/parako-rp.jsonc` are loaded at startup. They are not
 
 ### Core OIDC
 
-| Field                          | Type     | Description                                                        |
-| ------------------------------ | -------- | ------------------------------------------------------------------ |
-| `client_id`                    | string   | Unique identifier (auto-generated or custom)                       |
-| `client_secret`                | string   | Encrypted at rest                                                  |
-| `client_name`                  | string   | Display name                                                       |
-| `application_type`             | string   | `web`, `native`, or `spa`                                          |
-| `redirect_uris`                | string[] | Allowed redirect URIs                                              |
-| `post_logout_redirect_uris`    | string[] | Allowed post-logout redirect URIs                                  |
-| `grant_types`                  | string[] | Allowed grant types                                                |
-| `response_types`               | string[] | Allowed response types                                             |
-| `scope`                        | string   | Space-separated allowed scopes                                     |
-| `token_endpoint_auth_method`   | string   | How the client authenticates at the token endpoint                 |
-| `require_pkce`                 | boolean  | Whether PKCE is required                                           |
-| `id_token_signed_response_alg` | string   | ID-token signing algorithm (default: `RS256`)                      |
-| `subject_type`                 | string   | `public` or `pairwise`                                             |
-| `allowedResources`             | string[] | Resource-server URIs this client can request tokens for (RFC 8707) |
-| `resourcesScopes`              | string   | Space-separated scopes for resource-server access                  |
-| `isInternalClient`             | boolean  | First-party flag — bypasses consent, blocked from DCR (admin-only) |
+| Field                             | Type     | Description                                                                               |
+| --------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `client_id`                       | string   | Unique identifier (auto-generated or custom)                                              |
+| `client_secret`                   | string   | Encrypted at rest                                                                         |
+| `client_name`                     | string   | Display name                                                                              |
+| `application_type`                | string   | OIDC value `web` or `native`; the SPA preset uses `web`                                   |
+| `redirect_uris`                   | string[] | Allowed redirect URIs                                                                     |
+| `post_logout_redirect_uris`       | string[] | Allowed post-logout redirect URIs                                                         |
+| `grant_types`                     | string[] | Allowed grant types                                                                       |
+| `response_types`                  | string[] | Allowed response types                                                                    |
+| `scope`                           | string   | Space-separated allowed scopes                                                            |
+| `token_endpoint_auth_method`      | string   | How the client authenticates at the token endpoint                                        |
+| `token_endpoint_auth_signing_alg` | string   | Optional assertion signing algorithm for JWT client authentication                        |
+| `jwks_uri`                        | string   | URL of the client's public JWKS; required for `private_key_jwt` unless `jwks` is supplied |
+| `jwks`                            | object   | Inline public JWKS; API-only and mutually exclusive with `jwks_uri`                       |
+| `require_pkce`                    | boolean  | Whether PKCE is required                                                                  |
+| `id_token_signed_response_alg`    | string   | ID-token signing algorithm (default: `RS256`)                                             |
+| `subject_type`                    | string   | `public` or `pairwise`                                                                    |
+| `allowedResources`                | string[] | Resource-server URIs this client can request tokens for (RFC 8707)                        |
+| `resourcesScopes`                 | string   | Space-separated scopes for resource-server access                                         |
+| `isInternalClient`                | boolean  | First-party flag — bypasses consent, blocked from DCR (admin-only)                        |
 
 ### Additional metadata
 
@@ -151,7 +156,7 @@ Programmatic management via REST. All endpoints require a valid token with the a
 | DELETE | `/api/v1/clients/:client_id`            | `parako:clients:delete` | Delete            |
 | POST   | `/api/v1/clients/:client_id/activate`   | `parako:clients:write`  | Activate          |
 | POST   | `/api/v1/clients/:client_id/deactivate` | `parako:clients:write`  | Deactivate        |
-| POST   | `/api/v1/clients/:client_id/secret`     | `parako:clients:delete` | Regenerate secret |
+| POST   | `/api/v1/clients/:client_id/secret`     | `parako:clients:write`  | Regenerate secret |
 | GET    | `/api/v1/clients/:client_id/stats`      | `parako:clients:read`   | Usage stats       |
 
 ### Registration token endpoints
@@ -165,7 +170,11 @@ Programmatic management via REST. All endpoints require a valid token with the a
 
 ## Client secret management
 
-Secrets are encrypted at rest using `ENCRYPTION_KEY`. Rotate via the Management API or the admin panel; the old secret is immediately invalidated.
+Secrets are encrypted at rest using `ENCRYPTION_KEY`. For clients using
+`client_secret_basic`, `client_secret_post`, or `client_secret_jwt`, rotate via
+the Management API or the admin panel; the old secret is immediately
+invalidated. Public (`none`) and key-authenticated (`private_key_jwt`) clients
+do not have a rotatable shared secret.
 
 ```bash
 curl -X POST https://your-host/api/v1/clients/CLIENT_ID/secret \

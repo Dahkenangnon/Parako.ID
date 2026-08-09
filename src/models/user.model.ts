@@ -2,6 +2,7 @@ import mongoose, { Schema } from 'mongoose';
 import { type TypedModel } from './base.model.js';
 import toJSON from '../db/plugins/to-json.plugin.js';
 import paginate from '../db/plugins/paginate.plugin.js';
+import { tenantPlugin } from '../db/plugins/tenant.plugin.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IPasswordUtils } from '../di/interfaces/password-utils.interface.js';
@@ -137,14 +138,16 @@ export const createUserModel = (
         required: false,
         trim: true,
       },
-      roles: [
-        {
-          type: String,
-          enum: config.security.authentication.roles.available,
-          default: config.security.authentication.roles.default,
-          set: (value: string) => value?.trim(),
-        },
-      ],
+      roles: {
+        type: [
+          {
+            type: String,
+            enum: config.security.authentication.roles.available,
+            set: (value: string) => value?.trim(),
+          },
+        ],
+        default: () => [config.security.authentication.roles.default],
+      },
 
       // Note: uniqueness enforced via compound indexes with tenant_id below
       custom_identifier_1: {
@@ -201,7 +204,7 @@ export const createUserModel = (
         methods: {
           totp: {
             enabled: { type: Boolean, default: false },
-            secret: { type: String, required: false },
+            secret: { type: String, required: false, private: true },
             verified_at: { type: Date, required: false },
           },
           email: {
@@ -210,7 +213,11 @@ export const createUserModel = (
           },
           webauthn: {
             enabled: { type: Boolean, default: false },
-            credentials: { type: [Schema.Types.Mixed], required: false },
+            credentials: {
+              type: [Schema.Types.Mixed],
+              required: false,
+              private: true,
+            },
             verified_at: { type: Date, required: false },
           },
         },
@@ -220,7 +227,7 @@ export const createUserModel = (
           required: false,
         },
         email_otp: {
-          hash: { type: String, required: false },
+          hash: { type: String, required: false, private: true },
           expires: { type: Date, required: false },
         },
       },
@@ -238,20 +245,28 @@ export const createUserModel = (
           default: [],
         },
         backup_codes: {
-          codes: { type: [String], required: false },
+          codes: { type: [String], required: false, private: true },
           generated_at: { type: Date, required: false },
           expires_at: { type: Date, required: false },
         },
         secondary_email: {
           email: { type: String, required: false },
           verified: { type: Boolean, default: false },
-          verification_token: { type: String, required: false },
+          verification_token: {
+            type: String,
+            required: false,
+            private: true,
+          },
           verification_expires: { type: Date, required: false },
         },
         sms: {
           phone_number: { type: String, required: false },
           verified: { type: Boolean, default: false },
-          verification_code: { type: String, required: false },
+          verification_code: {
+            type: String,
+            required: false,
+            private: true,
+          },
           verification_expires: { type: Date, required: false },
         },
         security_questions: {
@@ -260,7 +275,7 @@ export const createUserModel = (
               {
                 id: { type: String, required: true },
                 question_key: { type: String, required: true }, // i18n key (e.g., 'q1', 'q2')
-                answer_hash: { type: String, required: true },
+                answer_hash: { type: String, required: true, private: true },
               },
             ],
             required: false,
@@ -288,6 +303,7 @@ export const createUserModel = (
       password: {
         type: String,
         required: false,
+        private: true,
       },
       password_hash_algo: {
         type: String,
@@ -304,6 +320,7 @@ export const createUserModel = (
       reset_password_token: {
         type: String,
         required: false,
+        private: true,
       },
       reset_password_expires: {
         type: Date,
@@ -312,6 +329,7 @@ export const createUserModel = (
       email_verification_token: {
         type: String,
         required: false,
+        private: true,
       },
       email_verification_expires: {
         type: Date,
@@ -365,6 +383,8 @@ export const createUserModel = (
     }
   );
 
+  userSchema.plugin(tenantPlugin);
+
   // All business logic methods have been moved to UserService
 
   // All dynamic fields methods have been moved to UserService
@@ -379,8 +399,8 @@ export const createUserModel = (
       this.name = givenName;
     } else if (familyName) {
       this.name = familyName;
-    } else {
-      this.name = this.custom_identifier_1?.trim() || '';
+    } else if (this.custom_identifier_1?.trim()) {
+      this.name = this.custom_identifier_1.trim();
     }
   });
 

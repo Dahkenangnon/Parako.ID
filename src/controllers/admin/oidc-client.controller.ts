@@ -9,12 +9,16 @@ import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-servi
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import { TYPES } from '../../di/types.js';
-import { extractListingQuery } from '../../validators/listing-query.js';
+import {
+  ADMIN_OIDC_CLIENT_SORT_FIELDS,
+  extractListingQuery,
+} from '../../validators/listing-query.js';
 import {
   APP_TYPE_PRESETS,
   GRANT_TYPES,
   RESPONSE_TYPES,
   AUTH_METHODS,
+  clientAuthMethodUsesSecret,
   SIGNING_ALGORITHMS,
   SUBJECT_TYPES,
 } from '../../oidc/adapter/client.interface.js';
@@ -34,16 +38,20 @@ import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
-const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
-  'created_at',
-  'updated_at',
-  'client_name',
-  'application_type',
-] as const;
-
 interface ClientActivityTarget {
   entity_id: string;
   entity_name: string;
+}
+
+function firstQueryString(value: unknown): string {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return typeof candidate === 'string' ? candidate : '';
+}
+
+function withoutClientSecret(client: OidcClientData): OidcClientData {
+  const safeClient = { ...client };
+  delete safeClient.client_secret;
+  return safeClient;
 }
 
 /**
@@ -172,16 +180,10 @@ export class AdminOidcClientController {
       ADMIN_OIDC_CLIENT_SORT_FIELDS,
       { sortBy: 'created_at' }
     );
-    const applicationType = (
-      Array.isArray(req.query.application_type)
-        ? req.query.application_type[0]
-        : (req.query.application_type as string) || ''
-    ).toString();
-    const status = (
-      Array.isArray(req.query.status)
-        ? req.query.status[0]
-        : (req.query.status as string) || ''
-    ).toString();
+    const applicationType = firstQueryString(req.query.application_type);
+    const rawStatus = firstQueryString(req.query.status);
+    const status =
+      rawStatus === 'active' || rawStatus === 'inactive' ? rawStatus : '';
 
     const filters: ClientFilters = {};
     if (applicationType) {
@@ -208,21 +210,20 @@ export class AdminOidcClientController {
     }
 
     clients.sort((a: OidcClientData, b: OidcClientData) => {
-      const aValue = (a as any)[sortBy] || '';
-      const bValue = (b as any)[sortBy] || '';
+      const aValue = String((a as any)[sortBy] ?? '');
+      const bValue = String((b as any)[sortBy] ?? '');
+      const comparison = aValue.localeCompare(bValue);
 
-      if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
-      } else {
-        return aValue < bValue ? 1 : -1;
-      }
+      return sortOrder === 'asc' ? comparison : -comparison;
     });
 
     const totalItems = clients.length;
     const totalPages = Math.ceil(totalItems / limit);
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
-    const paginatedClients = clients.slice(startIndex, endIndex);
+    const paginatedClients = clients
+      .slice(startIndex, endIndex)
+      .map(withoutClientSecret);
 
     const stats = await this.oidcAdapter.client.getClientStatistics();
 
@@ -380,9 +381,11 @@ export class AdminOidcClientController {
       );
     }
 
+    const safeClient = withoutClientSecret(client);
+
     res.render('admin/oidc-clients/edit', {
       title: 'Edit Client',
-      client,
+      client: safeClient,
       appTypePresets: APP_TYPE_PRESETS,
       grantTypes: GRANT_TYPES,
       responseTypes: RESPONSE_TYPES,
@@ -407,7 +410,23 @@ export class AdminOidcClientController {
     delete clientData.preset;
     delete clientData.application_type;
 
-    const validation = validateClientData(clientData);
+    const existingClient = await this.oidcAdapter.client.findClientById(id);
+    if (!existingClient) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
+      );
+    }
+
+    const validation = validateClientData({
+      ...existingClient,
+      ...clientData,
+      client_id: id,
+    });
     if (!validation.isValid) {
       return flashAndRedirect(
         { sessionManager: this.sessionManager },
@@ -545,6 +564,30 @@ export class AdminOidcClientController {
     res: Response
   ): Promise<void> => {
     const { id } = req.params;
+    const existing = await this.oidcAdapter.client.findClientById(id);
+
+    if (!existing) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'OIDC client not found',
+        '/admin/oidc-clients'
+      );
+    }
+
+    if (!clientAuthMethodUsesSecret(existing.token_endpoint_auth_method)) {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        `Client "${existing.client_name}" does not use secret-based authentication`,
+        `/admin/oidc-clients/view/${id}`
+      );
+    }
+
     const result = await this.oidcAdapter.client.regenerateClientSecret(id);
 
     if (!result) {
@@ -661,16 +704,14 @@ export class AdminOidcClientController {
    */
   public search = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { q: query } = req.query;
+      const query = firstQueryString(req.query.q);
 
       if (!query) {
         res.json([]);
         return;
       }
 
-      const clients = await this.oidcAdapter.client.searchClients(
-        query as string
-      );
+      const clients = await this.oidcAdapter.client.searchClients(query);
 
       res.json(
         clients.map((client: OidcClientData) => ({
@@ -747,14 +788,14 @@ export class AdminOidcClientController {
     rawResources: unknown,
     rawApiScopes: unknown
   ): string[] {
-    const resources: string[] = rawResources
-      ? Array.isArray(rawResources)
+    const resources: string[] = Array.isArray(rawResources)
+      ? this.normalizeArray(rawResources)
+      : typeof rawResources === 'string'
         ? rawResources
-        : String(rawResources)
             .split(/[\n,]+/)
             .map((r: string) => r.trim())
             .filter(Boolean)
-      : [];
+        : [];
 
     const apiScopes = this.normalizeArray(rawApiScopes);
     if (
@@ -796,8 +837,11 @@ export class AdminOidcClientController {
    */
   private normalizeArray(value: unknown): string[] {
     if (!value) return [];
-    if (Array.isArray(value)) return value.filter(Boolean);
-    return [String(value)].filter(Boolean);
+    const values = Array.isArray(value) ? value : [value];
+    return values
+      .filter((item): item is string => typeof item === 'string')
+      .map(item => item.trim())
+      .filter(Boolean);
   }
 
   /**
@@ -811,30 +855,25 @@ export class AdminOidcClientController {
       description: this.optionalString(body.description),
       application_type: body.application_type,
       preset: (body.preset as ClientPreset) || undefined,
-      redirect_uris: body.redirect_uris
-        ? body.redirect_uris
-            .split('\n')
-            .map((uri: string) => uri.trim())
-            .filter(Boolean)
-        : [],
-      post_logout_redirect_uris: body.post_logout_redirect_uris
-        ? body.post_logout_redirect_uris
-            .split('\n')
-            .map((uri: string) => uri.trim())
-            .filter(Boolean)
-        : [],
-      grant_types: Array.isArray(body.grant_types)
-        ? body.grant_types
-        : body.grant_types
-          ? [body.grant_types]
+      redirect_uris:
+        typeof body.redirect_uris === 'string'
+          ? body.redirect_uris
+              .split('\n')
+              .map((uri: string) => uri.trim())
+              .filter(Boolean)
           : [],
-      response_types: Array.isArray(body.response_types)
-        ? body.response_types
-        : body.response_types
-          ? [body.response_types]
+      post_logout_redirect_uris:
+        typeof body.post_logout_redirect_uris === 'string'
+          ? body.post_logout_redirect_uris
+              .split('\n')
+              .map((uri: string) => uri.trim())
+              .filter(Boolean)
           : [],
+      grant_types: this.normalizeArray(body.grant_types),
+      response_types: this.normalizeArray(body.response_types),
       scope: this.optionalString(body.scope),
       token_endpoint_auth_method: body.token_endpoint_auth_method,
+      jwks_uri: this.optionalString(body.jwks_uri),
       client_uri: this.optionalString(body.client_uri),
       logo_uri: this.optionalString(body.logo_uri),
       policy_uri: this.optionalString(body.policy_uri),
@@ -848,18 +887,20 @@ export class AdminOidcClientController {
       default_max_age: Number.isFinite(defaultMaxAge)
         ? defaultMaxAge
         : undefined,
-      tags: body.tags
-        ? body.tags
-            .split(',')
-            .map((tag: string) => tag.trim())
-            .filter(Boolean)
-        : [],
-      contacts: body.contacts
-        ? body.contacts
-            .split(',')
-            .map((contact: string) => contact.trim())
-            .filter(Boolean)
-        : [],
+      tags:
+        typeof body.tags === 'string'
+          ? body.tags
+              .split(',')
+              .map((tag: string) => tag.trim())
+              .filter(Boolean)
+          : [],
+      contacts:
+        typeof body.contacts === 'string'
+          ? body.contacts
+              .split(',')
+              .map((contact: string) => contact.trim())
+              .filter(Boolean)
+          : [],
       isInternalClient: body.isInternalClient === 'on',
       allowedResources: this.parseAllowedResources(
         body.allowedResources,

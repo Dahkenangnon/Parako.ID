@@ -8,6 +8,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   class FeaturesSettingsManager {
     private googleCheckbox: HTMLInputElement | null = null;
     private githubCheckbox: HTMLInputElement | null = null;

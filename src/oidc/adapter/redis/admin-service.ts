@@ -2,6 +2,10 @@ import type { Redis } from 'ioredis';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import { buildRedisKey } from '../../../multi-tenancy/redis-key.js';
 import OIDCRedisAdapter from './index.js';
+import {
+  clientAuthMethodUsesSecret,
+  normalizeClientApplicationType,
+} from '../client.interface.js';
 import type {
   OidcClientData,
   ClientFilters,
@@ -20,6 +24,10 @@ import {
   encryptClientSecret,
   decryptClientSecret,
 } from '../client-crud-utils.js';
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * Consolidated Redis OIDC admin service.
@@ -65,7 +73,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
             if (
               sessionData &&
               sessionData.accountId === accountId &&
-              sessionData.exp &&
+              sessionData.exp != null &&
               sessionData.exp > now &&
               sessionData.kind === 'Session'
             ) {
@@ -74,7 +82,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -119,7 +127,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -172,7 +180,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -181,8 +189,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         const deletePipeline = this.client.pipeline();
         if (deletePipeline) {
           keysToRevoke.forEach(id => deletePipeline.del(this.key(id)));
-          await deletePipeline.exec();
-          revokedCount = keysToRevoke.length;
+          const deleteResults = await deletePipeline.exec();
+          revokedCount = this.countSuccessfulDeletes(deleteResults);
         }
       }
 
@@ -225,16 +233,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
             const sessionData = JSON.parse(data as string);
             if (sessionData.kind === 'Session') {
               total++;
-              if (sessionData.exp && sessionData.exp > now) {
+              if (sessionData.exp != null && sessionData.exp > now) {
                 active++;
-              } else if (sessionData.exp && sessionData.exp <= now) {
+              } else if (sessionData.exp != null && sessionData.exp <= now) {
                 expired++;
               }
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -272,7 +280,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -320,15 +328,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: sessionData,
-                expiresAt: sessionData.exp
-                  ? new Date(sessionData.exp * 1000)
-                  : null,
+                expiresAt:
+                  sessionData.exp != null
+                    ? new Date(sessionData.exp * 1000)
+                    : null,
               });
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -336,7 +345,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       sessions.sort((a, b) => {
         const aValue = this.getSortValue(a, sortBy);
         const bValue = this.getSortValue(b, sortBy);
-        return sortOrder === -1 ? bValue - aValue : aValue - bValue;
+        return this.compareSortValues(aValue, bValue, sortOrder);
       });
 
       return sessions.slice(skip, skip + limit);
@@ -374,15 +383,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: sessionData,
-                expiresAt: sessionData.exp
-                  ? new Date(sessionData.exp * 1000)
-                  : null,
+                expiresAt:
+                  sessionData.exp != null
+                    ? new Date(sessionData.exp * 1000)
+                    : null,
               };
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -423,20 +433,21 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: sessionData,
-                expiresAt: sessionData.exp
-                  ? new Date(sessionData.exp * 1000)
-                  : null,
+                expiresAt:
+                  sessionData.exp != null
+                    ? new Date(sessionData.exp * 1000)
+                    : null,
               });
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
 
-      sessions.sort((a, b) => (b.payload.iat || 0) - (a.payload.iat || 0));
+      sessions.sort((a, b) => (b.payload.iat ?? 0) - (a.payload.iat ?? 0));
       return sessions;
     } catch (error) {
       this.logger.error(error as Error, {
@@ -476,7 +487,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process session data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -485,8 +496,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         const deletePipeline = this.client.pipeline();
         if (deletePipeline) {
           keysToDelete.forEach(key => deletePipeline.del(key));
-          await deletePipeline.exec();
-          deletedCount = keysToDelete.length;
+          const deleteResults = await deletePipeline.exec();
+          deletedCount = this.countSuccessfulDeletes(deleteResults);
         }
       }
 
@@ -509,14 +520,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       if (!pipeline) return { deletedCount: 0 };
 
       sessionIds.forEach(id => pipeline.del(this.key(id)));
-      const results = (await pipeline.exec()) as any;
-
-      let deletedCount = 0;
-      results.forEach(([err, result]: any) => {
-        if (!err && result === 1) deletedCount++;
-      });
-
-      return { deletedCount };
+      const results = await pipeline.exec();
+      return { deletedCount: this.countSuccessfulDeletes(results) };
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Error deleting multiple sessions',
@@ -557,15 +562,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: grantData,
-                expiresAt: grantData.exp
-                  ? new Date(grantData.exp * 1000)
-                  : undefined,
+                expiresAt:
+                  grantData.exp != null
+                    ? new Date(grantData.exp * 1000)
+                    : undefined,
               });
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -611,15 +617,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: grantData,
-                expiresAt: grantData.exp
-                  ? new Date(grantData.exp * 1000)
-                  : undefined,
+                expiresAt:
+                  grantData.exp != null
+                    ? new Date(grantData.exp * 1000)
+                    : undefined,
               });
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -662,14 +669,15 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                 ''
               ),
               payload: grantData,
-              expiresAt: grantData.exp
-                ? new Date(grantData.exp * 1000)
-                : undefined,
+              expiresAt:
+                grantData.exp != null
+                  ? new Date(grantData.exp * 1000)
+                  : undefined,
             };
           }
         } catch (error) {
           this.logger.warn(`Failed to process grant key ${key}`, {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -789,7 +797,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn(`Failed to process grant key ${key}`, {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -843,7 +851,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -891,15 +899,14 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                   ''
                 ),
                 payload: grantData,
-                expiresAt: grantData.exp
-                  ? new Date(grantData.exp * 1000)
-                  : null,
+                expiresAt:
+                  grantData.exp != null ? new Date(grantData.exp * 1000) : null,
               });
             }
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -907,7 +914,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       grants.sort((a, b) => {
         const aValue = this.getSortValue(a, sortBy);
         const bValue = this.getSortValue(b, sortBy);
-        return sortOrder === -1 ? bValue - aValue : aValue - bValue;
+        return this.compareSortValues(aValue, bValue, sortOrder);
       });
 
       return grants.slice(skip, skip + limit);
@@ -929,7 +936,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       return {
         _id: id,
         payload: grantData,
-        expiresAt: grantData.exp ? new Date(grantData.exp * 1000) : null,
+        expiresAt:
+          grantData.exp != null ? new Date(grantData.exp * 1000) : null,
       };
     } catch (error) {
       this.logger.error(error as Error, {
@@ -983,7 +991,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
             total++;
 
             if (grantData.iat && grantData.iat >= thirtyDaysAgo) recent++;
-            if (grantData.exp && grantData.exp < now) expired++;
+            if (grantData.exp != null && grantData.exp < now) expired++;
 
             if (grantData.clientId) {
               clientCounts.set(
@@ -1000,7 +1008,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -1050,12 +1058,13 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
                 ''
               ),
               payload: grantData,
-              expiresAt: grantData.exp ? new Date(grantData.exp * 1000) : null,
+              expiresAt:
+                grantData.exp != null ? new Date(grantData.exp * 1000) : null,
             });
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -1099,7 +1108,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn('Failed to process grant data', {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -1108,8 +1117,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         const deletePipeline = this.client.pipeline();
         if (deletePipeline) {
           keysToDelete.forEach(key => deletePipeline.del(key));
-          await deletePipeline.exec();
-          deletedCount = keysToDelete.length;
+          const deleteResults = await deletePipeline.exec();
+          deletedCount = this.countSuccessfulDeletes(deleteResults);
         }
       }
 
@@ -1155,7 +1164,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn(`Failed to process ${this.name} data`, {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -1164,8 +1173,8 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         const deletePipeline = this.client.pipeline();
         if (deletePipeline) {
           keysToDelete.forEach(key => deletePipeline.del(key));
-          await deletePipeline.exec();
-          deletedCount = keysToDelete.length;
+          const deleteResults = await deletePipeline.exec();
+          deletedCount = this.countSuccessfulDeletes(deleteResults);
         }
       }
 
@@ -1193,10 +1202,14 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     const clientData = applyClientDefaults(data);
 
     const encrypted = encryptClientSecret(clientData);
-    await this.client.set(
+    const created = await this.client.set(
       this.key(clientData.client_id),
-      JSON.stringify(encrypted)
+      JSON.stringify(encrypted),
+      'NX'
     );
+    if (!created) {
+      throw new Error(`Client with ID ${clientData.client_id} already exists`);
+    }
 
     this.logger.info(`Created client ${clientData.client_id}`, {
       context: 'ClientCRUD',
@@ -1271,17 +1284,23 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     clientId: string,
     updates: Partial<OidcClientData>
   ): Promise<OidcClientData | null> {
+    const existing = await this.findClientById(clientId);
+    if (!existing) return null;
+
+    const merged: OidcClientData = normalizeClientApplicationType({
+      ...existing,
+      ...updates,
+      client_id: clientId,
+      updated_at: new Date().toISOString(),
+    });
+    const validation = validateClientData(merged);
+    if (!validation.isValid) {
+      throw new Error(
+        `Client validation failed: ${validation.errors.join(', ')}`
+      );
+    }
+
     try {
-      const existing = await this.findClientById(clientId);
-      if (!existing) return null;
-
-      const merged: OidcClientData = {
-        ...existing,
-        ...updates,
-        client_id: clientId,
-        updated_at: new Date().toISOString(),
-      };
-
       const encrypted = encryptClientSecret(merged);
       await this.client.set(this.key(clientId), JSON.stringify(encrypted));
       return merged;
@@ -1323,6 +1342,11 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
   ): Promise<RegenerateSecretResult | null> {
     const existing = await this.findClientById(clientId);
     if (!existing) return null;
+    if (!clientAuthMethodUsesSecret(existing.token_endpoint_auth_method)) {
+      throw new Error(
+        `Client "${existing.client_name}" does not use secret-based authentication`
+      );
+    }
 
     const newSecret = generateClientSecret();
     const updated = await this.updateClient(clientId, {
@@ -1394,7 +1418,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
           }
         } catch (error) {
           this.logger.warn(`Failed to process ${this.name} data`, {
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
           });
         }
       }
@@ -1406,6 +1430,16 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
       });
       throw error;
     }
+  }
+
+  private countSuccessfulDeletes(
+    results: Array<[Error | null, unknown]> | null
+  ): number {
+    if (!results) return 0;
+    return results.reduce(
+      (count, [error, result]) => count + (!error && result === 1 ? 1 : 0),
+      0
+    );
   }
 
   private matchesFilters(data: any, filters: any): boolean {
@@ -1457,19 +1491,45 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
   }
 
   private getNestedValue(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => current?.[key], obj);
+    const normalizedPath =
+      path.startsWith('payload.') && obj?.payload === undefined
+        ? path.slice('payload.'.length)
+        : path;
+    return normalizedPath
+      .split('.')
+      .reduce((current, key) => current?.[key], obj);
   }
 
-  private getSortValue(item: any, sortBy: string): number {
+  private getSortValue(item: any, sortBy: string): number | string {
     switch (sortBy) {
       case 'loginTime':
-        return item.payload?.loginTs || item.payload?.iat || 0;
+        return item.payload?.loginTs ?? item.payload?.iat ?? 0;
       case 'username':
-        return item.payload?.accountId?.charCodeAt(0) || 0;
+      case 'payload.accountId':
+        return item.payload?.accountId || '';
+      case 'payload.clientId':
+        return item.payload?.clientId || '';
       case 'expiresAt':
-        return item.payload?.exp || 0;
+      case 'payload.exp':
+      case 'exp':
+        return item.payload?.exp ?? 0;
+      case 'created_at':
+      case 'createdAt':
+      case 'payload.iat':
       default:
-        return item.payload?.iat || 0;
+        return item.payload?.iat ?? 0;
     }
+  }
+
+  private compareSortValues(
+    left: number | string,
+    right: number | string,
+    sortOrder: number
+  ): number {
+    const direction = sortOrder === -1 ? -1 : 1;
+    if (typeof left === 'string' || typeof right === 'string') {
+      return direction * String(left).localeCompare(String(right));
+    }
+    return direction * (left - right);
   }
 }

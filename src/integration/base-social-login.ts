@@ -95,6 +95,9 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
       );
 
     if (existingIntegrationByProvider) {
+      if (existingIntegrationByProvider.user_id === userId) {
+        throw new Error(`User already has a ${this.provider} integration`);
+      }
       throw new Error(
         `This ${this.provider} account is already linked to another user`
       );
@@ -166,13 +169,11 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
         const decryptedAccessToken = ensureDecrypted(
           userIntegration.tokens.access_token
         );
-        if (decryptedAccessToken) {
-          await this.revokeToken(decryptedAccessToken);
-          this.logger.info(`Revoked ${this.provider} token for user`, {
-            userId,
-            provider: this.provider,
-          });
-        }
+        await this.revokeToken(decryptedAccessToken);
+        this.logger.info(`Revoked ${this.provider} token for user`, {
+          userId,
+          provider: this.provider,
+        });
       } catch (revokeError) {
         this.logger.warn(`Failed to revoke ${this.provider} token`, {
           userId,
@@ -255,29 +256,20 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
       socialRegister[req.params?.provider]?.intent === 'register';
 
     if (!mappedProviderData.email && !mappedProviderData.phone_number) {
-      if (config.missingContactInfo === 'reject_login') {
+      if (config.missingContactInfo === 'redirect_to_form' && isRegistration) {
         return {
           success: false,
-          error: `${capitalizeFirstLetter(this.provider)} account must have an email address or phone number to sign in`,
+          requiresLinking: true,
+          error: `Please provide your contact information to complete the ${capitalizeFirstLetter(this.provider)} registration process`,
+          providerData: mappedProviderData,
+          tokens,
         };
-      } else if (config.missingContactInfo === 'redirect_to_form') {
-        if (isRegistration) {
-          // For registration, we need to collect contact info
-          return {
-            success: false,
-            requiresLinking: true,
-            error: `Please provide your contact information to complete the ${capitalizeFirstLetter(this.provider)} registration process`,
-            providerData: mappedProviderData,
-            tokens,
-          };
-        } else {
-          // For login, missing contact info should be rejected
-          return {
-            success: false,
-            error: `${capitalizeFirstLetter(this.provider)} account must have an email address or phone number to sign in`,
-          };
-        }
       }
+
+      return {
+        success: false,
+        error: `${capitalizeFirstLetter(this.provider)} account must have an email address or phone number to sign in`,
+      };
     }
 
     const existingIntegration =
@@ -351,6 +343,22 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
         );
 
       if (deactivatedIntegration) {
+        const user = await this.userService.findById(currentlyLoggedInUser.id);
+        if (!user) {
+          this.logger.error(
+            `User not found while reactivating ${this.provider} integration`,
+            {
+              provider: this.provider,
+              integrationId: deactivatedIntegration._id,
+              userId: currentlyLoggedInUser.id,
+            }
+          );
+          return {
+            success: false,
+            error: 'User not found for existing integration',
+          };
+        }
+
         // Reactivate the existing integration with new data
         await this.socialIntegrationService.updateIntegrationProviderData(
           deactivatedIntegration._id as string,
@@ -375,7 +383,7 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
 
         return {
           success: true,
-          user: await this.userService.findById(currentlyLoggedInUser.id),
+          user,
           integration: deactivatedIntegration,
         };
       }
@@ -383,6 +391,13 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
       const userIntegrations = await this.socialIntegrationService.findByUser(
         currentlyLoggedInUser.id
       );
+      if (!config.allowMultipleProviders && userIntegrations.length > 0) {
+        return {
+          success: false,
+          error: 'Multiple social providers are not allowed for this account',
+        };
+      }
+
       if (userIntegrations.length >= config.maxProvidersPerUser) {
         return {
           success: false,

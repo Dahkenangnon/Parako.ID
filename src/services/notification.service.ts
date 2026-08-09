@@ -42,7 +42,8 @@ export class NotificationService implements INotificationService {
     recipient: NotificationRecipient,
     verificationUrl: string
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for verification'
@@ -51,7 +52,7 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendVerificationEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         verificationUrl,
         recipient.locale
@@ -59,16 +60,17 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Verification notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send verification notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -79,7 +81,8 @@ export class NotificationService implements INotificationService {
     recipient: NotificationRecipient,
     resetUrl: string
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for password reset'
@@ -88,7 +91,7 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendPasswordResetEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         resetUrl,
         recipient.locale
@@ -96,16 +99,17 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Password reset notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send password reset notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -115,7 +119,8 @@ export class NotificationService implements INotificationService {
   async sendWelcome(
     recipient: NotificationRecipient
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for welcome notification'
@@ -124,23 +129,24 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendWelcomeEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         recipient.locale
       );
 
       this.logger.debug('Welcome notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send welcome notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -152,7 +158,8 @@ export class NotificationService implements INotificationService {
     alertType: string,
     details: Record<string, any>
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for security alert'
@@ -165,7 +172,7 @@ export class NotificationService implements INotificationService {
         .join(', ');
 
       await this.emailService.sendSecurityAlertEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         alertType,
         detailsString,
@@ -174,18 +181,19 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Security alert notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
         alertType,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send security alert notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
         alertType,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -196,7 +204,8 @@ export class NotificationService implements INotificationService {
     recipient: NotificationRecipient,
     sessionInfo: SessionInfo
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for new session alert'
@@ -205,7 +214,7 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendNewSessionNotification({
-        email: recipient.email,
+        email,
         username: recipient.username || 'User',
         ip: sessionInfo.ip,
         userAgent: sessionInfo.userAgent,
@@ -215,17 +224,18 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('New session alert notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
         ip: sessionInfo.ip,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send new session alert notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -237,7 +247,8 @@ export class NotificationService implements INotificationService {
     otp: string,
     context: OtpContext
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for OTP notification'
@@ -246,7 +257,7 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendNewDeviceOtpEmail({
-        email: recipient.email,
+        email,
         username: recipient.username || 'User',
         otp,
         deviceInfo: context.deviceInfo,
@@ -256,16 +267,17 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('OTP notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send OTP notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -278,7 +290,8 @@ export class NotificationService implements INotificationService {
     content: string,
     action?: NotificationAction
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for generic notification'
@@ -287,27 +300,29 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendNotificationEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         title,
         content,
         action?.url,
-        action?.text
+        action?.text,
+        recipient.locale
       );
 
       this.logger.debug('Generic notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
         title,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send generic notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -321,7 +336,8 @@ export class NotificationService implements INotificationService {
     variables: Record<string, any>,
     locale?: string
   ): Promise<NotificationResult> {
-    if (!email) {
+    const normalizedEmail = this.normalizeEmail(email);
+    if (!normalizedEmail) {
       return this.createFailureResult(
         'email',
         'No email address provided for templated notification'
@@ -330,7 +346,7 @@ export class NotificationService implements INotificationService {
 
     try {
       await this.emailService.sendTemplatedEmail(
-        email,
+        normalizedEmail,
         subject,
         template,
         variables,
@@ -339,18 +355,19 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Templated email notification sent', {
         channel: 'email',
-        recipient: email,
+        recipient: normalizedEmail,
         template,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send templated email notification', {
-        error: (error as Error).message,
-        recipient: email,
+        error: errorMessage,
+        recipient: normalizedEmail,
         template,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -362,7 +379,8 @@ export class NotificationService implements INotificationService {
     remainingCount: number,
     settingsUrl: string
   ): Promise<NotificationResult> {
-    if (!recipient.email) {
+    const email = this.normalizeEmail(recipient.email);
+    if (!email) {
       return this.createFailureResult(
         'email',
         'No email address provided for backup code warning'
@@ -381,7 +399,7 @@ export class NotificationService implements INotificationService {
           : `You have only ${remainingCount} backup recovery code${remainingCount === 1 ? '' : 's'} remaining. We recommend generating new codes soon to ensure account recovery is always available.`;
 
       await this.emailService.sendNotificationEmail(
-        recipient.email,
+        email,
         recipient.username || 'User',
         title,
         content,
@@ -392,18 +410,19 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Backup code warning notification sent', {
         channel: 'email',
-        recipient: recipient.email,
+        recipient: email,
         remainingCount,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send backup code warning notification', {
-        error: (error as Error).message,
-        recipient: recipient.email,
+        error: errorMessage,
+        recipient: email,
         remainingCount,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -415,7 +434,11 @@ export class NotificationService implements INotificationService {
     subject: string,
     content: string
   ): Promise<NotificationResult> {
-    if (!adminEmails || adminEmails.length === 0) {
+    const normalizedAdminEmails = (adminEmails ?? [])
+      .map(email => this.normalizeEmail(email))
+      .filter((email): email is string => email !== undefined);
+
+    if (normalizedAdminEmails.length === 0) {
       return this.createFailureResult(
         'email',
         'No admin email addresses provided'
@@ -423,7 +446,7 @@ export class NotificationService implements INotificationService {
     }
 
     try {
-      const sendPromises = adminEmails.map(email =>
+      const sendPromises = normalizedAdminEmails.map(email =>
         this.emailService.sendNotificationEmail(
           email,
           'Administrator',
@@ -436,17 +459,18 @@ export class NotificationService implements INotificationService {
 
       this.logger.debug('Admin alert notification sent', {
         channel: 'email',
-        recipientCount: adminEmails.length,
+        recipientCount: normalizedAdminEmails.length,
         subject,
       });
 
       return this.createSuccessResult('email');
     } catch (error) {
+      const errorMessage = this.getErrorMessage(error);
       this.logger.error('Failed to send admin alert notification', {
-        error: (error as Error).message,
-        adminEmails,
+        error: errorMessage,
+        adminEmails: normalizedAdminEmails,
       });
-      return this.createFailureResult('email', (error as Error).message);
+      return this.createFailureResult('email', errorMessage);
     }
   }
 
@@ -473,10 +497,17 @@ export class NotificationService implements INotificationService {
     }
 
     if (user.phone_number) {
-      const config = this.configManager.getConfig();
-      const smsEnabled = config.notifications?.channels?.sms?.enabled ?? false;
-      if (smsEnabled) {
-        return 'sms';
+      try {
+        const config = this.configManager.getConfig();
+        const smsEnabled =
+          config.notifications?.channels?.sms?.enabled ?? false;
+        if (smsEnabled) {
+          return 'sms';
+        }
+      } catch {
+        this.logger.warn(
+          'Could not read notification config, defaulting to email only'
+        );
       }
     }
 
@@ -533,5 +564,16 @@ export class NotificationService implements INotificationService {
       channel,
       error,
     };
+  }
+
+  private normalizeEmail(email?: string): string | undefined {
+    const normalized = email?.trim();
+    return normalized || undefined;
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error
+      ? error.message
+      : 'Unknown notification error';
   }
 }

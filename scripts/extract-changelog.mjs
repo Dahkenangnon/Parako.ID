@@ -52,20 +52,34 @@ export function extractSection(path, version) {
   return extractSectionFromText(readFileSync(path, 'utf8'), version);
 }
 
-function main() {
-  const version = process.argv[2];
+/**
+ * @param {{
+ *   argv?: string[],
+ *   changelogPath?: string,
+ *   stdout?: { write(chunk: string): unknown },
+ *   stderr?: { write(chunk: string): unknown }
+ * }} [options]
+ */
+export function main({
+  argv = process.argv.slice(2),
+  changelogPath = 'CHANGELOG.md',
+  stdout = process.stdout,
+  stderr = process.stderr,
+} = {}) {
+  const version = argv[0];
   if (!version) {
-    process.stderr.write('Usage: extract-changelog.mjs <version>\n');
-    process.exit(2);
+    stderr.write('Usage: extract-changelog.mjs <version>\n');
+    return 2;
   }
-  const body = extractSection('CHANGELOG.md', version);
+  const body = extractSection(changelogPath, version);
   if (body === null) {
-    process.stderr.write(`No section [${version}] in CHANGELOG.md\n`);
-    process.exit(1);
+    stderr.write(`No section [${version}] in CHANGELOG.md\n`);
+    return 1;
   }
-  process.stdout.write(`${body}\n`);
+  stdout.write(`${body}\n`);
+  return 0;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  process.exitCode = main();
 }

@@ -29,12 +29,13 @@ export class LocalStorageProvider implements IStorageProvider {
   ) {
     const configured =
       this.configManager.getConfig().integrations.file_storage.upload_dir;
-    this.basePath = path.isAbsolute(configured)
+    const basePath = path.isAbsolute(configured)
       ? configured
       : path.resolve(this.fileSystemUtils.rootDir, configured);
-    if (!fs.existsSync(this.basePath)) {
-      fs.mkdirSync(this.basePath, { recursive: true });
+    if (!fs.existsSync(basePath)) {
+      fs.mkdirSync(basePath, { recursive: true });
     }
+    this.basePath = fs.realpathSync(basePath);
   }
 
   async store(buffer: Buffer, key: string, _mimeType: string): Promise<string> {
@@ -43,14 +44,24 @@ export class LocalStorageProvider implements IStorageProvider {
     const fullPath = path.resolve(this.basePath, key);
 
     // Defense-in-depth: verify resolved path stays within base
-    if (!fullPath.startsWith(this.basePath + path.sep)) {
-      throw new Error(
-        `Path traversal blocked: key "${key}" resolves outside uploads directory`
-      );
-    }
+    this.assertWithinBase(fullPath, key);
 
     const dir = path.dirname(fullPath);
     await fs.promises.mkdir(dir, { recursive: true });
+    await this.assertResolvedParentWithinBase(fullPath, key);
+
+    try {
+      const targetStats = await fs.promises.lstat(fullPath);
+      if (targetStats.isSymbolicLink()) {
+        throw new Error(
+          `Path traversal blocked: key "${key}" resolves through a symbolic link`
+        );
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw error;
+      }
+    }
 
     await fs.promises.writeFile(fullPath, buffer);
     this.logger.debug('File stored locally', { key });
@@ -67,11 +78,12 @@ export class LocalStorageProvider implements IStorageProvider {
       const fullPath = path.resolve(this.basePath, key);
 
       // Defense-in-depth: verify resolved path stays within base
-      if (!fullPath.startsWith(this.basePath + path.sep)) {
+      if (!this.isWithinBase(fullPath)) {
         this.logger.warn('Path traversal blocked in delete', { key });
         return;
       }
 
+      await this.assertResolvedParentWithinBase(fullPath, key);
       await fs.promises.rm(fullPath, { force: true });
       this.logger.debug('File deleted', { key });
     } catch (error) {
@@ -100,5 +112,31 @@ export class LocalStorageProvider implements IStorageProvider {
     if (key.includes('..') || key.includes('\0')) {
       throw new Error(`Invalid storage key: "${key}" contains path traversal`);
     }
+  }
+
+  private isWithinBase(candidatePath: string): boolean {
+    const relative = path.relative(this.basePath, candidatePath);
+    return (
+      relative === '' ||
+      (relative !== '..' &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative))
+    );
+  }
+
+  private assertWithinBase(candidatePath: string, key: string): void {
+    if (!this.isWithinBase(candidatePath)) {
+      throw new Error(
+        `Path traversal blocked: key "${key}" resolves outside uploads directory`
+      );
+    }
+  }
+
+  private async assertResolvedParentWithinBase(
+    fullPath: string,
+    key: string
+  ): Promise<void> {
+    const resolvedParent = await fs.promises.realpath(path.dirname(fullPath));
+    this.assertWithinBase(resolvedParent, key);
   }
 }

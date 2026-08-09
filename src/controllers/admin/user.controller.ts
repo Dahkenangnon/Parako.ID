@@ -66,6 +66,21 @@ export class AdminUsersController implements IAdminUsersController {
     };
   }
 
+  private normalizeRoles(value: unknown): string[] {
+    const availableRoles =
+      this.configManager.getConfig().security.authentication.roles.available;
+    const allowedRoles = new Set(availableRoles);
+    const values = Array.isArray(value) ? value : [value ?? 'user'];
+    const roles = values
+      .filter((role): role is string => typeof role === 'string')
+      .map(role => role.trim())
+      .filter(role => role.length > 0 && allowedRoles.has(role));
+
+    const uniqueRoles = [...new Set(roles)];
+    if (uniqueRoles.length > 0) return uniqueRoles;
+    return allowedRoles.has('user') ? ['user'] : [];
+  }
+
   private logUserActivity(
     req: Request,
     type: string,
@@ -114,8 +129,10 @@ export class AdminUsersController implements IAdminUsersController {
       ADMIN_USER_SORT_FIELDS,
       { sortBy: 'created_at' }
     );
-    const role = ((req.query.role as string) || '').trim();
-    const status = ((req.query.status as string) || '').trim();
+    const role =
+      typeof req.query.role === 'string' ? req.query.role.trim() : '';
+    const status =
+      typeof req.query.status === 'string' ? req.query.status.trim() : '';
 
     const filter: any = {};
 
@@ -264,6 +281,7 @@ export class AdminUsersController implements IAdminUsersController {
       roles: userRoles,
       password,
       account_enabled = true,
+      password_force_reset,
     } = req.body;
 
     const existingUser = await this.userService.findOne({ email });
@@ -279,6 +297,31 @@ export class AdminUsersController implements IAdminUsersController {
       );
     }
 
+    let parsedBirthdate: Date | undefined;
+    if (birthdate !== undefined && birthdate !== '') {
+      if (typeof birthdate !== 'string') {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Invalid birthdate',
+          '/admin/users/new'
+        );
+      }
+      parsedBirthdate = new Date(birthdate);
+      if (Number.isNaN(parsedBirthdate.getTime())) {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Invalid birthdate',
+          '/admin/users/new'
+        );
+      }
+    }
+
     const hashedPassword = await this.passwordUtils.hashPassword(password);
 
     const userData: Partial<IUser> = {
@@ -288,10 +331,9 @@ export class AdminUsersController implements IAdminUsersController {
       password: hashedPassword,
       password_hash_algo: 'argon2id',
       password_updated_at: new Date(),
-      roles: Array.isArray(userRoles)
-        ? userRoles.map((r: string) => r.trim())
-        : [(userRoles || 'user').trim()],
-      account_enabled: account_enabled === 'true',
+      roles: this.normalizeRoles(userRoles),
+      account_enabled: account_enabled === true || account_enabled === 'true',
+      password_force_reset: password_force_reset === 'true',
       email_verified: true, // Admin created users are pre-verified
       auth_provider: 'local',
     };
@@ -320,8 +362,8 @@ export class AdminUsersController implements IAdminUsersController {
     if (gender && ['M', 'F'].includes(gender)) {
       userData.gender = gender;
     }
-    if (birthdate) {
-      userData.birthdate = new Date(birthdate);
+    if (parsedBirthdate) {
+      userData.birthdate = parsedBirthdate;
     }
 
     const ciError = await this.applyCustomIdentifiers(req, userData, undefined);
@@ -422,13 +464,47 @@ export class AdminUsersController implements IAdminUsersController {
       );
     }
 
+    if (new_password !== undefined && typeof new_password !== 'string') {
+      return flashAndRedirect(
+        { sessionManager: this.sessionManager },
+        req,
+        res,
+        'error',
+        'Invalid password value',
+        `/admin/users/${id}/edit`
+      );
+    }
+
+    let parsedBirthdate: Date | undefined;
+    if (birthdate !== undefined && birthdate !== '') {
+      if (typeof birthdate !== 'string') {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Invalid birthdate',
+          `/admin/users/${id}/edit`
+        );
+      }
+      parsedBirthdate = new Date(birthdate);
+      if (Number.isNaN(parsedBirthdate.getTime())) {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'Invalid birthdate',
+          `/admin/users/${id}/edit`
+        );
+      }
+    }
+
     const updateData: Partial<IUser> = {
       email,
       given_name,
       family_name,
-      roles: Array.isArray(userRoles)
-        ? userRoles.map((r: string) => r.trim())
-        : [(userRoles || 'user').trim()],
+      roles: this.normalizeRoles(userRoles),
       account_enabled: account_enabled === 'true',
     };
 
@@ -460,7 +536,7 @@ export class AdminUsersController implements IAdminUsersController {
         gender && ['M', 'F'].includes(gender) ? gender : undefined;
     }
     if (birthdate !== undefined) {
-      updateData.birthdate = birthdate ? new Date(birthdate) : undefined;
+      updateData.birthdate = parsedBirthdate;
     }
 
     if (password_force_reset !== undefined) {
@@ -702,34 +778,7 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
-      const anonymizedUser = await this.userService.updateById(id, {
-        account_is_anonymized: true,
-        family_name: 'Anonymized',
-        given_name: 'Anonymized',
-        nickname: 'Anonymized',
-        middle_name: 'Anonymized',
-        gender: 'M',
-        birthdate: new Date('1970-01-01'),
-        email: `anon-${Date.now()}_${user.email}`,
-        phone_number: 'Anonymized',
-        profile: 'Anonymized',
-        website: 'Anonymized',
-        picture: 'Anonymized',
-        address: 'Anonymized',
-        street_address: 'Anonymized',
-        city: 'Anonymized',
-        region: 'Anonymized',
-        postal_code: 'Anonymized',
-        country: 'Anonymized',
-        locale: 'Anonymized',
-        zoneinfo: 'Anonymized',
-        custom_identifier_1: undefined,
-        custom_identifier_2: undefined,
-        custom_identifier_3: undefined,
-        register_with: 'email',
-        theme: 'light',
-        auth_provider: 'local',
-      });
+      const anonymizedUser = await this.userService.anonymize(id);
 
       if (!anonymizedUser) {
         res

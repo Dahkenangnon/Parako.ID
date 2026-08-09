@@ -237,9 +237,101 @@
    * @returns JSON string with comments removed
    */
   function stripJsonComments(content: string): string {
-    let result = content.replace(/\/\/.*$/gm, '');
-    result = result.replace(/\/\*[\s\S]*?\*\//g, '');
-    result = result.replace(/,(\s*[}\]])/g, '$1');
+    let withoutComments = '';
+    let inString = false;
+    let escaped = false;
+    let inLineComment = false;
+    let inBlockComment = false;
+
+    for (let index = 0; index < content.length; index += 1) {
+      const character = content[index];
+      const nextCharacter = content[index + 1];
+
+      if (inLineComment) {
+        if (character === '\n' || character === '\r') {
+          inLineComment = false;
+          withoutComments += character;
+        }
+        continue;
+      }
+
+      if (inBlockComment) {
+        if (character === '*' && nextCharacter === '/') {
+          inBlockComment = false;
+          index += 1;
+        } else if (character === '\n' || character === '\r') {
+          withoutComments += character;
+        }
+        continue;
+      }
+
+      if (inString) {
+        withoutComments += character;
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+        withoutComments += character;
+      } else if (character === '/' && nextCharacter === '/') {
+        inLineComment = true;
+        index += 1;
+      } else if (character === '/' && nextCharacter === '*') {
+        inBlockComment = true;
+        index += 1;
+      } else {
+        withoutComments += character;
+      }
+    }
+
+    let result = '';
+    inString = false;
+    escaped = false;
+
+    for (let index = 0; index < withoutComments.length; index += 1) {
+      const character = withoutComments[index];
+
+      if (inString) {
+        result += character;
+        if (escaped) {
+          escaped = false;
+        } else if (character === '\\') {
+          escaped = true;
+        } else if (character === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (character === '"') {
+        inString = true;
+        result += character;
+        continue;
+      }
+
+      if (character === ',') {
+        let nextIndex = index + 1;
+        while (/\s/.test(withoutComments[nextIndex] || '')) {
+          nextIndex += 1;
+        }
+        if (
+          withoutComments[nextIndex] === '}' ||
+          withoutComments[nextIndex] === ']'
+        ) {
+          continue;
+        }
+      }
+
+      result += character;
+    }
+
     return result;
   }
 
@@ -393,11 +485,11 @@
         this.value = ''; // Clear the input
 
         if (options.onInvalidFile) {
-          options.onInvalidFile(validation.error || 'Invalid file');
+          options.onInvalidFile(validation.error!);
         } else if (typeof (window as any).dialog?.showAlert === 'function') {
           await (window as any).dialog.showAlert(
             'Invalid File',
-            validation.error || 'Invalid file',
+            validation.error!,
             { variant: 'error' }
           );
         }

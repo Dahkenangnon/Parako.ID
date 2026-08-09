@@ -14,6 +14,19 @@ const coerceBooleanSchema = z
     return strVal === 'on' || strVal === 'true' || strVal === '1';
   });
 
+function isSafeAssetLocation(value: string): boolean {
+  if (value.startsWith('/')) {
+    return !value.startsWith('//') && !value.includes('\\');
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Parako.ID Configuration Schema - Redesigned
  *
@@ -100,17 +113,10 @@ export const AppConfigSchema = z.object({
       .string()
       .min(1, 'Logo path cannot be empty')
       .default('/images/logo-light.png')
-      .refine((val: string) => {
-        if (val.startsWith('/')) {
-          return true;
-        }
-        try {
-          new URL(val);
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Logo must be a valid URL (http://example.com/logo.png) or relative path (/images/logo.png)'),
+      .refine(
+        isSafeAssetLocation,
+        'Logo must be a valid HTTP(S) URL or relative path (/images/logo.png)'
+      ),
 
     /**
      * Dark mode logo variant (optional)
@@ -119,15 +125,10 @@ export const AppConfigSchema = z.object({
     logoDark: z
       .string()
       .min(1, 'Dark logo path cannot be empty')
-      .refine((val: string) => {
-        if (val.startsWith('/')) return true;
-        try {
-          new URL(val);
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Dark logo must be a valid URL or relative path')
+      .refine(
+        isSafeAssetLocation,
+        'Dark logo must be a valid HTTP(S) URL or relative path'
+      )
       .nullable()
       .optional(),
 
@@ -138,15 +139,10 @@ export const AppConfigSchema = z.object({
     logoIcon: z
       .string()
       .min(1, 'Icon logo path cannot be empty')
-      .refine((val: string) => {
-        if (val.startsWith('/')) return true;
-        try {
-          new URL(val);
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Icon logo must be a valid URL or relative path')
+      .refine(
+        isSafeAssetLocation,
+        'Icon logo must be a valid HTTP(S) URL or relative path'
+      )
       .nullable()
       .optional(),
 
@@ -157,15 +153,10 @@ export const AppConfigSchema = z.object({
     logoIconDark: z
       .string()
       .min(1, 'Dark icon logo path cannot be empty')
-      .refine((val: string) => {
-        if (val.startsWith('/')) return true;
-        try {
-          new URL(val);
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Dark icon logo must be a valid URL or relative path')
+      .refine(
+        isSafeAssetLocation,
+        'Dark icon logo must be a valid HTTP(S) URL or relative path'
+      )
       .nullable()
       .optional(),
 
@@ -176,15 +167,10 @@ export const AppConfigSchema = z.object({
     favicon: z
       .string()
       .min(1, 'Favicon path cannot be empty')
-      .refine((val: string) => {
-        if (val.startsWith('/')) return true;
-        try {
-          new URL(val);
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Favicon must be a valid URL or relative path')
+      .refine(
+        isSafeAssetLocation,
+        'Favicon must be a valid HTTP(S) URL or relative path'
+      )
       .nullable()
       .optional(),
 
@@ -2262,6 +2248,7 @@ export const AppConfigSchema = z.object({
           .default(7200),
         algorithms: z
           .array(z.enum(['RS256', 'ES256', 'EdDSA']))
+          .min(1, 'At least one signing algorithm is required')
           .default(['RS256', 'ES256', 'EdDSA']),
         promotion_delay_ms: z
           .number()
@@ -2289,133 +2276,173 @@ export const AppConfigSchema = z.object({
     /**
      * OIDC feature configuration
      */
-    oidc: z.object({
-      // Core OIDC flows and endpoints
-      dev_interactions: z.object({ enabled: z.boolean().default(false) }),
-      device_flow: z.object({
-        enabled: z.boolean().default(true),
-        charset: z
-          .enum(['digits', 'base-20'])
-          .default('digits')
-          .describe('Character set for device codes'),
-        mask: z
-          .string()
-          .min(1, 'Device code mask cannot be empty')
-          .default('***-*-***')
-          .describe('Display mask for device codes'),
-      }),
-      client_credentials: z.object({ enabled: z.boolean().default(true) }),
-      token_revocation: z.object({ enabled: z.boolean().default(true) }),
-      token_introspection: z.object({ enabled: z.boolean().default(true) }),
-      jwt_introspection: z.object({ enabled: z.boolean().default(false) }),
-      userinfo_endpoint: z.object({ enabled: z.boolean().default(true) }),
-      resource_indicators: z.object({ enabled: z.boolean().default(true) }),
-      rp_initiated_logout: z.object({ enabled: z.boolean().default(true) }),
-      backchannel_logout: z.object({ enabled: z.boolean().default(true) }),
-
-      dynamic_client_registration: z
-        .object({
-          enabled: z.boolean().default(false),
-          require_initial_access_token: z
-            .union([z.boolean(), z.string()])
-            .default(true),
-          issue_registration_access_token: z.boolean().default(true),
-        })
-        .transform((val: any) => {
-          // When DCR is enabled, force IAT requirement — no open registration
-          if (val.enabled && val.require_initial_access_token === false) {
-            val.require_initial_access_token = true;
-          }
-          return val;
+    oidc: z
+      .object({
+        // Core OIDC flows and endpoints
+        dev_interactions: z.object({ enabled: z.boolean().default(false) }),
+        device_flow: z.object({
+          enabled: z.boolean().default(true),
+          charset: z
+            .enum(['digits', 'base-20'])
+            .default('digits')
+            .describe('Character set for device codes'),
+          mask: z
+            .string()
+            .min(1, 'Device code mask cannot be empty')
+            .regex(
+              /^[-* ]*$/,
+              'Device code mask can only contain asterisks, hyphens, and spaces'
+            )
+            .default('***-*-***')
+            .describe('Display mask for device codes'),
         }),
-      client_registration_management: z.object({
-        enabled: z.boolean().default(false),
-        rotate_registration_access_token: z.boolean().default(true),
-      }),
+        client_credentials: z.object({ enabled: z.boolean().default(true) }),
+        token_revocation: z.object({ enabled: z.boolean().default(true) }),
+        token_introspection: z.object({ enabled: z.boolean().default(true) }),
+        jwt_introspection: z.object({ enabled: z.boolean().default(false) }),
+        userinfo_endpoint: z.object({ enabled: z.boolean().default(true) }),
+        resource_indicators: z.object({ enabled: z.boolean().default(true) }),
+        rp_initiated_logout: z.object({ enabled: z.boolean().default(true) }),
+        backchannel_logout: z.object({ enabled: z.boolean().default(true) }),
 
-      // Security enhancements
-      pkce: z.object({
-        enabled: z.boolean().default(true),
-        required: z.boolean().default(true),
-      }),
-      extra_params: z.object({
-        enabled: z.boolean().default(true),
-        allowed_params: z
-          .array(z.string())
-          .default([
-            'utm_source',
-            'utm_medium',
-            'utm_campaign',
-            'utm_term',
-            'utm_content',
-            'tenant_id',
-            'app_id',
-            'continue',
-          ]),
-      }),
+        dynamic_client_registration: z
+          .object({
+            enabled: z.boolean().default(false),
+            require_initial_access_token: coerceBooleanSchema.default(true),
+            issue_registration_access_token: z.boolean().default(true),
+          })
+          .transform((val: any) => {
+            // When DCR is enabled, force IAT requirement — no open registration
+            if (val.enabled && val.require_initial_access_token === false) {
+              val.require_initial_access_token = true;
+            }
+            return val;
+          }),
+        client_registration_management: z.object({
+          enabled: z.boolean().default(false),
+          rotate_registration_access_token: z.boolean().default(true),
+        }),
 
-      accept_query_param_access_tokens: z.boolean().default(true),
-      conform_id_token_claims: z.boolean().default(false),
-      allow_omitting_single_registered_redirect_uri: z.boolean().default(true),
-      enable_http_post_methods: z.boolean().default(false),
-      expires_with_session: z.boolean().default(true),
-      rotate_refresh_token: z.boolean().default(true),
-      client_based_cors: z.boolean().default(true),
-      clock_tolerance: z.number().int().nonnegative().default(15),
-
-      // Claims and scopes configuration
-      acr_values: z.object({
-        supported: z
-          .array(z.string())
-          .default(['urn:mfa:otp', 'urn:mfa:webauthn']),
-      }),
-      claims: z.record(z.string(), z.array(z.string())).optional(),
-      scopes: z
-        .array(z.string())
-        .default([
-          'openid',
-          'profile',
-          'email',
-          'phone',
-          'address',
-          'offline_access',
-        ]),
-      subject_types: z
-        .array(z.enum(['public', 'pairwise']))
-        .default(['public', 'pairwise']),
-
-      allowOmittingSingleRegisteredRedirectUri: z.boolean().default(true),
-
-      // Encryption and JWT features
-      encryption: z.object({
-        enabled: z.boolean().default(false),
-      }),
-      jwt_response_modes: z.object({
-        enabled: z.boolean().default(false),
-      }),
-      jwt_userinfo: z.object({
-        enabled: z.boolean().default(false),
-      }),
-      request_objects: z.object({
-        enabled: z
-          .boolean()
-          .default(true)
-          .describe('Whether to enable request objects support'),
-      }),
-
-      extra_client_metadata: z
-        .object({
-          properties: z
+        // Security enhancements
+        pkce: z.object({
+          enabled: z.boolean().default(true),
+          required: z.boolean().default(true),
+        }),
+        extra_params: z.object({
+          enabled: z.boolean().default(true),
+          allowed_params: z
             .array(z.string())
             .default([
-              'allowedResources',
-              'resourcesScopes',
-              'isInternalClient',
+              'utm_source',
+              'utm_medium',
+              'utm_campaign',
+              'utm_term',
+              'utm_content',
+              'tenant_id',
+              'app_id',
+              'continue',
             ]),
-          validator: z.function().optional(),
-        })
-        .optional(),
-    }),
+        }),
+
+        accept_query_param_access_tokens: z.boolean().default(false),
+        conform_id_token_claims: z.boolean().default(false),
+        allow_omitting_single_registered_redirect_uri: z
+          .boolean()
+          .default(true),
+        enable_http_post_methods: z.boolean().default(false),
+        expires_with_session: z.boolean().default(true),
+        rotate_refresh_token: z.boolean().default(true),
+        client_based_cors: z.boolean().default(true),
+        clock_tolerance: z.number().int().nonnegative().default(15),
+
+        // Claims and scopes configuration
+        acr_values: z.object({
+          supported: z
+            .array(z.string())
+            .default(['urn:mfa:otp', 'urn:mfa:webauthn']),
+        }),
+        claims: z.record(z.string(), z.array(z.string())).optional(),
+        scopes: z
+          .array(z.string())
+          .default([
+            'openid',
+            'profile',
+            'email',
+            'phone',
+            'address',
+            'offline_access',
+          ]),
+        subject_types: z
+          .array(z.enum(['public', 'pairwise']))
+          .min(1, 'At least one OIDC subject type must be enabled')
+          .default(['public', 'pairwise']),
+
+        allowOmittingSingleRegisteredRedirectUri: z.boolean().default(true),
+
+        // Encryption and JWT features
+        encryption: z.object({
+          enabled: z.boolean().default(false),
+        }),
+        jwt_response_modes: z.object({
+          enabled: z.boolean().default(false),
+        }),
+        jwt_userinfo: z.object({
+          enabled: z.boolean().default(false),
+        }),
+        request_objects: z.object({
+          enabled: z
+            .boolean()
+            .default(true)
+            .describe('Whether to enable request objects support'),
+        }),
+
+        extra_client_metadata: z
+          .object({
+            properties: z
+              .array(z.string())
+              .default([
+                'allowedResources',
+                'resourcesScopes',
+                'isInternalClient',
+              ]),
+            validator: z.function().optional(),
+          })
+          .optional(),
+      })
+      .superRefine((oidc, ctx) => {
+        if (
+          oidc.jwt_introspection.enabled &&
+          !oidc.token_introspection.enabled
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['jwt_introspection', 'enabled'],
+            message:
+              'JWT introspection requires the token introspection endpoint to be enabled',
+          });
+        }
+
+        if (oidc.jwt_userinfo.enabled && !oidc.userinfo_endpoint.enabled) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['jwt_userinfo', 'enabled'],
+            message:
+              'JWT UserInfo requires the UserInfo endpoint to be enabled',
+          });
+        }
+
+        if (
+          oidc.client_registration_management.enabled &&
+          !oidc.dynamic_client_registration.enabled
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['client_registration_management', 'enabled'],
+            message:
+              'Client registration management requires dynamic client registration to be enabled',
+          });
+        }
+      }),
 
     /**
      * Social authentication providers configuration

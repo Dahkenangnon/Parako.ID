@@ -72,7 +72,7 @@
   interface DeviceFlowCodeInputManagerOptions {
     config: DeviceFlowCodeInputConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
+    debug: boolean;
     errorRecoveryTimeout?: number;
   }
 
@@ -199,10 +199,8 @@
     filterInput(value: string): string {
       if (this.charset === 'digits') {
         return value.replace(/[^0-9]/g, '');
-      } else if (this.charset === 'base-20') {
-        return value.replace(/[^0-9A-J]/gi, '').toUpperCase();
       }
-      return value;
+      return value.replace(/[^0-9A-J]/gi, '').toUpperCase();
     }
 
     handlePaste(text: string, startIndex: number): void {
@@ -216,6 +214,10 @@
       });
 
       const filteredText = this.filterInput(cleanText);
+
+      for (let i = startIndex; i < this.inputs.length; i++) {
+        this.inputs[i].value = '';
+      }
 
       for (
         let i = 0;
@@ -288,14 +290,6 @@
       return this.inputs.every(input => input.value.length > 0);
     }
 
-    clear(): void {
-      this.inputs.forEach(input => (input.value = ''));
-      this.updateHiddenInput();
-      if (this.inputs[0]) {
-        this.inputs[0].focus();
-      }
-    }
-
     disable(): void {
       this.inputs.forEach(input => {
         input.disabled = true;
@@ -346,12 +340,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
       this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 10000; // 10 seconds default
 
       this.initializeElements();
@@ -453,8 +447,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -518,17 +510,8 @@
      * Setup form submission handling with validation and loading states
      */
     private setupFormSubmission(): void {
-      if (!this.form || !this.submitButton || !this.deviceCodeInput) {
-        this.log(
-          'Required elements not found for form submission',
-          null,
-          'error'
-        );
-        return;
-      }
-
-      this.form.addEventListener('submit', (e: Event) => {
-        if (this.isSubmitting) {
+      this.form!.addEventListener('submit', (e: Event) => {
+        if (this.config.enableDoubleSubmissionPrevention && this.isSubmitting) {
           this.log('Double submission prevented', null, 'warn');
           e.preventDefault();
           e.stopPropagation();
@@ -560,15 +543,13 @@
 
         // Set a timeout to re-enable the form if something goes wrong
         this.submissionTimeout = window.setTimeout(() => {
-          if (this.isSubmitting) {
-            this.log(
-              'Submission timeout reached, re-enabling form',
-              null,
-              'warn'
-            );
-            this.isSubmitting = false;
-            this.enableAllButtons();
-          }
+          this.log(
+            'Submission timeout reached, re-enabling form',
+            null,
+            'warn'
+          );
+          this.isSubmitting = false;
+          this.enableAllButtons();
         }, this.config.submissionTimeout);
       });
 
@@ -582,9 +563,7 @@
      * Update submit button with loading state
      */
     private updateSubmitButtonLoading(): void {
-      if (!this.submitButton) return;
-
-      this.submitButton.innerHTML = `
+      this.submitButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -680,20 +659,14 @@
         clearTimeout(this.submissionTimeout);
       }
 
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.classList.add('disabled-button');
-      }
+      this.submitButton!.disabled = true;
+      this.submitButton!.classList.add('disabled-button');
 
-      if (this.deviceCodeInput) {
-        this.deviceCodeInput.disable();
-      }
+      this.deviceCodeInput!.disable();
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       this.log('All buttons disabled');
     }
@@ -705,33 +678,25 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = `
+      this.submitButton!.disabled = false;
+      this.submitButton!.innerHTML = `
           <svg class="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
           </svg>
           ${this.getTranslation('verifyCode')}
         `;
-        this.submitButton.classList.remove('disabled-button');
-      }
+      this.submitButton!.classList.remove('disabled-button');
 
       // Re-enable device code input
-      if (this.deviceCodeInput) {
-        this.deviceCodeInput.enable();
-      }
+      this.deviceCodeInput!.enable();
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
 
       this.log('All buttons enabled');
     }

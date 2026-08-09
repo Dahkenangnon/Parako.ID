@@ -119,7 +119,7 @@ export class WebAuthnController implements IWebAuthnController {
    */
   private getAuthenticatedUser(
     req: Request
-  ): { username: string; email?: string; name?: string } | null {
+  ): { username: string; email?: string; name: string } | null {
     const user = this.sessionManager.getActiveUser(req);
     if (!user) {
       return null;
@@ -178,7 +178,7 @@ export class WebAuthnController implements IWebAuthnController {
       const options = await this.webauthnService.generateRegistrationOptions(
         user.username,
         user.email || user.username,
-        user.name || user.username,
+        user.name,
         existingIds
       );
 
@@ -241,14 +241,13 @@ export class WebAuthnController implements IWebAuthnController {
       const credential = req.body.credential as RegistrationResponseJSON;
       const friendlyName = req.body.friendly_name?.trim();
 
+      this.clearChallenge(req);
       const result = await this.webauthnService.verifyRegistration(
         user.username,
         credential,
         challenge,
         this.getOrigin()
       );
-
-      this.clearChallenge(req);
 
       if (!result.verified || !result.credential) {
         this.logger.warn('WebAuthn registration verification failed', {
@@ -618,14 +617,13 @@ export class WebAuthnController implements IWebAuthnController {
         return;
       }
 
+      this.clearChallenge(req);
       const result = await this.webauthnService.verifyAuthentication(
         matchingCredential,
         credential,
         challenge,
         this.getOrigin()
       );
-
-      this.clearChallenge(req);
 
       if (result.verified && result.newCounter !== undefined) {
         try {
@@ -695,9 +693,9 @@ export class WebAuthnController implements IWebAuthnController {
         last_used: Date.now(),
       };
 
-      const isSocialLogin =
-        this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser') !==
-        null;
+      const isSocialLogin = Boolean(
+        this.sessionManager.get<PendingMfaUser>(req, 'pendingSocialMfaUser')
+      );
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'mfa_webauthn_verification_success',

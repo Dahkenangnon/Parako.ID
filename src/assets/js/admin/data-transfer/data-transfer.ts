@@ -143,11 +143,11 @@ interface ImportResult {
   function createTextEl(
     tag: string,
     text: string,
-    className?: string
+    className: string
   ): HTMLElement {
     const el = document.createElement(tag);
     el.textContent = text;
-    if (className) el.className = className;
+    el.className = className;
     return el;
   }
 
@@ -277,9 +277,18 @@ interface ImportResult {
       return;
     }
 
+    if (
+      data.some(
+        row => row === null || typeof row !== 'object' || Array.isArray(row)
+      )
+    ) {
+      showParseError('JSON file must contain only objects.');
+      return;
+    }
+
     parsedRows = data as ParsedRow[];
     columnMatches = [];
-    showPreview(Object.keys(parsedRows[0] || {}));
+    showPreview(Object.keys(parsedRows[0]));
   }
 
   function showParseError(message: string): void {
@@ -564,7 +573,7 @@ interface ImportResult {
   function trackImportJob(jobId: string): void {
     let resultHandled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let fallbackTimer: ReturnType<typeof setTimeout>;
     let eventSource: EventSource | null = null;
 
     function handleResult(result: ImportResult): void {
@@ -592,10 +601,7 @@ interface ImportResult {
         clearInterval(pollTimer);
         pollTimer = null;
       }
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
+      clearTimeout(fallbackTimer);
     }
 
     // Polling fallback — checks job status via regular HTTP

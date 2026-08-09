@@ -5,6 +5,7 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IActivityService } from '../../di/interfaces/activity-service.interface.js';
 import type { IDataTransferService } from '../../di/interfaces/data-transfer-service.interface.js';
 import type {
+  EntityColumnDef,
   EntityTransferConfig,
   ExportFilters,
   ExportContext,
@@ -19,6 +20,46 @@ import {
   generateCsvTemplate,
   generateJsonTemplate,
 } from './format-utils.js';
+
+function validateRowFields(
+  row: Record<string, unknown>,
+  columns: EntityColumnDef[]
+): Record<string, string> {
+  const fieldErrors: Record<string, string> = {};
+
+  for (const col of columns) {
+    const value = row[col.field];
+    const isEmpty = value === undefined || value === null || value === '';
+
+    if (col.required && isEmpty) {
+      fieldErrors[col.field] = `${col.header} is required`;
+    } else if (col.validator && !isEmpty) {
+      const result = col.validator.safeParse(value);
+      if (!result.success) {
+        fieldErrors[col.field] = result.error.issues
+          .map((issue: { message: string }) => issue.message)
+          .join(', ');
+      }
+    }
+  }
+
+  return fieldErrors;
+}
+
+function assertImportRowLimit(
+  rowCount: number,
+  config: EntityTransferConfig
+): void {
+  const maxRows = config.importConfig?.maxRows ?? 5000;
+  if (!Number.isSafeInteger(maxRows) || maxRows <= 0) {
+    throw new Error(`Invalid maximum row count for ${config.entityId}`);
+  }
+  if (rowCount > maxRows) {
+    throw new Error(
+      `Row count ${rowCount} exceeds maximum ${maxRows} for ${config.entityId}`
+    );
+  }
+}
 
 @injectable()
 export class DataTransferService implements IDataTransferService {
@@ -51,6 +92,10 @@ export class DataTransferService implements IDataTransferService {
       }
     );
 
+    if (typeof job.id !== 'string' || job.id.trim().length === 0) {
+      throw new Error('BullMQ job was created without an ID');
+    }
+
     this.logger.info('Data import job enqueued', {
       component: 'data-transfer',
       jobId: job.id,
@@ -59,9 +104,6 @@ export class DataTransferService implements IDataTransferService {
       tenantId: ctx.tenantId,
     });
 
-    if (!job.id) {
-      throw new Error('BullMQ job was created without an ID');
-    }
     return job.id;
   }
 
@@ -76,12 +118,7 @@ export class DataTransferService implements IDataTransferService {
       throw new Error(`Entity "${config.entityId}" does not support import`);
     }
 
-    const maxRows = importConfig.maxRows ?? 5000;
-    if (rows.length > maxRows) {
-      throw new Error(
-        `Row count ${rows.length} exceeds maximum ${maxRows} for ${config.entityId}`
-      );
-    }
+    assertImportRowLimit(rows.length, config);
 
     const errors: ImportRowError[] = [];
     let validCount = 0;
@@ -92,22 +129,7 @@ export class DataTransferService implements IDataTransferService {
       const row = rows[i];
       const rowNumber = i + 1;
 
-      const fieldErrors: Record<string, string> = {};
-      for (const col of importConfig.columns) {
-        const value = row[col.field];
-        const isEmpty = value === undefined || value === null || value === '';
-
-        if (col.required && isEmpty) {
-          fieldErrors[col.field] = `${col.header} is required`;
-        } else if (col.validator && !isEmpty) {
-          const result = col.validator.safeParse(value);
-          if (!result.success) {
-            fieldErrors[col.field] = result.error.issues
-              .map((issue: { message: string }) => issue.message)
-              .join(', ');
-          }
-        }
-      }
+      const fieldErrors = validateRowFields(row, importConfig.columns);
 
       if (Object.keys(fieldErrors).length > 0) {
         errors.push({
@@ -163,6 +185,8 @@ export class DataTransferService implements IDataTransferService {
       throw new Error(`Entity "${config.entityId}" does not support import`);
     }
 
+    assertImportRowLimit(rows.length, config);
+
     const errors: ImportRowError[] = [];
     let successCount = 0;
     const total = rows.length;
@@ -171,16 +195,25 @@ export class DataTransferService implements IDataTransferService {
       const row = rows[i];
       const rowNumber = i + 1;
 
-      try {
-        const prepared = await importConfig.prepareRow(row, ctx);
-        await importConfig.insertRow(prepared, ctx);
-        successCount++;
-      } catch (err) {
+      const fieldErrors = validateRowFields(row, importConfig.columns);
+      if (Object.keys(fieldErrors).length > 0) {
         errors.push({
           rowNumber,
-          fields: { email: String(row.email ?? '') },
-          error: err instanceof Error ? err.message : String(err),
+          fields: fieldErrors,
+          error: 'Validation failed',
         });
+      } else {
+        try {
+          const prepared = await importConfig.prepareRow(row, ctx);
+          await importConfig.insertRow(prepared, ctx);
+          successCount++;
+        } catch (err) {
+          errors.push({
+            rowNumber,
+            fields: { email: String(row.email ?? '') },
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       // Report progress every 10 rows or on last row
@@ -227,7 +260,11 @@ export class DataTransferService implements IDataTransferService {
     this.logger.info('Data import completed', {
       component: 'data-transfer',
       entityId: config.entityId,
-      ...result,
+      totalRows: result.totalRows,
+      successCount: result.successCount,
+      errorCount: result.errorCount,
+      skippedCount: result.skippedCount,
+      durationMs: result.durationMs,
     });
 
     return result;
@@ -248,8 +285,10 @@ export class DataTransferService implements IDataTransferService {
 
     const activeColumns = exportConfig.columns.filter(col => {
       if (col.group === 'core') return true;
-      if (col.group === 'sensitive') return !!filters.includeSensitive;
-      if (col.group === 'internal') return !!filters.includeSecrets;
+      if (col.group === 'sensitive') {
+        return filters.includeSensitive === true;
+      }
+      if (col.group === 'internal') return filters.includeSecrets === true;
       return false;
     });
 
@@ -278,7 +317,7 @@ export class DataTransferService implements IDataTransferService {
     }
 
     let filename = exportConfig.filenamePrefix;
-    if (filters.includeSensitive || filters.includeSecrets) {
+    if (filters.includeSensitive === true || filters.includeSecrets === true) {
       filename += '-SENSITIVE';
     }
     filename += `-${new Date().toISOString().split('T')[0]}${filenameExt}`;

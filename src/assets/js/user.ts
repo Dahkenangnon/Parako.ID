@@ -6,238 +6,237 @@
  *
  * Payload is minimal (~80 bytes): { visitorId, visitorIdSource }
  */
-(function () {
-  'use strict';
+'use strict';
 
-  interface DeviceInfo {
-    visitorId: string;
-    visitorIdSource: 'fingerprintjs' | 'fallback';
+export interface DeviceInfo {
+  visitorId: string;
+  visitorIdSource: 'fingerprintjs' | 'fallback';
+}
+
+export interface DeviceInfoConfig {
+  csrfToken: string;
+  fingerprintJSApiKey?: string;
+  debug: boolean;
+}
+
+const FALLBACK_ID_KEY = 'parako_device_fallback_id';
+
+export class DeviceInfoCollector {
+  private config: DeviceInfoConfig;
+  private deviceInfo: DeviceInfo | null = null;
+  private formObserver: MutationObserver | null = null;
+
+  constructor(config: DeviceInfoConfig) {
+    this.config = config;
+    this.log('DeviceInfoCollector initialized');
   }
 
-  interface Config {
-    csrfToken: string;
-    fingerprintJSApiKey?: string;
-    debug: boolean;
+  async initialize(): Promise<void> {
+    try {
+      this.log('Starting device info collection');
+
+      this.deviceInfo = await this.collectDeviceInfo();
+
+      this.log('Device info collected', {
+        visitorId: this.deviceInfo.visitorId,
+        source: this.deviceInfo.visitorIdSource,
+      });
+
+      this.injectIntoForms();
+
+      // Watch for dynamically added forms
+      this.startFormObserver();
+    } catch (error) {
+      console.error('[DeviceInfoCollector] Initialization failed:', error);
+    }
   }
 
-  const FALLBACK_ID_KEY = 'parako_device_fallback_id';
+  private async collectDeviceInfo(): Promise<DeviceInfo> {
+    try {
+      const fpData = await this.loadFingerprintJS();
+      return {
+        visitorId: fpData.visitorId,
+        visitorIdSource: 'fingerprintjs',
+      };
+    } catch (error) {
+      this.log('FingerprintJS failed, using fallback', { error }, 'warn');
+      return {
+        visitorId: this.getFallbackId(),
+        visitorIdSource: 'fallback',
+      };
+    }
+  }
 
-  class DeviceInfoCollector {
-    private config: Config;
-    private deviceInfo: DeviceInfo | null = null;
-    private formObserver: MutationObserver | null = null;
-
-    constructor(config: Config) {
-      this.config = config;
-      this.log('DeviceInfoCollector initialized');
+  private async loadFingerprintJS(): Promise<{ visitorId: string }> {
+    // FingerprintJS is vendored locally via
+    // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the
+    // base layout, so it is always present on `window` by the time
+    // this runs. No network fetch, no CSP violation.
+    const FingerprintJS = (window as any).FingerprintJS;
+    if (!FingerprintJS) {
+      throw new Error('FingerprintJS not loaded');
     }
 
-    async initialize(): Promise<void> {
-      try {
-        this.log('Starting device info collection');
-
-        this.deviceInfo = await this.collectDeviceInfo();
-
-        this.log('Device info collected', {
-          visitorId: this.deviceInfo.visitorId,
-          source: this.deviceInfo.visitorIdSource,
-        });
-
-        this.injectIntoForms();
-
-        // Watch for dynamically added forms
-        this.startFormObserver();
-      } catch (error) {
-        console.error('[DeviceInfoCollector] Initialization failed:', error);
-      }
+    const loadOptions: Record<string, unknown> = {};
+    if (this.config.fingerprintJSApiKey) {
+      loadOptions.apiKey = this.config.fingerprintJSApiKey;
+      this.log('Using FingerprintJS Pro');
     }
 
-    private async collectDeviceInfo(): Promise<DeviceInfo> {
-      try {
-        const fpData = await this.loadFingerprintJS();
-        return {
-          visitorId: fpData.visitorId,
-          visitorIdSource: 'fingerprintjs',
-        };
-      } catch (error) {
-        this.log('FingerprintJS failed, using fallback', { error }, 'warn');
-        return {
-          visitorId: this.getFallbackId(),
-          visitorIdSource: 'fallback',
-        };
+    const fp = await FingerprintJS.load(
+      Object.keys(loadOptions).length > 0 ? loadOptions : undefined
+    );
+    const result = await fp.get();
+    return { visitorId: result.visitorId };
+  }
+
+  /**
+   * Get or generate a fallback device ID stored in localStorage
+   */
+  private getFallbackId(): string {
+    try {
+      const stored = localStorage.getItem(FALLBACK_ID_KEY);
+      if (stored) {
+        this.log('Retrieved fallback ID from localStorage');
+        return stored;
       }
+    } catch {
+      // localStorage unavailable
     }
 
-    private async loadFingerprintJS(): Promise<{ visitorId: string }> {
-      // FingerprintJS is vendored locally via
-      // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the
-      // base layout, so it is always present on `window` by the time
-      // this runs. No network fetch, no CSP violation.
-      const FingerprintJS = (window as any).FingerprintJS;
-      if (!FingerprintJS) {
-        throw new Error('FingerprintJS not loaded');
-      }
+    const components = [
+      navigator.platform,
+      navigator.language,
+      screen.width,
+      screen.height,
+      screen.colorDepth,
+      navigator.hardwareConcurrency || 0,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ].join('|');
 
-      const loadOptions: Record<string, unknown> = {};
-      if (this.config.fingerprintJSApiKey) {
-        loadOptions.apiKey = this.config.fingerprintJSApiKey;
-        this.log('Using FingerprintJS Pro');
-      }
-
-      const fp = await FingerprintJS.load(
-        Object.keys(loadOptions).length > 0 ? loadOptions : undefined
-      );
-      const result = await fp.get();
-      return { visitorId: result.visitorId };
+    let hash = 0;
+    for (let i = 0; i < components.length; i++) {
+      hash = (hash << 5) - hash + components.charCodeAt(i);
+      hash = hash & hash;
     }
 
-    /**
-     * Get or generate a fallback device ID stored in localStorage
-     */
-    private getFallbackId(): string {
-      try {
-        const stored = localStorage.getItem(FALLBACK_ID_KEY);
-        if (stored) {
-          this.log('Retrieved fallback ID from localStorage');
-          return stored;
-        }
-      } catch {
-        // localStorage unavailable
-      }
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    const fallbackId = `fb_${Math.abs(hash).toString(36)}_${randomSuffix}`;
 
-      const components = [
-        navigator.platform,
-        navigator.language,
-        screen.width,
-        screen.height,
-        screen.colorDepth,
-        navigator.hardwareConcurrency || 0,
-        Intl.DateTimeFormat().resolvedOptions().timeZone,
-      ].join('|');
-
-      let hash = 0;
-      for (let i = 0; i < components.length; i++) {
-        hash = (hash << 5) - hash + components.charCodeAt(i);
-        hash = hash & hash;
-      }
-
-      const randomSuffix = Math.random().toString(36).substring(2, 10);
-      const fallbackId = `fb_${Math.abs(hash).toString(36)}_${randomSuffix}`;
-
-      try {
-        localStorage.setItem(FALLBACK_ID_KEY, fallbackId);
-        this.log('Stored new fallback ID');
-      } catch {
-        // localStorage unavailable
-      }
-
-      return fallbackId;
+    try {
+      localStorage.setItem(FALLBACK_ID_KEY, fallbackId);
+      this.log('Stored new fallback ID');
+    } catch {
+      // localStorage unavailable
     }
 
-    private injectIntoForms(): void {
-      if (!this.deviceInfo) return;
+    return fallbackId;
+  }
 
-      // Only inject into POST forms - device info is extracted from req.body on server
-      const forms = document.querySelectorAll(
-        'form[method="POST"], form[method="post"]'
-      );
-      this.log(`Injecting into ${forms.length} POST forms`);
+  private injectIntoForms(): void {
+    if (!this.deviceInfo) return;
 
-      forms.forEach(form => this.injectIntoForm(form as HTMLFormElement));
+    // Only inject into POST forms - device info is extracted from req.body on server
+    const forms = document.querySelectorAll(
+      'form[method="POST"], form[method="post"]'
+    );
+    this.log(`Injecting into ${forms.length} POST forms`);
+
+    forms.forEach(form => this.injectIntoForm(form as HTMLFormElement));
+  }
+
+  private injectIntoForm(form: HTMLFormElement): void {
+    if (!this.deviceInfo || !this.config.csrfToken) return;
+
+    const method = form.getAttribute('method')?.toUpperCase() || 'GET';
+    if (method !== 'POST') {
+      return;
     }
 
-    private injectIntoForm(form: HTMLFormElement): void {
-      if (!this.deviceInfo || !this.config.csrfToken) return;
+    // Static field name — CSRF protection is handled by the _csrf token,
+    // no need to embed it in the device info field name.
+    const fieldName = '_deviceInfo';
+    const existingField = form.querySelector(`input[name="${fieldName}"]`);
+    const value = JSON.stringify(this.deviceInfo);
 
-      const method = form.getAttribute('method')?.toUpperCase() || 'GET';
-      if (method !== 'POST') {
-        return;
-      }
-
-      // Static field name — CSRF protection is handled by the _csrf token,
-      // no need to embed it in the device info field name.
-      const fieldName = '_deviceInfo';
-      const existingField = form.querySelector(`input[name="${fieldName}"]`);
-      const value = JSON.stringify(this.deviceInfo);
-
-      if (existingField) {
-        (existingField as HTMLInputElement).value = value;
-        return;
-      }
-
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = fieldName;
-      input.value = value;
-      form.insertBefore(input, form.firstChild);
-
-      this.log('Injected into form', { formId: form.id || 'unnamed' });
+    if (existingField) {
+      (existingField as HTMLInputElement).value = value;
+      return;
     }
 
-    private startFormObserver(): void {
-      if (this.formObserver) return;
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = fieldName;
+    input.value = value;
+    form.insertBefore(input, form.firstChild);
 
-      this.formObserver = new MutationObserver(mutations => {
-        for (const mutation of mutations) {
-          for (const node of mutation.addedNodes) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const el = node as Element;
-              if (el.tagName === 'FORM') {
-                // Only inject into POST forms
-                const formMethod =
-                  (el as HTMLFormElement)
-                    .getAttribute('method')
-                    ?.toUpperCase() || 'GET';
-                if (formMethod === 'POST') {
-                  this.injectIntoForm(el as HTMLFormElement);
-                }
-              } else {
-                // Only target POST forms in nested elements
-                const nestedForms = el.querySelectorAll(
-                  'form[method="POST"], form[method="post"]'
-                );
-                nestedForms.forEach(f =>
-                  this.injectIntoForm(f as HTMLFormElement)
-                );
+    this.log('Injected into form', { formId: form.id || 'unnamed' });
+  }
+
+  private startFormObserver(): void {
+    if (this.formObserver) return;
+
+    this.formObserver = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const el = node as Element;
+            if (el.tagName === 'FORM') {
+              // Only inject into POST forms
+              const formMethod =
+                (el as HTMLFormElement).getAttribute('method')?.toUpperCase() ||
+                'GET';
+              if (formMethod === 'POST') {
+                this.injectIntoForm(el as HTMLFormElement);
               }
+            } else {
+              // Only target POST forms in nested elements
+              const nestedForms = el.querySelectorAll(
+                'form[method="POST"], form[method="post"]'
+              );
+              nestedForms.forEach(f =>
+                this.injectIntoForm(f as HTMLFormElement)
+              );
             }
           }
         }
-      });
-
-      this.formObserver.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-
-      this.log('Form observer started');
-    }
-
-    destroy(): void {
-      if (this.formObserver) {
-        this.formObserver.disconnect();
-        this.formObserver = null;
       }
-      this.deviceInfo = null;
-      this.log('Destroyed');
-    }
+    });
 
-    private log(
-      message: string,
-      data?: any,
-      level: 'log' | 'warn' | 'error' = 'log'
-    ): void {
-      if (!this.config.debug && level === 'log') return;
-      const prefix = '[DeviceInfoCollector]';
-      if (data) {
-        console[level](prefix, message, data);
-      } else {
-        console[level](prefix, message);
-      }
-    }
+    this.formObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+
+    this.log('Form observer started');
   }
 
-  // Auto-initialize on DOM ready
+  destroy(): void {
+    if (this.formObserver) {
+      this.formObserver.disconnect();
+      this.formObserver = null;
+    }
+    this.deviceInfo = null;
+    this.log('Destroyed');
+  }
+
+  private log(
+    message: string,
+    data?: any,
+    level: 'log' | 'warn' | 'error' = 'log'
+  ): void {
+    if (!this.config.debug && level === 'log') return;
+    const prefix = '[DeviceInfoCollector]';
+    if (data) {
+      console[level](prefix, message, data);
+    } else {
+      console[level](prefix, message);
+    }
+  }
+}
+
+// Auto-initialize on DOM ready
+if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     const stateEl = document.getElementById('___USER_DEVICE_INFO_STATE___');
     if (!stateEl) {
@@ -245,7 +244,7 @@
       return;
     }
 
-    let config: Config;
+    let config: DeviceInfoConfig;
     try {
       config = JSON.parse(stateEl.textContent || '{}');
     } catch {
@@ -269,4 +268,4 @@
     window.addEventListener('beforeunload', () => collector.destroy());
     window.addEventListener('pagehide', () => collector.destroy());
   });
-})();
+}

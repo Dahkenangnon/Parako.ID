@@ -12,6 +12,9 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
+import type { ITenantSettingsOverrideService } from '../../../di/interfaces/tenant-settings-override-service.interface.js';
+import type { ITenantSettingsOverride } from '../../../types/tenant-settings-override.js';
+import { ConflictError as PlatformConflictError } from '../../../errors/platform.errors.js';
 import {
   TenantStatusValues,
   type TenantStatus,
@@ -29,6 +32,21 @@ import type {
   UpdateConfigSectionInput,
 } from '../validators/tenants.validator.js';
 
+const UNIQUE_CONSTRAINT_CODES = new Set<unknown>([
+  11000,
+  'P2002',
+  '23505',
+  'SQLITE_CONSTRAINT_UNIQUE',
+  'SQLITE_CONSTRAINT_PRIMARYKEY',
+]);
+
+function isTenantConflict(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return (
+    error instanceof PlatformConflictError || UNIQUE_CONSTRAINT_CODES.has(code)
+  );
+}
+
 /** Service and logger dependencies required by {@link TenantsController}. */
 export interface TenantsControllerDeps {
   platformAdminService: {
@@ -40,10 +58,10 @@ export interface TenantsControllerDeps {
     }): Promise<any>;
     getTenantBySlug(slug: string): Promise<any>;
   };
-  tenantSettingsOverrideService?: {
-    loadOverrides(tenantId: string): Promise<any>;
-    saveOverrides(tenantId: string, section: string, data: any): Promise<any>;
-  };
+  tenantSettingsOverrideService?: Pick<
+    ITenantSettingsOverrideService,
+    'loadOverrides' | 'saveOverrides'
+  >;
   logger: {
     error(error: Error, context?: Record<string, unknown>): void;
     info(message: string, context?: Record<string, unknown>): void;
@@ -117,16 +135,8 @@ export class TenantsController {
       let tenant: any;
       try {
         tenant = await this.platformAdminService.createTenant(body);
-      } catch (err: any) {
-        // Detect duplicate slug errors — check for DB-agnostic patterns
-        // (MongoDB code 11000, Prisma P2002, or message-based detection).
-        const isDuplicate =
-          err?.code === 11000 ||
-          err?.code === 'P2002' ||
-          err?.message?.toLowerCase().includes('duplicate') ||
-          err?.message?.toLowerCase().includes('already exists') ||
-          err?.message?.toLowerCase().includes('unique constraint');
-        if (isDuplicate) {
+      } catch (err: unknown) {
+        if (isTenantConflict(err)) {
           throw conflict(`Tenant with slug '${body.slug}' already exists`);
         }
         throw err;
@@ -245,8 +255,7 @@ export class TenantsController {
 
       const updated = await this.tenantSettingsOverrideService.saveOverrides(
         tenantId,
-        section,
-        data
+        { [section]: data } as Partial<ITenantSettingsOverride>
       );
 
       this.logger.info('Tenant config updated', {

@@ -18,18 +18,22 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.json': 'application/json; charset=utf-8',
 };
 
-const acceptsEncoding = (header: string | undefined, name: string): boolean => {
-  if (!header) return false;
+const acceptsEncoding = (header: string, name: string): boolean => {
+  const normalizedName = name.toLowerCase();
+  let wildcardAccepted = false;
   for (const part of header.split(',')) {
     const [token, ...params] = part.trim().split(';');
-    if (token !== name && token !== '*') continue;
-    const qParam = params.map(p => p.trim()).find(p => p.startsWith('q='));
-    if (!qParam) return true;
-    const q = Number.parseFloat(qParam.slice(2));
-    if (Number.isFinite(q) && q > 0) return true;
-    return false;
+    const normalizedToken = token.toLowerCase();
+    if (normalizedToken !== normalizedName && normalizedToken !== '*') continue;
+    const qParam = params
+      .map(p => p.trim())
+      .find(p => p.toLowerCase().startsWith('q='));
+    const quality = qParam ? Number.parseFloat(qParam.slice(2)) : 1;
+    const accepted = Number.isFinite(quality) && quality > 0 && quality <= 1;
+    if (normalizedToken === normalizedName) return accepted;
+    wildcardAccepted = accepted;
   }
-  return false;
+  return wildcardAccepted;
 };
 
 /**
@@ -41,8 +45,8 @@ const acceptsEncoding = (header: string | undefined, name: string): boolean => {
  */
 const isWithin = (basePath: string, candidate: string): boolean => {
   const rel = relative(basePath, candidate);
-  if (rel === '') return true;
-  if (rel.startsWith('..')) return false;
+  if (rel === '..' || rel.startsWith(`..${sep}`)) return false;
+  /* v8 ignore next -- path.relative is never absolute on POSIX; retained for Windows. */
   if (isAbsolute(rel)) return false;
   return true;
 };
@@ -69,9 +73,7 @@ const compressedSuffixToEncoding = (
 };
 
 const stripCompressedSuffix = (filePath: string): string => {
-  if (filePath.endsWith('.br')) return filePath.slice(0, -3);
-  if (filePath.endsWith('.gz')) return filePath.slice(0, -3);
-  return filePath;
+  return filePath.slice(0, -3);
 };
 
 const toUrlPath = (root: string, assetPath: string): string => {
@@ -85,11 +87,9 @@ const addPrecompressedAsset = (
   compressedPath: string
 ): void => {
   const encoding = compressedSuffixToEncoding(compressedPath);
-  if (!encoding || !isWithin(root, compressedPath)) return;
+  if (!encoding) return;
 
   const assetPath = stripCompressedSuffix(compressedPath);
-  if (!isWithin(root, assetPath)) return;
-
   const contentType = CONTENT_TYPES[extname(assetPath).toLowerCase()];
   if (!contentType) return;
 
@@ -108,11 +108,8 @@ const buildPrecompressedManifest = (
   const manifest = new Map<string, PrecompressedManifestEntry>();
 
   const walk = (dir: string): void => {
-    if (!isWithin(root, dir)) return;
-
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const entryPath = join(dir, entry.name);
-      if (!isWithin(root, entryPath)) continue;
 
       if (entry.isDirectory()) {
         walk(entryPath);
@@ -133,12 +130,17 @@ const sendPrecompressed = (
   res: Response,
   asset: PrecompressedAsset,
   encoding: PrecompressedEncoding,
-  contentType: string
+  contentType: string,
+  headOnly: boolean
 ): void => {
   res.setHeader('Content-Encoding', encoding);
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', asset.size);
   res.setHeader('Vary', 'Accept-Encoding');
+  if (headOnly) {
+    res.end();
+    return;
+  }
   createReadStream(asset.path).pipe(res);
 };
 
@@ -168,7 +170,8 @@ export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
     const contentType = CONTENT_TYPES[ext];
     if (!contentType) return next();
 
-    const candidate = resolvePath(root, `.${normalize(req.path)}`);
+    const relativeRequestPath = normalize(req.path.replace(/^[/\\]+/, ''));
+    const candidate = resolvePath(root, relativeRequestPath);
     if (!isWithin(root, candidate)) return next();
     const asset = manifest.get(req.path);
     if (!asset) return next();
@@ -184,7 +187,13 @@ export const createPrecompressedStaticMiddleware = (publicRoot: string) => {
     const tryEncoding = (encoding: PrecompressedEncoding): boolean => {
       const compressedAsset = asset[encoding];
       if (!compressedAsset) return false;
-      sendPrecompressed(res, compressedAsset, encoding, asset.contentType);
+      sendPrecompressed(
+        res,
+        compressedAsset,
+        encoding,
+        asset.contentType,
+        req.method === 'HEAD'
+      );
       return true;
     };
 

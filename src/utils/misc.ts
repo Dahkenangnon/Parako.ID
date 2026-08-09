@@ -226,11 +226,7 @@ export function formatDateTimeForUser(
     }
 
     if (includeTime) {
-      if (result === texts.today || result === texts.yesterday) {
-        result += ` at ${formatTime(targetDate)}`;
-      } else {
-        result += ` at ${formatTime(targetDate)}`;
-      }
+      result += ` at ${formatTime(targetDate)}`;
     }
 
     if (timezone && !serverTimezone) {
@@ -648,12 +644,7 @@ export function getAvailableTimezones(): string[] {
  * @returns The current time in the specified timezone
  */
 export function getCurrentTimeInTimezone(timezone: string): Date {
-  try {
-    const now = new Date();
-    return convertToTimezone(now, timezone);
-  } catch {
-    return new Date();
-  }
+  return convertToTimezone(new Date(), timezone);
 }
 
 /**

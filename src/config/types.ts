@@ -30,6 +30,7 @@ import { AppConfig, AppConfigSchema } from './schemas/schema.js';
  * - storage.mongodb.uri: MongoDB connection URI (when adapter=mongodb)
  * - storage.sqlite.path: SQLite file path (when adapter=sqlite)
  * - storage.postgresql.url: PostgreSQL URL (when adapter=postgresql)
+ * - integrations.file_storage.provider: File storage implementation (local | s3)
  */
 export type { BootstrapConfig };
 export { BootstrapConfigSchema };
@@ -148,16 +149,84 @@ export type PartialRuntimeConfig = Partial<Omit<RuntimeConfig, '_metadata'>> & {
 
 // TYPE GUARDS
 
+const CONFIG_PROVIDERS: ConfigMetadata['configProvider'][] = [
+  'bootstrap',
+  'file',
+  'database',
+];
+
+function isConfigMetadata(value: unknown): value is ConfigMetadata {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+
+  const metadata = value as Record<string, unknown>;
+  if (
+    !Object.hasOwn(metadata, 'configProvider') ||
+    !Object.hasOwn(metadata, 'isBootstrapMerged') ||
+    !Object.hasOwn(metadata, 'loadedAt')
+  ) {
+    return false;
+  }
+
+  const version = metadata.version;
+  return (
+    CONFIG_PROVIDERS.includes(
+      metadata.configProvider as ConfigMetadata['configProvider']
+    ) &&
+    typeof metadata.isBootstrapMerged === 'boolean' &&
+    metadata.loadedAt instanceof Date &&
+    Number.isFinite(metadata.loadedAt.getTime()) &&
+    (metadata.schema_version === undefined ||
+      typeof metadata.schema_version === 'string') &&
+    (version === undefined ||
+      (typeof version === 'number' &&
+        Number.isInteger(version) &&
+        version >= 0))
+  );
+}
+
 /**
  * Type guard to check if a config object is a RuntimeConfig
  */
 export function isRuntimeConfig(config: unknown): config is RuntimeConfig {
-  return (
-    typeof config === 'object' &&
-    config !== null &&
-    '_metadata' in config &&
-    typeof (config as RuntimeConfig)._metadata === 'object'
-  );
+  if (
+    config === null ||
+    typeof config !== 'object' ||
+    !Object.hasOwn(config, '_metadata')
+  ) {
+    return false;
+  }
+
+  const candidate = config as Record<string, unknown>;
+  if (
+    !isConfigMetadata(candidate._metadata) ||
+    !PersistedConfigSchema.safeParse(config).success
+  ) {
+    return false;
+  }
+
+  const deployment = candidate.deployment as
+    Record<string, unknown> | undefined;
+  const server = deployment?.server as Record<string, unknown> | undefined;
+  const storage = candidate.storage;
+
+  if (
+    storage === null ||
+    typeof storage !== 'object' ||
+    !Object.hasOwn(storage, 'adapter')
+  ) {
+    return false;
+  }
+
+  return BootstrapConfigSchema.safeParse({
+    deployment: {
+      environment: deployment?.environment,
+      url: deployment?.url,
+      server: { port: server?.port },
+    },
+    storage,
+  }).success;
 }
 
 /**
@@ -189,6 +258,7 @@ export const BOOTSTRAP_ONLY_FIELDS = [
   'storage.mongodb.uri',
   'storage.sqlite.path',
   'storage.postgresql.url',
+  'integrations.file_storage.provider',
   'features.multi_tenancy.extraction_priority',
   'features.multi_tenancy.tenant_header',
   'features.multi_tenancy.provider_pool.max_size',

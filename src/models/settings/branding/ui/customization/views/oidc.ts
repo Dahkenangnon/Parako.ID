@@ -11,6 +11,10 @@ export const brandingOidcViewsSchema = new Schema(
     logout_success: { type: String },
     logout: { type: String },
     mfa: { type: String },
+    mfa_select: { type: String },
+    mfa_webauthn: { type: String },
+    mfa_no_fallback: { type: String },
+    newDeviceVerify: { type: String },
   },
   { _id: false }
 );

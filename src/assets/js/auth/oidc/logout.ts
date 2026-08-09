@@ -33,6 +33,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   // Local type definitions to prevent global pollution
   interface OIDCLogoutConfig {
     enableLoadingStates: boolean;
@@ -52,7 +54,7 @@
   interface OIDCLogoutManagerOptions {
     config: OIDCLogoutConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
+    debug: boolean;
   }
 
   class OIDCLogoutManager {
@@ -64,10 +66,10 @@
 
     // DOM elements
     private logoutForm: HTMLFormElement | null = null;
-    private submitButtons: NodeListOf<HTMLButtonElement> | null = null;
+    private submitButtons: HTMLButtonElement[] = [];
 
     // Default translations (fallback)
-    private readonly defaultTranslations: Partial<TranslationStrings> = {
+    private readonly defaultTranslations: TranslationStrings = {
       yesSignOut: 'Yes, Sign Out',
       noStaySignedIn: 'No, Stay Signed In',
       signingOut: 'Signing Out...',
@@ -82,12 +84,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
 
       this.initializeElements();
 
@@ -101,7 +103,7 @@
      * Validate configuration object
      */
     private validateConfig(config: OIDCLogoutConfig): OIDCLogoutConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           enableLoadingStates: true,
@@ -158,7 +160,7 @@
           null,
           'warn'
         );
-        return fallback as string;
+        return fallback;
       }
 
       return translation;
@@ -168,14 +170,12 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -183,11 +183,7 @@
      * Initialize DOM elements and event listeners
      */
     public run(): void {
-      if (
-        !this.logoutForm ||
-        !this.submitButtons ||
-        this.submitButtons.length === 0
-      ) {
+      if (!this.logoutForm || this.submitButtons.length === 0) {
         this.log('Required form elements not found', null, 'error');
         return;
       }
@@ -204,18 +200,20 @@
       this.logoutForm = document.querySelector(
         'form[id="op.logoutForm"]'
       ) as HTMLFormElement;
-      this.submitButtons = this.logoutForm?.querySelectorAll(
-        'button[type="submit"]'
-      ) as NodeListOf<HTMLButtonElement>;
+      this.submitButtons = this.logoutForm
+        ? Array.from(
+            this.logoutForm.querySelectorAll<HTMLButtonElement>(
+              'button[type="submit"]'
+            )
+          )
+        : [];
     }
 
     /**
      * Setup form submission handling
      */
     private setupFormSubmission(): void {
-      if (!this.logoutForm || !this.submitButtons) return;
-
-      this.logoutForm.addEventListener('submit', (e: Event) => {
+      this.logoutForm!.addEventListener('submit', (e: Event) => {
         if (this.isSubmitting) {
           e.preventDefault();
           e.stopPropagation();
@@ -228,13 +226,13 @@
 
         this.disableAllButtons();
 
-        if (this.submitButtons) {
+        if (this.config.enableLoadingStates) {
           this.submitButtons.forEach(button => {
-            if (button.textContent?.includes('Yes') || button.value === 'yes') {
+            if (button.value === 'yes') {
               button.innerHTML = `
                 <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
                 ${this.getTranslation('signingOut')}
               `;
@@ -245,11 +243,9 @@
         // Set a timeout to re-enable the form if something goes wrong
         if (this.config.enableErrorRecovery) {
           this.submissionTimeout = window.setTimeout(() => {
-            if (this.isSubmitting) {
-              this.log('Error recovery timeout triggered', null, 'warn');
-              this.enableAllButtons();
-              this.showValidationError(this.getTranslation('errorRecovery'));
-            }
+            this.log('Error recovery timeout triggered', null, 'warn');
+            this.enableAllButtons();
+            this.showValidationError(this.getTranslation('errorRecovery'));
           }, this.config.errorRecoveryTimeout);
         }
       });
@@ -286,23 +282,14 @@
      * Disable all interactive elements during submission
      */
     private disableAllButtons(): void {
-      if (!this.submitButtons) return;
-
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
       this.submitButtons.forEach(button => {
         button.disabled = true;
         button.classList.add('disabled-button');
       });
 
       // Disable the entire form to prevent any submission
-      if (this.logoutForm) {
-        this.logoutForm.style.pointerEvents = 'none';
-        this.logoutForm.classList.add('form-disabled');
-      }
+      this.logoutForm!.style.pointerEvents = 'none';
+      this.logoutForm!.classList.add('form-disabled');
     }
 
     /**
@@ -312,31 +299,22 @@
       this.isSubmitting = false;
 
       // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout as number);
+      this.submissionTimeout = null;
 
       // Re-enable all submit buttons and restore visual state
-      if (this.submitButtons) {
-        this.submitButtons.forEach(button => {
-          button.disabled = false;
-          button.classList.remove('disabled-button');
+      this.submitButtons.forEach(button => {
+        button.disabled = false;
+        button.classList.remove('disabled-button');
 
-          if (
-            button.textContent?.includes('Signing Out') ||
-            button.innerHTML.includes('Signing Out')
-          ) {
-            button.innerHTML = this.getTranslation('yesSignOut');
-          }
-        });
-      }
+        if (button.value === 'yes') {
+          button.innerHTML = this.getTranslation('yesSignOut');
+        }
+      });
 
       // Re-enable the entire form
-      if (this.logoutForm) {
-        this.logoutForm.style.pointerEvents = 'auto';
-        this.logoutForm.classList.remove('form-disabled');
-      }
+      this.logoutForm!.style.pointerEvents = 'auto';
+      this.logoutForm!.classList.remove('form-disabled');
     }
 
     /**

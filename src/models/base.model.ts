@@ -4,7 +4,7 @@ export type { IBaseModel } from '../types/base.js';
 
 export type TypedModel<T, M> = Model<
   T,
-  Record<string, never>,
+  Record<never, never>,
   M,
-  Record<string, unknown>
+  Record<never, never>
 >;

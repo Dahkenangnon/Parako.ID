@@ -105,8 +105,8 @@ export class MfaUtils implements IMfaUtils {
    */
   generateTotpUri(accountName: string, secret: string, issuer: string): string {
     try {
-      if (!accountName || !secret) {
-        throw new Error('Account name and secret are required');
+      if (!accountName?.trim() || !secret?.trim() || !issuer?.trim()) {
+        throw new Error('Account name, secret, and issuer are required');
       }
 
       return generateURI({ issuer, label: accountName, secret });
@@ -211,28 +211,20 @@ export class MfaUtils implements IMfaUtils {
     sanitized?: string;
     error?: string;
   } {
-    try {
-      if (!code || typeof code !== 'string') {
-        return { valid: false, error: 'TOTP code is required' };
-      }
-
-      const sanitized = code.replace(/\s+/g, '');
-
-      if (!new RegExp(`^\\d{${this.EMAIL_OTP_LENGTH}}$`).test(sanitized)) {
-        return {
-          valid: false,
-          error: `TOTP code must be exactly ${this.EMAIL_OTP_LENGTH} digits`,
-        };
-      }
-
-      return { valid: true, sanitized };
-    } catch (error) {
-      this.logger.error((error as Error).message, {
-        context: 'validate_totp_code_format_error',
-        code,
-      });
-      return { valid: false, error: 'Invalid code format' };
+    if (!code || typeof code !== 'string') {
+      return { valid: false, error: 'TOTP code is required' };
     }
+
+    const sanitized = code.replace(/\s+/g, '');
+
+    if (!new RegExp(`^\\d{${this.EMAIL_OTP_LENGTH}}$`).test(sanitized)) {
+      return {
+        valid: false,
+        error: `TOTP code must be exactly ${this.EMAIL_OTP_LENGTH} digits`,
+      };
+    }
+
+    return { valid: true, sanitized };
   }
 
   /**
@@ -240,8 +232,15 @@ export class MfaUtils implements IMfaUtils {
    */
   generateEmailOtp(ttlSeconds: number = 600): EmailOtpResult {
     try {
-      if (ttlSeconds <= 0 || ttlSeconds > 3600) {
-        throw new Error('TTL must be between 1 and 3600 seconds');
+      if (
+        !Number.isFinite(ttlSeconds) ||
+        !Number.isInteger(ttlSeconds) ||
+        ttlSeconds <= 0 ||
+        ttlSeconds > 3600
+      ) {
+        throw new Error(
+          'TTL must be a whole number between 1 and 3600 seconds'
+        );
       }
 
       // crypto.randomInt(min, max) generates in range [min, max)
@@ -279,6 +278,13 @@ export class MfaUtils implements IMfaUtils {
         return {
           valid: false,
           error: 'Code and stored hash are required',
+        };
+      }
+
+      if (!(expiresAt instanceof Date) || Number.isNaN(expiresAt.getTime())) {
+        return {
+          valid: false,
+          error: 'Email OTP expiry is invalid',
         };
       }
 
@@ -524,12 +530,17 @@ export class MfaUtils implements IMfaUtils {
    * Mask email address for display
    */
   maskEmail(email: string): string {
-    if (!email || !email.includes('@')) {
+    if (!email) {
       return email;
     }
 
-    const [localPart, domain] = email.split('@');
-    if (localPart.length <= 1) {
+    const parts = email.split('@');
+    if (parts.length !== 2) {
+      return email;
+    }
+
+    const [localPart, domain] = parts;
+    if (!localPart || !domain || localPart.length <= 1) {
       return email;
     }
 
@@ -564,33 +575,24 @@ export class MfaUtils implements IMfaUtils {
       webauthn: { enabled: boolean };
     };
   } {
+    const multiFactor =
+      this.configManager.getConfig().security.authentication.multi_factor;
+
     return {
-      enabled:
-        this.configManager.getConfig().security.authentication.multi_factor
-          .enabled,
+      enabled: multiFactor.enabled,
       methods: {
         totp: {
-          enabled:
-            this.configManager.getConfig().security.authentication.multi_factor
-              .totp.enabled,
-          issuer:
-            this.configManager.getConfig().security.authentication.multi_factor
-              .totp.issuer_name,
+          enabled: multiFactor.totp.enabled,
+          issuer: multiFactor.totp.issuer_name,
         },
         sms: {
-          enabled:
-            this.configManager.getConfig().security.authentication.multi_factor
-              .sms.enabled,
+          enabled: multiFactor.sms.enabled,
         },
         email: {
-          enabled:
-            this.configManager.getConfig().security.authentication.multi_factor
-              .email.enabled,
+          enabled: multiFactor.email.enabled,
         },
         webauthn: {
-          enabled:
-            this.configManager.getConfig().security.authentication.multi_factor
-              .webauthn.enabled,
+          enabled: multiFactor.webauthn.enabled,
         },
       },
     };

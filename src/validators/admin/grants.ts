@@ -8,6 +8,8 @@
 
 import { z } from 'zod';
 
+import { ADMIN_GRANT_SORT_FIELDS, escapeRegExp } from '../listing-query.js';
+
 import {
   limitSchema,
   pageSchema,
@@ -15,14 +17,6 @@ import {
   sortOrderSchema,
   usernameSchema,
 } from '../base-schemas.js';
-import { escapeRegExp } from '../listing-query.js';
-
-const ADMIN_GRANT_SORT_FIELDS = [
-  'createdAt',
-  'payload.iat',
-  'payload.accountId',
-  'payload.clientId',
-] as const;
 
 const grantClientIdSchema = z
   .string()

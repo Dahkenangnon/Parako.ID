@@ -78,6 +78,9 @@ export function truncateText(text: string, maxLength: number): string {
   if (cleanText.length <= maxLength) {
     return text;
   }
+  if (maxLength <= 3) {
+    return chalk.dim('.'.repeat(Math.max(0, maxLength)));
+  }
 
   let visibleChars = 0;
   let cutIndex = 0;
@@ -99,7 +102,7 @@ export function truncateText(text: string, maxLength: number): string {
 
     visibleChars++;
     if (visibleChars >= maxLength - 3) {
-      cutIndex = i;
+      cutIndex = i + 1;
       break;
     }
   }
@@ -379,12 +382,18 @@ export function generateSecureSecret(length: number = 32): string {
 
 // CONFIG UTILITIES
 
+type DeepPartial<T> = T extends readonly unknown[]
+  ? T
+  : T extends ConfigObject
+    ? { [K in keyof T]?: DeepPartial<T[K]> }
+    : T;
+
 /**
  * Deep merge utility for configuration objects
  */
 export function deepMerge<T extends ConfigObject>(
   target: T,
-  source: Partial<T>
+  source: DeepPartial<T>
 ): T {
   const result = { ...target };
 
@@ -406,6 +415,10 @@ export function deepMerge<T extends ConfigObject>(
           Array.isArray(tgt[key])
         ) {
           tgt[key] = {};
+        } else {
+          // Clone before descending so merging into the result never mutates a
+          // nested object still owned by the caller's target configuration.
+          tgt[key] = { ...(tgt[key] as ConfigObject) };
         }
         mergeRecursive(tgt[key] as ConfigObject, src[key] as ConfigObject);
       } else {
@@ -414,7 +427,7 @@ export function deepMerge<T extends ConfigObject>(
     }
   }
 
-  mergeRecursive(result, source);
+  mergeRecursive(result, source as ConfigObject);
   return result;
 }
 
@@ -430,6 +443,10 @@ export function getConfigByPath(config: any, path: string): any {
  */
 export function setConfigByPath(config: any, path: string, value: any): any {
   const keys = path.split('.');
+  const unsafeKeys = new Set(['__proto__', 'constructor', 'prototype']);
+  if (keys.some(key => unsafeKeys.has(key))) {
+    throw new Error(`Unsafe configuration path rejected: ${path}`);
+  }
   const lastKey = keys.pop()!;
   const target = keys.reduce((obj, key) => {
     if (!obj[key] || typeof obj[key] !== 'object') {
@@ -533,7 +550,9 @@ export async function executeCommand(
 
     child.on('close', code => {
       resolve({
-        code: code || 0,
+        // Node reports `null` when the process was terminated by a signal.
+        // Preserve that as a failure code instead of misreporting exit 0.
+        code: code ?? -1,
         stdout,
         stderr,
         success: code === 0,

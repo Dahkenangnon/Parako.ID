@@ -9,6 +9,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   /**
    * Auto-resize a textarea to fit its content.
    */

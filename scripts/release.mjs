@@ -20,6 +20,15 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+/**
+ * @typedef {(file: string, args: string[], options?: Record<string, unknown>) =>
+ *   string | Buffer | null | undefined} CommandExecutor
+ * @typedef {(path: string, encoding: 'utf8') => string} TextFileReader
+ * @typedef {(path: string, contents: string) => void} TextFileWriter
+ * @typedef {{ write(chunk: string): unknown }} TextWriter
+ * @typedef {{ exitCode?: number }} ExitCodeTarget
+ */
+
 export const REMOTE = 'https://github.com/Dahkenangnon/Parako.ID';
 
 const TYPE_TO_HEADING = {
@@ -54,20 +63,19 @@ export function parseSubject(subject) {
   };
 }
 
-function git(...args) {
-  return execFileSync('git', args, { encoding: 'utf8' });
-}
-
 /**
  * Returns the most recent annotated tag matching `<prefix>*.*.*` that
  * is an ancestor of HEAD, or empty string when no such tag exists.
  */
-export function previousTagFor(prefix) {
+/** @param {string} prefix @param {CommandExecutor} [execute] */
+export function previousTagFor(prefix, execute = execFileSync) {
   try {
-    return execFileSync(
-      'git',
-      ['describe', '--tags', `--match=${prefix}*.*.*`, '--abbrev=0', 'HEAD'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    return String(
+      execute(
+        'git',
+        ['describe', '--tags', `--match=${prefix}*.*.*`, '--abbrev=0', 'HEAD'],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+      ) ?? ''
     ).trim();
   } catch {
     return '';
@@ -82,9 +90,14 @@ export function previousTagFor(prefix) {
  * (chore / docs / ci / test / style / build / revert remain visible in
  * the git history but stay out of the changelog by design).
  */
-export function generateBody(fromRef) {
+/** @param {string} fromRef @param {CommandExecutor} [execute] */
+export function generateBody(fromRef, execute = execFileSync) {
   const range = fromRef ? `${fromRef}..HEAD` : 'HEAD';
-  const out = git('log', '--no-merges', '--pretty=format:%H%x09%s', range)
+  const out = String(
+    execute('git', ['log', '--no-merges', '--pretty=format:%H%x09%s', range], {
+      encoding: 'utf8',
+    }) ?? ''
+  )
     .split('\n')
     .filter(line => line.length > 0);
 
@@ -141,108 +154,174 @@ export function stampOperatorVersion(src, version) {
   return src.replace(OPERATOR_VERSION_RE, `PARAKO_VERSION="${version}"`);
 }
 
-function runInherit(file, args) {
-  execFileSync(file, args, { stdio: 'inherit' });
+/** @param {string} file @param {string[]} args @param {CommandExecutor} [execute] */
+function runInherit(file, args, execute = execFileSync) {
+  execute(file, args, { stdio: 'inherit' });
 }
 
-function runSilent(file, args) {
-  execFileSync(file, args, { stdio: 'ignore' });
+/** @param {string} file @param {string[]} args @param {CommandExecutor} [execute] */
+function runSilent(file, args, execute = execFileSync) {
+  execute(file, args, { stdio: 'ignore' });
 }
 
-function isDirty() {
-  return git('status', '--porcelain').trim().length > 0;
+/** @param {CommandExecutor} [execute] */
+function isDirty(execute = execFileSync) {
+  return (
+    String(
+      execute('git', ['status', '--porcelain'], { encoding: 'utf8' })
+    ).trim().length > 0
+  );
 }
 
-function readVersion(dir) {
-  return JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')).version;
+/** @param {string} dir @param {TextFileReader} [readFile] */
+function readVersion(dir, readFile = readFileSync) {
+  return JSON.parse(readFile(resolve(dir, 'package.json'), 'utf8')).version;
 }
 
-function currentBranch() {
-  return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-    encoding: 'utf8',
-  }).trim();
+/** @param {CommandExecutor} [execute] */
+function currentBranch(execute = execFileSync) {
+  return String(
+    execute('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
+      encoding: 'utf8',
+    }) ?? ''
+  ).trim();
 }
 
-function resetGeneratedReleaseFiles() {
+/** @param {CommandExecutor} [execute] */
+export function resetGeneratedReleaseFiles(execute = execFileSync) {
   try {
-    runSilent('git', ['restore', '--staged', ...RELEASE_FILES]);
+    runSilent('git', ['restore', '--staged', ...RELEASE_FILES], execute);
   } catch {
     // Ignore cleanup errors so the original release failure remains visible.
   }
 
   try {
-    runSilent('git', ['restore', ...RELEASE_FILES]);
+    runSilent('git', ['restore', ...RELEASE_FILES], execute);
   } catch {
     // Ignore cleanup errors so the original release failure remains visible.
   }
 }
 
-function main() {
-  const args = process.argv.slice(2);
+export class ReleasePreparationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ReleasePreparationError';
+  }
+}
+
+/**
+ * @param {{
+ *   argv?: string[];
+ *   execute?: CommandExecutor;
+ *   readFile?: TextFileReader;
+ *   writeFile?: TextFileWriter;
+ *   stdout?: TextWriter;
+ *   stderr?: TextWriter;
+ * }} [dependencies]
+ */
+export function main({
+  argv = process.argv.slice(2),
+  execute = execFileSync,
+  readFile = readFileSync,
+  writeFile = writeFileSync,
+  stdout = process.stdout,
+  stderr = process.stderr,
+} = {}) {
+  const args = argv;
   const bump = args.find(a => !a.startsWith('-'));
   const noPush = args.includes('--no-push');
   const valid = ['patch', 'minor', 'major'];
   if (!valid.includes(bump)) {
-    process.stderr.write(
-      `Usage: pnpm release <${valid.join('|')}> [--no-push]\n`
+    throw new ReleasePreparationError(
+      `Usage: pnpm release <${valid.join('|')}> [--no-push]`
     );
-    process.exit(1);
   }
 
-  if (isDirty()) {
-    process.stderr.write(
-      'Working tree is dirty. Commit or stash changes before running pnpm release.\n'
+  if (isDirty(execute)) {
+    throw new ReleasePreparationError(
+      'Working tree is dirty. Commit or stash changes before running pnpm release.'
     );
-    process.exit(1);
   }
 
-  const prevTag = previousTagFor('v');
+  const prevTag = previousTagFor('v', execute);
 
   let version;
   try {
-    runInherit('npm', ['version', bump, '--no-git-tag-version']);
+    runInherit('npm', ['version', bump, '--no-git-tag-version'], execute);
 
-    version = readVersion('.');
-    const body = generateBody(prevTag);
-    const src = readFileSync('CHANGELOG.md', 'utf8');
+    version = readVersion('.', readFile);
+    const body = generateBody(prevTag, execute);
+    const src = readFile('CHANGELOG.md', 'utf8');
     const stamped = stampChangelog(src, version, body);
-    writeFileSync('CHANGELOG.md', stamped);
+    writeFile('CHANGELOG.md', stamped);
     const operatorPath = resolve('installer/parako.sh');
-    const operatorSrc = readFileSync(operatorPath, 'utf8');
-    writeFileSync(operatorPath, stampOperatorVersion(operatorSrc, version));
+    const operatorSrc = readFile(operatorPath, 'utf8');
+    writeFile(operatorPath, stampOperatorVersion(operatorSrc, version));
 
-    runInherit('npx', ['prettier', '--write', 'package.json', 'CHANGELOG.md']);
-    runInherit('git', ['add', ...RELEASE_FILES]);
-    runInherit('git', ['commit', '-m', `chore(release): v${version}`]);
+    runInherit(
+      'npx',
+      ['prettier', '--write', 'package.json', 'CHANGELOG.md'],
+      execute
+    );
+    runInherit('git', ['add', ...RELEASE_FILES], execute);
+    runInherit('git', ['commit', '-m', `chore(release): v${version}`], execute);
   } catch (error) {
-    resetGeneratedReleaseFiles();
-    process.stderr.write(
+    resetGeneratedReleaseFiles(execute);
+    stderr.write(
       '\nRelease commit failed. Generated release files were reset so you can rerun the release command after fixing the reported issue.\n'
     );
     throw error;
   }
 
   if (noPush) {
-    process.stdout.write(
+    stdout.write(
       `\nCommitted chore(release): v${version} locally (no push).\n` +
         `  Review: git show HEAD\n` +
-        `  Push:   git push origin ${currentBranch()}\n` +
+        `  Push:   git push origin ${currentBranch(execute)}\n` +
         `\nThis commit does not publish. Merge it through review, then use the guarded release:tag helper on main.\n`
     );
-    return;
+    return 0;
   }
 
-  const branch = currentBranch();
-  process.stdout.write(
-    `\nPushing chore(release): v${version} → origin/${branch}…\n`
-  );
-  runInherit('git', ['push', 'origin', branch]);
-  process.stdout.write(
+  const branch = currentBranch(execute);
+  stdout.write(`\nPushing chore(release): v${version} → origin/${branch}…\n`);
+  runInherit('git', ['push', 'origin', branch], execute);
+  stdout.write(
     `\nPushed the v${version} preparation commit for review. No tag or release was created.\n` +
       `After merge and protected checks, run: pnpm release:tag -- v${version} --push\n`
   );
+  return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+/**
+ * @param {{
+ *   isEntrypoint: boolean;
+ *   executeMain?: () => number;
+ *   stderr?: TextWriter;
+ *   processObject?: ExitCodeTarget;
+ * }} dependencies
+ */
+export function runEntrypoint({
+  isEntrypoint,
+  executeMain = main,
+  stderr = process.stderr,
+  processObject = process,
+}) {
+  if (!isEntrypoint) return 0;
+
+  try {
+    return executeMain();
+  } catch (error) {
+    if (!(error instanceof ReleasePreparationError)) throw error;
+    stderr.write(`${error.message}\n`);
+    processObject.exitCode = 1;
+    return 1;
+  }
 }
+
+runEntrypoint({
+  isEntrypoint: import.meta.url === `file://${process.argv[1]}`,
+  executeMain: main,
+  stderr: process.stderr,
+  processObject: process,
+});

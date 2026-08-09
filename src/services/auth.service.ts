@@ -8,6 +8,7 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type {
   IAuthService,
   AuthUserData,
+  ManagedAuthUserData,
   PasswordResetResult,
   EmailVerificationResult,
   AdminPasswordChangeOptions,
@@ -21,6 +22,15 @@ import {
 } from '../utils/password-breach.js';
 import { createBackgroundTaskQueue } from '../jobs/domains/background-tasks/queue.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
+
+interface RegistrationProfile {
+  username?: string;
+  name?: string;
+  nickname?: string;
+  roles: string[];
+  account_enabled: boolean;
+}
+
 @injectable()
 export class AuthService implements IAuthService {
   private static readonly PASSWORD_RESET_EXPIRY_HOURS = 1;
@@ -347,6 +357,39 @@ export class AuthService implements IAuthService {
   }
 
   public async registerUser(userData: AuthUserData): Promise<IUser> {
+    const defaultRole =
+      this.configManager.getConfig().security.authentication.roles.default;
+
+    return this.registerUserWithProfile(userData, {
+      roles: [defaultRole],
+      account_enabled: true,
+    });
+  }
+
+  public async registerManagedUser(
+    userData: ManagedAuthUserData
+  ): Promise<IUser> {
+    const roleConfig =
+      this.configManager.getConfig().security.authentication.roles;
+    const role = userData.role ?? roleConfig.default;
+
+    if (!roleConfig.available.includes(role)) {
+      throw new Error(`Role '${role}' is not available`);
+    }
+
+    return this.registerUserWithProfile(userData, {
+      username: userData.username,
+      name: userData.name,
+      nickname: userData.nickname,
+      roles: [role],
+      account_enabled: userData.account_enabled ?? true,
+    });
+  }
+
+  private async registerUserWithProfile(
+    userData: AuthUserData,
+    profile: RegistrationProfile
+  ): Promise<IUser> {
     try {
       const {
         email,
@@ -378,15 +421,18 @@ export class AuthService implements IAuthService {
       const user = await this.userService.createUserWithGeneratedUsername({
         email,
         password: hashedPassword,
+        username: profile.username,
         phone_number,
         register_with: registerWith as RegisterWith,
-        roles: ['user'],
+        roles: profile.roles,
         password_hash_algo: 'argon2id',
-        account_enabled: true,
+        account_enabled: profile.account_enabled,
         email_verified: false,
         phone_number_verified: false,
         given_name,
         family_name,
+        name: profile.name,
+        nickname: profile.nickname,
         custom_identifier_1: custom_identifier_1 || undefined,
         custom_identifier_2: custom_identifier_2 || undefined,
         custom_identifier_3: custom_identifier_3 || undefined,
@@ -484,10 +530,12 @@ export class AuthService implements IAuthService {
 
       const user = await this.userService.findOne({
         reset_password_token: hashedToken,
-        reset_password_expires: { $gt: Date.now() },
       });
 
-      if (!user) {
+      if (
+        !user?.reset_password_expires ||
+        new Date(user.reset_password_expires).getTime() <= Date.now()
+      ) {
         throw new Error('Invalid or expired token');
       }
 
@@ -498,8 +546,8 @@ export class AuthService implements IAuthService {
         password: hashedNewPassword,
         password_hash_algo: 'argon2id',
         password_updated_at: new Date(),
-        reset_password_token: undefined,
-        reset_password_expires: undefined,
+        reset_password_token: null,
+        reset_password_expires: null,
         password_force_reset: false,
       });
 
@@ -708,17 +756,19 @@ export class AuthService implements IAuthService {
 
       const user = await this.userService.findOne({
         email_verification_token: hashedToken,
-        email_verification_expires: { $gt: Date.now() },
       });
 
-      if (!user) {
+      if (
+        !user?.email_verification_expires ||
+        new Date(user.email_verification_expires).getTime() <= Date.now()
+      ) {
         throw new Error('Invalid or expired token');
       }
 
       const updatedUser = await this.userService.updateById(user._id!, {
         email_verified: true,
-        email_verification_token: undefined,
-        email_verification_expires: undefined,
+        email_verification_token: null,
+        email_verification_expires: null,
       });
 
       return updatedUser!;
@@ -841,12 +891,15 @@ export class AuthService implements IAuthService {
     userId: string
   ): Promise<{ code: string; expiresAt: Date }> {
     try {
+      const user = await this.userService.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
       // Use MfaUtils to generate OTP (10 minutes = 600 seconds)
       const otpResult = this.mfaUtils.generateEmailOtp(600);
 
-      await this.userService.updateById(userId, {
-        'mfa.email_otp': { hash: otpResult.hash, expires: otpResult.expiresAt },
-      } as Partial<IUser>);
+      await this.userService.setEmailOtp(user.username, otpResult.code, 600);
 
       this.logger.debug('Generated email OTP for user', {
         userId,
@@ -875,38 +928,22 @@ export class AuthService implements IAuthService {
   public async verifyEmailOtp(userId: string, code: string): Promise<boolean> {
     try {
       const user = await this.userService.findById(userId);
-      if (!user?.mfa?.email_otp) {
-        this.logger.debug('verifyEmailOtp: No OTP stored for user', { userId });
+      if (!user) {
+        this.logger.debug('verifyEmailOtp: User not found', { userId });
         return false;
       }
 
-      // Use MfaUtils to verify OTP
-      const result = this.mfaUtils.verifyEmailOtp(
-        code,
-        user.mfa.email_otp.hash,
-        new Date(user.mfa.email_otp.expires)
-      );
+      const valid = await this.userService.verifyEmailOtp(user.username, code);
 
-      if (result.valid) {
-        await this.userService.updateById(userId, {
-          'mfa.email_otp': null,
-        } as Partial<IUser>);
+      if (valid) {
         this.logger.debug('verifyEmailOtp: OTP verified successfully', {
           userId,
         });
       } else {
-        this.logger.debug('verifyEmailOtp: Invalid OTP code', {
-          userId,
-          error: result.error,
-        });
-        if (result.error?.includes('expired')) {
-          await this.userService.updateById(userId, {
-            'mfa.email_otp': null,
-          } as Partial<IUser>);
-        }
+        this.logger.debug('verifyEmailOtp: Invalid OTP code', { userId });
       }
 
-      return result.valid;
+      return valid;
     } catch (err) {
       const error = err as Error;
       this.logger.error('verifyEmailOtp error', {

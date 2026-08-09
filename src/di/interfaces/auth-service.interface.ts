@@ -12,6 +12,14 @@ export interface AuthUserData {
   custom_identifier_3?: string;
 }
 
+export interface ManagedAuthUserData extends AuthUserData {
+  username?: string;
+  name?: string;
+  nickname?: string;
+  role?: string;
+  account_enabled?: boolean;
+}
+
 export interface PasswordResetResult {
   user: IUser;
   resetToken: string;
@@ -50,6 +58,7 @@ export interface IAuthService {
   ): Promise<IUser>;
 
   registerUser(userData: AuthUserData): Promise<IUser>;
+  registerManagedUser(userData: ManagedAuthUserData): Promise<IUser>;
 
   generatePasswordResetToken(email: string): Promise<PasswordResetResult>;
   resetPassword(token: string, newPassword: string): Promise<IUser>;

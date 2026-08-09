@@ -34,13 +34,15 @@ export interface BootstrapValidationResult {
  * getNestedValue({ deployment: { server: { port: 3000 } } }, 'deployment.server.port') // 3000
  */
 function getNestedValue(obj: any, path: string): any {
-  if (!obj || !path) return undefined;
-
   const keys = path.split('.');
   let current = obj;
 
   for (const key of keys) {
-    if (current && typeof current === 'object' && key in current) {
+    if (
+      current !== null &&
+      typeof current === 'object' &&
+      Object.hasOwn(current, key)
+    ) {
       current = current[key];
     } else {
       return undefined;
@@ -63,19 +65,19 @@ function getNestedValue(obj: any, path: string): any {
  * // config.deployment.server.port is now undefined
  */
 function deleteNestedValue(obj: any, path: string): void {
-  if (!obj || !path) return;
-
   const keys = path.split('.');
-  const lastKey = keys.pop();
-
-  if (!lastKey) return;
+  const lastKey = keys.pop()!;
 
   let current = obj;
-  const parents: any[] = [];
+  const parents: Array<{ obj: Record<string, unknown>; key: string }> = [];
 
   // Traverse to parent object
   for (const key of keys) {
-    if (current && typeof current === 'object' && key in current) {
+    if (
+      current !== null &&
+      typeof current === 'object' &&
+      Object.hasOwn(current, key)
+    ) {
       parents.push({ obj: current, key });
       current = current[key];
     } else {
@@ -83,8 +85,26 @@ function deleteNestedValue(obj: any, path: string): void {
     }
   }
 
-  if (current && typeof current === 'object' && lastKey in current) {
-    delete current[lastKey];
+  if (
+    current === null ||
+    typeof current !== 'object' ||
+    !Object.hasOwn(current, lastKey)
+  ) {
+    return;
+  }
+
+  delete current[lastKey];
+
+  // Remove only the ancestors made empty by deleting the target field.
+  let child = current;
+  for (let index = parents.length - 1; index >= 0; index -= 1) {
+    if (Object.keys(child).length > 0) {
+      break;
+    }
+
+    const parent = parents[index];
+    delete parent.obj[parent.key];
+    child = parent.obj;
   }
 }
 

@@ -162,6 +162,11 @@
     target: HTMLElement | string,
     options: TooltipOptions | string
   ): void {
+    if (showTimeout) {
+      clearTimeout(showTimeout);
+      showTimeout = null;
+    }
+
     const element =
       typeof target === 'string'
         ? document.querySelector<HTMLElement>(target)
@@ -179,6 +184,7 @@
 
     if (opts.delay && opts.delay > 0) {
       showTimeout = setTimeout(() => {
+        showTimeout = null;
         showTooltip(element, opts);
       }, opts.delay);
     } else {
@@ -321,6 +327,8 @@
     (window as any).Tooltip = Tooltip;
   }
 
-  // Auto-initialize on DOMContentLoaded
-  document.addEventListener('DOMContentLoaded', init);
+  // Auto-initialize on DOMContentLoaded when loaded in a browser.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', init);
+  }
 })();

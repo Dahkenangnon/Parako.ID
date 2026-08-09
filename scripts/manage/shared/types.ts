@@ -229,7 +229,7 @@ export const BOX_DRAWING: BoxDrawing = {
 };
 
 /**
- * Sub-CLI configurations (only active modules: client, update, keys)
+ * Sub-CLI configurations for packaged management modules
  */
 export const SUB_CLIS: Record<string, SubCLIConfig> = {
   client: {
@@ -241,28 +241,6 @@ export const SUB_CLIS: Record<string, SubCLIConfig> = {
     commands: {
       list: 'List all registered clients',
       add: 'Add a new OIDC client',
-      show: 'Show detailed client information',
-      update: 'Update an existing client',
-      remove: 'Remove a client',
-      export: 'Export clients to a file',
-      import: 'Import clients from a file',
-      init: 'Initialize empty client registry',
-    },
-  },
-  update: {
-    name: 'Version Manager',
-    description: 'Update to latest or specific Parako.ID version',
-    script: 'update.js',
-    icon: '📦',
-    category: 'maintenance',
-    commands: {
-      latest: 'Update to latest version',
-      version: 'Show current installed version',
-      list: 'List available versions (default: 5 latest)',
-      'list --max <n>': 'List max N versions (--max 0 for all)',
-      '--interactive': 'Interactive version selection',
-      '--target <ver>': 'Update to specific version',
-      '--target latest': 'Update to latest version (alternative syntax)',
     },
   },
   keys: {
@@ -283,13 +261,6 @@ export const SUB_CLIS: Record<string, SubCLIConfig> = {
 export const COMMAND_SHORTCUTS: Record<string, CommandShortcut> = {
   list: { module: 'client', command: 'list' },
   add: { module: 'client', command: 'add' },
-  show: { module: 'client', command: 'show' },
-  remove: { module: 'client', command: 'remove' },
-  export: { module: 'client', command: 'export' },
-  import: { module: 'client', command: 'import' },
-
-  latest: { module: 'update', command: 'latest' },
-  version: { module: 'update', command: 'version' },
 
   generate: { module: 'keys', command: 'generate' },
 };

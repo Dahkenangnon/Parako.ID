@@ -11,10 +11,11 @@
  */
 import initializeKeyStore from 'oidc-provider/lib/helpers/initialize_keystore.js';
 import type { Provider } from 'oidc-provider';
+import type { JWKWithMetadata } from './key-store/constants.js';
 
 export function updateProviderJWKS(
   provider: Provider,
-  jwks: { keys: JsonWebKey[] }
+  jwks: { keys: JWKWithMetadata[] }
 ): void {
   initializeKeyStore.call(provider, jwks);
 }

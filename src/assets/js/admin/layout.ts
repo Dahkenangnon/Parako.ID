@@ -120,27 +120,29 @@
       const newState = !isExpanded;
 
       // Optimistically update UI
-      this.updateSidebarUI(newState);
+      this.updateSidebarUI(newState, this.sidebar, this.mainContent);
 
       this.persistSidebarState(newState).catch(() => {
-        this.updateSidebarUI(!newState);
+        this.updateSidebarUI(!newState, this.sidebar!, this.mainContent!);
         console.error('[AdminLayout] Failed to update sidebar state');
       });
     }
 
-    private updateSidebarUI(expanded: boolean): void {
-      if (!this.sidebar || !this.mainContent) return;
-
+    private updateSidebarUI(
+      expanded: boolean,
+      sidebar: HTMLElement,
+      mainContent: HTMLElement
+    ): void {
       if (expanded) {
-        this.sidebar.classList.remove('sidebar-collapsed');
-        this.sidebar.classList.add('sidebar-expanded');
-        this.mainContent.classList.remove('main-content-collapsed');
-        this.mainContent.classList.add('main-content-expanded');
+        sidebar.classList.remove('sidebar-collapsed');
+        sidebar.classList.add('sidebar-expanded');
+        mainContent.classList.remove('main-content-collapsed');
+        mainContent.classList.add('main-content-expanded');
       } else {
-        this.sidebar.classList.remove('sidebar-expanded');
-        this.sidebar.classList.add('sidebar-collapsed');
-        this.mainContent.classList.remove('main-content-expanded');
-        this.mainContent.classList.add('main-content-collapsed');
+        sidebar.classList.remove('sidebar-expanded');
+        sidebar.classList.add('sidebar-collapsed');
+        mainContent.classList.remove('main-content-expanded');
+        mainContent.classList.add('main-content-collapsed');
       }
 
       this.updateSidebarLogos(expanded);
@@ -222,25 +224,24 @@
     private setupThemeToggle(): void {
       if (!this.themeToggle || !this.themeIcon) return;
 
-      this.updateThemeIcon();
+      const themeIcon = this.themeIcon;
+      this.updateThemeIcon(themeIcon);
 
       this.themeToggle.addEventListener('click', e => {
         e.stopPropagation();
-        this.toggleTheme();
+        this.toggleTheme(themeIcon);
       });
     }
 
-    private updateThemeIcon(): void {
-      if (this.themeIcon) {
-        this.themeIcon.setAttribute(
-          'data-lucide',
-          this.currentTheme === 'dark' ? 'moon' : 'sun'
-        );
-        this.refreshLucideIcons();
-      }
+    private updateThemeIcon(themeIcon: HTMLElement): void {
+      themeIcon.setAttribute(
+        'data-lucide',
+        this.currentTheme === 'dark' ? 'moon' : 'sun'
+      );
+      this.refreshLucideIcons();
     }
 
-    private async toggleTheme(): Promise<void> {
+    private async toggleTheme(themeIcon: HTMLElement): Promise<void> {
       const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
 
       try {
@@ -257,7 +258,7 @@
         if (data.success) {
           this.currentTheme = newTheme;
           this.applyTheme(newTheme);
-          this.updateThemeIcon();
+          this.updateThemeIcon(themeIcon);
         }
       } catch (error) {
         console.error('[AdminLayout] Failed to update theme:', error);
@@ -359,7 +360,9 @@
         option.addEventListener('click', () => {
           const newTheme = option.getAttribute('data-theme') as
             'light' | 'dark';
-          if (newTheme) this.handleMobileThemeChange(newTheme, themeOptions);
+          if (newTheme) {
+            this.handleMobileThemeChange(newTheme, option, themeOptions);
+          }
         });
       });
 
@@ -377,6 +380,7 @@
 
     private async handleMobileThemeChange(
       newTheme: 'light' | 'dark',
+      selectedOption: HTMLElement,
       themeOptions: NodeListOf<HTMLElement>
     ): Promise<void> {
       try {
@@ -398,13 +402,8 @@
             opt.classList.add('border-transparent');
           });
 
-          const selectedOption = Array.from(themeOptions).find(
-            opt => opt.getAttribute('data-theme') === newTheme
-          );
-          if (selectedOption) {
-            selectedOption.classList.add('bg-muted', 'border-primary');
-            selectedOption.classList.remove('border-transparent');
-          }
+          selectedOption.classList.add('bg-muted', 'border-primary');
+          selectedOption.classList.remove('border-transparent');
 
           this.applyTheme(newTheme);
         }
@@ -419,12 +418,13 @@
       document.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
           this.closeMobileSidebar();
-          if (this.langDropdown)
-            this.closeDropdown(this.langDropdown, this.langToggle!);
-          if (this.mobileThemeLangDropdown) {
+          if (this.langDropdown && this.langToggle) {
+            this.closeDropdown(this.langDropdown, this.langToggle);
+          }
+          if (this.mobileThemeLangDropdown && this.mobileThemeLangToggle) {
             this.closeDropdown(
               this.mobileThemeLangDropdown,
-              this.mobileThemeLangToggle!
+              this.mobileThemeLangToggle
             );
           }
         }

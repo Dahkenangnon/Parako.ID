@@ -10,98 +10,89 @@
  * @author Parako.ID Team
  */
 
-(function () {
-  'use strict';
+/**
+ * Configuration interface for SessionsManager
+ */
+interface SessionsConfig {
+  debug?: boolean;
+}
 
-  /**
-   * Configuration interface for SessionsManager
-   */
-  interface SessionsConfig {
-    debug?: boolean;
+/**
+ * SessionsManager class - Handles confirmation dialogs for session sign-out
+ */
+export class SessionsManager {
+  private debug: boolean;
+
+  constructor(config: SessionsConfig = {}) {
+    this.debug = config.debug || false;
   }
 
   /**
-   * SessionsManager class - Handles confirmation dialogs for session sign-out
+   * Initialize the sessions manager
    */
-  class SessionsManager {
-    private debug: boolean;
+  public initialize(): void {
+    this.log('Initializing SessionsManager');
+    this.setupConfirmationHandlers();
+  }
 
-    constructor(config: SessionsConfig = {}) {
-      this.debug = config.debug || false;
-    }
+  /**
+   * Setup confirmation handlers for all confirm-action buttons
+   */
+  private setupConfirmationHandlers(): void {
+    const buttons = document.querySelectorAll('.confirm-action');
+    this.log(`Found ${buttons.length} confirm-action buttons`);
 
-    /**
-     * Initialize the sessions manager
-     */
-    public initialize(): void {
-      this.log('Initializing SessionsManager');
-      this.setupConfirmationHandlers();
-    }
+    buttons.forEach(button => {
+      button.addEventListener('click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
 
-    /**
-     * Setup confirmation handlers for all confirm-action buttons
-     */
-    private setupConfirmationHandlers(): void {
-      const buttons = document.querySelectorAll('.confirm-action');
-      this.log(`Found ${buttons.length} confirm-action buttons`);
-
-      buttons.forEach(button => {
-        button.addEventListener('click', async e => {
-          e.preventDefault();
-          e.stopPropagation();
-
-          await this.handleConfirmAction(button as HTMLButtonElement);
-        });
+        await this.handleConfirmAction(button as HTMLButtonElement);
       });
-    }
+    });
+  }
 
-    /**
-     * Handle confirmation action for a button
-     */
-    private async handleConfirmAction(
-      button: HTMLButtonElement
-    ): Promise<void> {
-      const title = button.dataset.confirmTitle || 'Confirm Action';
-      const message = button.dataset.confirmMessage || 'Are you sure?';
-      const variant = button.dataset.confirmVariant || 'warning';
+  /**
+   * Handle confirmation action for a button
+   */
+  private async handleConfirmAction(button: HTMLButtonElement): Promise<void> {
+    const title = button.dataset.confirmTitle || 'Confirm Action';
+    const message = button.dataset.confirmMessage || 'Are you sure?';
+    const variant = button.dataset.confirmVariant || 'warning';
 
-      this.log('Showing confirmation dialog:', { title, message, variant });
+    this.log('Showing confirmation dialog:', { title, message, variant });
 
-      const confirmed = await (window as any).dialog.showConfirm(
-        title,
-        message,
-        { variant, confirmText: 'Confirm', cancelText: 'Cancel' }
-      );
+    const confirmed = await (window as any).dialog.showConfirm(title, message, {
+      variant,
+      confirmText: 'Confirm',
+      cancelText: 'Cancel',
+    });
 
-      if (confirmed) {
-        this.log('User confirmed action, submitting form');
-        const form = button.form;
-        if (form) {
-          form.submit();
-        }
-      } else {
-        this.log('User cancelled action');
+    if (confirmed) {
+      this.log('User confirmed action, submitting form');
+      const form = button.form;
+      if (form) {
+        form.submit();
       }
-    }
-
-    /**
-     * Log debug messages
-     */
-    private log(...args: any[]): void {
-      if (this.debug) {
-        console.log('[SessionsManager]', ...args);
-      }
+    } else {
+      this.log('User cancelled action');
     }
   }
 
-  // Auto-initialize on DOMContentLoaded
+  /**
+   * Log debug messages
+   */
+  private log(...args: any[]): void {
+    if (this.debug) {
+      console.log('[SessionsManager]', ...args);
+    }
+  }
+}
+
+// Auto-initialize on DOMContentLoaded
+if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     const manager = new SessionsManager({ debug: false });
     manager.initialize();
   });
-
-  // Module export for testing
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = SessionsManager;
-  }
-})();
+}

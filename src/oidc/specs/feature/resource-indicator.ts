@@ -161,7 +161,12 @@ export default function ResourceIndicator(
    * @returns Current resource servers configuration
    */
   function getResourceServersList(): Record<string, ResourceServer> {
-    return { ...resourcesList };
+    return Object.fromEntries(
+      Object.entries(resourcesList).map(([resourceId, resourceServer]) => [
+        resourceId,
+        { ...resourceServer },
+      ])
+    );
   }
 
   return {
@@ -244,9 +249,12 @@ export default function ResourceIndicator(
         client.resourcesScopes &&
         typeof client.resourcesScopes === 'string'
       ) {
-        const scopesList = client.resourcesScopes.split(' ');
+        const resourceServerScopes = targetResourceServer.scope
+          .split(' ')
+          .filter(Boolean);
+        const scopesList = client.resourcesScopes.split(' ').filter(Boolean);
         clientAllowedScope = scopesList.filter((scopeItem: string) => {
-          return targetResourceServer.scope.includes(scopeItem);
+          return resourceServerScopes.includes(scopeItem);
         });
       } else {
         throw new errors.InvalidClientMetadata(
@@ -268,8 +276,10 @@ export default function ResourceIndicator(
         data: clientAllowedScope.join(' '),
       });
 
-      targetResourceServer.scope = clientAllowedScope.join(' ');
-      return targetResourceServer;
+      return {
+        ...targetResourceServer,
+        scope: clientAllowedScope.join(' '),
+      };
     },
 
     // Utility functions for external use

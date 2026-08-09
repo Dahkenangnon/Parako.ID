@@ -144,7 +144,11 @@ export class SessionsController {
 
       let revokedCount = 0;
 
-      if (query.username && this.adapter.revokeByAccountId) {
+      if (
+        query.username &&
+        !query.client_id &&
+        this.adapter.revokeByAccountId
+      ) {
         revokedCount = await this.adapter.revokeByAccountId(query.username);
       } else if (this.adapter.findAll) {
         const filter: Record<string, unknown> = {};

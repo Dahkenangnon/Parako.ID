@@ -106,6 +106,14 @@ export interface ViewKeys {
   };
 }
 
+function isOutsideRoot(relativePath: string): boolean {
+  return (
+    relativePath === '..' ||
+    relativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePath)
+  );
+}
+
 /**
  * ViewResolver utility class for handling custom view resolution
  *
@@ -294,11 +302,27 @@ export class ViewResolver implements IViewResolver {
       return this.getDefaultPath(configKey);
     }
 
-    const customPath = path.join(
+    const customRoot = path.resolve(
       this.fileSystemUtils.rootDir,
-      config.customViewsRoot,
-      configuredPath
+      config.customViewsRoot
     );
+    const customPath = path.resolve(customRoot, configuredPath);
+    const relativePath = path.relative(customRoot, customPath);
+
+    if (isOutsideRoot(relativePath)) {
+      return this.getDefaultPath(configKey);
+    }
+
+    try {
+      const canonicalRoot = fs.realpathSync(customRoot);
+      const canonicalPath = fs.realpathSync(customPath);
+      const canonicalRelativePath = path.relative(canonicalRoot, canonicalPath);
+      if (isOutsideRoot(canonicalRelativePath)) {
+        return this.getDefaultPath(configKey);
+      }
+    } catch {
+      return this.getDefaultPath(configKey);
+    }
 
     if (this.isValidViewFile(customPath)) {
       return configuredPath;

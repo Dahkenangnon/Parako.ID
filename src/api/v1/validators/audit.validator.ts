@@ -8,13 +8,30 @@
 
 import { z } from 'zod';
 
-export const auditQuerySchema = z.object({
-  type: z.string().optional(),
-  status: z.enum(['success', 'failed', 'info', 'warning']).optional(),
-  username: z.string().optional(),
-  client_id: z.string().optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
-});
+const auditFilterSchema = z.string().trim().min(1).max(255);
+const auditTimestampSchema = z.string().datetime({ offset: true });
+
+export const auditQuerySchema = z
+  .object({
+    type: auditFilterSchema.optional(),
+    status: z.enum(['success', 'failed', 'info', 'warning']).optional(),
+    username: auditFilterSchema.optional(),
+    client_id: auditFilterSchema.optional(),
+    from: auditTimestampSchema.optional(),
+    to: auditTimestampSchema.optional(),
+  })
+  .superRefine((query, context) => {
+    if (
+      query.from !== undefined &&
+      query.to !== undefined &&
+      Date.parse(query.from) > Date.parse(query.to)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['to'],
+        message: 'to must be at or after from',
+      });
+    }
+  });
 
 export type AuditQueryInput = z.infer<typeof auditQuerySchema>;

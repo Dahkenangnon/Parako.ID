@@ -25,7 +25,7 @@ Manage OIDC/OAuth2 client applications.
 | DELETE | `/api/v1/clients/:client_id`            | `parako:clients:delete` | delete     | Delete client                |
 | POST   | `/api/v1/clients/:client_id/activate`   | `parako:clients:write`  | write      | Activate a disabled client   |
 | POST   | `/api/v1/clients/:client_id/deactivate` | `parako:clients:write`  | write      | Deactivate a client          |
-| POST   | `/api/v1/clients/:client_id/secret`     | `parako:clients:delete` | sensitive  | Regenerate client secret     |
+| POST   | `/api/v1/clients/:client_id/secret`     | `parako:clients:write`  | sensitive  | Regenerate client secret     |
 | GET    | `/api/v1/clients/:client_id/stats`      | `parako:clients:read`   | read       | Get client usage statistics  |
 
 ### List Clients
@@ -37,7 +37,7 @@ Manage OIDC/OAuth2 client applications.
 | `limit`            | number  | 25      | Items per page (1–100)               |
 | `after`            | string  | —       | Opaque cursor from previous response |
 | `include_count`    | boolean | false   | Include `total_count` in response    |
-| `application_type` | string  | —       | Filter: `web`, `native`, or `spa`    |
+| `application_type` | string  | —       | Filter: `web` or `native`            |
 | `active`           | string  | —       | Filter: `true` or `false`            |
 | `q`                | string  | —       | Full-text search (max 200 chars)     |
 
@@ -72,27 +72,33 @@ Manage OIDC/OAuth2 client applications.
 
 **Request Body:**
 
-| Field                          | Type     | Required | Description                                                                                    |
-| ------------------------------ | -------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `client_name`                  | string   | **Yes**  | Client display name (1–255 chars)                                                              |
-| `application_type`             | string   | No       | `web` (default), `native`, or `spa`                                                            |
-| `redirect_uris`                | string[] | No       | Valid URLs for OAuth redirects                                                                 |
-| `post_logout_redirect_uris`    | string[] | No       | Valid URLs for post-logout redirects                                                           |
-| `grant_types`                  | string[] | No       | OAuth grant types                                                                              |
-| `response_types`               | string[] | No       | OAuth response types                                                                           |
-| `scope`                        | string   | No       | Space-separated scope string                                                                   |
-| `token_endpoint_auth_method`   | string   | No       | `none`, `client_secret_basic`, `client_secret_post`, `client_secret_jwt`, or `private_key_jwt` |
-| `client_uri`                   | string   | No       | Valid URL to client website                                                                    |
-| `logo_uri`                     | string   | No       | Valid URL to client logo                                                                       |
-| `policy_uri`                   | string   | No       | Valid URL to privacy policy                                                                    |
-| `tos_uri`                      | string   | No       | Valid URL to terms of service                                                                  |
-| `contacts`                     | string[] | No       | Array of valid email addresses                                                                 |
-| `description`                  | string   | No       | Client description (max 1000 chars)                                                            |
-| `tags`                         | string[] | No       | Arbitrary tags for organization                                                                |
-| `require_pkce`                 | boolean  | No       | Require PKCE for this client                                                                   |
-| `id_token_signed_response_alg` | string   | No       | Algorithm for ID token signing                                                                 |
-| `subject_type`                 | string   | No       | `public` or `pairwise`                                                                         |
-| `default_max_age`              | number   | No       | Default max auth age (positive integer)                                                        |
+| Field                             | Type     | Required | Description                                                                                    |
+| --------------------------------- | -------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `client_name`                     | string   | **Yes**  | Client display name (1–255 chars)                                                              |
+| `application_type`                | string   | No       | `web` (default) or `native`; legacy `spa` input is normalized to `web` with the `spa` preset   |
+| `redirect_uris`                   | string[] | No       | Valid URLs for OAuth redirects                                                                 |
+| `post_logout_redirect_uris`       | string[] | No       | Valid URLs for post-logout redirects                                                           |
+| `grant_types`                     | string[] | No       | OAuth grant types                                                                              |
+| `response_types`                  | string[] | No       | OAuth response types                                                                           |
+| `scope`                           | string   | No       | Space-separated scope string                                                                   |
+| `token_endpoint_auth_method`      | string   | No       | `none`, `client_secret_basic`, `client_secret_post`, `client_secret_jwt`, or `private_key_jwt` |
+| `token_endpoint_auth_signing_alg` | string   | No       | Signing algorithm for `client_secret_jwt` or `private_key_jwt` assertions                      |
+| `jwks_uri`                        | string   | No       | Safe HTTP(S) URL containing the client's public JWKS                                           |
+| `jwks`                            | object   | No       | Inline public JWKS (`{"keys": [...]}`); mutually exclusive with `jwks_uri`                     |
+| `allowedResources`                | string[] | No       | Resource indicator URIs this client may request                                                |
+| `resourcesScopes`                 | string   | No       | Space-separated scopes allowed for those resources                                             |
+| `active`                          | boolean  | No       | Whether the client may authenticate                                                            |
+| `client_uri`                      | string   | No       | Valid URL to client website                                                                    |
+| `logo_uri`                        | string   | No       | Valid URL to client logo                                                                       |
+| `policy_uri`                      | string   | No       | Valid URL to privacy policy                                                                    |
+| `tos_uri`                         | string   | No       | Valid URL to terms of service                                                                  |
+| `contacts`                        | string[] | No       | Array of valid email addresses                                                                 |
+| `description`                     | string   | No       | Client description (max 1000 chars)                                                            |
+| `tags`                            | string[] | No       | Arbitrary tags for organization                                                                |
+| `require_pkce`                    | boolean  | No       | Require PKCE for this client                                                                   |
+| `id_token_signed_response_alg`    | string   | No       | Algorithm for ID token signing                                                                 |
+| `subject_type`                    | string   | No       | `public` or `pairwise`                                                                         |
+| `default_max_age`                 | number   | No       | Default max auth age (positive integer)                                                        |
 
 ```bash
 curl -X POST https://auth.example.com/api/v1/clients \
@@ -175,7 +181,10 @@ curl -X POST https://auth.example.com/api/v1/clients/CLIENT_ID/secret \
 }
 ```
 
-The old secret is immediately invalidated.
+The old secret is immediately invalidated. This operation is available only
+for `client_secret_basic`, `client_secret_post`, and `client_secret_jwt`
+clients. Public (`none`) and key-authenticated (`private_key_jwt`) clients do
+not have a rotatable shared secret and return `409 Conflict`.
 
 ### Get Client Stats
 

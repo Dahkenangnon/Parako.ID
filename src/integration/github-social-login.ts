@@ -120,10 +120,18 @@ export class GitHubSocialLogin
       const tokens = this.mapTokenData(tokenResponse);
 
       // Use common user integration handling
-      return this.handleUserIntegration(mappedProviderData, tokens, req);
+      const result = await this.handleUserIntegration(
+        mappedProviderData,
+        tokens,
+        req
+      );
+      this.cleanupSocialLoginSession(req);
+      return result;
     } catch (error) {
-      const technicalError = (error as Error).message;
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      const technicalError = normalizedError.message;
+      this.logger.error(normalizedError, {
         context: `github_oauth2_callback_failed`,
         provider: this.provider,
         technicalError,
@@ -167,12 +175,10 @@ export class GitHubSocialLogin
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       this.logger.error(`GitHub token exchange failed`, {
         provider: this.provider,
         status: response.status,
         statusText: response.statusText,
-        technicalError: errorText,
       });
       throw new Error(
         getHttpStatusErrorMessage(
@@ -183,7 +189,15 @@ export class GitHubSocialLogin
       );
     }
 
-    return response.json();
+    const tokenResponse = await response.json();
+    if (
+      typeof tokenResponse?.access_token !== 'string' ||
+      tokenResponse.access_token.trim().length === 0
+    ) {
+      throw new Error('GitHub token response did not include an access token');
+    }
+
+    return tokenResponse;
   }
 
   /**
@@ -260,10 +274,20 @@ export class GitHubSocialLogin
    * Map GitHub user info to our standard format
    */
   mapProviderUserData(userInfo: any): ProviderUserData {
+    const providerId = userInfo?.id;
+    if (
+      (typeof providerId !== 'string' && typeof providerId !== 'number') ||
+      String(providerId).trim().length === 0
+    ) {
+      throw new Error(
+        'GitHub user response did not include a valid account identifier'
+      );
+    }
+
     return {
-      sub: String(userInfo.id),
+      sub: String(providerId),
       email: userInfo.email || '',
-      email_verified: userInfo.email_verified || false,
+      email_verified: userInfo.email_verified === true,
       given_name: userInfo.name?.split(' ')[0] || userInfo.login,
       family_name: userInfo.name?.split(' ').slice(1).join(' ') || '',
       picture: userInfo.avatar_url,
@@ -316,11 +340,10 @@ export class GitHubSocialLogin
       }
     );
 
-    // GitHub returns 204 No Content on success
-    if (!response.ok && response.status !== 204) {
-      const errorText = await response.text();
+    // GitHub returns 204 No Content on success.
+    if (!response.ok) {
       throw new Error(
-        `GitHub token revocation failed: ${response.status} - ${errorText}`
+        `GitHub token revocation failed with status ${response.status}`
       );
     }
 

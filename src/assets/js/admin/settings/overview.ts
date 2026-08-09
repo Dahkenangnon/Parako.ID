@@ -213,6 +213,10 @@
           },
         });
 
+        if (!response.ok) {
+          throw new Error(`Health check request failed (${response.status})`);
+        }
+
         const data: HealthCheckResponse = await response.json();
 
         const isHealthy = data.status === 'healthy';

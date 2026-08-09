@@ -132,9 +132,4 @@
   if (typeof window !== 'undefined') {
     (window as any).LanguageSelector = LanguageSelector;
   }
-
-  // Module export for testing
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = LanguageSelector;
-  }
 })();

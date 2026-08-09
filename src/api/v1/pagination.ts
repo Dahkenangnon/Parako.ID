@@ -11,6 +11,16 @@
 import type { CursorPage } from './types.js';
 import { ApiError, ERROR_TYPES } from './errors.js';
 
+function invalidCursorFields(detail: string, message: string): ApiError {
+  return new ApiError({
+    type: ERROR_TYPES.VALIDATION,
+    title: 'Validation Error',
+    status: 422,
+    detail,
+    errors: [{ field: 'after', message }],
+  });
+}
+
 // Cursor encoding / decoding
 
 /**
@@ -69,6 +79,20 @@ export function decodeCursor(cursor: string): Record<string, string> {
     });
   }
 
+  const entries = Object.entries(parsed);
+  if (entries.length === 0) {
+    throw invalidCursorFields(
+      'Invalid cursor: cursor must contain at least one field',
+      'Cursor must contain at least one field'
+    );
+  }
+  if (entries.some(([, value]) => typeof value !== 'string')) {
+    throw invalidCursorFields(
+      'Invalid cursor: cursor field values must be strings',
+      'Cursor field values must be strings'
+    );
+  }
+
   return parsed as Record<string, string>;
 }
 
@@ -102,14 +126,27 @@ export function buildCursorQuery(
 
   const fields = decodeCursor(cursor);
   const op = sortDirection === 'asc' ? '$gt' : '$lt';
+  const idValue = fields.id ?? fields._id;
 
   // Simple cursor — sorting by a single field only.
   if (sortField === 'id') {
-    return { id: { [op]: fields.id ?? fields._id } };
+    if (idValue === undefined) {
+      throw invalidCursorFields(
+        'Invalid cursor: cursor is missing an id field',
+        'Cursor must contain an id or _id field'
+      );
+    }
+    return { id: { [op]: idValue } };
   }
   // Backward compatibility: explicit _id sort field still works.
   if (sortField === '_id') {
-    return { _id: { [op]: fields._id ?? fields.id } };
+    if (idValue === undefined) {
+      throw invalidCursorFields(
+        'Invalid cursor: cursor is missing an id field',
+        'Cursor must contain an id or _id field'
+      );
+    }
+    return { _id: { [op]: idValue } };
   }
 
   // Compound cursor — return both range filters separately.
@@ -117,14 +154,22 @@ export function buildCursorQuery(
   // the appropriate compound query for the active database.
   const result: Record<string, unknown> = {};
   const sortValue = fields[sortField];
-  const idValue = fields.id ?? fields._id;
 
-  if (sortValue !== undefined) {
-    result[sortField] = { [op]: sortValue };
+  if (sortValue === undefined) {
+    throw invalidCursorFields(
+      `Invalid cursor: cursor is missing the '${sortField}' sort field`,
+      `Cursor must contain the '${sortField}' sort field`
+    );
   }
-  if (idValue !== undefined) {
-    result.id = { [op]: idValue };
+  if (idValue === undefined) {
+    throw invalidCursorFields(
+      'Invalid cursor: compound cursor is missing an id field',
+      'Compound cursor must contain an id or _id field'
+    );
   }
+
+  result[sortField] = { [op]: sortValue };
+  result.id = { [op]: idValue };
 
   return result;
 }

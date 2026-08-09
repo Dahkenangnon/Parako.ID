@@ -13,6 +13,7 @@ import type {
 import type {
   PaginatedResult,
   PaginationOptions,
+  QueryOptions,
 } from '../interfaces/base.repository.js';
 import { AbstractMongooseRepository } from './base.repository.js';
 import { serializeDocument } from '../../utils.js';
@@ -43,6 +44,12 @@ export class MongooseUserRepository
     return this.findOne({ 'recovery.secondary_email.email': email });
   }
 
+  async findByRecoveryTokenHash(tokenHash: string): Promise<IUser | null> {
+    return this.findOne({
+      'recovery.secondary_email.verification_token': tokenHash,
+    });
+  }
+
   // IUserRepository omits findMany from base and redefines it with paginated return.
   // The override is intentionally incompatible with the base class signature.
   // @ts-expect-error -- return type narrowed from T[] to PaginatedResult per IUserRepository
@@ -51,6 +58,10 @@ export class MongooseUserRepository
     opts?: PaginationOptions
   ): Promise<PaginatedResult<IUser>> {
     return this.paginate(filter as Record<string, unknown>, opts);
+  }
+
+  async findManyRaw(filter: UserFilter, opts?: QueryOptions): Promise<IUser[]> {
+    return super.findMany(filter as Record<string, unknown>, opts);
   }
 
   async updateMfa(id: string, mfa: IUserMfaUpdate): Promise<void> {
@@ -119,21 +130,18 @@ export class MongooseUserRepository
   }
 
   async consumeBackupCode(id: string, codeHash: string): Promise<boolean> {
-    const user = (await this.userModel
-      .findById(id)
-      .lean()
-      .exec()) as IUser | null;
-    if (!user) return false;
-    const codes = user.recovery?.backup_codes?.codes ?? [];
-    const idx = codes.indexOf(codeHash);
-    if (idx === -1) return false;
-    codes.splice(idx, 1);
-    await this.userModel
-      .findByIdAndUpdate(id, {
-        $set: { 'recovery.backup_codes.codes': codes },
-      })
+    const result = await this.userModel
+      .updateOne(
+        {
+          _id: id,
+          'recovery.backup_codes.codes': codeHash,
+        },
+        {
+          $pull: { 'recovery.backup_codes.codes': codeHash },
+        }
+      )
       .exec();
-    return true;
+    return result.modifiedCount > 0;
   }
 
   async addSecurityQuestion(id: string, q: ISecurityQuestion): Promise<void> {

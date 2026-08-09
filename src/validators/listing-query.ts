@@ -53,8 +53,18 @@ export function parsePositiveInt(
     return clamp(opts.default, min, max);
   }
 
+  const normalizedValue = typeof value === 'string' ? value.trim() : value;
+  if (
+    typeof normalizedValue === 'string' &&
+    !/^[+-]?\d+$/.test(normalizedValue)
+  ) {
+    return clamp(opts.default, min, max);
+  }
+
   const parsed =
-    typeof value === 'number' ? Math.trunc(value) : Number.parseInt(value, 10);
+    typeof normalizedValue === 'number'
+      ? Math.trunc(normalizedValue)
+      : Number.parseInt(normalizedValue, 10);
 
   if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
     return clamp(opts.default, min, max);
@@ -101,7 +111,29 @@ export function parseEnum<T extends string>(
  * indexes can be used and pathological inputs are rejected early.
  */
 export function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const metaCharacters = new Set('.*+?^${}()|[]\\');
+  let escaped = '';
+
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    const nextCharacter = value[index + 1];
+
+    // Preserve an existing escape sequence so request-schema validation and
+    // controller-level defense in depth can safely call this helper twice.
+    if (
+      character === '\\' &&
+      nextCharacter !== undefined &&
+      metaCharacters.has(nextCharacter)
+    ) {
+      escaped += `\\${nextCharacter}`;
+      index++;
+      continue;
+    }
+
+    escaped += metaCharacters.has(character) ? `\\${character}` : character;
+  }
+
+  return escaped;
 }
 
 export interface ListingQueryDefaults {
@@ -138,6 +170,20 @@ export const ADMIN_SESSION_SORT_FIELDS = [
   'loginTime',
   'username',
   'expiresAt',
+] as const;
+
+export const ADMIN_GRANT_SORT_FIELDS = [
+  'created_at',
+  'payload.iat',
+  'payload.accountId',
+  'payload.clientId',
+] as const;
+
+export const ADMIN_OIDC_CLIENT_SORT_FIELDS = [
+  'created_at',
+  'client_name',
+  'application_type',
+  'active',
 ] as const;
 
 export const ADMIN_ACTIVITY_SORT_FIELDS = [

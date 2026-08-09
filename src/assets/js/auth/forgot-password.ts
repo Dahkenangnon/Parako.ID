@@ -32,6 +32,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
   // Local type definitions to prevent global pollution
   interface ForgotPasswordConfig {
     enableEmailValidation: boolean;
@@ -49,8 +51,7 @@
   interface ForgotPasswordManagerOptions {
     config: ForgotPasswordConfig;
     translations?: Partial<TranslationStrings>;
-    debug?: boolean;
-    errorRecoveryTimeout?: number;
+    debug: boolean;
   }
 
   class ForgotPasswordManager {
@@ -64,7 +65,7 @@
     private emailInput: HTMLInputElement | null = null;
 
     // Default translations (fallback)
-    private readonly defaultTranslations: Partial<TranslationStrings> = {
+    private readonly defaultTranslations: TranslationStrings = {
       sendResetLink: 'Send reset link',
       sendingResetLink: 'Sending...',
       emailRequired: 'Please enter your email address',
@@ -80,12 +81,12 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
 
-      this.debug = options.debug ?? false;
+      this.debug = options.debug;
 
       this.initializeElements();
 
@@ -99,7 +100,7 @@
      * Validate configuration object
      */
     private validateConfig(config: ForgotPasswordConfig): ForgotPasswordConfig {
-      if (!config || typeof config !== 'object') {
+      if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
         return {
           enableEmailValidation: true,
@@ -148,7 +149,7 @@
           null,
           'warn'
         );
-        return fallback as string;
+        return fallback;
       }
 
       return translation;
@@ -158,8 +159,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -197,11 +196,13 @@
      * Setup email validation
      */
     private setupEmailValidation(): void {
-      if (!this.emailInput || !this.config.enableEmailValidation) return;
+      if (!this.config.enableEmailValidation) return;
+
+      const emailInput = this.emailInput!;
 
       let validationTimeout: number | null = null;
 
-      this.emailInput.addEventListener('input', () => {
+      emailInput.addEventListener('input', () => {
         // Clear existing timeout
         if (validationTimeout) {
           clearTimeout(validationTimeout);
@@ -213,7 +214,7 @@
         }, this.config.emailValidationTimeout);
       });
 
-      this.emailInput.addEventListener('blur', () => {
+      emailInput.addEventListener('blur', () => {
         this.validateEmail();
       });
     }
@@ -222,19 +223,19 @@
      * Validate email input
      */
     private validateEmail(): void {
-      if (!this.emailInput) return;
+      const emailInput = this.emailInput!;
 
-      const email = this.emailInput.value.trim();
+      const email = emailInput.value.trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
       if (email && !emailRegex.test(email)) {
         this.showValidationError(this.getTranslation('emailInvalid'));
-        this.emailInput.classList.add(
+        emailInput.classList.add(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.emailInput.classList.remove(
+        emailInput.classList.remove(
           'border-gray-200',
           'dark:border-gray-600',
           'focus:border-primary/30',
@@ -242,12 +243,12 @@
         );
       } else {
         this.clearValidationError();
-        this.emailInput.classList.remove(
+        emailInput.classList.remove(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.emailInput.classList.add(
+        emailInput.classList.add(
           'border-gray-200',
           'dark:border-gray-600',
           'focus:border-primary/30',
@@ -260,23 +261,22 @@
      * Setup form submission handling
      */
     private setupFormSubmission(): void {
-      if (!this.form || !this.submitButton) {
-        return;
-      }
+      const form = this.form!;
+      const submitButton = this.submitButton!;
+      const emailInput = this.emailInput!;
 
-      this.form.addEventListener('submit', (e: Event) => {
-        const emailInput = this.emailInput;
-        if (!emailInput || !emailInput.value) {
+      form.addEventListener('submit', (e: Event) => {
+        if (!emailInput.value.trim()) {
           e.preventDefault();
           alert(this.getTranslation('emailRequired'));
           return;
         }
 
-        this.submitButton!.disabled = true;
-        this.submitButton!.innerHTML = `
+        submitButton.disabled = true;
+        submitButton.innerHTML = `
           <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
           ${this.getTranslation('sendingResetLink')}
         `;
@@ -287,14 +287,14 @@
      * Setup input focus animations
      */
     private setupInputFocusAnimations(): void {
-      if (!this.emailInput) return;
+      const emailInput = this.emailInput!;
 
-      this.emailInput.addEventListener('focus', () => {
-        this.emailInput?.classList.add('ring-2', 'ring-primary/20');
+      emailInput.addEventListener('focus', () => {
+        emailInput.classList.add('ring-2', 'ring-primary/20');
       });
 
-      this.emailInput.addEventListener('blur', () => {
-        this.emailInput?.classList.remove('ring-2', 'ring-primary/20');
+      emailInput.addEventListener('blur', () => {
+        emailInput.classList.remove('ring-2', 'ring-primary/20');
       });
     }
 
@@ -311,12 +311,11 @@
       errorElement.textContent = message;
       errorElement.id = 'email-error-message';
 
-      if (this.emailInput) {
-        this.emailInput.parentNode?.insertBefore(
-          errorElement,
-          this.emailInput.parentNode.lastElementChild
-        );
-      }
+      const emailInput = this.emailInput!;
+      emailInput.parentNode?.insertBefore(
+        errorElement,
+        emailInput.parentNode.lastElementChild
+      );
     }
 
     /**

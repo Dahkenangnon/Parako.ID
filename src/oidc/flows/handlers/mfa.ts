@@ -72,7 +72,7 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
 
       if (!session?.accountId) {
         this.logger.error('MFA route without valid session');
-        return res.render(this.viewResolver.views.auth.oidc.error, {
+        return res.status(400).render(this.viewResolver.views.auth.oidc.error, {
           errorType: 'SessionNotFound',
           errorMessage: 'Session expired. Please login again.',
         });

@@ -111,6 +111,29 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     }
   }
 
+  /** Return active records for this model in the current tenant. */
+  async findAll(): Promise<OIDCPayload[]> {
+    try {
+      const tenant_id = tenantContext.getTenantId();
+      const rows = await this.prisma.oidcStore.findMany({
+        where: {
+          model: this.name,
+          tenant_id,
+          ...this.notExpired,
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      return rows.map(row => ({
+        ...(JSON.parse(row.payload) as OIDCPayload),
+        _id: row.id,
+      }));
+    } catch (error) {
+      this.logError(error as Error, 'findAll');
+      throw error;
+    }
+  }
+
   async findByUserCode(userCode: string): Promise<OIDCPayload | undefined> {
     try {
       if (this.name !== 'DeviceCode') return undefined;

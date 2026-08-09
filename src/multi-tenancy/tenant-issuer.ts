@@ -19,6 +19,8 @@ export function deriveTenantIssuerUrl(
     ? 'https://'
     : 'http://';
   if (tenant.domain) return `${protocol}${tenant.domain}${oidcPath}`;
-  const baseDomain = deploymentUrl.replace(/^https?:\/\//, '');
+  const baseDomain = deploymentUrl
+    .replace(/^https?:\/\//, '')
+    .replace(/\/+$/, '');
   return `${protocol}${tenantId}.${baseDomain}${oidcPath}`;
 }

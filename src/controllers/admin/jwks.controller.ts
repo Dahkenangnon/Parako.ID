@@ -17,6 +17,22 @@ import { buildRedisKey } from '../../multi-tenancy/redis-key.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { flashAndRedirect } from '../../utils/flash-redirect.js';
 
+type AdminKey = Omit<StoredKey, 'privateKey'>;
+
+function redactPrivateKey(key: StoredKey): AdminKey {
+  return {
+    kid: key.kid,
+    alg: key.alg,
+    use: key.use,
+    status: key.status,
+    promoted: key.promoted,
+    publicKey: key.publicKey,
+    createdAt: key.createdAt,
+    rotatedAt: key.rotatedAt,
+    tenantId: key.tenantId,
+  };
+}
+
 /**
  * Admin JWKS Controller
  * Handles displaying and managing JWKS keys for the admin panel
@@ -68,10 +84,12 @@ export class AdminJwksController implements IAdminJwksController {
       retired: keys.filter((k: StoredKey) => k.status === 'retired').length,
     };
 
-    const sortedKeys = [...keys].sort(
-      (a: StoredKey, b: StoredKey) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const sortedKeys = [...keys]
+      .sort(
+        (a: StoredKey, b: StoredKey) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      .map(redactPrivateKey);
 
     res.render('admin/jwks/index', {
       title: 'JWKS Key Management',
@@ -110,7 +128,7 @@ export class AdminJwksController implements IAdminJwksController {
 
     res.render('admin/jwks/show', {
       title: `Key Details - ${kid}`,
-      key,
+      key: redactPrivateKey(key),
       publicJwk: JSON.stringify(key.publicKey, null, 2),
     });
   };

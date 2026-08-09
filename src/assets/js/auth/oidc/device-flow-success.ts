@@ -209,14 +209,14 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
+      if (typeof text !== 'string' || !text) return true;
 
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -230,6 +230,9 @@
       }
 
       this.setupCountdown();
+      if (this.config.enableAutoClose) {
+        this.checkAutoCloseCompatibility();
+      }
       this.setupCloseButton();
       this.setupBackButtonPrevention();
       this.setupFormResubmissionPrevention();
@@ -263,14 +266,20 @@
 
         if (this.timeLeft <= 0) {
           this.clearTimers();
-          this.closeWindow();
+          if (this.config.enableAutoClose) {
+            this.closeWindow();
+          } else {
+            this.updateCountdownMessage(this.getTranslation('readyToClose'));
+          }
         }
       }, 1000);
 
-      this.backupTimer = window.setTimeout(() => {
-        this.log('Backup timer triggered', null, 'warn');
-        this.closeWindow();
-      }, this.config.autoCloseDelay * 1000);
+      if (this.config.enableAutoClose) {
+        this.backupTimer = window.setTimeout(() => {
+          this.log('Backup timer triggered', null, 'warn');
+          this.closeWindow();
+        }, this.config.autoCloseDelay * 1000);
+      }
 
       this.log('Countdown started', {
         timeLeft: this.timeLeft,
@@ -559,7 +568,7 @@
             errorRecoveryTimeout: 30000,
           },
           translations: data.translations || {},
-          debug: data.config?.debug || false,
+          debug: data.config?.debug,
           errorRecoveryTimeout: data.config?.errorRecoveryTimeout || 30000,
         });
 

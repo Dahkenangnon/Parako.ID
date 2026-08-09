@@ -1,5 +1,5 @@
 import { DateTimeFormatOptions } from '../../utils/misc.js';
-import { type IActivity } from '../../types/activity.js';
+import { type ActivityCursor, type IActivity } from '../../types/activity.js';
 import { type IBaseService } from './base-service.interface.js';
 import type { ClientDetails } from '../../utils/client-info.js';
 
@@ -7,6 +7,7 @@ export interface ActivityQueryOptions {
   limit?: number;
   page?: number;
   sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+  cursor?: ActivityCursor;
 }
 
 export interface DeviceInfos {
@@ -36,6 +37,7 @@ export interface DeviceInfos {
     longitude?: number;
     timezone?: string;
   };
+  device_trust?: NonNullable<IActivity['device_infos']>['device_trust'];
 }
 
 /**
@@ -73,11 +75,15 @@ export interface ActivityOptions {
   metadata?: Record<string, unknown>;
   actor?: ActorInfo;
   target?: {
+    id?: string;
+    _id?: string;
     target_type?:
       'user' | 'session' | 'client' | 'grant' | 'config' | 'system' | 'none';
     user_id?: string;
+    custom_identifier_1?: string;
     username?: string;
     email?: string;
+    name?: string;
     full_name?: string;
     given_name?: string;
     family_name?: string;

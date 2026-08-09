@@ -9,7 +9,7 @@
 
 // Scope constants — grouped by domain
 
-export const SCOPES = {
+export const SCOPES = Object.freeze({
   CLIENTS_READ: 'parako:clients:read',
   CLIENTS_WRITE: 'parako:clients:write',
   CLIENTS_DELETE: 'parako:clients:delete',
@@ -58,7 +58,7 @@ export const SCOPES = {
   // Platform-only — Settings
   SETTINGS_READ: 'parako:settings:read',
   SETTINGS_WRITE: 'parako:settings:write',
-} as const;
+} as const);
 
 /** Union type of all valid scope string values. */
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -85,233 +85,243 @@ export interface ScopeDefinition {
   classification: ScopeClassification;
 }
 
+function freezeScopeDefinitions(
+  definitions: ScopeDefinition[]
+): readonly Readonly<ScopeDefinition>[] {
+  return Object.freeze(
+    definitions.map(definition => Object.freeze(definition))
+  );
+}
+
 /** All Management API scopes with labels and descriptions for admin UI. */
-export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] = [
-  {
-    value: SCOPES.CLIENTS_READ,
-    label: 'Read Clients',
-    description: 'View OIDC client applications and their configuration',
-    domain: 'Clients',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.CLIENTS_WRITE,
-    label: 'Write Clients',
-    description: 'Create and update OIDC client applications',
-    domain: 'Clients',
-    classification: 'write',
-  },
-  {
-    value: SCOPES.CLIENTS_DELETE,
-    label: 'Delete Clients',
-    description: 'Permanently delete OIDC client applications',
-    domain: 'Clients',
-    classification: 'destructive',
-  },
+export const SCOPE_DEFINITIONS: readonly ScopeDefinition[] =
+  freezeScopeDefinitions([
+    {
+      value: SCOPES.CLIENTS_READ,
+      label: 'Read Clients',
+      description: 'View OIDC client applications and their configuration',
+      domain: 'Clients',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.CLIENTS_WRITE,
+      label: 'Write Clients',
+      description: 'Create and update OIDC client applications',
+      domain: 'Clients',
+      classification: 'write',
+    },
+    {
+      value: SCOPES.CLIENTS_DELETE,
+      label: 'Delete Clients',
+      description: 'Permanently delete OIDC client applications',
+      domain: 'Clients',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.USERS_READ,
-    label: 'Read Users',
-    description: 'View user accounts, profiles, and activity logs',
-    domain: 'Users',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.USERS_WRITE,
-    label: 'Write Users',
-    description: 'Create, update, lock/unlock users and reset passwords',
-    domain: 'Users',
-    classification: 'write',
-  },
-  {
-    value: SCOPES.USERS_DELETE,
-    label: 'Delete Users',
-    description: 'Anonymize or permanently remove user accounts',
-    domain: 'Users',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.USERS_READ,
+      label: 'Read Users',
+      description: 'View user accounts, profiles, and activity logs',
+      domain: 'Users',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.USERS_WRITE,
+      label: 'Write Users',
+      description: 'Create, update, lock/unlock users and reset passwords',
+      domain: 'Users',
+      classification: 'write',
+    },
+    {
+      value: SCOPES.USERS_DELETE,
+      label: 'Delete Users',
+      description: 'Anonymize or permanently remove user accounts',
+      domain: 'Users',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.SESSIONS_READ,
-    label: 'Read Sessions',
-    description: 'View active OIDC sessions and their details',
-    domain: 'Sessions',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.SESSIONS_REVOKE,
-    label: 'Revoke Sessions',
-    description: 'Revoke individual or bulk OIDC sessions',
-    domain: 'Sessions',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.SESSIONS_READ,
+      label: 'Read Sessions',
+      description: 'View active OIDC sessions and their details',
+      domain: 'Sessions',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.SESSIONS_REVOKE,
+      label: 'Revoke Sessions',
+      description: 'Revoke individual or bulk OIDC sessions',
+      domain: 'Sessions',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.GRANTS_READ,
-    label: 'Read Grants',
-    description: 'View authorization grants issued to clients',
-    domain: 'Grants',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.GRANTS_REVOKE,
-    label: 'Revoke Grants',
-    description: 'Revoke authorization grants issued to clients',
-    domain: 'Grants',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.GRANTS_READ,
+      label: 'Read Grants',
+      description: 'View authorization grants issued to clients',
+      domain: 'Grants',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.GRANTS_REVOKE,
+      label: 'Revoke Grants',
+      description: 'Revoke authorization grants issued to clients',
+      domain: 'Grants',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.JWKS_READ,
-    label: 'Read JWKS',
-    description: 'View JSON Web Key Sets and key lifecycle state',
-    domain: 'JWKS',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.JWKS_ROTATE,
-    label: 'Rotate JWKS',
-    description: 'Trigger key rotation, retire expired keys',
-    domain: 'JWKS',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.JWKS_READ,
+      label: 'Read JWKS',
+      description: 'View JSON Web Key Sets and key lifecycle state',
+      domain: 'JWKS',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.JWKS_ROTATE,
+      label: 'Rotate JWKS',
+      description: 'Trigger key rotation, retire expired keys',
+      domain: 'JWKS',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.AUDIT_READ,
-    label: 'Read Audit Log',
-    description: 'Query the audit trail and activity log',
-    domain: 'Audit',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.AUDIT_WRITE,
-    label: 'Write Audit Log',
-    description: 'Create entries in the audit trail',
-    domain: 'Audit',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.AUDIT_READ,
+      label: 'Read Audit Log',
+      description: 'Query the audit trail and activity log',
+      domain: 'Audit',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.AUDIT_WRITE,
+      label: 'Write Audit Log',
+      description: 'Create entries in the audit trail',
+      domain: 'Audit',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.STATS_READ,
-    label: 'Read Statistics',
-    description: 'View aggregate dashboard stats and system health',
-    domain: 'Statistics',
-    classification: 'read',
-  },
+    {
+      value: SCOPES.STATS_READ,
+      label: 'Read Statistics',
+      description: 'View aggregate dashboard stats and system health',
+      domain: 'Statistics',
+      classification: 'read',
+    },
 
-  {
-    value: SCOPES.REGISTRATION_TOKENS_READ,
-    label: 'Read Registration Tokens',
-    description: 'View issued DCR initial access tokens and their metadata',
-    domain: 'Registration Tokens',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.REGISTRATION_TOKENS_WRITE,
-    label: 'Write Registration Tokens',
-    description: 'Create DCR initial access tokens for client registration',
-    domain: 'Registration Tokens',
-    classification: 'write',
-  },
-  {
-    value: SCOPES.REGISTRATION_TOKENS_DELETE,
-    label: 'Delete Registration Tokens',
-    description: 'Revoke DCR initial access tokens',
-    domain: 'Registration Tokens',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.REGISTRATION_TOKENS_READ,
+      label: 'Read Registration Tokens',
+      description: 'View issued DCR initial access tokens and their metadata',
+      domain: 'Registration Tokens',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.REGISTRATION_TOKENS_WRITE,
+      label: 'Write Registration Tokens',
+      description: 'Create DCR initial access tokens for client registration',
+      domain: 'Registration Tokens',
+      classification: 'write',
+    },
+    {
+      value: SCOPES.REGISTRATION_TOKENS_DELETE,
+      label: 'Delete Registration Tokens',
+      description: 'Revoke DCR initial access tokens',
+      domain: 'Registration Tokens',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.TENANTS_READ,
-    label: 'Read Tenants',
-    description: 'View tenant list and details (platform-only)',
-    domain: 'Tenants',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.TENANTS_WRITE,
-    label: 'Write Tenants',
-    description: 'Create and update tenants (platform-only)',
-    domain: 'Tenants',
-    classification: 'write',
-  },
-  {
-    value: SCOPES.TENANTS_DELETE,
-    label: 'Delete Tenants',
-    description: 'Remove tenants (platform-only)',
-    domain: 'Tenants',
-    classification: 'destructive',
-  },
+    {
+      value: SCOPES.TENANTS_READ,
+      label: 'Read Tenants',
+      description: 'View tenant list and details (platform-only)',
+      domain: 'Tenants',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.TENANTS_WRITE,
+      label: 'Write Tenants',
+      description: 'Create and update tenants (platform-only)',
+      domain: 'Tenants',
+      classification: 'write',
+    },
+    {
+      value: SCOPES.TENANTS_DELETE,
+      label: 'Delete Tenants',
+      description: 'Remove tenants (platform-only)',
+      domain: 'Tenants',
+      classification: 'destructive',
+    },
 
-  {
-    value: SCOPES.CROSS_TENANT_READ,
-    label: 'Cross-Tenant Read',
-    description: 'Read configuration across tenant boundaries (platform-only)',
-    domain: 'Cross-Tenant',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.CROSS_TENANT_WRITE,
-    label: 'Cross-Tenant Write',
-    description:
-      'Modify configuration across tenant boundaries (platform-only)',
-    domain: 'Cross-Tenant',
-    classification: 'write',
-  },
+    {
+      value: SCOPES.CROSS_TENANT_READ,
+      label: 'Cross-Tenant Read',
+      description:
+        'Read configuration across tenant boundaries (platform-only)',
+      domain: 'Cross-Tenant',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.CROSS_TENANT_WRITE,
+      label: 'Cross-Tenant Write',
+      description:
+        'Modify configuration across tenant boundaries (platform-only)',
+      domain: 'Cross-Tenant',
+      classification: 'write',
+    },
 
-  {
-    value: SCOPES.SETTINGS_READ,
-    label: 'Read Settings',
-    description: 'View system settings (platform-only)',
-    domain: 'Settings',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.SETTINGS_WRITE,
-    label: 'Write Settings',
-    description: 'Modify system settings (platform-only)',
-    domain: 'Settings',
-    classification: 'write',
-  },
+    {
+      value: SCOPES.SETTINGS_READ,
+      label: 'Read Settings',
+      description: 'View system settings (platform-only)',
+      domain: 'Settings',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.SETTINGS_WRITE,
+      label: 'Write Settings',
+      description: 'Modify system settings (platform-only)',
+      domain: 'Settings',
+      classification: 'write',
+    },
 
-  {
-    value: SCOPES.CONFIG_READ,
-    label: 'Read Configuration',
-    description: 'View application configuration',
-    domain: 'Configuration',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.CONFIG_WRITE,
-    label: 'Write Configuration',
-    description: 'Modify application configuration',
-    domain: 'Configuration',
-    classification: 'write',
-  },
+    {
+      value: SCOPES.CONFIG_READ,
+      label: 'Read Configuration',
+      description: 'View application configuration',
+      domain: 'Configuration',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.CONFIG_WRITE,
+      label: 'Write Configuration',
+      description: 'Modify application configuration',
+      domain: 'Configuration',
+      classification: 'write',
+    },
 
-  {
-    value: SCOPES.SOCIAL_READ,
-    label: 'Read Social Integrations',
-    description: 'View social login provider configurations',
-    domain: 'Social',
-    classification: 'read',
-  },
-  {
-    value: SCOPES.SOCIAL_WRITE,
-    label: 'Write Social Integrations',
-    description: 'Configure social login providers',
-    domain: 'Social',
-    classification: 'write',
-  },
+    {
+      value: SCOPES.SOCIAL_READ,
+      label: 'Read Social Integrations',
+      description: 'View social login provider configurations',
+      domain: 'Social',
+      classification: 'read',
+    },
+    {
+      value: SCOPES.SOCIAL_WRITE,
+      label: 'Write Social Integrations',
+      description: 'Configure social login providers',
+      domain: 'Social',
+      classification: 'write',
+    },
 
-  {
-    value: SCOPES.WEBHOOKS_MANAGE,
-    label: 'Manage Webhooks',
-    description: 'Create, update, and delete webhook subscriptions',
-    domain: 'Webhooks',
-    classification: 'write',
-  },
-] as const;
+    {
+      value: SCOPES.WEBHOOKS_MANAGE,
+      label: 'Manage Webhooks',
+      description: 'Create, update, and delete webhook subscriptions',
+      domain: 'Webhooks',
+      classification: 'write',
+    },
+  ]);
 
 /**
  * All Management API scope values as a space-separated string.
@@ -322,8 +332,28 @@ export const ALL_MANAGEMENT_API_SCOPES: string =
 
 // Platform-only scopes
 
+function createReadonlySet<T>(values: Iterable<T>): ReadonlySet<T> {
+  const target = new Set(values);
+  const mutatingMethods = new Set<PropertyKey>(['add', 'delete', 'clear']);
+
+  return Object.freeze(
+    new Proxy(target, {
+      get(set, property) {
+        if (mutatingMethods.has(property)) {
+          return () => {
+            throw new TypeError('Cannot modify a read-only Set');
+          };
+        }
+
+        const value = Reflect.get(set, property, set);
+        return typeof value === 'function' ? value.bind(set) : value;
+      },
+    })
+  );
+}
+
 /** Scopes that may only be granted to platform-level (super-admin) clients. */
-export const PLATFORM_ONLY_SCOPES: ReadonlySet<string> = new Set<string>([
+export const PLATFORM_ONLY_SCOPES: ReadonlySet<string> = createReadonlySet([
   SCOPES.TENANTS_READ,
   SCOPES.TENANTS_WRITE,
   SCOPES.TENANTS_DELETE,
@@ -373,11 +403,12 @@ export function classifyScope(scope: string): ScopeClassification {
  * - write:       1 800 s  (30 minutes)
  * - destructive:   900 s  (15 minutes)
  */
-export const SCOPE_TTL_MAP: Readonly<Record<ScopeClassification, number>> = {
-  read: 3600,
-  write: 1800,
-  destructive: 900,
-};
+export const SCOPE_TTL_MAP: Readonly<Record<ScopeClassification, number>> =
+  Object.freeze({
+    read: 3600,
+    write: 1800,
+    destructive: 900,
+  });
 
 /**
  * Check whether a space-separated granted-scopes string contains the
@@ -389,7 +420,7 @@ export const SCOPE_TTL_MAP: Readonly<Record<ScopeClassification, number>> = {
  */
 export function hasScope(grantedScopes: string, required: string): boolean {
   const scopes = grantedScopes.split(' ');
-  return scopes.includes(required);
+  return required.length > 0 && scopes.includes(required);
 }
 
 /**
@@ -404,7 +435,7 @@ export function hasAnyScope(
   ...required: string[]
 ): boolean {
   const scopes = grantedScopes.split(' ');
-  return required.some(r => scopes.includes(r));
+  return required.some(r => r.length > 0 && scopes.includes(r));
 }
 
 /**

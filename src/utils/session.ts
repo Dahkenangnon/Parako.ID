@@ -23,6 +23,10 @@ import { TYPES } from '../di/types.js';
 import { PrismaSessionStore } from './prisma-session-store.js';
 import { encryptValue, decryptValue, isEncrypted } from './encryption.js';
 import { createConnectRedisClientAdapter } from './connect-redis-client.js';
+import {
+  DEFAULT_TENANT_ID,
+  tenantContext,
+} from '../multi-tenancy/tenant-context.js';
 
 /**
  * Fields that contain sensitive data and should be encrypted at rest
@@ -36,6 +40,51 @@ const SENSITIVE_SESSION_FIELDS = [
   'deviceId',
   '_metadata',
 ];
+
+function normalizeSessionAuthTime(value: unknown): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+  }
+
+  return 0;
+}
+
+function mongoSessionTenantFilter(tenantId: string): Record<string, unknown> {
+  if (tenantId !== DEFAULT_TENANT_ID) {
+    return { 'session.tenantId': tenantId };
+  }
+
+  return {
+    $or: [
+      { 'session.tenantId': DEFAULT_TENANT_ID },
+      { 'session.tenantId': { $exists: false } },
+    ],
+  };
+}
+
+function sessionBelongsToTenant(
+  sessionData: unknown,
+  tenantId: string
+): boolean {
+  if (
+    !sessionData ||
+    typeof sessionData !== 'object' ||
+    Array.isArray(sessionData)
+  ) {
+    return false;
+  }
+
+  const storedTenantId = (sessionData as { tenantId?: unknown }).tenantId;
+  return (
+    storedTenantId === tenantId ||
+    (tenantId === DEFAULT_TENANT_ID && storedTenantId === undefined)
+  );
+}
 
 /**
  * Encrypted Session Store Wrapper
@@ -72,8 +121,7 @@ class EncryptedSessionStore extends Store {
           context: 'Failed to decrypt session data',
           sessionId: sid,
         });
-        // Return session without decryption (may have unencrypted data)
-        callback(null, sessionData);
+        callback(decryptError);
       }
     });
   }
@@ -94,7 +142,12 @@ class EncryptedSessionStore extends Store {
         context: 'Failed to encrypt session data',
         sessionId: sid,
       });
-      this.innerStore.set(sid, sessionData, callback);
+      if (callback) {
+        callback(encryptError);
+        return;
+      }
+
+      throw encryptError;
     }
   }
 
@@ -111,14 +164,23 @@ class EncryptedSessionStore extends Store {
   touch?(
     sid: string,
     sessionData: session.SessionData,
-    callback?: () => void
+    callback?: (err?: any) => void
   ): void {
     if (this.innerStore.touch) {
       try {
         const encrypted = this.encryptSession(sessionData);
         this.innerStore.touch(sid, encrypted, callback);
-      } catch {
-        this.innerStore.touch(sid, sessionData, callback);
+      } catch (encryptError) {
+        this.logger.error(encryptError as Error, {
+          context: 'Failed to encrypt session data during touch',
+          sessionId: sid,
+        });
+        if (callback) {
+          callback(encryptError);
+          return;
+        }
+
+        throw encryptError;
       }
     } else if (callback) {
       callback();
@@ -164,15 +226,23 @@ class EncryptedSessionStore extends Store {
     delete decrypted._encrypted;
 
     for (const field of SENSITIVE_SESSION_FIELDS) {
+      if (decrypted[field] !== undefined) {
+        throw new Error(`Sensitive field is not encrypted: ${field}`);
+      }
+
       const encryptedKey = `_enc_${field}`;
-      if (decrypted[encryptedKey] && isEncrypted(decrypted[encryptedKey])) {
-        try {
-          const jsonValue = decryptValue(decrypted[encryptedKey]);
-          decrypted[field] = JSON.parse(jsonValue);
-          delete decrypted[encryptedKey];
-        } catch {
-          this.logger.warn(`Failed to decrypt session field: ${field}`);
+      const encryptedValue = decrypted[encryptedKey];
+      if (encryptedValue !== undefined) {
+        if (
+          typeof encryptedValue !== 'string' ||
+          !isEncrypted(encryptedValue)
+        ) {
+          throw new Error(`Invalid encrypted session field: ${field}`);
         }
+
+        const jsonValue = decryptValue(encryptedValue);
+        decrypted[field] = JSON.parse(jsonValue);
+        delete decrypted[encryptedKey];
       }
     }
 
@@ -317,16 +387,25 @@ class CircuitBreakerStore extends Store {
       return;
     }
 
-    this.innerStore.set(sid, sessionData, err => {
-      if (err) {
-        this.recordFailure();
-        if (callback) callback(err);
-        return;
-      }
+    let storeCallbackEntered = false;
+    try {
+      this.innerStore.set(sid, sessionData, err => {
+        storeCallbackEntered = true;
+        if (err) {
+          this.recordFailure();
+          if (callback) callback(err);
+          return;
+        }
 
-      this.recordSuccess();
-      if (callback) callback();
-    });
+        this.recordSuccess();
+        if (callback) callback();
+      });
+    } catch (error) {
+      if (!storeCallbackEntered) {
+        this.recordFailure();
+      }
+      throw error;
+    }
   }
 
   /**
@@ -338,16 +417,25 @@ class CircuitBreakerStore extends Store {
       return;
     }
 
-    this.innerStore.destroy(sid, err => {
-      if (err) {
-        this.recordFailure();
-        if (callback) callback(err);
-        return;
-      }
+    let storeCallbackEntered = false;
+    try {
+      this.innerStore.destroy(sid, err => {
+        storeCallbackEntered = true;
+        if (err) {
+          this.recordFailure();
+          if (callback) callback(err);
+          return;
+        }
 
-      this.recordSuccess();
-      if (callback) callback();
-    });
+        this.recordSuccess();
+        if (callback) callback();
+      });
+    } catch (error) {
+      if (!storeCallbackEntered) {
+        this.recordFailure();
+      }
+      throw error;
+    }
   }
 
   /**
@@ -356,18 +444,37 @@ class CircuitBreakerStore extends Store {
   touch?(
     sid: string,
     sessionData: session.SessionData,
-    callback?: () => void
+    callback?: (err?: any) => void
   ): void {
     if (!this.canExecute()) {
-      if (callback) callback();
+      if (callback) callback(this.createCircuitOpenError());
       return;
     }
 
     if (this.innerStore.touch) {
-      this.innerStore.touch(sid, sessionData, () => {
+      let storeCallbackEntered = false;
+      const handleTouch = (err?: any): void => {
+        storeCallbackEntered = true;
+        if (err) {
+          this.recordFailure();
+          if (callback) callback(err);
+          return;
+        }
+
         this.recordSuccess();
         if (callback) callback();
-      });
+      };
+
+      // Concrete stores use the standard error-first callback at runtime,
+      // while @types/express-session currently declares a no-argument callback.
+      try {
+        this.innerStore.touch(sid, sessionData, handleTouch as () => void);
+      } catch (error) {
+        if (!storeCallbackEntered) {
+          this.recordFailure();
+        }
+        throw error;
+      }
     } else if (callback) {
       callback();
     }
@@ -504,6 +611,18 @@ export interface SessionMetadata {
   device?: { type?: string; vendor?: string; model?: string };
 }
 
+function isSessionCreationSource(
+  value: unknown
+): value is SessionMetadata['createdFrom'] {
+  return (
+    value === 'login' ||
+    value === 'social' ||
+    value === 'api' ||
+    value === 'session-switch' ||
+    value === 'unknown'
+  );
+}
+
 /**
  * Session data interface - extend this to add custom session data
  * Contains commonly used session properties for authentication and user tracking
@@ -555,7 +674,7 @@ export class FlashManager implements IFlashManager {
     @unmanaged() private request: Request,
     @inject(TYPES.SessionManager) private sessionManager: ISessionManager,
     @inject(TYPES.Logger) private logger: ILogger,
-    @inject(TYPES.UserService) private userService: IUserService
+    @inject(TYPES.ConfigManager) private configManager: IConfigManager
   ) {
     this.initialize();
   }
@@ -568,13 +687,25 @@ export class FlashManager implements IFlashManager {
       throw new Error('Session not available');
     }
 
-    if (!this.sessionManager.get<FlashContainer>(this.request, 'flash')) {
-      this.sessionManager.set(this.request, 'flash', {
-        success: [],
-        error: [],
-        info: [],
-        warning: [],
-      });
+    const currentFlash = this.sessionManager.get<Partial<FlashContainer>>(
+      this.request,
+      'flash'
+    );
+    const normalizedFlash: FlashContainer = {
+      success: Array.isArray(currentFlash?.success) ? currentFlash.success : [],
+      error: Array.isArray(currentFlash?.error) ? currentFlash.error : [],
+      info: Array.isArray(currentFlash?.info) ? currentFlash.info : [],
+      warning: Array.isArray(currentFlash?.warning) ? currentFlash.warning : [],
+    };
+
+    if (
+      !currentFlash ||
+      !Array.isArray(currentFlash.success) ||
+      !Array.isArray(currentFlash.error) ||
+      !Array.isArray(currentFlash.info) ||
+      !Array.isArray(currentFlash.warning)
+    ) {
+      this.sessionManager.set(this.request, 'flash', normalizedFlash);
     }
   }
 
@@ -662,16 +793,26 @@ export class FlashManager implements IFlashManager {
     );
     if (!flash) return;
 
-    const sessionManager = this.sessionManager as SessionManager;
-    const config = sessionManager['configManager'].getConfig();
+    const config = this.configManager.getConfig();
     const sessionConfig = config.security?.authentication?.session;
     const maxPerType = sessionConfig?.max_flash_messages_per_type || 10;
     const maxTotal = sessionConfig?.max_flash_messages_total || 20;
 
-    const totalCount = Object.values(flash).reduce(
+    let totalCount = Object.values(flash).reduce(
       (sum: number, arr: FlashMessage[]) => sum + arr.length,
       0
     );
+
+    // Apply the per-type replacement first so the same insertion does not
+    // also evict an unrelated message at the total limit.
+    if (flash[type].length >= maxPerType) {
+      flash[type].shift();
+      totalCount -= 1;
+      this.logger.debug('Flash message removed (type limit reached)', {
+        type,
+        maxPerType,
+      });
+    }
 
     // If at total limit, remove oldest message from type with most messages
     if (totalCount >= maxTotal) {
@@ -679,21 +820,10 @@ export class FlashManager implements IFlashManager {
       const typeWithMost = types.reduce((a, b) =>
         flash[a].length > flash[b].length ? a : b
       );
-      if (flash[typeWithMost].length > 0) {
-        flash[typeWithMost].shift();
-        this.logger.debug('Flash message removed (total limit reached)', {
-          type: typeWithMost,
-          maxTotal,
-        });
-      }
-    }
-
-    // If at per-type limit, remove oldest of this type
-    if (flash[type].length >= maxPerType) {
-      flash[type].shift();
-      this.logger.debug('Flash message removed (type limit reached)', {
-        type,
-        maxPerType,
+      flash[typeWithMost].shift();
+      this.logger.debug('Flash message removed (total limit reached)', {
+        type: typeWithMost,
+        maxTotal,
       });
     }
 
@@ -1043,6 +1173,10 @@ export class SessionManager implements ISessionManager {
       return;
     }
 
+    if (!app || typeof app.use !== 'function') {
+      throw new Error('Failed to initialize session middleware');
+    }
+
     this.setupStore();
     this.setupMiddleware();
 
@@ -1083,7 +1217,7 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Enforce concurrent session limits for a user
+   * Enforce concurrent session limits for a user in the active tenant.
    * Removes oldest Express sessions if the user exceeds the configured limit
    *
    * Note: This is called BEFORE the new session is fully established,
@@ -1096,6 +1230,10 @@ export class SessionManager implements ISessionManager {
     userId: string,
     currentSessionId?: string
   ): Promise<number> {
+    if (typeof userId !== 'string' || userId.trim().length === 0) {
+      return 0;
+    }
+
     const config = this.configManager.getConfig();
     const maxConcurrentSessions =
       config.security?.authentication?.session?.max_concurrent_sessions;
@@ -1150,11 +1288,13 @@ export class SessionManager implements ISessionManager {
       return 0;
     }
 
-    const collectionName = this.options.collection || 'sessions';
+    const collectionName = this.options.collection || 'application_session';
     const sessionCollection = db.collection(collectionName);
+    const tenantId = tenantContext.getTenantId();
 
     const query: Record<string, any> = {
       'session.accountId': userId,
+      ...mongoSessionTenantFilter(tenantId),
     };
     if (currentSessionId) {
       query._id = { $ne: currentSessionId };
@@ -1183,7 +1323,10 @@ export class SessionManager implements ISessionManager {
     for (const sessionDoc of sessionsToRemove) {
       const sessionId = sessionDoc._id;
       if (sessionId) {
-        const result = await sessionCollection.deleteOne({ _id: sessionId });
+        const result = await sessionCollection.deleteOne({
+          _id: sessionId,
+          ...mongoSessionTenantFilter(tenantId),
+        });
         if (result.deletedCount > 0) {
           removedCount++;
           this.logger.debug('Removed session due to concurrent limit', {
@@ -1218,8 +1361,13 @@ export class SessionManager implements ISessionManager {
       return 0;
     }
 
-    const key = this.redisUserSessionsKey(userId);
-    const sessionIds = await this.redisClient.smembers(key);
+    const tenantId = tenantContext.getTenantId();
+    const key = this.redisUserSessionsKey(userId, tenantId);
+    const sessionIds = await this.findRedisSessionIdsForAccount(
+      userId,
+      currentSessionId ? [currentSessionId] : [],
+      tenantId
+    );
 
     const validSessions: { sid: string; authTime: number }[] = [];
     const staleIds: string[] = [];
@@ -1233,10 +1381,13 @@ export class SessionManager implements ISessionManager {
       }
       try {
         const data = JSON.parse(raw);
-        if (data.accountId === userId) {
+        if (
+          sessionBelongsToTenant(data, tenantId) &&
+          data.accountId === userId
+        ) {
           validSessions.push({
             sid,
-            authTime: data.authTime ? new Date(data.authTime).getTime() : 0,
+            authTime: normalizeSessionAuthTime(data.authTime),
           });
         }
       } catch {
@@ -1247,13 +1398,19 @@ export class SessionManager implements ISessionManager {
     // Lazy cleanup of stale entries — best-effort; index lag is recoverable
     // on the next sweep so failures only warrant a warn-level log.
     if (staleIds.length > 0) {
-      this.redisClient.srem(key, ...staleIds).catch((err: unknown) => {
+      const logCleanupFailure = (err: unknown): void => {
         this.logger.warn('Redis session-index lazy cleanup failed (srem)', {
           step: 'redis-session-index-cleanup',
           key,
           err: err instanceof Error ? err.message : String(err),
         });
-      });
+      };
+
+      try {
+        this.redisClient.srem(key, ...staleIds).catch(logCleanupFailure);
+      } catch (err) {
+        logCleanupFailure(err);
+      }
     }
 
     this.logger.debug('Found Express sessions for user (excluding current)', {
@@ -1279,9 +1436,16 @@ export class SessionManager implements ISessionManager {
       pipeline.del(`${this.sessionPrefix}${sid}`);
       pipeline.srem(key, sid);
     }
-    await pipeline.exec();
+    const results = await pipeline.exec();
+    const removedCount = sessionsToRemove.reduce((count, _session, index) => {
+      const deleteResult = results?.[index * 2];
+      if (!deleteResult) return count;
 
-    const removedCount = sessionsToRemove.length;
+      const [deleteError, deleted] = deleteResult;
+      if (deleteError || typeof deleted !== 'number') return count;
+
+      return deleted > 0 ? count + 1 : count;
+    }, 0);
     if (removedCount > 0) {
       this.logger.info('Removed sessions due to concurrent session limit', {
         userId,
@@ -1306,6 +1470,7 @@ export class SessionManager implements ISessionManager {
       return 0;
     }
 
+    const tenantId = tenantContext.getTenantId();
     const rows = await (this.prismaClient as any).session.findMany();
     const validSessions: { sid: string; authTime: number }[] = [];
 
@@ -1313,10 +1478,13 @@ export class SessionManager implements ISessionManager {
       if (row.sid === currentSessionId) continue;
       try {
         const data = JSON.parse(row.data);
-        if (data.accountId === userId) {
+        if (
+          sessionBelongsToTenant(data, tenantId) &&
+          data.accountId === userId
+        ) {
           validSessions.push({
             sid: row.sid,
-            authTime: data.authTime ? new Date(data.authTime).getTime() : 0,
+            authTime: normalizeSessionAuthTime(data.authTime),
           });
         }
       } catch {
@@ -1368,14 +1536,14 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Revoke all Express sessions for a specific user
+   * Revoke all Express sessions for a specific user in the active tenant.
    * Used when admin disables an account to immediately log out the user
    *
    * @param userId - Username or user ID to revoke sessions for
    * @returns Number of sessions revoked
    */
   public async revokeAllSessionsForUser(userId: string): Promise<number> {
-    if (!userId) {
+    if (typeof userId !== 'string' || userId.trim().length === 0) {
       return 0;
     }
 
@@ -1397,6 +1565,7 @@ export class SessionManager implements ISessionManager {
 
         const result = await collection.deleteMany({
           'session.accountId': userId,
+          ...mongoSessionTenantFilter(tenantContext.getTenantId()),
         });
 
         if (result.deletedCount > 0) {
@@ -1415,27 +1584,73 @@ export class SessionManager implements ISessionManager {
           return 0;
         }
 
-        const key = this.redisUserSessionsKey(userId);
-        const sessionIds = await this.redisClient.smembers(key);
+        const tenantId = tenantContext.getTenantId();
+        const key = this.redisUserSessionsKey(userId, tenantId);
+        const sessionIds = await this.findRedisSessionIdsForAccount(
+          userId,
+          [],
+          tenantId
+        );
 
         if (sessionIds.length === 0) {
+          // Clear a stale or cross-account index even when no authoritative
+          // session belongs to this user. Never delete the indexed session
+          // keys themselves unless the authoritative scan attributes them.
+          await this.redisClient.del(key);
+          return 0;
+        }
+
+        const revocableSessionIds: string[] = [];
+        for (const sid of sessionIds) {
+          const raw = await this.redisClient.get(`${this.sessionPrefix}${sid}`);
+          if (!raw) continue;
+
+          try {
+            const data = JSON.parse(raw);
+            if (
+              sessionBelongsToTenant(data, tenantId) &&
+              data.accountId === userId
+            ) {
+              revocableSessionIds.push(sid);
+            }
+          } catch {
+            // Fail closed when current ownership cannot be verified.
+          }
+        }
+
+        if (revocableSessionIds.length === 0) {
+          await this.redisClient.del(key);
           return 0;
         }
 
         // Pipeline delete all session keys
         const pipeline = this.redisClient.multi();
-        for (const sid of sessionIds) {
+        for (const sid of revocableSessionIds) {
           pipeline.del(`${this.sessionPrefix}${sid}`);
         }
         pipeline.del(key);
-        await pipeline.exec();
+        const results = await pipeline.exec();
+        const deletedCount = revocableSessionIds.reduce(
+          (count, _sid, index) => {
+            const commandResult = results?.[index];
+            if (!commandResult) return count;
 
-        this.logger.info('Revoked Express sessions for user', {
-          userId,
-          deletedCount: sessionIds.length,
-        });
+            const [commandError, deleted] = commandResult;
+            if (commandError || typeof deleted !== 'number') return count;
 
-        return sessionIds.length;
+            return deleted > 0 ? count + 1 : count;
+          },
+          0
+        );
+
+        if (deletedCount > 0) {
+          this.logger.info('Revoked Express sessions for user', {
+            userId,
+            deletedCount,
+          });
+        }
+
+        return deletedCount;
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
           this.logger.warn(
@@ -1444,13 +1659,17 @@ export class SessionManager implements ISessionManager {
           return 0;
         }
 
+        const tenantId = tenantContext.getTenantId();
         const rows = await (this.prismaClient as any).session.findMany();
         const sidsToDelete: string[] = [];
 
         for (const row of rows) {
           try {
             const data = JSON.parse(row.data);
-            if (data.accountId === userId) {
+            if (
+              sessionBelongsToTenant(data, tenantId) &&
+              data.accountId === userId
+            ) {
               sidsToDelete.push(row.sid);
             }
           } catch {
@@ -1487,11 +1706,13 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Find all Express sessions for a specific user.
+   * Find all Express sessions for a specific user in the active tenant.
    * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
    */
   public async findExpressSessionsForUser(accountId: string): Promise<any[]> {
-    if (!accountId) return [];
+    if (typeof accountId !== 'string' || accountId.trim().length === 0) {
+      return [];
+    }
 
     const storeType = this.resolveStoreType();
 
@@ -1512,6 +1733,7 @@ export class SessionManager implements ISessionManager {
           .find({
             'session.accountId': accountId,
             'session.isAuthenticated': true,
+            ...mongoSessionTenantFilter(tenantContext.getTenantId()),
           })
           .sort({ 'session.authTime': -1 })
           .toArray();
@@ -1523,46 +1745,36 @@ export class SessionManager implements ISessionManager {
           return [];
         }
 
-        const key = this.redisUserSessionsKey(accountId);
-        const sessionIds = await this.redisClient.smembers(key);
+        const tenantId = tenantContext.getTenantId();
+        const sessionIds = await this.findRedisSessionIdsForAccount(
+          accountId,
+          [],
+          tenantId
+        );
         const results: any[] = [];
-        const staleIds: string[] = [];
 
         for (const sid of sessionIds) {
           const raw = await this.redisClient.get(`${this.sessionPrefix}${sid}`);
           if (!raw) {
-            staleIds.push(sid);
             continue;
           }
           try {
             const data = JSON.parse(raw);
-            if (data.accountId === accountId && data.isAuthenticated === true) {
+            if (
+              sessionBelongsToTenant(data, tenantId) &&
+              data.accountId === accountId &&
+              data.isAuthenticated === true
+            ) {
               results.push({ _id: sid, session: data });
             }
           } catch {
-            staleIds.push(sid);
+            // The authoritative scan already excluded malformed payloads.
           }
         }
 
-        // Lazy cleanup of stale entries — best-effort; recoverable on the
-        // next sweep, so a failure here is non-fatal but still observable.
-        if (staleIds.length > 0) {
-          this.redisClient.srem(key, ...staleIds).catch((err: unknown) => {
-            this.logger.warn('Redis session-index lazy cleanup failed (srem)', {
-              step: 'redis-session-index-cleanup',
-              key,
-              err: err instanceof Error ? err.message : String(err),
-            });
-          });
-        }
-
         results.sort((a, b) => {
-          const aTime = a.session.authTime
-            ? new Date(a.session.authTime).getTime()
-            : 0;
-          const bTime = b.session.authTime
-            ? new Date(b.session.authTime).getTime()
-            : 0;
+          const aTime = normalizeSessionAuthTime(a.session.authTime);
+          const bTime = normalizeSessionAuthTime(b.session.authTime);
           return bTime - aTime;
         });
         return results;
@@ -1574,12 +1786,17 @@ export class SessionManager implements ISessionManager {
           return [];
         }
 
+        const tenantId = tenantContext.getTenantId();
         const rows = await (this.prismaClient as any).session.findMany();
         const results: any[] = [];
         for (const row of rows) {
           try {
             const data = JSON.parse(row.data);
-            if (data.accountId === accountId && data.isAuthenticated === true) {
+            if (
+              sessionBelongsToTenant(data, tenantId) &&
+              data.accountId === accountId &&
+              data.isAuthenticated === true
+            ) {
               results.push({ _id: row.sid, session: data });
             }
           } catch {
@@ -1587,12 +1804,8 @@ export class SessionManager implements ISessionManager {
           }
         }
         results.sort((a, b) => {
-          const aTime = a.session.authTime
-            ? new Date(a.session.authTime).getTime()
-            : 0;
-          const bTime = b.session.authTime
-            ? new Date(b.session.authTime).getTime()
-            : 0;
+          const aTime = normalizeSessionAuthTime(a.session.authTime);
+          const bTime = normalizeSessionAuthTime(b.session.authTime);
           return bTime - aTime;
         });
         return results;
@@ -1609,11 +1822,13 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Revoke a single Express session by its session ID.
+   * Revoke a single Express session by its session ID in the active tenant.
    * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
    */
   public async revokeExpressSession(sessionId: string): Promise<boolean> {
-    if (!sessionId) return false;
+    if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
+      return false;
+    }
 
     const storeType = this.resolveStoreType();
 
@@ -1632,6 +1847,7 @@ export class SessionManager implements ISessionManager {
 
         const result = await sessionCollection.deleteOne({
           _id: sessionId as any,
+          ...mongoSessionTenantFilter(tenantContext.getTenantId()),
         });
 
         if (result.deletedCount > 0) {
@@ -1649,14 +1865,25 @@ export class SessionManager implements ISessionManager {
 
         const sessionKey = `${this.sessionPrefix}${sessionId}`;
         const raw = await this.redisClient.get(sessionKey);
+        if (!raw) {
+          return false;
+        }
+
+        const tenantId = tenantContext.getTenantId();
         let accountId: string | undefined;
-        if (raw) {
-          try {
-            const data = JSON.parse(raw);
-            accountId = data.accountId;
-          } catch {
-            // Continue with deletion even if parse fails
+        try {
+          const data = JSON.parse(raw);
+          if (!sessionBelongsToTenant(data, tenantId)) {
+            return false;
           }
+          if (
+            typeof data.accountId === 'string' &&
+            data.accountId.trim().length > 0
+          ) {
+            accountId = data.accountId;
+          }
+        } catch {
+          return false;
         }
 
         const deleted = await this.redisClient.del(sessionKey);
@@ -1677,8 +1904,24 @@ export class SessionManager implements ISessionManager {
           return false;
         }
 
-        const result = await (this.prismaClient as any).session.deleteMany({
+        const row = await (this.prismaClient as any).session.findUnique({
           where: { sid: sessionId },
+        });
+        if (!row) {
+          return false;
+        }
+
+        try {
+          const data = JSON.parse(row.data);
+          if (!sessionBelongsToTenant(data, tenantContext.getTenantId())) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+
+        const result = await (this.prismaClient as any).session.deleteMany({
+          where: { sid: sessionId, data: row.data },
         });
 
         if (result.count > 0) {
@@ -1699,7 +1942,7 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Find all authenticated Express sessions across all users with pagination.
+   * Find authenticated Express sessions across all users in the active tenant.
    * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
    */
   public async findAllExpressSessions(
@@ -1721,11 +1964,12 @@ export class SessionManager implements ISessionManager {
         const collectionName = this.options.collection || 'application_session';
         const sessionCollection = db.collection(collectionName);
 
-        const query: any = { 'session.isAuthenticated': true };
+        const query: any = {
+          'session.isAuthenticated': true,
+          ...mongoSessionTenantFilter(tenantContext.getTenantId()),
+        };
         if (search) {
-          query['$or'] = [
-            { 'session.accountId': { $regex: search, $options: 'i' } },
-          ];
+          query['session.accountId'] = { $regex: search, $options: 'i' };
         }
 
         return await sessionCollection
@@ -1742,9 +1986,11 @@ export class SessionManager implements ISessionManager {
           return [];
         }
 
+        const tenantId = tenantContext.getTenantId();
         const results: any[] = [];
         let cursor = '0';
         const pattern = `${this.sessionPrefix}*`;
+        const sessionIndexPrefix = `${this.sessionPrefix.replace(/:$/, '')}:user-sessions:`;
 
         do {
           const [nextCursor, keys] = await this.redisClient.scan(
@@ -1757,10 +2003,12 @@ export class SessionManager implements ISessionManager {
           cursor = nextCursor;
 
           for (const key of keys) {
+            if (key.startsWith(sessionIndexPrefix)) continue;
             const raw = await this.redisClient.get(key);
             if (!raw) continue;
             try {
               const data = JSON.parse(raw);
+              if (!sessionBelongsToTenant(data, tenantId)) continue;
               if (data.isAuthenticated !== true) continue;
               if (
                 search &&
@@ -1779,12 +2027,8 @@ export class SessionManager implements ISessionManager {
         } while (cursor !== '0');
 
         results.sort((a, b) => {
-          const aTime = a.session.authTime
-            ? new Date(a.session.authTime).getTime()
-            : 0;
-          const bTime = b.session.authTime
-            ? new Date(b.session.authTime).getTime()
-            : 0;
+          const aTime = normalizeSessionAuthTime(a.session.authTime);
+          const bTime = normalizeSessionAuthTime(b.session.authTime);
           return bTime - aTime;
         });
 
@@ -1797,11 +2041,13 @@ export class SessionManager implements ISessionManager {
           return [];
         }
 
+        const tenantId = tenantContext.getTenantId();
         const rows = await (this.prismaClient as any).session.findMany();
         const results: any[] = [];
         for (const row of rows) {
           try {
             const data = JSON.parse(row.data);
+            if (!sessionBelongsToTenant(data, tenantId)) continue;
             if (data.isAuthenticated !== true) continue;
             if (
               search &&
@@ -1817,12 +2063,8 @@ export class SessionManager implements ISessionManager {
         }
 
         results.sort((a, b) => {
-          const aTime = a.session.authTime
-            ? new Date(a.session.authTime).getTime()
-            : 0;
-          const bTime = b.session.authTime
-            ? new Date(b.session.authTime).getTime()
-            : 0;
+          const aTime = normalizeSessionAuthTime(a.session.authTime);
+          const bTime = normalizeSessionAuthTime(b.session.authTime);
           return bTime - aTime;
         });
 
@@ -1839,7 +2081,7 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Count all authenticated Express sessions across all users.
+   * Count authenticated Express sessions across all users in the active tenant.
    * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
    */
   public async countAllExpressSessions(): Promise<number> {
@@ -1860,6 +2102,7 @@ export class SessionManager implements ISessionManager {
 
         return await sessionCollection.countDocuments({
           'session.isAuthenticated': true,
+          ...mongoSessionTenantFilter(tenantContext.getTenantId()),
         });
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
@@ -1869,9 +2112,11 @@ export class SessionManager implements ISessionManager {
           return 0;
         }
 
+        const tenantId = tenantContext.getTenantId();
         let count = 0;
         let cursor = '0';
         const pattern = `${this.sessionPrefix}*`;
+        const sessionIndexPrefix = `${this.sessionPrefix.replace(/:$/, '')}:user-sessions:`;
 
         do {
           const [nextCursor, keys] = await this.redisClient.scan(
@@ -1884,11 +2129,17 @@ export class SessionManager implements ISessionManager {
           cursor = nextCursor;
 
           for (const key of keys) {
+            if (key.startsWith(sessionIndexPrefix)) continue;
             const raw = await this.redisClient.get(key);
             if (!raw) continue;
             try {
               const data = JSON.parse(raw);
-              if (data.isAuthenticated === true) count++;
+              if (
+                sessionBelongsToTenant(data, tenantId) &&
+                data.isAuthenticated === true
+              ) {
+                count++;
+              }
             } catch {
               // best-effort: corrupt JSON contributes 0 to the count.
             }
@@ -1904,12 +2155,18 @@ export class SessionManager implements ISessionManager {
           return 0;
         }
 
+        const tenantId = tenantContext.getTenantId();
         const rows = await (this.prismaClient as any).session.findMany();
         let count = 0;
         for (const row of rows) {
           try {
             const data = JSON.parse(row.data);
-            if (data.isAuthenticated === true) count++;
+            if (
+              sessionBelongsToTenant(data, tenantId) &&
+              data.isAuthenticated === true
+            ) {
+              count++;
+            }
           } catch {
             // best-effort: corrupt JSON contributes 0 to the count.
           }
@@ -1936,6 +2193,7 @@ export class SessionManager implements ISessionManager {
     const effectiveType: SessionStoreType = this.oidcAdapterBridge
       ? this.oidcAdapterBridge.effectiveOidcAdapter()
       : (this.options.storeType ?? 'mongodb');
+    this.options.storeType = effectiveType;
 
     try {
       switch (effectiveType) {
@@ -2113,9 +2371,108 @@ export class SessionManager implements ISessionManager {
   /**
    * Build the Redis key for a user's session index set.
    */
-  private redisUserSessionsKey(accountId: string): string {
+  private redisUserSessionsKey(
+    accountId: string,
+    tenantId = tenantContext.getTenantId()
+  ): string {
     const base = this.sessionPrefix.replace(/:$/, '');
+    if (tenantId !== DEFAULT_TENANT_ID) {
+      return `${base}:user-sessions:${tenantId}:${accountId}`;
+    }
     return `${base}:user-sessions:${accountId}`;
+  }
+
+  /**
+   * Reconcile a tenant-scoped user index against authoritative Redis sessions.
+   * Administrative revocation must not miss a live session because an earlier
+   * fire-and-forget index update failed, or delete another user's session due
+   * to a stale cross-account index entry.
+   */
+  private async findRedisSessionIdsForAccount(
+    accountId: string,
+    protectedSessionIds: readonly string[] = [],
+    tenantId = tenantContext.getTenantId()
+  ): Promise<string[]> {
+    if (!this.redisClient) return [];
+
+    const indexKey = this.redisUserSessionsKey(accountId, tenantId);
+    const indexedIds = new Set(await this.redisClient.smembers(indexKey));
+    const actualIds = new Set<string>();
+    const indexPrefix = `${this.sessionPrefix.replace(/:$/, '')}:user-sessions:`;
+    const pattern = `${this.sessionPrefix}*`;
+    let cursor = '0';
+
+    do {
+      const [nextCursor, keys] = await this.redisClient.scan(
+        cursor,
+        'MATCH',
+        pattern,
+        'COUNT',
+        100
+      );
+      cursor = nextCursor;
+
+      for (const key of keys) {
+        if (key.startsWith(indexPrefix)) continue;
+
+        const raw = await this.redisClient.get(key);
+        if (!raw) continue;
+
+        try {
+          const data = JSON.parse(raw);
+          if (
+            sessionBelongsToTenant(data, tenantId) &&
+            data.accountId === accountId
+          ) {
+            actualIds.add(key.slice(this.sessionPrefix.length));
+          }
+        } catch {
+          // Malformed sessions cannot be safely attributed to an account.
+        }
+      }
+    } while (cursor !== '0');
+
+    const protectedIds = new Set(protectedSessionIds);
+    const expectedIndexedIds = new Set(actualIds);
+    for (const sessionId of indexedIds) {
+      if (protectedIds.has(sessionId)) {
+        expectedIndexedIds.add(sessionId);
+      }
+    }
+    const indexIsConsistent =
+      indexedIds.size === expectedIndexedIds.size &&
+      [...indexedIds].every(sessionId => expectedIndexedIds.has(sessionId));
+    if (!indexIsConsistent) {
+      this.logger.warn(
+        'Redis session index inconsistent; using authoritative session scan',
+        {
+          accountId,
+          indexedCount: indexedIds.size,
+          actualCount: actualIds.size,
+        }
+      );
+    }
+
+    const staleIds = [...indexedIds].filter(
+      sessionId => !actualIds.has(sessionId) && !protectedIds.has(sessionId)
+    );
+    if (staleIds.length > 0) {
+      const logCleanupFailure = (err: unknown): void => {
+        this.logger.warn('Redis session-index lazy cleanup failed (srem)', {
+          step: 'redis-session-index-cleanup',
+          key: indexKey,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      };
+
+      try {
+        this.redisClient.srem(indexKey, ...staleIds).catch(logCleanupFailure);
+      } catch (err) {
+        logCleanupFailure(err);
+      }
+    }
+
+    return [...actualIds];
   }
 
   /**
@@ -2123,20 +2480,28 @@ export class SessionManager implements ISessionManager {
    */
   private redisIndexAdd(accountId: string, sessionId: string): void {
     if (!this.redisClient || !accountId) return;
-    const key = this.redisUserSessionsKey(accountId);
-    const ttl = this.options.ttl || 86400;
-    this.redisClient
-      .multi()
-      .sadd(key, sessionId)
-      .expire(key, ttl)
-      .exec()
-      .catch(err => {
-        this.logger.warn('Failed to update Redis session index (add)', {
-          accountId,
-          sessionId,
-          error: String(err),
+    try {
+      const key = this.redisUserSessionsKey(accountId);
+      const ttl = this.options.ttl || 86400;
+      this.redisClient
+        .multi()
+        .sadd(key, sessionId)
+        .expire(key, ttl)
+        .exec()
+        .catch(err => {
+          this.logger.warn('Failed to update Redis session index (add)', {
+            accountId,
+            sessionId,
+            error: String(err),
+          });
         });
+    } catch (err) {
+      this.logger.warn('Failed to update Redis session index (add)', {
+        accountId,
+        sessionId,
+        error: String(err),
       });
+    }
   }
 
   /**
@@ -2144,14 +2509,20 @@ export class SessionManager implements ISessionManager {
    */
   private redisIndexRemove(accountId: string, sessionId: string): void {
     if (!this.redisClient || !accountId) return;
-    const key = this.redisUserSessionsKey(accountId);
-    this.redisClient.srem(key, sessionId).catch(err => {
+    const logFailure = (err: unknown): void => {
       this.logger.warn('Failed to update Redis session index (remove)', {
         accountId,
         sessionId,
         error: String(err),
       });
-    });
+    };
+
+    try {
+      const key = this.redisUserSessionsKey(accountId);
+      this.redisClient.srem(key, sessionId).catch(logFailure);
+    } catch (err) {
+      logFailure(err);
+    }
   }
 
   /**
@@ -2164,38 +2535,30 @@ export class SessionManager implements ISessionManager {
     sessionId: string
   ): void {
     if (!this.redisClient) return;
-    const ttl = this.options.ttl || 86400;
-    const pipeline = this.redisClient.multi();
-    if (oldAccountId) {
-      pipeline.srem(this.redisUserSessionsKey(oldAccountId), sessionId);
-    }
-    if (newAccountId) {
-      const newKey = this.redisUserSessionsKey(newAccountId);
-      pipeline.sadd(newKey, sessionId);
-      pipeline.expire(newKey, ttl);
-    }
-    pipeline.exec().catch(err => {
+    const logFailure = (err: unknown): void => {
       this.logger.warn('Failed to update Redis session index (replace)', {
         oldAccountId,
         newAccountId,
         sessionId,
         error: String(err),
       });
-    });
-  }
+    };
 
-  /**
-   * Delete an entire user-sessions index set.
-   */
-  private redisIndexDeleteSet(accountId: string): void {
-    if (!this.redisClient || !accountId) return;
-    const key = this.redisUserSessionsKey(accountId);
-    this.redisClient.del(key).catch(err => {
-      this.logger.warn('Failed to delete Redis session index set', {
-        accountId,
-        error: String(err),
-      });
-    });
+    try {
+      const ttl = this.options.ttl || 86400;
+      const pipeline = this.redisClient.multi();
+      if (oldAccountId) {
+        pipeline.srem(this.redisUserSessionsKey(oldAccountId), sessionId);
+      }
+      if (newAccountId) {
+        const newKey = this.redisUserSessionsKey(newAccountId);
+        pipeline.sadd(newKey, sessionId);
+        pipeline.expire(newKey, ttl);
+      }
+      pipeline.exec().catch(logFailure);
+    } catch (err) {
+      logFailure(err);
+    }
   }
 
   /**
@@ -2322,7 +2685,10 @@ export class SessionManager implements ISessionManager {
         }
       }
 
-      return parsedData?.visitorId || null;
+      const visitorId = parsedData?.visitorId;
+      return typeof visitorId === 'string' && visitorId.trim().length > 0
+        ? visitorId
+        : null;
     } catch {
       return null;
     }
@@ -2640,23 +3006,23 @@ export class SessionManager implements ISessionManager {
       return;
     }
 
+    const currentSession = req.session;
+
     const preserved: Record<string, any> = {};
     preserveKeys.forEach(key => {
-      if (req.session && req.session[key] !== undefined) {
-        preserved[key] = req.session[key];
+      if (currentSession[key] !== undefined) {
+        preserved[key] = currentSession[key];
       }
     });
 
-    Object.keys(req.session).forEach(key => {
+    Object.keys(currentSession).forEach(key => {
       if (key !== 'cookie' && !preserveKeys.includes(key)) {
-        delete req.session[key];
+        delete currentSession[key];
       }
     });
 
     Object.keys(preserved).forEach(key => {
-      if (req.session) {
-        req.session[key] = preserved[key];
-      }
+      currentSession[key] = preserved[key];
     });
   }
 
@@ -2684,17 +3050,20 @@ export class SessionManager implements ISessionManager {
           return reject(err);
         }
 
+        const regeneratedSession = req.session;
+        if (!regeneratedSession) {
+          return reject(new Error('Session not available after regeneration'));
+        }
+
         Object.keys(sessionData).forEach(key => {
-          if (req.session) {
-            req.session[key] = sessionData[key];
-          }
+          regeneratedSession[key] = sessionData[key];
         });
 
-        if (this.redisClient && accountId && req.session) {
-          const newSessionId = req.session.id;
+        if (this.redisClient && accountId) {
+          const newSessionId = regeneratedSession.id;
           const key = this.redisUserSessionsKey(accountId);
           const ttl = this.options.ttl || 86400;
-          this.redisClient
+          const indexUpdate = this.redisClient
             .multi()
             .srem(key, oldSessionId)
             .sadd(key, newSessionId)
@@ -2711,6 +3080,9 @@ export class SessionManager implements ISessionManager {
                 }
               );
             });
+
+          void indexUpdate.then(() => resolve());
+          return;
         }
 
         resolve();
@@ -2805,40 +3177,36 @@ export class SessionManager implements ISessionManager {
     }
 
     const isExplicitlyAuthenticated = this.get(req, 'isAuthenticated') === true;
-    const hasActiveUser = !!this.getActiveUser(req);
+    const activeUser = this.getActiveUser(req);
 
-    if (!isExplicitlyAuthenticated && !hasActiveUser) {
+    if (
+      !isExplicitlyAuthenticated ||
+      !activeUser ||
+      typeof activeUser.id !== 'string' ||
+      activeUser.id.trim().length === 0
+    ) {
       return false;
     }
 
-    if (hasActiveUser) {
-      const activeUser = this.getActiveUser(req);
-      if (!activeUser) {
-        return false;
-      }
-
-      try {
-        // In multi-tenant mode, findById() is filtered by the Mongoose tenant
-        // plugin — returns null if the user belongs to a different tenant.
-        const user = await this.userService.findById(activeUser.id);
-        if (!user && activeUser.id) {
-          this.logger.warn('session_user_not_found_in_tenant', {
-            userId: activeUser.id,
-            username: activeUser.username,
-            hint: 'User may belong to a different tenant than the current request context',
-          });
-        }
-        return !!(user && user.account_enabled === true);
-      } catch (error) {
-        this.logger.error('Failed to verify user account status', {
+    try {
+      // In multi-tenant mode, findById() is filtered by the Mongoose tenant
+      // plugin — returns null if the user belongs to a different tenant.
+      const user = await this.userService.findById(activeUser.id);
+      if (!user && activeUser.id) {
+        this.logger.warn('session_user_not_found_in_tenant', {
           userId: activeUser.id,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          username: activeUser.username,
+          hint: 'User may belong to a different tenant than the current request context',
         });
-        return false;
       }
+      return !!(user && user.account_enabled === true);
+    } catch (error) {
+      this.logger.error('Failed to verify user account status', {
+        userId: activeUser.id,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      return false;
     }
-
-    return isExplicitlyAuthenticated;
   }
 
   /**
@@ -2889,19 +3257,25 @@ export class SessionManager implements ISessionManager {
             others: [],
           });
         } else {
-          const existingIndex = existingAuthUsers.others.findIndex(
+          const otherAccounts = Array.isArray(existingAuthUsers.others)
+            ? [...existingAuthUsers.others]
+            : [];
+          const existingIndex = otherAccounts.findIndex(
             account =>
               account.id === userAccount?.id ||
               account.username === userAccount?.username
           );
 
           if (existingIndex >= 0) {
-            existingAuthUsers.others.splice(existingIndex, 1);
-          } else if (
+            otherAccounts.splice(existingIndex, 1);
+          }
+
+          if (
             existingAuthUsers.active &&
-            existingAuthUsers.active.id !== userAccount.id
+            existingAuthUsers.active.id !== userAccount.id &&
+            existingAuthUsers.active.username !== userAccount.username
           ) {
-            existingAuthUsers.others.push({
+            otherAccounts.push({
               ...existingAuthUsers.active,
               last_used: Date.now(),
             });
@@ -2909,7 +3283,7 @@ export class SessionManager implements ISessionManager {
 
           this.set(req, 'authenticatedUsers', {
             active: userAccount,
-            others: existingAuthUsers.others,
+            others: otherAccounts,
           });
         }
       } else {
@@ -2934,8 +3308,8 @@ export class SessionManager implements ISessionManager {
       const uaResult = parser.getResult();
 
       let createdFrom: SessionMetadata['createdFrom'] = 'unknown';
-      if (userData.createdFrom) {
-        createdFrom = userData.createdFrom as SessionMetadata['createdFrom'];
+      if (isSessionCreationSource(userData.createdFrom)) {
+        createdFrom = userData.createdFrom;
       } else if (
         req.path?.includes('/social') ||
         req.path?.includes('/callback')
@@ -2969,15 +3343,15 @@ export class SessionManager implements ISessionManager {
     }
 
     const sessionData: Partial<SessionData> = {
+      ...userData,
       isAuthenticated: true,
       authTime: Date.now(),
       lastActivity: Date.now(),
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       deviceId: deviceId || undefined,
-      accountId: userAccount?.username,
+      accountId: userAccount?.username ?? userData.accountId,
       _metadata: metadata,
-      ...userData,
     };
 
     Object.keys(sessionData).forEach(key => {
@@ -3018,12 +3392,34 @@ export class SessionManager implements ISessionManager {
       return false;
     }
 
-    const updatedActive = { ...authUsers.active, ...updates };
+    const oldUsername = authUsers.active.username;
+    const updatedUsername =
+      typeof updates.username === 'string' && updates.username.trim().length > 0
+        ? updates.username
+        : oldUsername;
+    const updatedId =
+      typeof updates.id === 'string' && updates.id.trim().length > 0
+        ? updates.id
+        : authUsers.active.id;
+    const updatedActive = {
+      ...authUsers.active,
+      ...updates,
+      id: updatedId,
+      username: updatedUsername,
+    };
 
     this.set(req, 'authenticatedUsers', {
       ...authUsers,
       active: updatedActive,
     });
+
+    if (oldUsername !== updatedUsername) {
+      this.set(req, 'accountId', updatedUsername);
+
+      if (this.redisClient) {
+        this.redisIndexReplace(oldUsername, updatedUsername, req.session.id);
+      }
+    }
 
     return true;
   }
@@ -3048,7 +3444,7 @@ export class SessionManager implements ISessionManager {
   public switchUser(req: Request, userId: string): SwitchUserResult {
     const authUsers = this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
 
-    if (!authUsers) {
+    if (!authUsers?.active || !Array.isArray(authUsers.others)) {
       return { success: false, reason: 'user_not_found' };
     }
 
@@ -3117,27 +3513,38 @@ export class SessionManager implements ISessionManager {
     userAccount: SessionUserAccount,
     setAsActive = false
   ): AddAuthenticatedUserResult {
-    const authUsers = this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
+    const sessionUserAccount = { ...userAccount };
+    const storedAuthUsers = this.get<AuthenticatedUsers>(
+      req,
+      'authenticatedUsers'
+    );
 
     const config = this.configManager.getConfig();
     const maxAccountsPerSession =
       config.security?.authentication?.session?.max_accounts_per_session || 5;
 
-    if (!authUsers) {
+    if (!storedAuthUsers?.active) {
       // First user - create the container
       this.set(req, 'authenticatedUsers', {
-        active: userAccount,
+        active: sessionUserAccount,
         others: [],
       });
 
-      this.set(req, 'accountId', userAccount.username);
+      this.set(req, 'accountId', sessionUserAccount.username);
 
-      if (this.redisClient && userAccount.username) {
-        this.redisIndexAdd(userAccount.username, req.session.id);
+      if (this.redisClient && sessionUserAccount.username) {
+        this.redisIndexAdd(sessionUserAccount.username, req.session.id);
       }
 
       return { success: true };
     }
+
+    const authUsers: AuthenticatedUsers = {
+      active: { ...storedAuthUsers.active },
+      others: Array.isArray(storedAuthUsers.others)
+        ? [...storedAuthUsers.others]
+        : [],
+    };
 
     const multiAccountEnabled =
       config.security?.authentication?.session_management?.multiple_accounts
@@ -3177,21 +3584,21 @@ export class SessionManager implements ISessionManager {
         last_used: Date.now(),
       });
 
-      userAccount.last_used = Date.now();
-      authUsers.active = userAccount;
+      sessionUserAccount.last_used = Date.now();
+      authUsers.active = sessionUserAccount;
 
-      this.set(req, 'accountId', userAccount.username);
+      this.set(req, 'accountId', sessionUserAccount.username);
 
-      if (this.redisClient && oldAccountId !== userAccount.username) {
+      if (this.redisClient && oldAccountId !== sessionUserAccount.username) {
         this.redisIndexReplace(
           oldAccountId,
-          userAccount.username,
+          sessionUserAccount.username,
           req.session.id
         );
       }
     } else {
-      userAccount.last_used = Date.now();
-      authUsers.others.push(userAccount);
+      sessionUserAccount.last_used = Date.now();
+      authUsers.others.push(sessionUserAccount);
     }
 
     this.set(req, 'authenticatedUsers', authUsers);
@@ -3211,9 +3618,19 @@ export class SessionManager implements ISessionManager {
     req: Request,
     userId: string
   ): Promise<boolean> {
-    const authUsers = this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
+    const storedAuthUsers = this.get<AuthenticatedUsers>(
+      req,
+      'authenticatedUsers'
+    );
 
-    if (!authUsers) return false;
+    if (!storedAuthUsers?.active || !Array.isArray(storedAuthUsers.others)) {
+      return false;
+    }
+
+    const authUsers: AuthenticatedUsers = {
+      active: { ...storedAuthUsers.active },
+      others: [...storedAuthUsers.others],
+    };
 
     let removedUser: SessionUserAccount | undefined;
 
@@ -3296,16 +3713,19 @@ export class SessionManager implements ISessionManager {
     }
 
     const expires = req.session.cookie.expires;
-    if (!expires) {
+    if (expires === undefined || expires === null) {
       return this.options.ttl || 0;
     }
 
     if (typeof expires === 'number') {
+      if (!Number.isFinite(expires)) return 0;
       return Math.max(0, Math.floor((expires - Date.now()) / 1000));
     }
 
     if (expires instanceof Date) {
-      return Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000));
+      const expiresAt = expires.getTime();
+      if (!Number.isFinite(expiresAt)) return 0;
+      return Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
     }
 
     return 0;
@@ -3332,7 +3752,21 @@ export class SessionManager implements ISessionManager {
    */
   public validateCsrfToken(req: Request, token: string): boolean {
     const storedToken = this.get<string>(req, 'csrfToken');
-    return !!storedToken && storedToken === token;
+    if (
+      typeof storedToken !== 'string' ||
+      storedToken.length === 0 ||
+      typeof token !== 'string'
+    ) {
+      return false;
+    }
+
+    const storedTokenBuffer = Buffer.from(storedToken, 'utf8');
+    const tokenBuffer = Buffer.from(token, 'utf8');
+
+    return (
+      storedTokenBuffer.length === tokenBuffer.length &&
+      crypto.timingSafeEqual(storedTokenBuffer, tokenBuffer)
+    );
   }
 
   /**
@@ -3416,7 +3850,10 @@ export class SessionManager implements ISessionManager {
         if (req.path.includes('/api')) {
           const authHeader = req.headers.authorization;
 
-          if (authHeader && authHeader.startsWith('Bearer ')) {
+          if (
+            authHeader?.startsWith('Bearer ') &&
+            authHeader.slice('Bearer '.length).trim().length > 0
+          ) {
             this.logger.debug(
               `CSRF bypassed for API with Bearer auth: ${req.path}`
             );
@@ -3428,17 +3865,27 @@ export class SessionManager implements ISessionManager {
           const referer = req.headers.referer as string | undefined;
           const appUrl = config.deployment.url;
 
-          let appOrigin: string;
+          let appOrigin: string | undefined;
           try {
-            const parsed = new URL(appUrl);
-            appOrigin = `${parsed.protocol}//${parsed.host}`;
+            appOrigin = new URL(appUrl).origin;
           } catch {
-            appOrigin = appUrl;
+            this.logger.error('Invalid deployment URL for CSRF validation', {
+              deploymentUrl: appUrl,
+            });
           }
 
+          const matchesAppOrigin = (value: string | undefined): boolean => {
+            if (!value || !appOrigin) return false;
+
+            try {
+              return new URL(value).origin === appOrigin;
+            } catch {
+              return false;
+            }
+          };
+
           const isSameOrigin =
-            (origin && origin.startsWith(appOrigin)) ||
-            (referer && referer.startsWith(appOrigin));
+            matchesAppOrigin(origin) || matchesAppOrigin(referer);
 
           if (isSameOrigin) {
             this.logger.debug(
@@ -3493,7 +3940,7 @@ export class SessionManager implements ISessionManager {
    * @returns FlashManager instance for chaining flash operations
    */
   public flash(req: Request): IFlashManager {
-    return new FlashManager(req, this, this.logger, this.userService);
+    return new FlashManager(req, this, this.logger, this.configManager);
   }
 
   /**

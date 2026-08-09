@@ -29,13 +29,8 @@ import {
 
 const resolveStorageAdapter = (
   provider: IConfigProvider<BootstrapConfig>
-): StorageAdapter => {
-  const raw = provider.getConfigValue<string>('storage.adapter', 'sqlite');
-  if (raw === 'mongodb' || raw === 'postgresql' || raw === 'sqlite') {
-    return raw;
-  }
-  throw new Error(`Unsupported storage adapter: ${raw}`);
-};
+): StorageAdapter =>
+  provider.getConfigValue<StorageAdapter>('storage.adapter', 'sqlite');
 
 const resolveStorageProvider = (
   provider: IConfigProvider<BootstrapConfig>

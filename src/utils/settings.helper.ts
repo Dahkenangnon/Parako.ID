@@ -6,6 +6,7 @@
 
 import { WEB_SAFE_FONTS } from '../config/constants.js';
 import { BOOTSTRAP_ONLY_FIELDS } from '../config/types.js';
+import { isIP } from 'node:net';
 
 /**
  * SENSITIVE_FIELDS - Registry of all sensitive field paths in configuration
@@ -84,7 +85,7 @@ export function isBootstrapField(fieldPath: string): boolean {
  *
  * @example
  * maskSensitiveValue('abc123def456'); // 'abc1********'
- * maskSensitiveValue('short'); // 'sho*'
+ * maskSensitiveValue('short'); // 'shor****'
  * maskSensitiveValue(''); // ''
  */
 export function maskSensitiveValue(value: string): string {
@@ -120,11 +121,14 @@ export function isMaskedValue(value: any): boolean {
     return false;
   }
 
-  // A masked value should have at least one asterisk and shouldn't be all asterisks
-  const hasAsterisks = value.includes('*');
-  const notAllAsterisks = value.replace(/\*/g, '').length > 0;
+  if (value.replace(/\*/g, '').length === 0) {
+    return false;
+  }
 
-  return hasAsterisks && notAllAsterisks;
+  // Match only values emitted by maskSensitiveValue(). Requiring a trailing
+  // mask prevents legitimate secrets containing an interior '*' from being
+  // mistaken for redacted UI values during configuration import.
+  return /^(?:[\s\S]\*{1,3}|[\s\S]{4}\*{4,})$/.test(value);
 }
 
 /**
@@ -233,7 +237,13 @@ export function setNestedValue(obj: any, path: string, value: any): void {
   }
 
   const target = keys.reduce((current, key) => {
-    if (!current[key]) current[key] = {};
+    const existing = Object.hasOwn(current, key) ? current[key] : undefined;
+    if (
+      existing === null ||
+      (typeof existing !== 'object' && typeof existing !== 'function')
+    ) {
+      current[key] = {};
+    }
     return current[key];
   }, obj);
   target[lastKey] = value;
@@ -289,27 +299,19 @@ export function prepareSensitiveConfigForDisplay(config: any): any {
       continue;
     }
 
-    try {
-      if (Array.isArray(value)) {
-        const maskedArray = value.map((item: any) => {
-          if (typeof item === 'string' && item.length > 0) {
-            return maskSensitiveValue(item);
-          }
-          return item;
-        });
-        setNestedValue(maskedConfig, fieldPath, maskedArray);
-      } else if (typeof value === 'string' && value.length > 0) {
-        const maskedValue = maskSensitiveValue(value);
-        setNestedValue(maskedConfig, fieldPath, maskedValue);
-      }
-      // For other types (objects, numbers, etc.), leave unchanged
-    } catch (error) {
-      // If masking fails for any reason, log a warning but continue
-      console.warn(
-        `Failed to mask sensitive field: ${fieldPath}`,
-        error instanceof Error ? error.message : String(error)
-      );
+    if (Array.isArray(value)) {
+      const maskedArray = value.map((item: any) => {
+        if (typeof item === 'string' && item.length > 0) {
+          return maskSensitiveValue(item);
+        }
+        return item;
+      });
+      setNestedValue(maskedConfig, fieldPath, maskedArray);
+    } else if (typeof value === 'string' && value.length > 0) {
+      const maskedValue = maskSensitiveValue(value);
+      setNestedValue(maskedConfig, fieldPath, maskedValue);
     }
+    // For other types (objects, numbers, etc.), leave unchanged
   }
 
   return maskedConfig;
@@ -347,15 +349,7 @@ export function convertBooleanFields(data: any, booleanFields: string[]): any {
  * @returns True if valid IP address, false otherwise
  */
 export function isValidIP(ip: string): boolean {
-  // IPv4 regex
-  const ipv4Regex =
-    /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
-
-  // IPv6 regex (more comprehensive)
-  const ipv6Regex =
-    /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::1$|^::$|^::ffff:(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
-
-  return ipv4Regex.test(ip) || ipv6Regex.test(ip);
+  return typeof ip === 'string' && ip.length > 0 && isIP(ip) !== 0;
 }
 
 /**
@@ -1196,12 +1190,14 @@ export function convertSecurityFormData(data: any): any {
       'webauthn',
     ];
     converted.authentication.login.login_methods =
-      converted.authentication.login.login_methods.filter(
-        (m: string) =>
-          m &&
-          m.trim() !== '' &&
-          VALID_LOGIN_PARTS.some(part => m.includes(part))
-      );
+      converted.authentication.login.login_methods.filter((method: unknown) => {
+        if (typeof method !== 'string' || method.trim() === '') {
+          return false;
+        }
+        return method
+          .split('+')
+          .every(part => VALID_LOGIN_PARTS.includes(part));
+      });
     if (converted.authentication.login.login_methods.length === 0) {
       converted.authentication.login.login_methods = ['email+password'];
     }
@@ -1230,10 +1226,14 @@ export function convertSecurityFormData(data: any): any {
     ];
     converted.authentication.signup.signup_methods =
       converted.authentication.signup.signup_methods.filter(
-        (m: string) =>
-          m &&
-          m.trim() !== '' &&
-          VALID_SIGNUP_PARTS.some(part => m.includes(part))
+        (method: unknown) => {
+          if (typeof method !== 'string' || method.trim() === '') {
+            return false;
+          }
+          return method
+            .split('+')
+            .every(part => VALID_SIGNUP_PARTS.includes(part));
+        }
       );
     if (converted.authentication.signup.signup_methods.length === 0) {
       converted.authentication.signup.signup_methods = ['email+password'];
@@ -1349,7 +1349,7 @@ export function convertSecurityFormData(data: any): any {
         .filter((f: Record<string, unknown>) => f && f.key)
         .map((f: Record<string, unknown>) => ({
           slot: Number(f.slot) || 1,
-          key: String(f.key || ''),
+          key: String(f.key),
           name: String(f.name || ''),
           hint_for_user: String(f.hint_for_user || ''),
           validation_type: String(f.validation_type || 'none'),
@@ -1518,5 +1518,5 @@ export function getSectionIcon(sectionKey: string): string {
  * @returns True if section is configured, false otherwise
  */
 export function getSectionStatus(config: any, sectionKey: string): boolean {
-  return !!(config as any)[sectionKey];
+  return !!config?.[sectionKey];
 }

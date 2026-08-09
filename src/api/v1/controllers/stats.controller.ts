@@ -89,9 +89,7 @@ export class StatsController {
       }
 
       try {
-        const clientCount = await this.oidcAdapter.client.countClients();
-        const clientStats = await this.oidcAdapter.client.getClientStatistics();
-        stats.clients = { total: clientCount, ...clientStats };
+        stats.clients = await this.oidcAdapter.client.getClientStatistics();
       } catch (err) {
         this.logger.error(err as Error, { section: 'clients' });
         stats.clients = { error: 'Failed to retrieve client statistics' };

@@ -146,6 +146,17 @@ export class OpsSocialCallbackService {
       return { success: false, error: 'Invalid provider' };
     }
 
+    // Validate the redirect destination before storing the sensitive one-time
+    // authorization code. Invalid deployment configuration must not leave an
+    // orphaned callback ref in Redis.
+    const baseDomain = parseBaseDomain(config.deployment?.url || '');
+    if (!baseDomain) {
+      this.logger.error('ops_social_callback_invalid_base_domain', {
+        deploymentUrl: config.deployment?.url,
+      });
+      return { success: false, error: 'Service misconfigured' };
+    }
+
     this.logger.info('ops_social_callback', {
       provider: providerSlug,
       tenant_id: tenantId,
@@ -162,17 +173,17 @@ export class OpsSocialCallbackService {
       timestamp: Date.now(),
     });
 
-    await this.redis.set(refKey, refData, 'EX', REF_TTL_SECONDS);
-
-    // 3. Build redirect URL back to originating tenant
-    const baseDomain = parseBaseDomain(config.deployment?.url || '');
-    if (!baseDomain) {
-      this.logger.error('ops_social_callback_invalid_base_domain', {
-        deploymentUrl: config.deployment?.url,
+    const stored = await this.redis.set(refKey, refData, 'EX', REF_TTL_SECONDS);
+    if (stored === null) {
+      this.logger.error('ops_social_callback_store_failed', {
+        provider: providerSlug,
+        tenant_id: tenantId,
+        ref,
       });
-      return { success: false, error: 'Service misconfigured' };
+      return { success: false, error: 'Service unavailable' };
     }
 
+    // 3. Build redirect URL back to originating tenant
     const redirectUrl = new URL(
       `/auth/social/${providerSlug}/complete`,
       `https://${tenantId}.${baseDomain}`

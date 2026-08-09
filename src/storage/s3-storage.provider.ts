@@ -23,22 +23,29 @@ const sanitizeNonEmpty = (value: unknown): string => {
 
 /**
  * Validate the optional endpoint URL. Returns the trimmed URL when it parses
- * as an absolute http(s) URL, an empty string otherwise. Configuration
- * validation upstream already restricts the type, but the provider checks
- * again so a stray whitespace value or a config edited outside the schema
- * cannot reach the SDK.
+ * as an absolute http(s) URL and an empty string when it is absent or blank.
+ * A supplied invalid value fails closed so a typo in a custom S3-compatible
+ * endpoint cannot silently redirect operations to AWS defaults.
  */
 const sanitizeOptionalUrl = (value: unknown): string => {
-  if (typeof value !== 'string') return '';
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') {
+    throw new Error('S3 endpoint must be a valid http(s) URL.');
+  }
   const trimmed = value.trim();
   if (!trimmed) return '';
+
+  let parsed: URL;
   try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-    return trimmed;
+    parsed = new URL(trimmed);
   } catch {
-    return '';
+    throw new Error('S3 endpoint must be a valid http(s) URL.');
   }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('S3 endpoint must be a valid http(s) URL.');
+  }
+  return trimmed;
 };
 
 /**

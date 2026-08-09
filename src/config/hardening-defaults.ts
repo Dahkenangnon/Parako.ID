@@ -15,17 +15,29 @@
  *   PARAKO_REQUEST_MS             Per-request lifetime cap
  */
 
-const envNumber = (key: string, fallback: number): number => {
+const envInteger = (
+  key: string,
+  fallback: number,
+  min: number,
+  max: number
+): number => {
   const raw = process.env[key];
-  if (!raw) return fallback;
+  if (raw === undefined || raw.trim() === '') return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) ? n : fallback;
+  return Number.isSafeInteger(n) && n >= min && n <= max ? n : fallback;
 };
+
+const MAX_ENV_INTEGER = Number.MAX_SAFE_INTEGER;
 
 export const HARDENING = {
   compression: {
-    threshold: envNumber('PARAKO_COMPRESSION_THRESHOLD', 1024),
-    brotliQuality: envNumber('PARAKO_COMPRESSION_QUALITY', 4),
+    threshold: envInteger(
+      'PARAKO_COMPRESSION_THRESHOLD',
+      1024,
+      0,
+      MAX_ENV_INTEGER
+    ),
+    brotliQuality: envInteger('PARAKO_COMPRESSION_QUALITY', 4, 0, 11),
     gzipLevel: 6,
     // Responses with sensitive secrets (CSRF tokens, session cookies) are not
     // compressed: the compression ratio leak is the BREACH side channel
@@ -39,9 +51,9 @@ export const HARDENING = {
   },
   cache: { varyIncludeAcceptLanguage: true },
   timeouts: {
-    keepAliveMs: envNumber('PARAKO_KEEPALIVE_MS', 65_000),
-    headersMs: envNumber('PARAKO_HEADERS_MS', 70_000),
-    requestMs: envNumber('PARAKO_REQUEST_MS', 300_000),
+    keepAliveMs: envInteger('PARAKO_KEEPALIVE_MS', 65_000, 1, MAX_ENV_INTEGER),
+    headersMs: envInteger('PARAKO_HEADERS_MS', 70_000, 1, MAX_ENV_INTEGER),
+    requestMs: envInteger('PARAKO_REQUEST_MS', 300_000, 1, MAX_ENV_INTEGER),
     tcpNoDelay: true,
   },
   oidcCache: {

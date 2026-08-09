@@ -21,6 +21,23 @@ export type ClientPreset =
   'web' | 'spa' | 'native' | 'm2m' | 'device' | 'api_management';
 
 /**
+ * Convert Parako's legacy `spa` application label into provider metadata.
+ * OIDC only defines `web` and `native`; the separate preset preserves the
+ * user-facing SPA classification without passing an invalid value downstream.
+ */
+export function normalizeClientApplicationType<
+  T extends { application_type?: ApplicationType; preset?: ClientPreset },
+>(data: T): T {
+  if (data.application_type !== 'spa') return data;
+
+  return {
+    ...data,
+    application_type: 'web',
+    preset: data.preset ?? 'spa',
+  } as T;
+}
+
+/**
  * Token endpoint authentication method
  */
 export type TokenEndpointAuthMethod =
@@ -31,9 +48,41 @@ export type TokenEndpointAuthMethod =
   | 'private_key_jwt';
 
 /**
+ * Whether the client's token endpoint authentication method uses a shared
+ * secret. An omitted method resolves to Parako's client_secret_basic default.
+ */
+export function clientAuthMethodUsesSecret(
+  method?: TokenEndpointAuthMethod
+): boolean {
+  return method === undefined || method.startsWith('client_secret_');
+}
+
+/**
  * Source of the client (for runtime tracking)
  */
 export type ClientSource = 'static' | 'adapter';
+
+/**
+ * Grant and response types supported by Parako's oidc-provider configuration.
+ *
+ * Keep these lists aligned with the provider features enabled in
+ * `src/oidc/specs/feature.ts`. Access-token implicit response types are not
+ * enabled by oidc-provider and must not be offered or persisted.
+ */
+export const SUPPORTED_GRANT_TYPES = [
+  'authorization_code',
+  'implicit',
+  'refresh_token',
+  'client_credentials',
+  'urn:ietf:params:oauth:grant-type:device_code',
+] as const;
+
+export const SUPPORTED_RESPONSE_TYPES = [
+  'code',
+  'id_token',
+  'code id_token',
+  'none',
+] as const;
 
 /**
  * Unified OIDC Client data interface
@@ -46,6 +95,15 @@ export interface OidcClientData {
 
   client_secret?: string;
   token_endpoint_auth_method?: TokenEndpointAuthMethod;
+  token_endpoint_auth_signing_alg?: string;
+
+  // Client keys used by asymmetric authentication and encrypted responses.
+  // node-oidc-provider accepts exactly one of an inline public JWKS or a JWKS URI.
+  jwks_uri?: string;
+  jwks?: {
+    keys: Array<Record<string, unknown>>;
+    [key: string]: unknown;
+  };
 
   // URIs
   redirect_uris?: string[];
@@ -339,15 +397,15 @@ export const RESPONSE_TYPES = [
     recommended: false,
   },
   {
-    value: 'token',
-    label: 'Token',
-    description: 'Access token (implicit flow)',
-    recommended: false,
-  },
-  {
     value: 'code id_token',
     label: 'Code + ID Token',
     description: 'Hybrid flow with code and ID token',
+    recommended: false,
+  },
+  {
+    value: 'none',
+    label: 'None',
+    description: 'Authorization response without credentials',
     recommended: false,
   },
 ] as const;

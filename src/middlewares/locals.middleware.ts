@@ -14,6 +14,16 @@ import {
 } from '../utils/views.js';
 import { WEB_SAFE_FONTS } from '../config/constants.js';
 
+const CANONICAL_PATH_BASE = 'https://parako.local';
+
+function canonicalPath(originalUrl: string): string {
+  try {
+    return new URL(originalUrl, CANONICAL_PATH_BASE).pathname;
+  } catch {
+    return '/';
+  }
+}
+
 /**
  * Unified middleware class for handling all locals (configuration and user-related)
  */
@@ -104,6 +114,19 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       };
 
       const authConfig = config.security.authentication;
+      const customIdentifiers = (
+        authConfig.custom_identifiers?.enabled
+          ? (authConfig.custom_identifiers.fields ?? []).filter(
+              (field: any) => field.usable_for_login
+            )
+          : []
+      ).map((field: any) => ({
+        slot: field.slot,
+        key: field.key,
+        name: field.name,
+        hint: field.hint_for_user,
+      }));
+
       res.locals.authentication = {
         loginMethods: {
           email:
@@ -119,6 +142,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
             authConfig.login.login_methods.some((cred: string) =>
               cred.includes('custom_identifier')
             ) || false,
+          customIdentifiers,
           bothEnabled: authConfig.login.login_methods.length > 1 || false,
         },
 
@@ -128,17 +152,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
             authConfig.signup.contact_channels?.full_name?.required ?? true,
         },
 
-        customIdentifiers: (authConfig.custom_identifiers?.enabled
-          ? (authConfig.custom_identifiers.fields ?? []).filter(
-              (f: any) => f.usable_for_login
-            )
-          : []
-        ).map((f: any) => ({
-          slot: f.slot,
-          key: f.key,
-          name: f.name,
-          hint: f.hint_for_user,
-        })),
+        customIdentifiers,
 
         emailVerificationRequired:
           authConfig.signup.require_email_verification || false,
@@ -155,9 +169,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
 
       const baseUrl =
         config.deployment.url || `${req.protocol}://${req.hostname}`;
-      const pathOnly = req.originalUrl.split('?')[0];
-      const safePath = encodeURI(pathOnly);
-      res.locals.canonical_url = `${baseUrl}${safePath}`;
+      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
 
       res.locals.og = {
         title: config.application.title,
@@ -248,9 +260,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       };
 
       const baseUrl = `http://localhost:9007`;
-      const pathOnly = req.originalUrl.split('?')[0];
-      const safePath = encodeURI(pathOnly);
-      res.locals.canonical_url = `${baseUrl}${safePath}`;
+      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
 
       res.locals.og = {
         title: 'Parako.ID',
@@ -500,12 +510,13 @@ export class LocalsMiddleware implements ILocalsMiddleware {
   ): Promise<void> => {
     try {
       const config = this.configManager.getConfig();
+      const loginRoute =
+        res.locals.routes?.authFull?.login ??
+        `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`;
 
       if (!(await this.sessionManager.isAuthenticated(req))) {
         this.sessionManager.clearAuthenticationData(req);
-        res.redirect(
-          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
-        );
+        res.redirect(loginRoute);
         return;
       }
 
@@ -513,9 +524,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
 
       if (!userData) {
         this.sessionManager.clearAuthenticationData(req);
-        res.redirect(
-          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
-        );
+        res.redirect(loginRoute);
         return;
       }
 
@@ -602,7 +611,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       this.logger.error(error as Error, {
         context: 'error_in_user_locals_middleware_set_account_locals',
       });
-      next();
+      next(error);
     }
   };
 

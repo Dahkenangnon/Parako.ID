@@ -199,6 +199,10 @@ export function createReleaseManifest({
     },
   };
 
+  return assertValidManifest(manifest);
+}
+
+export function assertValidManifest(manifest) {
   const errors = validateManifest(manifest);
   if (errors.length > 0) {
     throw new Error(`Invalid release manifest: ${errors.join('; ')}`);
@@ -218,24 +222,34 @@ export function writeReleaseManifest(options) {
 const isEntrypoint =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
-if (isEntrypoint) {
-  const [releaseDir, version, architecture] = process.argv.slice(2);
+export function main({
+  argv = process.argv.slice(2),
+  stdout = console.log,
+  stderr = console.error,
+  writeManifest = writeReleaseManifest,
+} = {}) {
+  const [releaseDir, version, architecture] = argv;
   if (!releaseDir || !version || !architecture) {
-    console.error(
+    stderr(
       'Usage: node scripts/create-release-manifest.mjs <release-dir> <version> <x64|arm64>'
     );
-    process.exit(2);
+    return 2;
   }
   try {
-    console.log(
-      writeReleaseManifest({
+    stdout(
+      writeManifest({
         releaseDir: path.resolve(releaseDir),
         version,
         architecture,
       })
     );
+    return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    stderr(error instanceof Error ? error.message : String(error));
+    return 1;
   }
+}
+
+if (isEntrypoint) {
+  process.exitCode = main();
 }

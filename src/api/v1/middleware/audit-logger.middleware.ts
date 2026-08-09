@@ -19,13 +19,18 @@ export interface AuditLoggerDependencies {
         ip_address?: string;
         user_agent?: string;
         client_id?: string;
-        metadata?: Record<string, unknown>;
         actor?: { actor_type: string; actor_id: string };
+        target?: {
+          target_type: 'system';
+          entity_name: string;
+          entity_data: Record<string, unknown>;
+        };
       }
     ): void;
   };
   logger: {
     debug(message: string, context?: Record<string, unknown>): void;
+    warn(message: string, context?: Record<string, unknown>): void;
   };
 }
 
@@ -42,43 +47,68 @@ export function createApiAuditLogger(
 ): RequestHandler {
   return (req, res, next) => {
     const startTime = Date.now();
+    const method = req.method;
+    const path = req.path;
+    const ipAddress = req.ip;
+    const userAgent = req.get('user-agent');
+    const clientId = req.apiAuth?.client_id;
+    const scope = req.apiAuth?.scope;
+    let recorded = false;
 
-    res.on('finish', () => {
-      const duration = Date.now() - startTime;
-      const apiAuth = req.apiAuth;
+    const recordActivity = (completion: 'finished' | 'aborted'): void => {
+      if (recorded) return;
+      recorded = true;
 
-      deps.activityService.info(
-        'api_request',
-        `${req.method} ${req.path} ${res.statusCode}`,
-        null, // no user — client_credentials call
-        {
-          ip_address: req.ip,
-          user_agent: req.get('user-agent'),
-          client_id: apiAuth?.client_id,
-          metadata: {
-            method: req.method,
-            path: req.path,
-            status_code: res.statusCode,
-            duration_ms: duration,
-            scope: apiAuth?.scope,
-          },
-          actor: apiAuth
-            ? {
-                actor_type: 'service',
-                actor_id: apiAuth.client_id,
-              }
-            : undefined,
-        }
-      );
+      const duration = Math.max(0, Date.now() - startTime);
+      const logContext = {
+        method,
+        path,
+        status: res.statusCode,
+        client_id: clientId,
+      };
+
+      try {
+        deps.activityService.info(
+          'api_request',
+          `${method} ${path} ${res.statusCode}`,
+          null, // no user — client_credentials call
+          {
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            client_id: clientId,
+            actor:
+              clientId !== undefined
+                ? {
+                    actor_type: 'service',
+                    actor_id: clientId,
+                  }
+                : undefined,
+            target: {
+              target_type: 'system',
+              entity_name: 'management_api_request',
+              entity_data: {
+                method,
+                path,
+                status_code: res.statusCode,
+                duration_ms: duration,
+                scope,
+                completion,
+              },
+            },
+          }
+        );
+      } catch {
+        deps.logger.warn('Failed to record API audit activity', logContext);
+      }
 
       deps.logger.debug('API request completed', {
-        method: req.method,
-        path: req.path,
-        status: res.statusCode,
+        ...logContext,
         duration,
-        client_id: apiAuth?.client_id,
       });
-    });
+    };
+
+    res.on('finish', () => recordActivity('finished'));
+    res.on('close', () => recordActivity('aborted'));
 
     next();
   };

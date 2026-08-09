@@ -18,7 +18,7 @@ export default function Introspection(configManager: IConfigManager) {
       token: { clientId?: string } | undefined
     ) {
       if (
-        client?.introspectionEndpointAuthMethod === 'none' &&
+        client?.clientAuthMethod === 'none' &&
         token?.clientId !== ctx?.oidc?.client?.clientId
       ) {
         return false;

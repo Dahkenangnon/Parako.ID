@@ -7,9 +7,11 @@
 
 import { z } from 'zod';
 
+const identifierFilter = z.string().trim().min(1).max(255);
+
 export const sessionQuerySchema = z.object({
-  username: z.string().max(255).optional(),
-  client_id: z.string().max(255).optional(),
+  username: identifierFilter.optional(),
+  client_id: identifierFilter.optional(),
   active: z.enum(['true', 'false']).optional(),
 });
 

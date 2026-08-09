@@ -47,6 +47,7 @@ export interface JwksControllerDeps {
     rotate(tenantId?: string): Promise<void>;
     promoteKeys(tenantId?: string): Promise<number>;
     retireExpiredKeys(tenantId?: string): Promise<number>;
+    retireKey(kid: string, tenantId?: string): Promise<boolean>;
   };
   getTenantId: () => string;
   redisPubSub?: {
@@ -204,10 +205,8 @@ export class JwksController {
   /**
    * Retire a specific key by kid.
    *
-   * Validates the key exists and is not already retired. Single-key
-   * retirement requires extending the key store interface; for v1 the
-   * key is marked conceptually and will be retired at the next
-   * `retireExpired` cycle.
+   * Validates the key exists, is not already retired, and is not the last
+   * promoted active signing key before persisting its retirement.
    */
   retire = async (
     req: Request,
@@ -228,16 +227,34 @@ export class JwksController {
         throw conflict(`Key '${req.params.kid}' is already retired`);
       }
 
-      // Single-key retirement is not yet supported by the key store
-      // interface. The key will be retired at the next retireExpired cycle.
-      this.logger.info('Key marked for retirement via API', {
+      if (
+        key.status === 'active' &&
+        key.promoted &&
+        !keys.some(
+          candidate =>
+            candidate.kid !== key.kid &&
+            candidate.status === 'active' &&
+            candidate.promoted
+        )
+      ) {
+        throw conflict('Cannot retire the last promoted active signing key');
+      }
+
+      const retired = await this.keyStore.retireKey(req.params.kid, tenantId);
+      if (!retired) {
+        throw conflict(
+          `Key '${req.params.kid}' could not be retired because its state changed`
+        );
+      }
+
+      this.logger.info('Key retired via API', {
         kid: req.params.kid,
         tenantId,
         currentStatus: key.status,
       });
 
       apiAccepted(res, {
-        message: `Key '${req.params.kid}' has been marked for retirement and will be retired at the next rotation cycle`,
+        message: `Key '${req.params.kid}' has been retired`,
         kid: req.params.kid,
         current_status: key.status,
       });

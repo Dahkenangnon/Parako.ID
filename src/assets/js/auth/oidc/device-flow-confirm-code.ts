@@ -195,7 +195,7 @@
       // - Contain dots
       // - Are relatively short
       // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*(?:\.[a-zA-Z0-9]+)+$/;
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
@@ -254,17 +254,20 @@
         this.isSubmitting = true;
         this.log('Form submission started');
 
+        // Keep the clicked submitter enabled until the browser has captured its
+        // name/value for the request (notably the named abort button).
+        window.setTimeout(() => {
+          this.disableAllButtons();
+        }, 0);
+
         // Set a timeout to re-enable the form if something goes wrong
         this.submissionTimeout = window.setTimeout(() => {
-          if (this.isSubmitting) {
-            this.log(
-              'Submission timeout reached, re-enabling form',
-              null,
-              'warn'
-            );
-            this.isSubmitting = false;
-            this.enableAllButtons();
-          }
+          this.log(
+            'Submission timeout reached, re-enabling form',
+            null,
+            'warn'
+          );
+          this.enableAllButtons();
         }, this.config.submissionTimeout);
       });
 
@@ -291,7 +294,6 @@
           }
 
           this.log('Continue button clicked');
-          this.disableAllButtons();
           this.updateContinueButtonLoading();
         });
         this.log('Continue button handler added');
@@ -308,7 +310,6 @@
           }
 
           this.log('Abort button clicked');
-          this.disableAllButtons();
           this.updateAbortButtonLoading();
         });
         this.log('Abort button handler added');
@@ -321,9 +322,7 @@
      * Update continue button with loading state
      */
     private updateContinueButtonLoading(): void {
-      if (!this.continueButton) return;
-
-      this.continueButton.innerHTML = `
+      this.continueButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -336,9 +335,7 @@
      * Update abort button with loading state
      */
     private updateAbortButtonLoading(): void {
-      if (!this.abortButton) return;
-
-      this.abortButton.innerHTML = `
+      this.abortButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -429,11 +426,6 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
       if (this.continueButton) {
         this.continueButton.disabled = true;
         this.continueButton.classList.add('disabled-button');
@@ -444,11 +436,9 @@
         this.abortButton.classList.add('disabled-button');
       }
 
-      // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      // This method is scheduled only by the submit listener of the cached form.
+      this.form!.style.pointerEvents = 'none';
+      this.form!.classList.add('form-disabled');
 
       this.log('All buttons disabled');
     }
@@ -459,11 +449,8 @@
     private enableAllButtons(): void {
       this.isSubmitting = false;
 
-      // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable continue button and restore visual state
       if (this.continueButton) {
@@ -489,11 +476,8 @@
         this.abortButton.classList.remove('disabled-button');
       }
 
-      // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      this.form!.style.pointerEvents = 'auto';
+      this.form!.classList.remove('form-disabled');
 
       this.log('All buttons enabled');
     }
@@ -530,7 +514,7 @@
             submissionTimeout: 10000,
           },
           translations: data.translations || {},
-          debug: data.config?.debug || false,
+          debug: data.config?.debug,
           errorRecoveryTimeout: data.config?.errorRecoveryTimeout || 10000,
         });
 

@@ -37,6 +37,12 @@ export function createConnectRedisClientAdapter(client: Redis) {
           return client.set(key, value, 'EXAT', expiration.value);
         case 'PXAT':
           return client.set(key, value, 'PXAT', expiration.value);
+        default:
+          throw new Error(
+            `Unsupported Redis expiration type: ${String(
+              (expiration as { type: unknown }).type
+            )}`
+          );
       }
     },
 

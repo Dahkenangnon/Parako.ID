@@ -18,7 +18,10 @@ import type {
   PaginationOptions,
   QueryOptions,
 } from '../interfaces/base.repository.js';
-import { AbstractPrismaRepository } from './base.repository.js';
+import {
+  AbstractPrismaRepository,
+  normalizeToPrisma,
+} from './base.repository.js';
 
 function computeName(
   givenName: string | null | undefined,
@@ -33,6 +36,41 @@ function computeName(
   if (family) return family;
   // Fall back to whatever is stored, then custom_identifier_1
   return storedName?.trim() || customIdentifier1?.trim() || undefined;
+}
+
+/**
+ * User roles are stored as a JSON-encoded string in both Prisma schemas.
+ * Translate the repository's cross-database membership filters into exact
+ * JSON-string element searches instead of Prisma's list operators, which are
+ * invalid for a scalar string column.
+ */
+function normalizeUserFilterToPrisma(
+  filter: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized = normalizeToPrisma(filter);
+  const rolesFilter = filter.roles;
+  const requestedRoles = Array.isArray(rolesFilter)
+    ? rolesFilter
+    : rolesFilter !== null &&
+        typeof rolesFilter === 'object' &&
+        Array.isArray((rolesFilter as Record<string, unknown>).$in)
+      ? ((rolesFilter as Record<string, unknown>).$in as unknown[])
+      : undefined;
+
+  if (!requestedRoles) return normalized;
+
+  delete normalized.roles;
+  const roleMembership = {
+    OR: requestedRoles
+      .filter((role): role is string => typeof role === 'string')
+      .map(role => ({ roles: { contains: JSON.stringify(role) } })),
+  };
+
+  if (normalized.OR !== undefined) {
+    return { AND: [normalized, roleMembership] };
+  }
+
+  return { ...normalized, ...roleMembership };
 }
 
 const USER_INCLUDE = {
@@ -281,7 +319,7 @@ export class PrismaUserRepository
           this.prisma.user.findMany({ ...args, include: USER_INCLUDE }),
         count: args => this.prisma.user.count(args as Prisma.UserCountArgs),
       },
-      filter as Record<string, unknown>,
+      normalizeUserFilterToPrisma(filter as Record<string, unknown>),
       opts,
       row => toIUser(row as UserFull)
     );
@@ -467,8 +505,17 @@ export class PrismaUserRepository
           data.name
         ) ?? null;
     }
+    if (data.nickname !== undefined)
+      updateData.nickname = data.nickname ?? null;
+    if (data.middle_name !== undefined)
+      updateData.middle_name = data.middle_name ?? null;
+    if (data.gender !== undefined) updateData.gender = data.gender ?? null;
+    if (data.birthdate !== undefined)
+      updateData.birthdate = data.birthdate ?? null;
     if (data.phone_number !== undefined)
       updateData.phone_number = data.phone_number ?? null;
+    if (data.profile !== undefined) updateData.profile = data.profile ?? null;
+    if (data.website !== undefined) updateData.website = data.website ?? null;
     if (data.email_verified !== undefined)
       updateData.email_verified = data.email_verified;
     if (data.phone_number_verified !== undefined)
@@ -495,11 +542,29 @@ export class PrismaUserRepository
         data.email_verification_expires ?? null;
     if (data.picture !== undefined) updateData.picture = data.picture ?? null;
     if (data.locale !== undefined) updateData.locale = data.locale ?? null;
+    if (data.country !== undefined) updateData.country = data.country ?? null;
+    if (data.zoneinfo !== undefined)
+      updateData.zoneinfo = data.zoneinfo ?? null;
+    if (data.city !== undefined) updateData.city = data.city ?? null;
+    if (data.address !== undefined) updateData.address = data.address ?? null;
+    if (data.street_address !== undefined)
+      updateData.street_address = data.street_address ?? null;
+    if (data.region !== undefined) updateData.region = data.region ?? null;
+    if (data.postal_code !== undefined)
+      updateData.postal_code = data.postal_code ?? null;
     if (data.theme !== undefined) updateData.theme = data.theme ?? null;
+    if (data.sidebar_expanded !== undefined)
+      updateData.sidebar_expanded = data.sidebar_expanded;
     if (data.last_login !== undefined)
       updateData.last_login = data.last_login ?? null;
     if (data.roles !== undefined) updateData.roles = JSON.stringify(data.roles);
+    if (data.blocked_from !== undefined)
+      updateData.blocked_from = JSON.stringify(data.blocked_from);
     if (data.sub !== undefined) updateData.sub = data.sub ?? null;
+    if (data.account_is_anonymized !== undefined)
+      updateData.account_is_anonymized = data.account_is_anonymized;
+    if (data.register_with !== undefined)
+      updateData.register_with = data.register_with;
     if (data.auth_provider !== undefined)
       updateData.auth_provider = data.auth_provider ?? null;
     if (data.custom_identifier_1 !== undefined)
@@ -523,7 +588,9 @@ export class PrismaUserRepository
 
   async count(filter?: Record<string, unknown>): Promise<number> {
     return this.prisma.user.count({
-      where: filter as Prisma.UserWhereInput,
+      where: filter
+        ? (normalizeUserFilterToPrisma(filter) as Prisma.UserWhereInput)
+        : undefined,
     });
   }
 
@@ -542,6 +609,14 @@ export class PrismaUserRepository
   async findBySecondaryEmail(email: string): Promise<IUser | null> {
     const row = await this.prisma.user.findFirst({
       where: { recovery: { secondary_email: email } },
+      include: USER_INCLUDE,
+    });
+    return row ? toIUser(row) : null;
+  }
+
+  async findByRecoveryTokenHash(tokenHash: string): Promise<IUser | null> {
+    const row = await this.prisma.user.findFirst({
+      where: { recovery: { secondary_email_token: tokenHash } },
       include: USER_INCLUDE,
     });
     return row ? toIUser(row) : null;
@@ -633,15 +708,11 @@ export class PrismaUserRepository
   }
 
   async consumeBackupCode(id: string, codeHash: string): Promise<boolean> {
-    const code = await this.prisma.userBackupCode.findFirst({
+    const result = await this.prisma.userBackupCode.updateMany({
       where: { user_id: id, code_hash: codeHash, used: false },
-    });
-    if (!code) return false;
-    await this.prisma.userBackupCode.update({
-      where: { id: code.id },
       data: { used: true },
     });
-    return true;
+    return result.count > 0;
   }
 
   async addSecurityQuestion(id: string, q: ISecurityQuestion): Promise<void> {
@@ -734,7 +805,7 @@ export class PrismaUserRepository
     opts?: QueryOptions
   ): Promise<IUser[]> {
     const rows = await this.prisma.user.findMany({
-      where: filter as Prisma.UserWhereInput,
+      where: normalizeUserFilterToPrisma(filter) as Prisma.UserWhereInput,
       take: opts?.limit,
       skip: opts?.skip,
       orderBy: opts?.sort

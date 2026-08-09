@@ -13,9 +13,8 @@ export async function formatCsvExport(
     const formatted: Record<string, string> = {};
     for (const col of columnDefs) {
       const value = row[col.field];
-      formatted[col.header] = col.formatter
-        ? col.formatter(value)
-        : formatValue(value);
+      const cell = col.formatter ? col.formatter(value) : formatValue(value);
+      formatted[col.header] = neutralizeSpreadsheetFormula(cell);
     }
     return formatted;
   });
@@ -80,4 +79,8 @@ function formatValue(value: unknown): string {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.join(';');
   return String(value);
+}
+
+function neutralizeSpreadsheetFormula(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
 }

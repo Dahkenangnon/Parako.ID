@@ -48,10 +48,21 @@ export default function RenderError(
     const currentYear = new Date().getFullYear();
 
     const locale = oidcUtils.getLocale(ctx);
+    const errorType =
+      typeof out?.error === 'string' && /^[a-z_]+$/.test(out.error)
+        ? out.error.slice(0, 64)
+        : 'server_error';
+    const errorMessage =
+      typeof out?.error_description === 'string' &&
+      out.error_description.length > 0
+        ? out.error_description.slice(0, 500)
+        : 'An error occurred during the authentication process.';
 
     await ctx.render(viewResolver.views.auth.oidc.error, {
       out,
       error,
+      errorType,
+      errorMessage,
       locale,
       currentYear,
       title: ctx.t ? ctx.t('oidc.errors.page_title') : 'Error Occurred',

@@ -81,7 +81,8 @@ export class PlatformTenantMiddleware {
     }
 
     // 4. Annotate request with resolved role
-    (req as any).platformRole = resolvedRole;
+    (req as Request & { platformRole?: PlatformRole }).platformRole =
+      resolvedRole;
 
     next();
   };

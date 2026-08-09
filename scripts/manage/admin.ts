@@ -5,7 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
-import { MongoClient } from 'mongodb';
+import { MongoClient, type Document } from 'mongodb';
 import { createPrismaClient } from '../../src/db/prisma.js';
 import {
   findProjectRoot,
@@ -13,6 +13,7 @@ import {
   resolveAdapterEnvironment,
 } from './database.js';
 import { isMainModule } from './shared/entrypoint.js';
+import { getPackageInfo } from './shared/utils.js';
 
 export function hashActivationToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -38,7 +39,8 @@ function parseRoles(value: unknown): string[] {
   }
 }
 
-interface ExistingAdmin {
+interface ExistingAdmin extends Document {
+  id?: string;
   email?: string | null;
   password?: string | null;
 }
@@ -67,31 +69,50 @@ function bootstrapContext() {
   loadRuntimeEnvironment(root);
   const resolved = resolveAdapterEnvironment(root);
   const deploymentUrl = process.env.DEPLOYMENT_URL ?? '';
-  if (!deploymentUrl.startsWith('https://')) {
-    throw new Error('DEPLOYMENT_URL must be configured with HTTPS.');
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(deploymentUrl);
+    if (parsedUrl.protocol !== 'https:' || !parsedUrl.hostname) {
+      throw new Error('invalid HTTPS URL');
+    }
+  } catch {
+    throw new Error(
+      'DEPLOYMENT_URL must be configured with HTTPS and be a valid URL.'
+    );
   }
-  return { root, deploymentUrl, ...resolved };
+  if (parsedUrl.username || parsedUrl.password) {
+    throw new Error('DEPLOYMENT_URL must not contain credentials.');
+  }
+  const serverPort = Number(process.env.DEPLOYMENT_SERVER_PORT ?? 9007);
+  if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65_535) {
+    throw new Error(
+      'DEPLOYMENT_SERVER_PORT must be an integer between 1 and 65535.'
+    );
+  }
+  return { root, deploymentUrl, serverPort, ...resolved };
 }
+
+type BootstrapContext = ReturnType<typeof bootstrapContext>;
 
 async function createPrismaActivation(
   adapter: 'sqlite' | 'postgresql',
   email: string,
   tokenHash: string,
-  expiresAt: Date
+  expiresAt: Date,
+  context: BootstrapContext
 ): Promise<void> {
-  const resolved = bootstrapContext();
-  const sqlitePath = resolved.env.DATABASE_URL?.replace(/^file:/, '');
+  const sqlitePath = context.env.DATABASE_URL?.replace(/^file:/, '');
   const prisma = createPrismaClient({
     deployment: {
       environment: 'production',
-      server: { port: Number(process.env.DEPLOYMENT_SERVER_PORT ?? 9007) },
+      server: { port: context.serverPort },
     },
     storage: {
       adapter,
       sqlite: adapter === 'sqlite' ? { path: sqlitePath! } : undefined,
       postgresql:
         adapter === 'postgresql'
-          ? { url: resolved.env.DATABASE_URL! }
+          ? { url: context.env.DATABASE_URL! }
           : undefined,
     },
     multiTenancy: { enabled: false },
@@ -155,7 +176,7 @@ async function createMongoActivation(
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
   try {
     await client.connect();
-    const users = client.db().collection('users');
+    const users = client.db().collection<ExistingAdmin>('users');
     const admins = await users
       .find({ roles: { $in: ['admin', 'superadmin', 'platform_admin'] } })
       .limit(2)
@@ -212,7 +233,8 @@ export async function createAdminActivation(
     throw new Error('Activation expiry must be between 5 and 1440 minutes.');
   }
 
-  const { adapter, deploymentUrl } = bootstrapContext();
+  const context = bootstrapContext();
+  const { adapter, deploymentUrl } = context;
   const token = crypto.randomBytes(32).toString('hex');
   const tokenHash = hashActivationToken(token);
   const expiresAt = new Date(Date.now() + expiresMinutes * 60_000);
@@ -224,7 +246,8 @@ export async function createAdminActivation(
       adapter,
       email.toLowerCase(),
       tokenHash,
-      expiresAt
+      expiresAt,
+      context
     );
   }
   return buildActivationUrl(deploymentUrl, token);
@@ -234,7 +257,8 @@ export function buildProgram(): Command {
   const program = new Command();
   program
     .name('parako-admin')
-    .description('Create the first single-use administrator activation URL');
+    .description('Create the first single-use administrator activation URL')
+    .version(getPackageInfo().version);
   program
     .command('bootstrap')
     .requiredOption('--email <address>', 'Email for the first administrator')
@@ -258,13 +282,18 @@ export function buildProgram(): Command {
   return program;
 }
 
+/** Execute the administrator CLI and translate failures to process status. */
+export async function runAdminCli(argv = process.argv): Promise<void> {
+  try {
+    await buildProgram().parseAsync(argv);
+  } catch (error) {
+    console.error(
+      `Administrator bootstrap failed: ${error instanceof Error ? error.message : String(error)}`
+    );
+    process.exitCode = 1;
+  }
+}
+
 if (isMainModule(import.meta.url)) {
-  buildProgram()
-    .parseAsync(process.argv)
-    .catch(error => {
-      console.error(
-        `Administrator bootstrap failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-      process.exitCode = 1;
-    });
+  void runAdminCli();
 }

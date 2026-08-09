@@ -79,6 +79,12 @@ const FILTER_OPERATIONS = new Set([
   'groupBy',
 ]);
 
+const UPDATE_OPERATIONS = new Set([
+  'update',
+  'updateMany',
+  'updateManyAndReturn',
+]);
+
 /**
  * Creates a Prisma client extension that enforces tenant isolation.
  *
@@ -98,6 +104,12 @@ export function createTenantExtension(
   rawClient?: PrismaClient,
   defineExtension: DefineExtension = Prisma.defineExtension
 ) {
+  if (adapter === 'postgresql' && !rawClient) {
+    throw new Error(
+      '[tenant-extension] A raw Prisma client is required for PostgreSQL RLS'
+    );
+  }
+
   return defineExtension({
     name: 'tenant-isolation',
     query: {
@@ -166,14 +178,21 @@ export function createTenantExtension(
             }
           }
 
+          if (UPDATE_OPERATIONS.has(operation)) {
+            const a = args as any;
+            if (a.data) {
+              a.data = { ...a.data, tenant_id: tenantId };
+            }
+          }
+
           if (FILTER_OPERATIONS.has(operation)) {
             const a = args as any;
             a.where = { ...a.where, tenant_id: tenantId };
           }
 
-          if (adapter === 'postgresql' && rawClient) {
+          if (adapter === 'postgresql') {
             return executePostgresqlTenantQuery(
-              rawClient,
+              rawClient!,
               model,
               operation,
               args,

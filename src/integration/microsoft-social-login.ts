@@ -48,10 +48,6 @@ export class MicrosoftSocialLogin
    * Initialize Microsoft OpenID Connect client using the discovery API
    */
   private async initializeMicrosoftClient(): Promise<void> {
-    if (this.remoteConfig) {
-      return;
-    }
-
     try {
       const providerConfig = this.getDefaultProviderConfig<OidcProviderConfig>(
         this.provider
@@ -90,7 +86,9 @@ export class MicrosoftSocialLogin
         }
       );
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'microsoft_oidc_client_init_failed',
         provider: 'microsoft',
       });
@@ -126,15 +124,6 @@ export class MicrosoftSocialLogin
 
       const providerSessionData = stateVerification.sessionData!;
 
-      // Additional validation for required parameters
-      if (!req.query.code) {
-        this.cleanupSocialLoginSession(req);
-        return {
-          success: false,
-          error: 'Authorization code is missing from callback',
-        };
-      }
-
       const getCurrentUrl = () => {
         const protocol = req.get('x-forwarded-proto') || req.protocol;
         const host = req.get('x-forwarded-host') || req.get('host');
@@ -153,8 +142,12 @@ export class MicrosoftSocialLogin
           }
         );
       } catch (callbackError) {
-        const technicalError = (callbackError as Error).message;
-        this.logger.error(callbackError as Error, {
+        const normalizedError =
+          callbackError instanceof Error
+            ? callbackError
+            : new Error(String(callbackError));
+        const technicalError = normalizedError.message;
+        this.logger.error(normalizedError, {
           context: 'microsoft_oidc_callback_exchange_failed',
           provider: 'microsoft',
           hasCode: !!req.query.code,
@@ -167,6 +160,15 @@ export class MicrosoftSocialLogin
           success: false,
           error: getUserFriendlyError('microsoft', technicalError),
         };
+      }
+
+      if (
+        typeof tokenSet.access_token !== 'string' ||
+        tokenSet.access_token.trim().length === 0
+      ) {
+        throw new Error(
+          'Microsoft token response did not include an access token'
+        );
       }
 
       this.logger.info('Microsoft token exchange successful', {
@@ -183,15 +185,25 @@ export class MicrosoftSocialLogin
       try {
         const userInfoResponse = await client.fetchProtectedResource(
           this.remoteConfig!,
-          tokenSet.access_token!,
+          tokenSet.access_token,
           new URL('https://graph.microsoft.com/oidc/userinfo'),
           'GET'
         );
 
+        if (!userInfoResponse.ok) {
+          throw new Error(
+            `Microsoft userinfo request failed: ${userInfoResponse.status} ${userInfoResponse.statusText}`
+          );
+        }
+
         userInfo = await userInfoResponse.json();
       } catch (userInfoError) {
-        const technicalError = (userInfoError as Error).message;
-        this.logger.error(userInfoError as Error, {
+        const normalizedError =
+          userInfoError instanceof Error
+            ? userInfoError
+            : new Error(String(userInfoError));
+        const technicalError = normalizedError.message;
+        this.logger.error(normalizedError, {
           context: 'microsoft_oidc_userinfo_failed',
           provider: 'microsoft',
           hasAccessToken: !!tokenSet.access_token,
@@ -216,13 +228,21 @@ export class MicrosoftSocialLogin
       const mappedTokens = this.mapTokenData(tokenSet);
 
       // Use common user integration handling
-      return this.handleUserIntegration(mappedProviderData, mappedTokens, req);
+      const result = await this.handleUserIntegration(
+        mappedProviderData,
+        mappedTokens,
+        req
+      );
+      this.cleanupSocialLoginSession(req);
+      return result;
     } catch (error) {
-      const technicalError = (error as Error).message;
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      const technicalError = normalizedError.message;
+      this.logger.error(normalizedError, {
         context: 'microsoft_oidc_callback_failed',
         provider: 'microsoft',
-        errorName: (error as Error).name,
+        errorName: normalizedError.name,
         errorMessage: technicalError,
         hasCode: !!req.query.code,
         hasState: !!req.query.state,
@@ -281,15 +301,14 @@ export class MicrosoftSocialLogin
 
       this.logger.info('Generated Microsoft OpenID Connect authorization URL', {
         provider: 'microsoft',
-        state,
-        codeVerifier: `${codeVerifier.substring(0, 8)}...`, // Log partial for debugging
-        url: redirectTo.href,
         scopes: providerConfig.scopes,
       });
 
       return redirectTo.href;
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'microsoft_oidc_authorization_url_failed',
         provider: 'microsoft',
       });
@@ -301,12 +320,18 @@ export class MicrosoftSocialLogin
    * Map Microsoft OpenID Connect user info to our standard format
    */
   mapProviderUserData(userInfo: any): ProviderUserData {
+    const subject =
+      typeof userInfo?.sub === 'string' ? userInfo.sub.trim() : '';
+    if (!subject) {
+      throw new Error(
+        'Microsoft user info did not include a subject identifier'
+      );
+    }
+
     return {
-      sub: userInfo.sub,
+      sub: subject,
       email: userInfo.email,
-      // Microsoft verifies emails for personal accounts
-      // For work/school accounts, the tenant admin controls this
-      email_verified: true,
+      email_verified: userInfo.email_verified === true,
       name: userInfo.name,
       given_name: userInfo.given_name,
       family_name: userInfo.family_name,
@@ -327,14 +352,22 @@ export class MicrosoftSocialLogin
    * Map Microsoft OpenID Connect tokens to our standard format
    */
   mapTokenData(tokenSet: any): TokenData {
+    const expiresAtSeconds =
+      typeof tokenSet.expires_at === 'number' &&
+      Number.isFinite(tokenSet.expires_at) &&
+      tokenSet.expires_at >= 0
+        ? tokenSet.expires_at
+        : undefined;
+
     return {
       access_token: tokenSet.access_token,
       refresh_token: tokenSet.refresh_token,
       id_token: tokenSet.id_token,
       token_type: tokenSet.token_type || 'Bearer',
-      expires_at: tokenSet.expires_at
-        ? new Date(tokenSet.expires_at * 1000)
-        : undefined,
+      expires_at:
+        expiresAtSeconds === undefined
+          ? undefined
+          : new Date(expiresAtSeconds * 1000),
       scope: tokenSet.scope,
     };
   }
@@ -382,7 +415,9 @@ export class MicrosoftSocialLogin
 
       return newTokens;
     } catch (error) {
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      this.logger.error(normalizedError, {
         context: 'microsoft_token_refresh_failed',
         integrationId,
       });

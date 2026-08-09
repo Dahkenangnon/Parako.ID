@@ -15,6 +15,39 @@ import dotenv from 'dotenv';
  */
 @injectable()
 export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapConfig> {
+  private static readonly ENV_MAPPINGS: Readonly<Record<string, string>> = {
+    DEPLOYMENT_ENVIRONMENT: 'deployment.environment',
+    DEPLOYMENT_URL: 'deployment.url',
+    DEPLOYMENT_SERVER_PORT: 'deployment.server.port',
+    STORAGE_ADAPTER: 'storage.adapter',
+    STORAGE_MONGODB_URI: 'storage.mongodb.uri',
+    STORAGE_SQLITE_PATH: 'storage.sqlite.path',
+    STORAGE_POSTGRESQL_URL: 'storage.postgresql.url',
+    FILE_STORAGE_PROVIDER: 'integrations.file_storage.provider',
+    OIDC_STORAGE_ADAPTER: 'oidcStorage.adapter',
+    REDIS_HOST: 'redis.host',
+    REDIS_PORT: 'redis.port',
+    REDIS_PASSWORD: 'redis.password',
+    REDIS_DATABASE: 'redis.database',
+    MULTI_TENANCY_ENABLED: 'multiTenancy.enabled',
+    MULTI_TENANCY_EXTRACTION_PRIORITY: 'multiTenancy.extraction_priority',
+    MULTI_TENANCY_TENANT_HEADER: 'multiTenancy.tenant_header',
+    MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE: 'multiTenancy.provider_pool.max_size',
+    MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS:
+      'multiTenancy.provider_pool.idle_ttl_ms',
+    MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS:
+      'multiTenancy.provider_pool.cleanup_interval_ms',
+    PARAKO_BOOTSTRAP_ADMIN_EMAIL: 'multiTenancy.bootstrap_admin_email',
+    PARAKO_BOOTSTRAP_ADMIN_PASSWORD: 'multiTenancy.bootstrap_admin_password',
+    SECURITY_LOGGING_ENABLED: 'security.logging.enabled',
+    SECURITY_LOGGING_LEVEL: 'security.logging.level',
+    SECURITY_LOGGING_PRETTY_PRINT: 'security.logging.pretty_print',
+    SECURITY_LOGGING_FILE_LOGGING_ENABLED:
+      'security.logging.file_logging.enabled',
+    SECURITY_LOGGING_FILE_LOGGING_DIRECTORY:
+      'security.logging.file_logging.directory',
+  };
+
   private cachedConfig: BootstrapConfig | null = null;
   private readonly envFilePath: string;
   private readonly envLocalFilePath: string;
@@ -32,9 +65,15 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
   private loadEnvironmentVariables(): Record<string, string> {
     const envVars: Record<string, string> = {};
 
+    for (const envKey of Object.keys(BootstrapConfigProvider.ENV_MAPPINGS)) {
+      const value = process.env[envKey];
+      if (value !== undefined) envVars[envKey] = value;
+    }
+
     if (existsSync(this.envFilePath)) {
       try {
         const result = dotenv.config({ path: this.envFilePath, quiet: true });
+        if (result.error) throw result.error;
         if (result.parsed) {
           Object.assign(envVars, result.parsed);
         }
@@ -52,6 +91,7 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
           path: this.envLocalFilePath,
           quiet: true,
         });
+        if (result.error) throw result.error;
         if (result.parsed) {
           Object.assign(envVars, result.parsed);
         }
@@ -74,59 +114,11 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
   ): BootstrapConfig {
     const config: any = {};
 
-    const envMappings: Record<string, string> = {
-      DEPLOYMENT_ENVIRONMENT: 'deployment.environment',
-      DEPLOYMENT_URL: 'deployment.url',
-      DEPLOYMENT_SERVER_PORT: 'deployment.server.port',
-      // DB abstraction adapter selection
-      STORAGE_ADAPTER: 'storage.adapter',
-      STORAGE_MONGODB_URI: 'storage.mongodb.uri',
-      STORAGE_SQLITE_PATH: 'storage.sqlite.path',
-      STORAGE_POSTGRESQL_URL: 'storage.postgresql.url',
-      // OIDC adapter bootstrap override (optional)
-      OIDC_STORAGE_ADAPTER: 'oidcStorage.adapter',
-      // Redis connection (session store, BullMQ, pub/sub)
-      REDIS_HOST: 'redis.host',
-      REDIS_PORT: 'redis.port',
-      REDIS_PASSWORD: 'redis.password',
-      REDIS_DATABASE: 'redis.database',
-      MULTI_TENANCY_ENABLED: 'multiTenancy.enabled',
-      MULTI_TENANCY_EXTRACTION_PRIORITY: 'multiTenancy.extraction_priority',
-      MULTI_TENANCY_TENANT_HEADER: 'multiTenancy.tenant_header',
-      MULTI_TENANCY_PROVIDER_POOL_MAX_SIZE:
-        'multiTenancy.provider_pool.max_size',
-      MULTI_TENANCY_PROVIDER_POOL_IDLE_TTL_MS:
-        'multiTenancy.provider_pool.idle_ttl_ms',
-      MULTI_TENANCY_PROVIDER_POOL_CLEANUP_INTERVAL_MS:
-        'multiTenancy.provider_pool.cleanup_interval_ms',
-      PARAKO_BOOTSTRAP_ADMIN_EMAIL: 'multiTenancy.bootstrap_admin_email',
-      PARAKO_BOOTSTRAP_ADMIN_PASSWORD: 'multiTenancy.bootstrap_admin_password',
-      SECURITY_LOGGING_ENABLED: 'security.logging.enabled',
-      SECURITY_LOGGING_LEVEL: 'security.logging.level',
-      SECURITY_LOGGING_PRETTY_PRINT: 'security.logging.pretty_print',
-      SECURITY_LOGGING_FILE_LOGGING_ENABLED:
-        'security.logging.file_logging.enabled',
-      SECURITY_LOGGING_FILE_LOGGING_DIRECTORY:
-        'security.logging.file_logging.directory',
-    };
-
-    for (const [envKey, configPath] of Object.entries(envMappings)) {
+    for (const [envKey, configPath] of Object.entries(
+      BootstrapConfigProvider.ENV_MAPPINGS
+    )) {
       if (envVars[envKey] !== undefined) {
         const keys = configPath.split('.');
-
-        // Block prototype pollution vectors
-        for (const key of keys) {
-          if (
-            key === '__proto__' ||
-            key === 'constructor' ||
-            key === 'prototype'
-          ) {
-            console.warn(`[BOOTSTRAP CONFIG WARNING] Blocked prototype pollution attempt in environment mapping: "${configPath}"
-               - Dangerous key "${key}" detected in configuration path
-               - Skipping environment variable: ${envKey}`);
-            continue;
-          }
-        }
 
         let current = config;
 
@@ -152,12 +144,18 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
           envKey.includes('INTERVAL_MS') ||
           envKey === 'REDIS_DATABASE'
         ) {
-          value = parseInt(value, 10);
+          value = Number(value);
         } else if (
           envKey.includes('ENABLED') ||
           envKey.includes('PRETTY_PRINT')
         ) {
-          value = value.toLowerCase() === 'true';
+          const normalized = value.toLowerCase();
+          if (normalized !== 'true' && normalized !== 'false') {
+            throw new Error(
+              `Invalid boolean value for ${envKey}: ${JSON.stringify(value)}`
+            );
+          }
+          value = normalized === 'true';
         }
 
         current[keys[keys.length - 1]] = value;
@@ -256,7 +254,11 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
     for (const key of keys) {
       partialPath = partialPath ? `${partialPath}.${key}` : key;
 
-      if (current && typeof current === 'object' && key in current) {
+      if (
+        current &&
+        typeof current === 'object' &&
+        Object.hasOwn(current, key)
+      ) {
         current = current[key];
       } else {
         if (arguments.length < 2) {
@@ -280,7 +282,11 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
     const hasEnvFile = existsSync(this.envFilePath);
     const hasEnvLocalFile = existsSync(this.envLocalFilePath);
 
-    return hasEnvFile || hasEnvLocalFile;
+    const hasProcessEnvironment = Object.keys(
+      BootstrapConfigProvider.ENV_MAPPINGS
+    ).some(key => process.env[key] !== undefined);
+
+    return hasEnvFile || hasEnvLocalFile || hasProcessEnvironment;
   }
 
   /**

@@ -67,6 +67,9 @@ export interface ISettings extends IBaseModel {
 }
 
 export type ISettingsMethods = {
+  /** Increment and return the semantic patch version. */
+  incrementVersion(): string;
+
   /**
    * Activate this configuration
    */

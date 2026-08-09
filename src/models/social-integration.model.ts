@@ -7,6 +7,7 @@ import type {
 } from '../types/social-integration.js';
 import toJSON from '../db/plugins/to-json.plugin.js';
 import paginate from '../db/plugins/paginate.plugin.js';
+import { tenantPlugin } from '../db/plugins/tenant.plugin.js';
 import { ensureEncrypted, ensureDecrypted } from '../utils/encryption.js';
 
 // Re-export all types for backward compatibility
@@ -72,6 +73,8 @@ export const createSocialIntegrationModel = (): SocialIntegrationModel => {
         sub: { type: String, required: true },
         email: { type: String, required: false },
         email_verified: { type: Boolean, required: false },
+        phone_number: { type: String, required: false },
+        phone_number_verified: { type: Boolean, required: false },
         name: { type: String, required: false },
         given_name: { type: String, required: false },
         family_name: { type: String, required: false },
@@ -81,9 +84,9 @@ export const createSocialIntegrationModel = (): SocialIntegrationModel => {
         raw_data: { type: Schema.Types.Mixed, required: false },
       },
       tokens: {
-        access_token: { type: String, required: false },
-        refresh_token: { type: String, required: false },
-        id_token: { type: String, required: false },
+        access_token: { type: String, required: false, private: true },
+        refresh_token: { type: String, required: false, private: true },
+        id_token: { type: String, required: false, private: true },
         token_type: { type: String, required: false, default: 'Bearer' },
         expires_at: { type: Date, required: false },
         scope: { type: String, required: false },
@@ -123,25 +126,30 @@ export const createSocialIntegrationModel = (): SocialIntegrationModel => {
     }
   );
 
+  SocialIntegrationSchema.plugin(tenantPlugin);
+
   // Pre-save middleware to encrypt tokens at rest
   SocialIntegrationSchema.pre('save', function () {
-    if (this.tokens) {
-      if (this.tokens.access_token) {
-        this.tokens.access_token = ensureEncrypted(this.tokens.access_token);
-      }
-      if (this.tokens.refresh_token) {
-        this.tokens.refresh_token = ensureEncrypted(this.tokens.refresh_token);
-      }
-      if (this.tokens.id_token) {
-        this.tokens.id_token = ensureEncrypted(this.tokens.id_token);
-      }
+    if (this.tokens?.access_token) {
+      this.tokens.access_token = ensureEncrypted(this.tokens.access_token);
+    }
+    if (this.tokens?.refresh_token) {
+      this.tokens.refresh_token = ensureEncrypted(this.tokens.refresh_token);
+    }
+    if (this.tokens?.id_token) {
+      this.tokens.id_token = ensureEncrypted(this.tokens.id_token);
     }
   });
 
   // Instance method to get decrypted tokens
   SocialIntegrationSchema.methods.getDecryptedTokens = function ():
     DecryptedTokenData | undefined {
-    if (!this.tokens) {
+    if (
+      !this.tokens ||
+      (!this.tokens.access_token &&
+        !this.tokens.refresh_token &&
+        !this.tokens.id_token)
+    ) {
       return undefined;
     }
 

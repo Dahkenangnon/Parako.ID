@@ -96,7 +96,7 @@
         this.defaultTranslations,
         Object.fromEntries(
           Object.entries(options.translations ?? {}).filter(
-            ([_, v]) => v !== undefined
+            ([_, value]) => typeof value === 'string' && value.trim().length > 0
           )
         )
       ) as TranslationStrings;
@@ -184,8 +184,6 @@
      * Check if a string looks like a translation key
      */
     private isTranslationKey(text: string): boolean {
-      if (!text || typeof text !== 'string') return false;
-
       // Translation keys typically:
       // - Start with letters
       // - Contain dots
@@ -238,32 +236,31 @@
      * Validate email input
      */
     private validateEmail(): void {
-      if (!this.emailInput) return;
-
-      const email = this.emailInput.value.trim();
+      const emailInput = this.emailInput!;
+      const email = emailInput.value.trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
       if (email && !emailRegex.test(email)) {
-        this.emailInput.setCustomValidity(this.getTranslation('emailInvalid'));
-        this.emailInput.classList.add(
+        emailInput.setCustomValidity(this.getTranslation('emailInvalid'));
+        emailInput.classList.add(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.emailInput.classList.remove(
+        emailInput.classList.remove(
           'border-gray-300',
           'dark:border-gray-600',
           'focus:border-primary/30',
           'focus:ring-primary/20'
         );
       } else {
-        this.emailInput.setCustomValidity('');
-        this.emailInput.classList.remove(
+        emailInput.setCustomValidity('');
+        emailInput.classList.remove(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.emailInput.classList.add(
+        emailInput.classList.add(
           'border-gray-300',
           'dark:border-gray-600',
           'focus:border-primary/30',
@@ -276,32 +273,31 @@
      * Validate phone input
      */
     private validatePhone(): void {
-      if (!this.phoneInput) return;
-
-      const phone = this.phoneInput.value.replace(/[\s\-\(\)]/g, '');
+      const phoneInput = this.phoneInput!;
+      const phone = phoneInput.value.replace(/[\s\-\(\)]/g, '');
       const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
 
       if (phone && !phoneRegex.test(phone)) {
-        this.phoneInput.setCustomValidity(this.getTranslation('phoneInvalid'));
-        this.phoneInput.classList.add(
+        phoneInput.setCustomValidity(this.getTranslation('phoneInvalid'));
+        phoneInput.classList.add(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.phoneInput.classList.remove(
+        phoneInput.classList.remove(
           'border-gray-300',
           'dark:border-gray-600',
           'focus:border-primary/30',
           'focus:ring-primary/20'
         );
       } else {
-        this.phoneInput.setCustomValidity('');
-        this.phoneInput.classList.remove(
+        phoneInput.setCustomValidity('');
+        phoneInput.classList.remove(
           'border-red-500',
           'focus:border-red-500',
           'focus:ring-red-500'
         );
-        this.phoneInput.classList.add(
+        phoneInput.classList.add(
           'border-gray-300',
           'dark:border-gray-600',
           'focus:border-primary/30',
@@ -353,7 +349,7 @@
           if (!emailRegex.test(email)) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('emailInvalid'));
-            if (this.emailInput) this.emailInput.focus();
+            this.emailInput!.focus();
             return;
           }
         }
@@ -364,7 +360,7 @@
           if (!phoneRegex.test(cleanPhone)) {
             e.preventDefault();
             this.showValidationError(this.getTranslation('phoneInvalid'));
-            if (this.phoneInput) this.phoneInput.focus();
+            this.phoneInput!.focus();
             return;
           }
         }
@@ -382,9 +378,7 @@
         `;
 
         setTimeout(() => {
-          if (this.form) {
-            this.form.submit();
-          }
+          this.form!.submit();
         }, 100);
       });
     }
@@ -413,23 +407,16 @@
     private disableAllButtons(): void {
       this.isSubmitting = true;
 
-      // Clear any existing timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-      }
-
-      if (this.submitButton) {
-        this.submitButton.disabled = true;
-        this.submitButton.style.opacity = '0.6';
-        this.submitButton.style.cursor = 'not-allowed';
-        this.submitButton.style.pointerEvents = 'none';
-      }
+      const submitButton = this.submitButton!;
+      submitButton.disabled = true;
+      submitButton.style.opacity = '0.6';
+      submitButton.style.cursor = 'not-allowed';
+      submitButton.style.pointerEvents = 'none';
 
       // Disable the entire form to prevent any submission
-      if (this.form) {
-        this.form.style.pointerEvents = 'none';
-        this.form.classList.add('form-disabled');
-      }
+      const form = this.form!;
+      form.style.pointerEvents = 'none';
+      form.classList.add('form-disabled');
 
       // Set a timeout to re-enable buttons after configured time (error recovery)
       this.submissionTimeout = window.setTimeout(() => {
@@ -445,28 +432,21 @@
     private enableAllButtons(): void {
       this.isSubmitting = false;
 
-      // Clear timeout
-      if (this.submissionTimeout) {
-        clearTimeout(this.submissionTimeout);
-        this.submissionTimeout = null;
-      }
+      clearTimeout(this.submissionTimeout!);
+      this.submissionTimeout = null;
 
       // Re-enable form submit button and restore visual state
-      if (this.submitButton) {
-        this.submitButton.disabled = false;
-        this.submitButton.innerHTML = this.getTranslation(
-          'completeRegistration'
-        );
-        this.submitButton.style.opacity = '1';
-        this.submitButton.style.cursor = 'pointer';
-        this.submitButton.style.pointerEvents = 'auto';
-      }
+      const submitButton = this.submitButton!;
+      submitButton.disabled = false;
+      submitButton.innerHTML = this.getTranslation('completeRegistration');
+      submitButton.style.opacity = '1';
+      submitButton.style.cursor = 'pointer';
+      submitButton.style.pointerEvents = 'auto';
 
       // Re-enable the entire form
-      if (this.form) {
-        this.form.style.pointerEvents = 'auto';
-        this.form.classList.remove('form-disabled');
-      }
+      const form = this.form!;
+      form.style.pointerEvents = 'auto';
+      form.classList.remove('form-disabled');
     }
 
     /**
@@ -499,7 +479,7 @@
             phonePlaceholder: 'Enter your phone number',
           },
           translations: data.translations || {},
-          debug: data.config?.debug || false,
+          debug: data.config?.debug,
           errorRecoveryTimeout: data.config?.errorRecoveryTimeout || 120000,
         });
 

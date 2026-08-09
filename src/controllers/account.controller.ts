@@ -25,13 +25,38 @@ import type {
   PasswordChangeData,
 } from '../di/interfaces/user-service.interface.js';
 import type { RecoveryMethod } from '../utils/recovery.js';
-import type { MfaMethod } from '../utils/mfa.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { SocialProvider } from '../types/social-integration.js';
+import type { IUser } from '../types/user.js';
 import type { IRedirectAuthority } from '../di/interfaces/redirect-authority.interface.js';
 import type { IWebAuthnService } from '../di/interfaces/webauthn-service.interface.js';
 import { checkPasswordBreach } from '../utils/password-breach.js';
 import type { OidcClientData } from '../oidc/adapter/client.interface.js';
+import type { BackupCodeResult } from '../utils/recovery.js';
+import { emailSchema } from '../validators/base-schemas.js';
+
+const SUPPORTED_RECOVERY_METHODS: readonly RecoveryMethod[] = [
+  'backup_codes',
+  'secondary_email',
+  'sms',
+  'security_questions',
+];
+
+const normalizeRecoveryMethods = (methods: unknown): RecoveryMethod[] => {
+  if (!Array.isArray(methods)) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      methods.filter(
+        (method): method is RecoveryMethod =>
+          typeof method === 'string' &&
+          SUPPORTED_RECOVERY_METHODS.includes(method as RecoveryMethod)
+      )
+    ),
+  ];
+};
 
 /**
  * Maps short locale codes to BCP-47 format for JavaScript's toLocaleString/toLocaleDateString
@@ -93,6 +118,43 @@ export class AccountsController implements IAccountController {
 
   private getAppTitle() {
     return this.configManager.getConfig().application.title;
+  }
+
+  private isNonEmptyString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private isSupportedMfaEnrollmentMethod(
+    method: unknown
+  ): method is 'totp' | 'email' {
+    return (
+      (method === 'totp' || method === 'email') &&
+      this.mfaUtils.isMethodSupported(method)
+    );
+  }
+
+  private buildRecoveryWithBackupCodes(
+    recovery: IUser['recovery'],
+    backupCodeResult: BackupCodeResult
+  ): NonNullable<IUser['recovery']> {
+    return {
+      ...recovery,
+      enabled: true,
+      methods: Array.from(
+        new Set([...(recovery?.methods ?? []), 'backup_codes' as const])
+      ),
+      backup_codes: {
+        codes: backupCodeResult.hashedCodes,
+        generated_at: backupCodeResult.generatedAt,
+        expires_at: backupCodeResult.expiresAt,
+      },
+    };
   }
 
   /**
@@ -383,8 +445,7 @@ export class AccountsController implements IAccountController {
       const linkedProviders = new Set(
         integrations.map(integration => integration.method)
       );
-      const hasPassword =
-        currentUser.password && currentUser.password.trim() !== '';
+      const hasPassword = Boolean(currentUser.password?.trim());
 
       res.render(this.viewResolver.views.accounts.settings_security, {
         title: 'Account Settings - Security',
@@ -479,8 +540,7 @@ export class AccountsController implements IAccountController {
         integrations.map(integration => integration.method)
       );
 
-      const hasPassword =
-        currentUser.password && currentUser.password.trim() !== '';
+      const hasPassword = Boolean(currentUser.password?.trim());
 
       const socialProviders = availableProviders.map(provider => ({
         provider,
@@ -549,7 +609,10 @@ export class AccountsController implements IAccountController {
       } = req.body;
 
       const notificationPreferences = {
-        preferred_channel: preferred_channel || 'auto',
+        preferred_channel:
+          preferred_channel === 'email' || preferred_channel === 'sms'
+            ? preferred_channel
+            : 'auto',
         security_alerts: security_alerts === 'on',
         new_session_alerts: new_session_alerts === 'on',
         marketing: marketing === 'on',
@@ -609,36 +672,38 @@ export class AccountsController implements IAccountController {
       const { firstname, lastname, phone } = req.body;
       const file = req.file;
 
-      const profileData: ProfileUpdateData = {};
+      if (
+        [firstname, lastname, phone].some(
+          value => value !== undefined && typeof value !== 'string'
+        )
+      ) {
+        this.sessionManager.flash(req).error('Invalid profile field value');
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_profile}`
+        );
+        return;
+      }
 
-      if (firstname && firstname.trim()) {
-        profileData.given_name = firstname.trim();
+      const profileData: ProfileUpdateData = {};
+      const trimmedFirstname = firstname?.trim();
+      const trimmedLastname = lastname?.trim();
+
+      if (trimmedFirstname) {
+        profileData.given_name = trimmedFirstname;
       }
-      if (lastname && lastname.trim()) {
-        profileData.family_name = lastname.trim();
+      if (trimmedLastname) {
+        profileData.family_name = trimmedLastname;
       }
-      if (firstname && lastname) {
-        profileData.name = `${firstname.trim()} ${lastname.trim()}`;
-      } else if (firstname) {
-        profileData.name = firstname.trim();
-      } else if (lastname) {
-        profileData.name = lastname.trim();
+      if (trimmedFirstname && trimmedLastname) {
+        profileData.name = `${trimmedFirstname} ${trimmedLastname}`;
+      } else if (trimmedFirstname) {
+        profileData.name = trimmedFirstname;
+      } else if (trimmedLastname) {
+        profileData.name = trimmedLastname;
       }
 
       if (phone !== undefined) {
         profileData.phone_number = phone.trim() || '';
-      }
-
-      if (file) {
-        const storageKey = await this.uploadMiddleware.storeFile(
-          file,
-          'avatars'
-        );
-        profileData.picture = storageKey;
-
-        if (userData.picture) {
-          await this.uploadMiddleware.deleteFile(userData.picture);
-        }
       }
 
       const config = this.configManager.getConfig();
@@ -653,13 +718,24 @@ export class AccountsController implements IAccountController {
         );
       }
 
-      // Process custom identifier fields per edit policy
+      const identifierChanges: Array<{
+        slot: 1 | 2 | 3;
+        value: string | null;
+      }> = [];
+
+      // Validate every custom identifier before starting any side effects.
       for (const field of ciFields) {
-        // Only process editable/full/set_once fields (not admin_only)
         if (field.edit_policy === 'admin_only') continue;
 
         const formValue = req.body[`custom_identifier_${field.slot}`];
         if (formValue === undefined) continue;
+        if (typeof formValue !== 'string') {
+          this.sessionManager.flash(req).error('Invalid profile field value');
+          res.redirect(
+            `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
+          );
+          return;
+        }
 
         const trimmedValue = formValue.trim();
         const currentValue = this.userService.getCustomIdentifier(
@@ -704,16 +780,38 @@ export class AccountsController implements IAccountController {
             return;
           }
 
-          await this.userService.setCustomIdentifier(
-            userData.id,
-            field.slot,
-            normalizedValue
-          );
+          identifierChanges.push({
+            slot: field.slot,
+            value: normalizedValue,
+          });
         } else if (field.edit_policy === 'full') {
-          // Only 'full' policy allows removal
+          identifierChanges.push({ slot: field.slot, value: null });
+        }
+      }
+
+      if (file) {
+        const storageKey = await this.uploadMiddleware.storeFile(
+          file,
+          'avatars'
+        );
+        profileData.picture = storageKey;
+
+        if (userData.picture) {
+          await this.uploadMiddleware.deleteFile(userData.picture);
+        }
+      }
+
+      for (const change of identifierChanges) {
+        if (change.value === null) {
           await this.userService.removeCustomIdentifier(
             userData.id,
-            field.slot
+            change.slot
+          );
+        } else {
+          await this.userService.setCustomIdentifier(
+            userData.id,
+            change.slot,
+            change.value
           );
         }
       }
@@ -800,6 +898,17 @@ export class AccountsController implements IAccountController {
       }
 
       const { currentPassword, newPassword, confirmPassword } = req.body;
+      if (
+        [currentPassword, newPassword, confirmPassword].some(
+          value => value !== undefined && typeof value !== 'string'
+        )
+      ) {
+        this.sessionManager.flash(req).error('Invalid password field value');
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
+        );
+        return;
+      }
 
       const currentUser = await this.userService.findByUsername(
         userData.username
@@ -826,8 +935,7 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const hasPassword =
-        currentUser.password && currentUser.password.trim() !== '';
+      const hasPassword = Boolean(currentUser.password?.trim());
 
       const integrations = await this.socialIntegrationService.findByUser(
         userData.id
@@ -902,7 +1010,7 @@ export class AccountsController implements IAccountController {
             this.sessionManager
               .flash(req)
               .error(
-                `This password has appeared in ${breachResult.count} known data breaches and cannot be used. Please choose a different password.`
+                `This password has appeared in ${breachResult.count} known data ${breachResult.count === 1 ? 'breach' : 'breaches'} and cannot be used. Please choose a different password.`
               );
             res.redirect(
               `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
@@ -1052,11 +1160,18 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      if (userData.picture) {
-        await this.uploadMiddleware.deleteFile(userData.picture);
-      }
-
       await this.userService.removeAvatar(userData.id);
+
+      if (userData.picture) {
+        try {
+          await this.uploadMiddleware.deleteFile(userData.picture);
+        } catch (error) {
+          this.logger.error(error as Error, {
+            context: 'avatar_file_cleanup_failed',
+            username: userData.username,
+          });
+        }
+      }
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'avatar_removed',
@@ -1126,9 +1241,9 @@ export class AccountsController implements IAccountController {
         return res.redirect(securityUrl);
       }
 
-      const method = (req.query.method as string) || 'totp';
+      const method = req.query.method || 'totp';
 
-      if (!this.mfaUtils.isMethodSupported(method as MfaMethod)) {
+      if (!this.isSupportedMfaEnrollmentMethod(method)) {
         this.sessionManager
           .flash(req)
           .error('This authentication method is not available.');
@@ -1235,13 +1350,25 @@ export class AccountsController implements IAccountController {
         }
       }
 
-      const methodParam = req.query.method as string | undefined;
-      const method =
-        methodParam === 'totp' ||
-        methodParam === 'email' ||
-        methodParam === 'webauthn'
-          ? methodParam
-          : undefined;
+      const methodParam = req.query.method;
+      let method: 'totp' | 'email' | 'webauthn' | undefined;
+      if (methodParam !== undefined) {
+        if (
+          typeof methodParam !== 'string' ||
+          (methodParam !== 'totp' &&
+            methodParam !== 'email' &&
+            methodParam !== 'webauthn')
+        ) {
+          this.sessionManager
+            .flash(req)
+            .error('This authentication method is not available.');
+          res.redirect(
+            `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
+          );
+          return;
+        }
+        method = methodParam;
+      }
 
       await this.userService.disableMfa(userData.username, method);
 
@@ -1291,7 +1418,13 @@ export class AccountsController implements IAccountController {
             ? 'Email'
             : 'Passkey'
         : 'Two-factor authentication';
-      this.sessionManager.flash(req).success(`${methodName} MFA disabled.`);
+      this.sessionManager
+        .flash(req)
+        .success(
+          method
+            ? `${methodName} MFA disabled.`
+            : 'Two-factor authentication disabled.'
+        );
       res.redirect(
         `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
       );
@@ -1328,9 +1461,9 @@ export class AccountsController implements IAccountController {
         return res.redirect(securityUrl);
       }
 
-      const method = (req.query.method as string) || 'totp';
+      const method = req.query.method || 'totp';
 
-      if (!this.mfaUtils.isMethodSupported(method as MfaMethod)) {
+      if (!this.isSupportedMfaEnrollmentMethod(method)) {
         this.sessionManager
           .flash(req)
           .error('This authentication method is not available.');
@@ -1390,7 +1523,6 @@ export class AccountsController implements IAccountController {
     res: Response
   ): Promise<void> => {
     try {
-      const code = ((req.body.code as string) || '').trim();
       const userData = this.sessionManager.getActiveUser(req);
       if (!userData) {
         res.redirect(
@@ -1399,7 +1531,13 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const method = (req.query.method as string) || 'totp';
+      const methodParam = req.query.method;
+      const method =
+        methodParam === undefined || methodParam === ''
+          ? 'totp'
+          : typeof methodParam === 'string'
+            ? methodParam
+            : null;
       const securityUrl = `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`;
 
       const mfaConfig = this.mfaUtils.getMfaConfig();
@@ -1409,13 +1547,21 @@ export class AccountsController implements IAccountController {
           .error('Two-factor authentication is not available.');
         return res.redirect(securityUrl);
       }
-      if (!this.mfaUtils.isMethodSupported(method as MfaMethod)) {
+      if (!method || !this.isSupportedMfaEnrollmentMethod(method)) {
         this.sessionManager
           .flash(req)
           .error('This authentication method is not available.');
         return res.redirect(securityUrl);
       }
       const setupMfaUrl = `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.setup_mfa}`;
+      const codeValue = req.body?.code;
+      const code = typeof codeValue === 'string' ? codeValue.trim() : '';
+      if (!code) {
+        this.sessionManager.flash(req).error('Invalid code, please try again');
+        return res.redirect(
+          method === 'email' ? `${setupMfaUrl}?method=email` : setupMfaUrl
+        );
+      }
 
       if (method === 'email') {
         // Phase 2: Verify the email OTP code, then enable email MFA
@@ -1486,15 +1632,10 @@ export class AccountsController implements IAccountController {
         const backupCodeResult = await this.recoveryUtils.generateBackupCodes();
 
         await this.userService.updateById(userData.id, {
-          recovery: {
-            enabled: true,
-            methods: ['backup_codes'],
-            backup_codes: {
-              codes: backupCodeResult.hashedCodes,
-              generated_at: backupCodeResult.generatedAt,
-              expires_at: backupCodeResult.expiresAt,
-            },
-          },
+          recovery: this.buildRecoveryWithBackupCodes(
+            user?.recovery,
+            backupCodeResult
+          ),
         });
 
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -1586,15 +1727,10 @@ export class AccountsController implements IAccountController {
         const backupCodeResult = await this.recoveryUtils.generateBackupCodes();
 
         await this.userService.updateById(userData.id, {
-          recovery: {
-            enabled: true,
-            methods: ['backup_codes'],
-            backup_codes: {
-              codes: backupCodeResult.hashedCodes,
-              generated_at: backupCodeResult.generatedAt,
-              expires_at: backupCodeResult.expiresAt,
-            },
-          },
+          recovery: this.buildRecoveryWithBackupCodes(
+            updatedUser?.recovery,
+            backupCodeResult
+          ),
         });
 
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -1733,8 +1869,11 @@ export class AccountsController implements IAccountController {
       const clientIds = new Set<string>();
 
       for (const grant of userGrants) {
-        const clientId = grant.payload.clientId as string;
-        if (!clientId) continue;
+        const payload = grant?.payload;
+        if (!payload || typeof payload !== 'object') continue;
+
+        const clientId = (payload as Record<string, unknown>).clientId;
+        if (typeof clientId !== 'string' || !clientId) continue;
 
         clientIds.add(clientId);
         if (!grantsByClient.has(clientId)) {
@@ -1770,7 +1909,7 @@ export class AccountsController implements IAccountController {
 
       const connectedApps = await Promise.all(
         Array.from(clientIds).map(async clientId => {
-          const clientGrants = grantsByClient.get(clientId) || [];
+          const clientGrants = grantsByClient.get(clientId)!;
 
           let latestActivity: number | null = null;
           let earliestApproval: number | null = null;
@@ -1914,15 +2053,14 @@ export class AccountsController implements IAccountController {
         let browser = 'Unknown';
         let os = 'Unknown';
 
-        if (ua.includes('chrome') && !ua.includes('edg')) browser = 'Chrome';
-        else if (ua.includes('firefox')) browser = 'Firefox';
-        else if (ua.includes('safari') && !ua.includes('chrome'))
-          browser = 'Safari';
-        else if (ua.includes('edge')) browser = 'Edge';
+        if (ua.includes('brave')) browser = 'Brave';
+        else if (ua.includes('edg/') || ua.includes('edge')) browser = 'Edge';
         else if (ua.includes('opera') || ua.includes('opr/')) browser = 'Opera';
+        else if (ua.includes('chrome')) browser = 'Chrome';
+        else if (ua.includes('firefox')) browser = 'Firefox';
+        else if (ua.includes('safari')) browser = 'Safari';
         else if (ua.includes('msie') || ua.includes('trident/'))
           browser = 'Internet Explorer';
-        else if (ua.includes('brave')) browser = 'Brave';
 
         if (ua.includes('windows nt')) {
           if (ua.includes('windows nt 10.0')) os = 'Windows 10/11';
@@ -2017,8 +2155,20 @@ export class AccountsController implements IAccountController {
       if (hasOidcSessions) {
         const processedOidc = await Promise.all(
           userSessions.map(async oidcSession => {
-            const payload = oidcSession.payload as any;
-            const loginTime = payload.loginTs || payload.iat;
+            const payload = this.asRecord(oidcSession?.payload);
+            const loginTime = payload?.loginTs ?? payload?.iat;
+            const sessionId = payload?.jti ?? oidcSession?._id;
+            if (
+              !payload ||
+              typeof loginTime !== 'number' ||
+              !Number.isFinite(loginTime) ||
+              !this.isNonEmptyString(sessionId)
+            ) {
+              this.logger.warn('Skipping malformed OIDC session record', {
+                sessionId: oidcSession?._id,
+              });
+              return null;
+            }
             const loginTimeMs = loginTime * 1000;
 
             const sessionActivities =
@@ -2058,15 +2208,14 @@ export class AccountsController implements IAccountController {
 
             const device = `${browser} on ${os}`;
 
-            const clientIds = payload.authorizations
-              ? Object.keys(payload.authorizations)
-              : [];
+            const authorizations = this.asRecord(payload.authorizations);
+            const clientIds = authorizations ? Object.keys(authorizations) : [];
             const clients = await Promise.all(
               clientIds.map(clientId => getClientInfo(clientId))
             );
 
             return {
-              id: payload.jti || oidcSession._id,
+              id: sessionId,
               sessionType: 'oidc' as const,
               device,
               location,
@@ -2076,19 +2225,36 @@ export class AccountsController implements IAccountController {
               ip,
               loginTimestamp: loginTimeMs,
               clients,
-              amr: payload.amr || [],
-              acr: payload.acr || '',
+              amr: Array.isArray(payload.amr) ? payload.amr : [],
+              acr: this.isNonEmptyString(payload.acr) ? payload.acr : '',
               isCurrentSession: false,
             };
           })
         );
-        allSessions.push(...processedOidc);
+        for (const session of processedOidc) {
+          if (session) allSessions.push(session);
+        }
       }
 
       if (hasExpressSessions) {
         for (const sessDoc of expressSessions) {
+          if (!sessDoc || typeof sessDoc !== 'object') {
+            this.logger.warn('Skipping malformed Express session record');
+            continue;
+          }
           const sessData = sessDoc.session;
-          if (!sessData) continue;
+          if (!sessData || typeof sessData !== 'object') {
+            this.logger.warn('Skipping malformed Express session record', {
+              sessionId: sessDoc._id,
+            });
+            continue;
+          }
+
+          const sessionId = sessDoc._id;
+          if (!this.isNonEmptyString(sessionId)) {
+            this.logger.warn('Skipping Express session without an identifier');
+            continue;
+          }
 
           const metadata = sessData._metadata || {};
           const authTimeMs = sessData.authTime
@@ -2113,7 +2279,7 @@ export class AccountsController implements IAccountController {
           const ip = sessData.ipAddress || metadata.createdIp || 'Unknown';
 
           allSessions.push({
-            id: sessDoc._id as string,
+            id: sessionId,
             sessionType: 'express' as const,
             device,
             location: ip && ip !== 'Unknown' ? 'Online' : 'Unknown',
@@ -2125,7 +2291,7 @@ export class AccountsController implements IAccountController {
             clients: [],
             amr: [],
             acr: '',
-            isCurrentSession: req.sessionID === sessDoc._id,
+            isCurrentSession: req.sessionID === sessionId,
           });
         }
       }
@@ -2161,9 +2327,9 @@ export class AccountsController implements IAccountController {
    */
   public switchAccount = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { accountId } = req.body;
+      const accountId = req.body?.accountId;
 
-      if (!accountId) {
+      if (!this.isNonEmptyString(accountId)) {
         this.sessionManager.flash(req).error('Account ID is required');
         return res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.dashboard}`
@@ -2178,7 +2344,9 @@ export class AccountsController implements IAccountController {
             .flash(req)
             .info('Please re-enter your password to switch accounts.');
           const loginUrl = `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`;
-          return res.redirect(`${loginUrl}?switch_to=${accountId}`);
+          return res.redirect(
+            `${loginUrl}?switch_to=${encodeURIComponent(accountId)}`
+          );
         }
 
         activityLoggerFor(this.activityLoggerDeps, req).failed(
@@ -2298,9 +2466,9 @@ export class AccountsController implements IAccountController {
    */
   public removeAccount = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { accountId } = req.body;
+      const accountId = req.body?.accountId;
 
-      if (!accountId) {
+      if (!this.isNonEmptyString(accountId)) {
         res.status(400).json({
           success: false,
           error: 'Account ID is required',
@@ -2368,8 +2536,8 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const { clientId } = req.body;
-      if (!clientId) {
+      const clientId = req.body?.clientId;
+      if (!this.isNonEmptyString(clientId)) {
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.apps}`
         );
@@ -2385,7 +2553,7 @@ export class AccountsController implements IAccountController {
         userData.username
       );
       const grantsForClient = existingGrants.filter(
-        grant => grant.payload.clientId === clientId
+        grant => this.asRecord(grant?.payload)?.clientId === clientId
       );
 
       this.logger.info(
@@ -2394,16 +2562,16 @@ export class AccountsController implements IAccountController {
 
       let revokedCount = 0;
       for (const grantDoc of grantsForClient) {
-        try {
-          // Use the jti field as the grant identifier
-          const grantId = grantDoc.payload.jti as string;
-          if (!grantId) {
-            this.logger.warn(
-              `Grant ${grantDoc._id} has no jti, skipping revocation`
-            );
-            continue;
-          }
+        const grantPayload = this.asRecord(grantDoc?.payload);
+        const grantId = grantPayload?.jti;
+        if (!this.isNonEmptyString(grantId)) {
+          this.logger.warn(
+            `Grant ${grantDoc?._id} has no jti, skipping revocation`
+          );
+          continue;
+        }
 
+        try {
           // Use the provider's Grant model to find and revoke the grant
           const grant = await this.oidcAdapter.grant.find(grantId);
           if (grant) {
@@ -2416,7 +2584,7 @@ export class AccountsController implements IAccountController {
         } catch (error) {
           this.logger.error(error as Error, {
             context: 'grant_revocation_failed',
-            grantId: grantDoc.payload.jti,
+            grantId,
           });
           // Continue with other grants even if one fails
         }
@@ -2498,16 +2666,16 @@ export class AccountsController implements IAccountController {
 
       let revokedCount = 0;
       for (const grantDoc of existingGrants) {
-        try {
-          // Use the jti field as the grant identifier
-          const grantId = grantDoc.payload.jti as string;
-          if (!grantId) {
-            this.logger.warn(
-              `Grant ${grantDoc._id} has no jti, skipping revocation`
-            );
-            continue;
-          }
+        const grantPayload = this.asRecord(grantDoc?.payload);
+        const grantId = grantPayload?.jti;
+        if (!this.isNonEmptyString(grantId)) {
+          this.logger.warn(
+            `Grant ${grantDoc?._id} has no jti, skipping revocation`
+          );
+          continue;
+        }
 
+        try {
           // Use the provider's Grant model to find and revoke the grant
           const grant = await this.oidcAdapter.grant.find(grantId);
           if (grant) {
@@ -2520,7 +2688,7 @@ export class AccountsController implements IAccountController {
         } catch (error) {
           this.logger.error(error as Error, {
             context: 'grant_revocation_failed',
-            grantId: grantDoc.payload.jti,
+            grantId,
           });
           // Continue with other grants even if one fails
         }
@@ -2582,8 +2750,20 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const { sessionId, sessionType } = req.body;
-      if (!sessionId) {
+      const { sessionId, sessionType } = req.body ?? {};
+      if (!this.isNonEmptyString(sessionId)) {
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.sessions}`
+        );
+        return;
+      }
+
+      if (
+        sessionType !== undefined &&
+        sessionType !== 'express' &&
+        sessionType !== 'oidc'
+      ) {
+        this.sessionManager.flash(req).error('Invalid session type');
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.sessions}`
         );
@@ -2592,9 +2772,28 @@ export class AccountsController implements IAccountController {
 
       let revoked = false;
       if (sessionType === 'express') {
-        revoked = await this.sessionManager.revokeExpressSession(sessionId);
+        const ownedSessions =
+          await this.sessionManager.findExpressSessionsForUser(
+            userData.username
+          );
+        const ownsSession = ownedSessions.some(
+          session => this.asRecord(session)?._id === sessionId
+        );
+        if (ownsSession) {
+          revoked = await this.sessionManager.revokeExpressSession(sessionId);
+        }
       } else {
-        revoked = await this.oidcAdapter.session.revokeSession(sessionId);
+        const ownedSessions = await this.oidcAdapter.session.findByAccountId(
+          userData.username
+        );
+        const ownsSession = ownedSessions.some(session => {
+          const sessionRecord = this.asRecord(session);
+          const payload = this.asRecord(sessionRecord?.payload);
+          return (payload?.jti ?? sessionRecord?._id) === sessionId;
+        });
+        if (ownsSession) {
+          revoked = await this.oidcAdapter.session.revokeSession(sessionId);
+        }
       }
 
       if (revoked) {
@@ -2653,9 +2852,9 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const currentSessionId = req.body.currentSessionId;
+      const currentSessionId = req.body?.currentSessionId;
 
-      if (!currentSessionId) {
+      if (!this.isNonEmptyString(currentSessionId)) {
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.sessions}`
         );
@@ -2676,7 +2875,13 @@ export class AccountsController implements IAccountController {
             userData.username
           );
         for (const sessDoc of expressSessions) {
-          const sessId = sessDoc._id as string;
+          const sessId = this.asRecord(sessDoc)?._id;
+          if (!this.isNonEmptyString(sessId)) {
+            this.logger.warn(
+              'Skipping malformed Express session during bulk revocation'
+            );
+            continue;
+          }
           if (sessId !== req.sessionID) {
             const revoked =
               await this.sessionManager.revokeExpressSession(sessId);
@@ -2901,8 +3106,7 @@ export class AccountsController implements IAccountController {
         );
       }
 
-      const hasPassword =
-        currentUser.password && currentUser.password.trim() !== '';
+      const hasPassword = Boolean(currentUser.password?.trim());
 
       const integrations = await this.socialIntegrationService.findByUser(
         activeUser.id
@@ -2989,11 +3193,24 @@ export class AccountsController implements IAccountController {
         return res.redirect(recoveryUrl);
       }
 
-      const { source, email } = req.body;
+      const { source, email } = req.body ?? {};
       const isFromRecoverySetup = source === 'recovery_setup';
       const method =
         (req.query.method as string) ||
         (isFromRecoverySetup ? 'unified' : 'backup_codes');
+
+      const hasInvalidEmail =
+        email !== undefined &&
+        (typeof email !== 'string' ||
+          (email.trim().length > 0 && !emailSchema.safeParse(email).success));
+      if (hasInvalidEmail) {
+        this.sessionManager.flash(req).error('Valid email address is required');
+        return res.redirect(
+          isFromRecoverySetup || method === 'unified'
+            ? `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.recovery_setup}`
+            : recoveryUrl
+        );
+      }
 
       if (isFromRecoverySetup || method === 'unified') {
         const currentUser = await this.userService.findByUsername(
@@ -3015,14 +3232,15 @@ export class AccountsController implements IAccountController {
           enabled: false,
           methods: [],
         };
-        const existingMethods = (existingRecovery.methods ||
-          []) as RecoveryMethod[];
+        const existingMethods = normalizeRecoveryMethods(
+          existingRecovery.methods
+        );
 
         // Always include backup_codes
         const updatedMethods: RecoveryMethod[] = existingMethods.includes(
           'backup_codes'
         )
-          ? existingMethods
+          ? [...existingMethods]
           : [...existingMethods, 'backup_codes'];
 
         let recoveryConfig = {
@@ -3073,7 +3291,7 @@ export class AccountsController implements IAccountController {
               {
                 title: `Verify your recovery email`,
                 content: `
-                  <p>Hello ${userData.given_name || userData.email},</p>
+                  <p>Hello ${userData.given_name || userData.email || userData.username},</p>
                   <p>You've added this email as a recovery method for your ${this.getAppTitle()} account.</p>
                   <p>To verify this email address, please click the link below:</p>
                   <p><a href="${`${this.configManager.getConfig().deployment.url}${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`}?token=${verificationResult.verificationToken}"
@@ -3084,7 +3302,8 @@ export class AccountsController implements IAccountController {
                   <p>If you didn't request this, please ignore this email.</p>
                 `,
                 username:
-                  `${userData.given_name || ''} ${userData.family_name || ''}`.trim(),
+                  `${userData.given_name || ''} ${userData.family_name || ''}`.trim() ||
+                  userData.username,
               }
             );
 
@@ -3220,8 +3439,9 @@ export class AccountsController implements IAccountController {
           enabled: false,
           methods: [],
         };
-        const existingMethods = (existingRecovery.methods ||
-          []) as RecoveryMethod[];
+        const existingMethods = normalizeRecoveryMethods(
+          existingRecovery.methods
+        );
         const updatedMethods: RecoveryMethod[] = existingMethods.includes(
           'backup_codes'
         )
@@ -3297,14 +3517,15 @@ export class AccountsController implements IAccountController {
         }
 
         const verificationResult =
-          this.recoveryUtils.generateSecondaryEmailVerification(email);
+          this.recoveryUtils.generateSecondaryEmailVerification(email.trim());
 
         const existingRecovery = currentUser.recovery || {
           enabled: false,
           methods: [],
         };
-        const existingMethods = (existingRecovery.methods ||
-          []) as RecoveryMethod[];
+        const existingMethods = normalizeRecoveryMethods(
+          existingRecovery.methods
+        );
         const updatedMethods: RecoveryMethod[] = existingMethods.includes(
           'secondary_email'
         )
@@ -3333,7 +3554,7 @@ export class AccountsController implements IAccountController {
             {
               title: `Verify your recovery email`,
               content: `
-                <p>Hello ${userData.given_name || userData.email},</p>
+                <p>Hello ${userData.given_name || userData.email || userData.username},</p>
                 <p>You've added this email as a recovery method for your ${this.getAppTitle()} account.</p>
                 <p>To verify this email address, please click the link below:</p>
                 <p><a href="${`${this.configManager.getConfig().deployment.url}${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`}?token=${verificationResult.verificationToken}"
@@ -3344,7 +3565,8 @@ export class AccountsController implements IAccountController {
                 <p>If you didn't request this, please ignore this email.</p>
               `,
               username:
-                `${userData.given_name || ''} ${userData.family_name || ''}`.trim(),
+                `${userData.given_name || ''} ${userData.family_name || ''}`.trim() ||
+                userData.username,
             }
           );
 
@@ -3415,7 +3637,7 @@ export class AccountsController implements IAccountController {
       this.logger.error(error as Error, { context: 'enable_recovery_failed' });
       this.sessionManager.flash(req).error('Failed to enable account recovery');
 
-      const { source } = req.body;
+      const { source } = req.body ?? {};
       const isFromRecoverySetup = source === 'recovery_setup';
       res.redirect(
         isFromRecoverySetup
@@ -3441,16 +3663,10 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const validMethods: RecoveryMethod[] = [
-        'backup_codes',
-        'secondary_email',
-        'sms',
-        'security_questions',
-      ];
       const rawMethod = req.query.method;
       const method: RecoveryMethod | undefined =
         typeof rawMethod === 'string' &&
-        (validMethods as string[]).includes(rawMethod)
+        SUPPORTED_RECOVERY_METHODS.includes(rawMethod as RecoveryMethod)
           ? (rawMethod as RecoveryMethod)
           : undefined;
       if (!method) {
@@ -3471,8 +3687,9 @@ export class AccountsController implements IAccountController {
       }
 
       const existingRecovery = currentUser.recovery;
-      const existingMethods = (existingRecovery.methods ||
-        []) as RecoveryMethod[];
+      const existingMethods = normalizeRecoveryMethods(
+        existingRecovery.methods
+      );
 
       const updatedMethods = existingMethods.filter(m => m !== method);
 
@@ -3481,22 +3698,9 @@ export class AccountsController implements IAccountController {
         methods: updatedMethods,
       };
 
-      if (method === 'backup_codes') {
-        updatedRecovery = {
-          ...updatedRecovery,
-          backup_codes: undefined,
-        };
-      } else if (method === 'secondary_email') {
-        updatedRecovery = {
-          ...updatedRecovery,
-          secondary_email: undefined,
-        };
-      } else if (method === 'security_questions') {
-        updatedRecovery = {
-          ...updatedRecovery,
-          security_questions: undefined,
-        };
-      }
+      const recoveryWithoutDisabledMethod = { ...updatedRecovery };
+      delete recoveryWithoutDisabledMethod[method];
+      updatedRecovery = recoveryWithoutDisabledMethod;
 
       if (updatedMethods.length === 0) {
         updatedRecovery = {
@@ -3516,7 +3720,7 @@ export class AccountsController implements IAccountController {
         sms: 'SMS',
         security_questions: 'security questions',
       };
-      const methodName = methodNameMap[method as RecoveryMethod] || method;
+      const methodName = methodNameMap[method];
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'recovery_method_disabled',
@@ -3572,7 +3776,11 @@ export class AccountsController implements IAccountController {
 
       const backup_codes = this.sessionManager.get(req, 'recoveryBackupCodes');
 
-      if (!backup_codes || !Array.isArray(backup_codes)) {
+      if (
+        !backup_codes ||
+        !Array.isArray(backup_codes) ||
+        backup_codes.length === 0
+      ) {
         this.sessionManager
           .flash(req)
           .error(
@@ -3662,15 +3870,17 @@ export class AccountsController implements IAccountController {
         );
       }
 
+      const verifiedSecondaryEmail = {
+        ...user.recovery.secondary_email,
+        verified: true,
+      };
+      delete verifiedSecondaryEmail.verification_token;
+      delete verifiedSecondaryEmail.verification_expires;
+
       await this.userService.updateById(user.id!, {
         recovery: {
           ...user.recovery,
-          secondary_email: {
-            ...user.recovery.secondary_email,
-            verified: true,
-            verification_token: undefined,
-            verification_expires: undefined,
-          },
+          secondary_email: verifiedSecondaryEmail,
         },
       });
 
@@ -3768,10 +3978,17 @@ export class AccountsController implements IAccountController {
       }
 
       const backupCodeResult = await this.recoveryUtils.generateBackupCodes();
+      const existingMethods = normalizeRecoveryMethods(
+        currentUser.recovery.methods
+      );
+      const updatedMethods = existingMethods.includes('backup_codes')
+        ? [...existingMethods]
+        : [...existingMethods, 'backup_codes' as const];
 
       await this.userService.updateById(userData.id, {
         recovery: {
           ...currentUser.recovery,
+          methods: updatedMethods,
           backup_codes: {
             codes: backupCodeResult.hashedCodes, // Store hashed codes in DB
             // usedCodes: [],
@@ -3991,6 +4208,14 @@ export class AccountsController implements IAccountController {
     res: Response
   ): Promise<void> => {
     try {
+      const userData = this.sessionManager.getActiveUser(req);
+      if (!userData) {
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
+        );
+        return;
+      }
+
       const recoveryConfig = this.recoveryUtils.getRecoveryConfig();
       if (
         !recoveryConfig.enabled ||
@@ -4001,14 +4226,6 @@ export class AccountsController implements IAccountController {
           .error('Security questions are not available.');
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_recovery}`
-        );
-        return;
-      }
-
-      const userData = this.sessionManager.getActiveUser(req);
-      if (!userData) {
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
         );
         return;
       }
@@ -4027,11 +4244,25 @@ export class AccountsController implements IAccountController {
       const availableQuestionKeys =
         this.recoveryUtils.getAvailableQuestionKeys();
 
-      const existingQuestions =
-        currentUser.recovery?.security_questions?.questions?.map(q => ({
-          id: q.id,
-          question_key: q.question_key,
-        })) || [];
+      const existingQuestions = (
+        currentUser.recovery?.security_questions?.questions ?? []
+      ).flatMap(question => {
+        if (
+          !question ||
+          typeof question !== 'object' ||
+          typeof question.id !== 'string' ||
+          typeof question.question_key !== 'string'
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            id: question.id,
+            question_key: question.question_key,
+          },
+        ];
+      });
 
       res.render(this.viewResolver.views.accounts.security_questions_setup, {
         title: 'Set Up Security Questions',
@@ -4041,9 +4272,7 @@ export class AccountsController implements IAccountController {
         },
         availableQuestionKeys,
         existingQuestions,
-        requiredCount: recoveryConfig.methods.security_questions.enabled
-          ? 3
-          : 0,
+        requiredCount: 3,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -4066,6 +4295,14 @@ export class AccountsController implements IAccountController {
     res: Response
   ): Promise<void> => {
     try {
+      const userData = this.sessionManager.getActiveUser(req);
+      if (!userData) {
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
+        );
+        return;
+      }
+
       const recoveryConfig = this.recoveryUtils.getRecoveryConfig();
       if (
         !recoveryConfig.enabled ||
@@ -4076,14 +4313,6 @@ export class AccountsController implements IAccountController {
           .error('Security questions are not available.');
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_recovery}`
-        );
-        return;
-      }
-
-      const userData = this.sessionManager.getActiveUser(req);
-      if (!userData) {
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
         );
         return;
       }
@@ -4144,13 +4373,17 @@ export class AccountsController implements IAccountController {
         return;
       }
 
+      const existingRecoveryMethods = normalizeRecoveryMethods(
+        currentUser.recovery?.methods
+      );
+
       await this.userService.updateWithAssignment(currentUser._id!.toString(), {
         recovery: {
           ...currentUser.recovery,
           enabled: true,
           methods: [
             ...new Set([
-              ...(currentUser.recovery?.methods || []),
+              ...existingRecoveryMethods,
               'security_questions' as const,
             ]),
           ],

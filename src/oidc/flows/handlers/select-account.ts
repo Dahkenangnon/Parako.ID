@@ -196,7 +196,7 @@ export class OIDCSelectAccountHandler implements IOIDCSelectAccountHandler {
           },
           login: {
             accountId: selectedAccount.username,
-            amr: ['pwd'],
+            amr: ['pwd', 'select_account'],
             acr: 'urn:pwd',
           },
           ts: Math.floor(Date.now() / 1000),

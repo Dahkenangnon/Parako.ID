@@ -4,6 +4,66 @@ import {
   DEFAULT_TENANT_ID,
 } from '../../multi-tenancy/tenant-context.js';
 
+const MANDATORY_FIRST_AGGREGATION_STAGES = new Set([
+  '$changeStream',
+  '$documents',
+  '$geoNear',
+  '$search',
+  '$searchMeta',
+  '$vectorSearch',
+]);
+
+const UPDATE_QUERY_HOOKS = new Set([
+  'findOneAndUpdate',
+  'findOneAndReplace',
+  'updateOne',
+  'updateMany',
+  'replaceOne',
+]);
+
+const REPLACEMENT_QUERY_HOOKS = new Set(['findOneAndReplace', 'replaceOne']);
+
+function scopeUpdateToTenant(
+  update: any,
+  tenantId: string,
+  replacement: boolean
+): any {
+  if (Array.isArray(update)) {
+    return [...update, { $set: { tenant_id: tenantId } }];
+  }
+
+  if (!update || typeof update !== 'object') {
+    return update;
+  }
+
+  const hasOperators = Object.keys(update).some(key => key.startsWith('$'));
+  if (replacement || !hasOperators) {
+    return { ...update, tenant_id: tenantId };
+  }
+
+  const scopedUpdate: Record<string, any> = { ...update };
+  for (const [operator, value] of Object.entries(scopedUpdate)) {
+    if (!operator.startsWith('$') || !value || typeof value !== 'object') {
+      continue;
+    }
+
+    const operands = { ...(value as Record<string, unknown>) };
+    delete operands.tenant_id;
+    if (operator === '$rename') {
+      for (const [source, target] of Object.entries(operands)) {
+        if (target === 'tenant_id') delete operands[source];
+      }
+    }
+    scopedUpdate[operator] = operands;
+  }
+
+  scopedUpdate.$set = {
+    ...(scopedUpdate.$set ?? {}),
+    tenant_id: tenantId,
+  };
+  return scopedUpdate;
+}
+
 /**
  * Mongoose global plugin that enforces tenant isolation.
  *
@@ -72,9 +132,20 @@ export function tenantPlugin(schema: Schema): void {
 
   for (const hook of queryHooks) {
     schema.pre(hook as any, function (this: any) {
-      const filter = this.getFilter();
-      if (!filter.tenant_id) {
-        this.where({ tenant_id: tenantContext.getTenantId() });
+      const tenantId = tenantContext.getTenantId();
+      this.where({ tenant_id: tenantId });
+
+      if (UPDATE_QUERY_HOOKS.has(hook)) {
+        const update = this.getUpdate();
+        if (update != null) {
+          this.setUpdate(
+            scopeUpdateToTenant(
+              update,
+              tenantId,
+              REPLACEMENT_QUERY_HOOKS.has(hook)
+            )
+          );
+        }
       }
     });
   }
@@ -84,7 +155,13 @@ export function tenantPlugin(schema: Schema): void {
   // this, Model.aggregate([...]) would leak data across tenants.
   schema.pre('aggregate', function () {
     const tid = tenantContext.getTenantId();
-    this.pipeline().unshift({ $match: { tenant_id: tid } });
+    const pipeline = this.pipeline();
+    const firstStageName = Object.keys(pipeline[0] ?? {})[0];
+    const insertAt =
+      firstStageName && MANDATORY_FIRST_AGGREGATION_STAGES.has(firstStageName)
+        ? 1
+        : 0;
+    pipeline.splice(insertAt, 0, { $match: { tenant_id: tid } });
   });
 }
 

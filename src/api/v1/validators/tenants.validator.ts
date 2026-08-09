@@ -8,9 +8,25 @@
 
 import { z } from 'zod';
 
+const HOSTNAME_PATTERN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/;
+
+const optionalTenantDomain = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(253)
+  .refine(value => value === '' || HOSTNAME_PATTERN.test(value), {
+    message: 'Domain must be a hostname without a scheme, port, or path',
+  })
+  .transform(value => value || undefined)
+  .optional();
+
 export const createTenantSchema = z.object({
   slug: z
     .string()
+    .trim()
+    .toLowerCase()
     .min(2)
     .max(63)
     .regex(
@@ -18,9 +34,9 @@ export const createTenantSchema = z.object({
       'Slug must be lowercase alphanumeric with optional hyphens, cannot start or end with a hyphen'
     ),
 
-  display_name: z.string().min(1).max(255),
+  display_name: z.string().trim().min(1).max(255),
 
-  domain: z.string().optional(),
+  domain: optionalTenantDomain,
 });
 
 // Configuration section update schema

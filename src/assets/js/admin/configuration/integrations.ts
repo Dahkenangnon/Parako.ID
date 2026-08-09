@@ -7,6 +7,8 @@
 (function () {
   'use strict';
 
+  if (typeof document === 'undefined') return;
+
   interface LucideApi {
     createIcons: () => void;
   }

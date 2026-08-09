@@ -131,9 +131,4 @@
   if (typeof window !== 'undefined') {
     (window as any).PasswordValidator = PasswordValidator;
   }
-
-  // Module export for testing
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = PasswordValidator;
-  }
 })();

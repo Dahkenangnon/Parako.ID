@@ -1,7 +1,5 @@
 import type { Request, Response } from 'express';
 
-import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
-
 /**
  * Set a flash message at the given severity and issue a same-origin
  * redirect.
@@ -18,7 +16,6 @@ import type { ISessionManager } from '../di/interfaces/session-manager.interface
 export type FlashLevel = 'success' | 'error' | 'warning' | 'info';
 
 const SAME_ORIGIN_BASE = 'https://parako.local';
-const SAME_ORIGIN = new URL(SAME_ORIGIN_BASE).origin;
 
 export type SameOriginPath = string & {
   readonly __sameOriginPath: unique symbol;
@@ -35,19 +32,8 @@ export function toSameOriginPath(path: string): SameOriginPath | null {
     return null;
   }
 
-  try {
-    const url = new URL(path, SAME_ORIGIN_BASE);
-    if (url.origin !== SAME_ORIGIN) {
-      return null;
-    }
-    const normalizedPath = `${url.pathname}${url.search}${url.hash}`;
-    if (!normalizedPath.startsWith('/') || normalizedPath.startsWith('//')) {
-      return null;
-    }
-    return normalizedPath as SameOriginPath;
-  } catch {
-    return null;
-  }
+  const url = new URL(path, SAME_ORIGIN_BASE);
+  return `${url.pathname}${url.search}${url.hash}` as SameOriginPath;
 }
 
 /** Returns true when `path` is a safe same-origin pathname. */
@@ -55,15 +41,17 @@ export function isSameOriginPath(path: string): boolean {
   return toSameOriginPath(path) !== null;
 }
 
-export interface FlashRedirectDeps {
-  sessionManager: Pick<ISessionManager, 'flash'>;
+export interface FlashRedirectDeps<Level extends FlashLevel = FlashLevel> {
+  sessionManager: {
+    flash(req: Request): Record<Level, (message: string) => unknown>;
+  };
 }
 
-export function flashAndRedirect(
-  deps: FlashRedirectDeps,
+export function flashAndRedirect<Level extends FlashLevel>(
+  deps: FlashRedirectDeps<Level>,
   req: Request,
   res: Response,
-  level: FlashLevel,
+  level: Level,
   message: string,
   path: string
 ): void {

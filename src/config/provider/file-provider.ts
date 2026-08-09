@@ -163,7 +163,11 @@ export class FileConfigProvider extends AbstractConfigProvider {
     for (const key of keys) {
       partialPath = partialPath ? `${partialPath}.${key}` : key;
 
-      if (current && typeof current === 'object' && key in current) {
+      if (
+        current &&
+        typeof current === 'object' &&
+        Object.hasOwn(current, key)
+      ) {
         current = current[key];
       } else {
         console.warn(`[CONFIG WARNING] Accessing undefined configuration key: "${path}"

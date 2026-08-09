@@ -141,7 +141,14 @@
 
       setTimeout(() => okButton.focus(), 100);
 
+      function handleKeydown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+          cleanup();
+        }
+      }
+
       const cleanup = () => {
+        document.removeEventListener('keydown', handleKeydown);
         backdrop.remove();
         resolve();
       };
@@ -154,15 +161,7 @@
         }
       });
 
-      document.addEventListener(
-        'keydown',
-        e => {
-          if (e.key === 'Escape') {
-            cleanup();
-          }
-        },
-        { once: true }
-      );
+      document.addEventListener('keydown', handleKeydown, { once: true });
     });
   }
 
@@ -253,7 +252,14 @@
 
       setTimeout(() => confirmButton.focus(), 100);
 
+      function handleKeydown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+          cleanup(false);
+        }
+      }
+
       const cleanup = (result: boolean) => {
+        document.removeEventListener('keydown', handleKeydown);
         backdrop.remove();
         resolve(result);
       };
@@ -267,15 +273,7 @@
         }
       });
 
-      document.addEventListener(
-        'keydown',
-        e => {
-          if (e.key === 'Escape') {
-            cleanup(false);
-          }
-        },
-        { once: true }
-      );
+      document.addEventListener('keydown', handleKeydown, { once: true });
     });
   }
 
@@ -480,11 +478,13 @@
       const bodyHasDarkClass = body.classList.contains('dark');
       const htmlHasDarkClass = html.classList.contains('dark');
       const shouldHaveDarkClass = this.theme === 'dark';
+      const bodyTheme = body.getAttribute('data-theme');
 
       // Fix any inconsistencies (shouldn't happen with server-side rendering, but just in case)
       if (
         bodyHasDarkClass !== shouldHaveDarkClass ||
-        htmlHasDarkClass !== shouldHaveDarkClass
+        htmlHasDarkClass !== shouldHaveDarkClass ||
+        bodyTheme !== this.theme
       ) {
         this.log('Fixing theme inconsistency', null, 'warn');
         this.applyTheme(this.theme);
@@ -577,9 +577,7 @@
       const observer = new MutationObserver(mutations => {
         mutations.forEach(mutation => {
           if (mutation.attributeName === 'class') {
-            if ((this as any).updateDarkMode) {
-              (this as any).updateDarkMode();
-            }
+            (this as any).updateDarkMode();
           }
         });
       });
@@ -888,9 +886,9 @@
 
         const mainManager = new MainManager(
           {
-            debug: data.debug || false,
-            theme: data.theme || 'light',
-            environment: data.environment || 'production',
+            debug: data.debug,
+            theme: data.theme,
+            environment: data.environment,
           },
           data.csrfToken,
           data.routes?.updateTheme,
@@ -934,6 +932,7 @@
         );
 
         mainManager.run();
+        (window as any).mainManager = mainManager;
 
         // Make dialog utilities globally accessible
         (window as LucideWindow).dialog = {
@@ -966,6 +965,7 @@
       );
 
       mainManager.run();
+      (window as any).mainManager = mainManager;
 
       // Make dialog utilities globally accessible
       (window as LucideWindow).dialog = {

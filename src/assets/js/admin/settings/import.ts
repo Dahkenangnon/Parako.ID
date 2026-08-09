@@ -48,6 +48,7 @@
 
   class ConfigImportManager {
     private currentPreviewData: PreviewData | null = null;
+    private previewedConfigData: unknown = null;
     private configFileInput: HTMLInputElement | null = null;
     private configJsonTextarea: HTMLInputElement | null = null;
     private previewSection: HTMLElement | null = null;
@@ -185,6 +186,7 @@
         }
 
         this.currentPreviewData = result;
+        this.previewedConfigData = configData;
 
         this.displayImportPreview(result);
 
@@ -337,6 +339,7 @@
     private hidePreview(): void {
       this.previewSection?.classList.add('hidden');
       this.currentPreviewData = null;
+      this.previewedConfigData = null;
     }
 
     public async applyConfigImport(): Promise<void> {
@@ -382,19 +385,13 @@
         ) as HTMLElement | null;
         const csrfToken = csrfMeta?.getAttribute('content') || '';
 
-        const configJson = this.configJsonTextarea?.value.trim();
-        if (!configJson) {
-          throw new Error('No configuration data');
-        }
-        const configData = JSON.parse(configJson);
-
         const response = await fetch('/admin/settings/import/apply', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
           },
-          body: JSON.stringify({ config: configData }),
+          body: JSON.stringify({ config: this.previewedConfigData }),
         });
 
         const responseText = await response.text();
@@ -532,25 +529,15 @@
       });
     }
 
-    private showNotification(
-      message: string,
-      type: 'info' | 'success' | 'error' = 'info'
-    ): void {
+    private showNotification(message: string, type: 'success' | 'error'): void {
       const notification = document.createElement('div');
       notification.className = `fixed top-4 right-4 z-50 max-w-md p-4 border ${
         type === 'success'
           ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-300'
-          : type === 'error'
-            ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-300'
-            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-300'
+          : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-900 dark:text-red-300'
       }`;
 
-      const iconName =
-        type === 'success'
-          ? 'check-circle'
-          : type === 'error'
-            ? 'x-circle'
-            : 'info';
+      const iconName = type === 'success' ? 'check-circle' : 'x-circle';
 
       notification.innerHTML = `
         <div class="flex items-start gap-3">

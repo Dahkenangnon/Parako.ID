@@ -16,7 +16,26 @@ import type {
   PaginationOptions,
   QueryOptions,
 } from '../interfaces/base.repository.js';
-import { AbstractPrismaRepository, toOrderBy } from './base.repository.js';
+import {
+  AbstractPrismaRepository,
+  normalizeToPrisma,
+  toOrderBy,
+} from './base.repository.js';
+
+function parseMetadata(
+  value: string | null
+): ISocialIntegration['metadata'] | undefined {
+  if (!value) return undefined;
+
+  const metadata = JSON.parse(value) as Record<string, unknown>;
+  for (const field of ['linked_at', 'last_sync'] as const) {
+    if (typeof metadata[field] === 'string') {
+      metadata[field] = new Date(metadata[field]);
+    }
+  }
+
+  return metadata as unknown as ISocialIntegration['metadata'];
+}
 
 function toISocialIntegration(
   row: Prisma.SocialIntegrationGetPayload<object>
@@ -32,9 +51,7 @@ function toISocialIntegration(
     tokens: row.tokens ? (JSON.parse(row.tokens) as TokenData) : undefined,
     is_active: row.is_active,
     last_used: row.last_used ?? undefined,
-    metadata: row.metadata
-      ? (JSON.parse(row.metadata) as ISocialIntegration['metadata'])
-      : undefined,
+    metadata: parseMetadata(row.metadata),
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -78,7 +95,7 @@ export class PrismaSocialIntegrationRepository
     filter: Record<string, unknown>
   ): Promise<ISocialIntegration | null> {
     const row = await this.prisma.socialIntegration.findFirst({
-      where: filter as Prisma.SocialIntegrationWhereInput,
+      where: normalizeToPrisma(filter) as Prisma.SocialIntegrationWhereInput,
     });
     return row ? toISocialIntegration(row) : null;
   }
@@ -88,7 +105,7 @@ export class PrismaSocialIntegrationRepository
     opts?: QueryOptions
   ): Promise<ISocialIntegration[]> {
     const rows = await this.prisma.socialIntegration.findMany({
-      where: filter as Prisma.SocialIntegrationWhereInput,
+      where: normalizeToPrisma(filter) as Prisma.SocialIntegrationWhereInput,
       orderBy: opts?.sort ? toOrderBy(opts.sort) : { created_at: 'desc' },
       take: opts?.limit,
       skip: opts?.skip,
@@ -178,7 +195,9 @@ export class PrismaSocialIntegrationRepository
 
   async count(filter?: Record<string, unknown>): Promise<number> {
     return this.prisma.socialIntegration.count({
-      where: filter as Prisma.SocialIntegrationWhereInput,
+      where: filter
+        ? (normalizeToPrisma(filter) as Prisma.SocialIntegrationWhereInput)
+        : undefined,
     });
   }
 }

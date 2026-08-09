@@ -325,7 +325,9 @@ model Settings {
   metadata       String   @default("{}")
   created_at     DateTime @default(now())
 
-  @@unique([key, is_active])
+  // PostgreSQL enforces the single-active invariant with a partial unique
+  // index in migrations; Prisma cannot currently express partial indexes.
+  @@index([key, is_active])
   @@map("settings")
 }
 
@@ -343,7 +345,9 @@ model TenantSettingsOverride {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  @@unique([tenant_id, key, is_active])
+  // PostgreSQL enforces the single-active invariant with a partial unique
+  // index in migrations while retaining any number of inactive revisions.
+  @@index([tenant_id, key, is_active])
   @@index([tenant_id])
   @@map("tenant_settings_overrides")
 }
@@ -389,13 +393,15 @@ model JwksKey {
 
   @@unique([tenant_id, kid])
   @@index([tenant_id, status])
+  // One promoted active signing key per algorithm is enforced by a partial
+  // unique index in the provider-specific migrations.
   @@map("jwks_keys")
 }
 
 // ─── OIDC EPHEMERAL STORE ────────────────────────────────────────────────────
 
 model OidcStore {
-  id         String    @id
+  id         String
   model      String
   payload    String
   grant_id   String?
@@ -408,6 +414,7 @@ model OidcStore {
   tenant_id  String    @default("default")
   created_at DateTime  @default(now())
 
+  @@id([tenant_id, model, id])
   @@index([model, id])
   @@index([grant_id])
   @@index([user_code])

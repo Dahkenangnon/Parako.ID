@@ -7,6 +7,9 @@ import type {
   IPReputationResult,
 } from '../di/interfaces/ip-reputation-service.interface.js';
 
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
 /**
  * IPReputationService
  *
@@ -33,28 +36,41 @@ export class IPReputationService implements IIPReputationService {
    * Get API key from environment variable or config
    * Environment variable takes precedence over database config
    */
-  private getApiKey(): string | undefined {
+  private getEnvironmentApiKey(): string | undefined {
     const envKey = process.env.IPQUALITYSCORE_API_KEY;
-    if (envKey && envKey.trim()) {
-      return envKey.trim();
-    }
-    // Fall back to database config
-    const config = this.configManager.getConfig();
-    return config.integrations?.ipqualityscore?.api_key;
+    return envKey?.trim() || undefined;
+  }
+
+  private getApiKey(
+    config: ReturnType<IConfigManager['getConfig']>
+  ): string | undefined {
+    return (
+      this.getEnvironmentApiKey() ||
+      config.integrations?.ipqualityscore?.api_key?.trim() ||
+      undefined
+    );
   }
 
   /**
    * Check if IP reputation service is enabled
    */
   public isEnabled(): boolean {
-    const config = this.configManager.getConfig();
-    const apiKey = this.getApiKey();
-    // Service is enabled if either:
-    // 1. Explicitly enabled in config with API key
-    // 2. API key is set via environment variable (implicit enable)
-    const configEnabled = config.integrations?.ipqualityscore?.enabled === true;
-    const hasEnvKey = !!process.env.IPQUALITYSCORE_API_KEY?.trim();
-    return (configEnabled || hasEnvKey) && !!apiKey;
+    // An environment key implicitly enables the integration and must remain
+    // usable even while the persisted configuration provider is unavailable.
+    if (this.getEnvironmentApiKey()) {
+      return true;
+    }
+
+    try {
+      const config = this.configManager.getConfig();
+      const apiKey = this.getApiKey(config);
+      return config.integrations?.ipqualityscore?.enabled === true && !!apiKey;
+    } catch (error) {
+      this.logger.warn('IP reputation configuration unavailable', {
+        error: errorMessage(error),
+      });
+      return false;
+    }
   }
 
   /**
@@ -75,7 +91,7 @@ export class IPReputationService implements IIPReputationService {
 
     try {
       const config = this.configManager.getConfig();
-      const apiKey = this.getApiKey();
+      const apiKey = this.getApiKey(config);
       const cacheTtlHours =
         config.integrations?.ipqualityscore?.cache_ttl_hours ?? 6;
 
@@ -84,19 +100,22 @@ export class IPReputationService implements IIPReputationService {
       }
 
       // IPQualityScore API URL
-      const url = `https://www.ipqualityscore.com/api/json/ip/${apiKey}/${normalizedIP}?strictness=1&allow_public_access_points=true&lighter_penalties=true`;
+      const url = `https://www.ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(normalizedIP)}?strictness=1&allow_public_access_points=true&lighter_penalties=true`;
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.API_TIMEOUT);
 
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          Accept: 'application/json',
-        },
-      });
-
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         throw new Error(`IPQualityScore API returned ${response.status}`);
@@ -108,7 +127,7 @@ export class IPReputationService implements IIPReputationService {
         throw new Error(data.message || 'IPQualityScore API request failed');
       }
 
-      const fraudScore = data.fraud_score ?? 0;
+      const fraudScore = this.normalizeFraudScore(data.fraud_score);
       const result: IPReputationResult = {
         ip: normalizedIP,
         success: true,
@@ -118,7 +137,8 @@ export class IPReputationService implements IIPReputationService {
         isTor: data.tor === true,
         isCrawler: data.is_crawler === true,
         isBlocklisted: data.recent_abuse === true || fraudScore >= 90,
-        isDatacenter: data.host !== undefined && data.host !== '',
+        isDatacenter:
+          typeof data.host === 'string' && data.host.trim().length > 0,
         isMobile: data.mobile === true,
         isp: data.ISP,
         asn: data.ASN,
@@ -144,12 +164,12 @@ export class IPReputationService implements IIPReputationService {
 
       return result;
     } catch (error) {
-      const err = error as Error;
+      const message = errorMessage(error);
       this.logger.warn('IP reputation lookup failed', {
         ip: normalizedIP,
-        error: err.message,
+        error: message,
       });
-      return this.createErrorResult(normalizedIP, err.message);
+      return this.createErrorResult(normalizedIP, message);
     }
   }
 
@@ -205,6 +225,13 @@ export class IPReputationService implements IIPReputationService {
 
     // Low: Clean or low fraud score
     return 'low';
+  }
+
+  private normalizeFraudScore(value: unknown): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.min(100, Math.max(0, value));
   }
 
   /**

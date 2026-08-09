@@ -41,7 +41,7 @@ export function detectProviderTier(
   const clientId =
     tenantOverrides?.features?.social_providers?.[provider]?.client_id;
 
-  if (typeof clientId === 'string' && clientId.length > 0) {
+  if (typeof clientId === 'string' && clientId.trim().length > 0) {
     return 'tier2';
   }
 
@@ -148,7 +148,14 @@ export async function consumeSocialRef(
   }
 
   const data = parsed as Partial<SocialRefData>;
-  if (!data.provider || !data.code || !data.tenant_id) {
+  if (
+    typeof data.provider !== 'string' ||
+    data.provider.trim().length === 0 ||
+    typeof data.code !== 'string' ||
+    data.code.trim().length === 0 ||
+    typeof data.tenant_id !== 'string' ||
+    data.tenant_id.trim().length === 0
+  ) {
     return { success: false, error: 'Missing required fields in ref data' };
   }
 

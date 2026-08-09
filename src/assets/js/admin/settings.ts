@@ -32,7 +32,7 @@ interface RevealSecretResponse {
 class AdminSettingsManager {
   private debug: boolean;
   private inactivityTimer: any = null;
-  private readonly INACTIVITY_TIMEOUT = 0.5 * 60 * 1000; // 2 minutes of inactivity, 30 second for testing
+  private readonly INACTIVITY_TIMEOUT = 2 * 60 * 1000; // 2 minutes of inactivity
   private revealedFields: Set<string> = new Set();
 
   constructor(debug: boolean = false) {
@@ -731,7 +731,9 @@ class AdminSettingsManager {
 
 // Auto-initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  const isAdminSettings = window.location.pathname.includes('/admin/settings');
+  const pathname = window.location.pathname;
+  const isAdminSettings =
+    pathname === '/admin/settings' || pathname.startsWith('/admin/settings/');
 
   if (isAdminSettings) {
     const dataElement = document.getElementById('___MAIN_STATE___');

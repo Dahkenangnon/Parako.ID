@@ -409,7 +409,14 @@
       return;
     }
 
+    let revealTimeout: ReturnType<typeof setTimeout> | null = null;
+
     checkbox.addEventListener('change', function () {
+      if (revealTimeout) {
+        clearTimeout(revealTimeout);
+        revealTimeout = null;
+      }
+
       if (this.checked) {
         const newPassword = generateSecurePassword();
         passwordInput.value = newPassword;
@@ -428,11 +435,12 @@
           confirmInput.type = 'text';
         }
 
-        setTimeout(() => {
+        revealTimeout = setTimeout(() => {
           passwordInput.type = 'password';
           if (confirmInput) {
             confirmInput.type = 'password';
           }
+          revealTimeout = null;
         }, showDuration);
       } else {
         passwordInput.value = '';

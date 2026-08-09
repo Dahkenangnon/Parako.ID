@@ -116,14 +116,6 @@ export class FacebookSocialLogin
       const providerSessionData = stateVerification.sessionData!;
       const { code } = req.query;
 
-      if (!code) {
-        this.cleanupSocialLoginSession(req);
-        return {
-          success: false,
-          error: 'Authorization code is missing from callback',
-        };
-      }
-
       // Exchange authorization code for access tokens
       const tokenResponse = await this.exchangeCodeForTokens(
         code as string,
@@ -152,10 +144,18 @@ export class FacebookSocialLogin
       const tokens = this.mapTokenData(tokenResponse);
 
       // Use common user integration handling
-      return this.handleUserIntegration(mappedProviderData, tokens, req);
+      const result = await this.handleUserIntegration(
+        mappedProviderData,
+        tokens,
+        req
+      );
+      this.cleanupSocialLoginSession(req);
+      return result;
     } catch (error) {
-      const technicalError = (error as Error).message;
-      this.logger.error(error as Error, {
+      const normalizedError =
+        error instanceof Error ? error : new Error(String(error));
+      const technicalError = normalizedError.message;
+      this.logger.error(normalizedError, {
         context: `facebook_oauth2_callback_failed`,
         provider: this.provider,
         technicalError,
@@ -198,12 +198,10 @@ export class FacebookSocialLogin
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       this.logger.error(`Facebook token exchange failed`, {
         provider: this.provider,
         status: response.status,
         statusText: response.statusText,
-        technicalError: errorText,
       });
       throw new Error(
         getHttpStatusErrorMessage(
@@ -214,7 +212,17 @@ export class FacebookSocialLogin
       );
     }
 
-    return response.json();
+    const tokenResponse = await response.json();
+    if (
+      typeof tokenResponse?.access_token !== 'string' ||
+      tokenResponse.access_token.trim().length === 0
+    ) {
+      throw new Error(
+        'Facebook token response did not include an access token'
+      );
+    }
+
+    return tokenResponse;
   }
 
   /**
@@ -252,8 +260,19 @@ export class FacebookSocialLogin
    * Map Facebook user info to our standard format
    */
   mapProviderUserData(userInfo: any): ProviderUserData {
+    const providerId = userInfo?.id;
+    if (
+      (typeof providerId !== 'string' && typeof providerId !== 'number') ||
+      String(providerId).trim().length === 0
+    ) {
+      throw new Error(
+        'Facebook user response did not include a valid account identifier'
+      );
+    }
+    const normalizedProviderId = String(providerId);
+
     return {
-      sub: userInfo.id,
+      sub: normalizedProviderId,
       email: userInfo.email,
       // Facebook verifies emails, so we can trust this
       email_verified: true,
@@ -264,7 +283,7 @@ export class FacebookSocialLogin
       picture: userInfo.picture?.data?.url || userInfo.picture,
       locale: userInfo.locale,
       // Use id as username since Facebook doesn't expose usernames
-      provider_username: userInfo.id,
+      provider_username: normalizedProviderId,
       raw_data: {
         id: userInfo.id,
         link: userInfo.link,
@@ -308,9 +327,8 @@ export class FacebookSocialLogin
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
       throw new Error(
-        `Facebook token revocation failed: ${response.status} - ${errorText}`
+        `Facebook token revocation failed with status ${response.status}`
       );
     }
 

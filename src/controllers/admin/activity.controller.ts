@@ -7,13 +7,32 @@ import type { IAdminActivitiesController } from '../../di/interfaces/admin-activ
 import { TYPES } from '../../di/types.js';
 import {
   ADMIN_ACTIVITY_SORT_FIELDS,
-  escapeRegExp,
   extractListingQuery,
   parsePositiveInt,
 } from '../../validators/listing-query.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { flashAndRedirect } from '../../utils/flash-redirect.js';
 import { GuardError } from '../../utils/guard-error.js';
+
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function scalarQueryValue(value: unknown, maxLength = 100): string {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function parseActivityDate(value: string, endOfDay: boolean): Date | null {
+  if (!value) return null;
+
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const time = endOfDay ? '23:59:59.999' : '00:00:00.000';
+    const date = new Date(`${value}T${time}Z`);
+    if (!Number.isFinite(date.getTime())) return null;
+    return date.toISOString().slice(0, 10) === value ? date : null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
+}
 
 @injectable()
 export class AdminActivitiesController implements IAdminActivitiesController {
@@ -36,25 +55,22 @@ export class AdminActivitiesController implements IAdminActivitiesController {
       ADMIN_ACTIVITY_SORT_FIELDS,
       { sortBy: 'timestamp', limit: 50 }
     );
-    const type = ((req.query.type as string) || '').trim();
-    const status = ((req.query.status as string) || '').trim();
-    const username = ((req.query.username as string) || '')
-      .trim()
-      .slice(0, 100);
-    const dateFrom = ((req.query.dateFrom as string) || '').trim();
-    const dateTo = ((req.query.dateTo as string) || '').trim();
+    const type = scalarQueryValue(req.query.type, 50);
+    const status = scalarQueryValue(req.query.status, 20);
+    const username = scalarQueryValue(req.query.username);
+    const rawDateFrom = scalarQueryValue(req.query.dateFrom, 40);
+    const rawDateTo = scalarQueryValue(req.query.dateTo, 40);
+    const parsedDateFrom = parseActivityDate(rawDateFrom, false);
+    const parsedDateTo = parseActivityDate(rawDateTo, true);
+    const dateFrom = parsedDateFrom ? rawDateFrom : '';
+    const dateTo = parsedDateTo ? rawDateTo : '';
 
     const filter: any = {};
 
-    // Anchored prefix match with escaped user input — closes the ReDoS
-    // sink that `$regex: search` would otherwise create.
-    // https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS
     if (search) {
-      const safeSearch = new RegExp(escapeRegExp(search), 'i');
-      filter.$or = [
-        { description: { $regex: safeSearch } },
-        { username: { $regex: safeSearch } },
-      ];
+      // Repository adapters translate this portable text search into their
+      // native query language. Do not leak Mongo operators from controllers.
+      filter.search = search;
     }
 
     if (type && type !== 'all') {
@@ -66,18 +82,16 @@ export class AdminActivitiesController implements IAdminActivitiesController {
     }
 
     if (username) {
-      filter.username = {
-        $regex: new RegExp(`^${escapeRegExp(username)}`, 'i'),
-      };
+      filter['actor.username'] = username;
     }
 
-    if (dateFrom || dateTo) {
+    if (parsedDateFrom || parsedDateTo) {
       filter.timestamp = {};
-      if (dateFrom) {
-        filter.timestamp.$gte = new Date(dateFrom);
+      if (parsedDateFrom) {
+        filter.timestamp.$gte = parsedDateFrom;
       }
-      if (dateTo) {
-        filter.timestamp.$lte = new Date(`${dateTo}T23:59:59.999Z`);
+      if (parsedDateTo) {
+        filter.timestamp.$lte = parsedDateTo;
       }
     }
 

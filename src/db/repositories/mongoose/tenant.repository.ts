@@ -4,8 +4,26 @@ import type { TenantModel } from '../../../models/tenant.model.js';
 import type {
   ITenantRepository,
   CreateTenantDto,
+  UpdateTenantDto,
 } from '../interfaces/tenant.repository.js';
 import { serializeDocument, serializeDocuments } from '../../utils.js';
+
+const IMMUTABLE_TENANT_FIELDS = new Set([
+  '_id',
+  'id',
+  'created_at',
+  'updated_at',
+  '__v',
+  '__proto__',
+  'constructor',
+  'prototype',
+]);
+
+function mutableTenantFields(data: UpdateTenantDto): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => !IMMUTABLE_TENANT_FIELDS.has(key))
+  );
+}
 
 @injectable()
 export class MongooseTenantRepository implements ITenantRepository {
@@ -39,13 +57,28 @@ export class MongooseTenantRepository implements ITenantRepository {
     return serializeDocument(doc as any) as ITenant;
   }
 
-  async update(id: string, data: Partial<ITenant>): Promise<ITenant> {
+  async update(id: string, data: UpdateTenantDto): Promise<ITenant> {
+    const fields = mutableTenantFields(data);
+    const fieldsToSet = Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== null)
+    );
+    const fieldsToUnset = Object.fromEntries(
+      Object.entries(fields)
+        .filter(([, value]) => value === null)
+        .map(([key]) => [key, 1])
+    );
+    const update: Record<string, Record<string, unknown>> = {
+      $set: { ...fieldsToSet, updated_at: new Date() },
+    };
+    if (Object.keys(fieldsToUnset).length > 0) {
+      update.$unset = fieldsToUnset;
+    }
+
     const doc = await this.tenantModel
-      .findByIdAndUpdate(
-        id,
-        { $set: { ...data, updated_at: new Date() } },
-        { returnDocument: 'after', runValidators: true }
-      )
+      .findByIdAndUpdate(id, update, {
+        returnDocument: 'after',
+        runValidators: true,
+      })
       .lean()
       .exec();
     if (!doc) throw new Error(`Tenant not found: ${id}`);

@@ -25,6 +25,12 @@ type TtlOverrideKey =
   | 'ClientCredentials'
   | 'RefreshToken';
 
+function getPositiveFiniteTtl(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
 function getClientTtlOverride(
   client: Client | undefined,
   key: TtlOverrideKey
@@ -32,10 +38,7 @@ function getClientTtlOverride(
   if (!client) return undefined;
   const ttl = (client as { ttl?: Partial<Record<TtlOverrideKey, unknown>> })
     .ttl;
-  const value = ttl?.[key];
-  return typeof value === 'number' && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
+  return getPositiveFiniteTtl(ttl?.[key]);
 }
 
 /**
@@ -74,9 +77,10 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
       client: Client
     ): number {
       try {
-        if (token?.resourceServer?.accessTokenTTL) {
-          return token.resourceServer.accessTokenTTL;
-        }
+        const resourceServerTtl = getPositiveFiniteTtl(
+          token?.resourceServer?.accessTokenTTL
+        );
+        if (resourceServerTtl !== undefined) return resourceServerTtl;
 
         const override = getClientTtlOverride(client, 'AccessToken');
         if (override !== undefined) return override;
@@ -111,11 +115,8 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
         try {
           // If client requested a specific expiry, honor it but cap it at the maximum allowed
           if (ctx?.oidc?.params?.requested_expiry) {
-            const requestedExpiry = parseInt(
-              ctx.oidc.params.requested_expiry as string,
-              10
-            );
-            if (!isNaN(requestedExpiry) && requestedExpiry > 0) {
+            const requestedExpiry = Number(ctx.oidc.params.requested_expiry);
+            if (Number.isSafeInteger(requestedExpiry) && requestedExpiry > 0) {
               return Math.min(
                 config.oidc.token_ttl.backchannel_auth,
                 requestedExpiry
@@ -153,9 +154,10 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
       client: Client
     ): number {
       try {
-        if (token?.resourceServer?.accessTokenTTL) {
-          return token.resourceServer.accessTokenTTL;
-        }
+        const resourceServerTtl = getPositiveFiniteTtl(
+          token?.resourceServer?.accessTokenTTL
+        );
+        if (resourceServerTtl !== undefined) return resourceServerTtl;
 
         const override = getClientTtlOverride(client, 'ClientCredentials');
         if (override !== undefined) return override;
@@ -207,9 +209,8 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
           // Non-Sender Constrained SPA RefreshTokens do not have infinite expiration through rotation
           const rotatedToken = ctx.oidc.entities
             .RotatedRefreshToken as unknown as { remainingTTL?: number };
-          return (
-            rotatedToken.remainingTTL || config.oidc.token_ttl.refresh_token
-          );
+          const remainingTtl = getPositiveFiniteTtl(rotatedToken.remainingTTL);
+          if (remainingTtl !== undefined) return remainingTtl;
         }
 
         const override = getClientTtlOverride(client, 'RefreshToken');

@@ -351,7 +351,11 @@
       const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
 
       if (dialogApi && typeof dialogApi.showAlert === 'function') {
-        await dialogApi.showAlert(title, message, { variant: 'error' });
+        try {
+          await dialogApi.showAlert(title, message, { variant: 'error' });
+        } catch {
+          alert(message);
+        }
       } else {
         alert(message);
       }

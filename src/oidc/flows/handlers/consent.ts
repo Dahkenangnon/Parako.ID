@@ -68,7 +68,7 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
 
       if (!session || !session.accountId) {
         this.logger.error('Session data is missing in consent confirmation');
-        return res.render(this.viewResolver.views.auth.oidc.error, {
+        return res.status(400).render(this.viewResolver.views.auth.oidc.error, {
           errorType: 'SessionNotFound',
           errorMessage:
             'Your session has expired or is invalid. Please try authenticating again.',
@@ -81,7 +81,7 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
         this.logger.error('Expected consent prompt but got', {
           promptName: name,
         });
-        return res.render(this.viewResolver.views.auth.oidc.error, {
+        return res.status(400).render(this.viewResolver.views.auth.oidc.error, {
           errorType: 'InvalidPrompt',
           errorMessage: 'Invalid interaction prompt. Expected consent prompt.',
         });

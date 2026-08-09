@@ -123,7 +123,31 @@ export class SocialTier1CompletionService implements ISocialTier1CompletionServi
       return { success: false, error: 'Social login is not available' };
     }
 
+    const clientId =
+      typeof providerConfig.client_id === 'string'
+        ? providerConfig.client_id.trim()
+        : '';
+    const clientSecret =
+      typeof providerConfig.client_secret === 'string'
+        ? providerConfig.client_secret.trim()
+        : '';
+
+    if (!clientId || !clientSecret) {
+      this.logger.warn('tier1_completion_credentials_missing', {
+        provider,
+        missingField: !clientId ? 'client_id' : 'client_secret',
+      });
+      return { success: false, error: 'Social login is not available' };
+    }
+
     const baseDomain = extractBaseDomain(config.deployment?.url || '');
+    if (!baseDomain) {
+      this.logger.warn('tier1_completion_base_domain_unresolved', {
+        provider,
+      });
+      return { success: false, error: 'Social login is not available' };
+    }
+
     const opsRedirectUri = `https://_ops.${baseDomain}/social/${provider}/callback`;
 
     // 3. Exchange code for tokens
@@ -131,8 +155,8 @@ export class SocialTier1CompletionService implements ISocialTier1CompletionServi
     try {
       tokenResponse = await exchangeTier1Code(code, {
         token_endpoint: endpoints.token_endpoint,
-        client_id: providerConfig.client_id as string,
-        client_secret: providerConfig.client_secret as string,
+        client_id: clientId,
+        client_secret: clientSecret,
         redirect_uri: opsRedirectUri,
       });
     } catch (error) {

@@ -1,4 +1,4 @@
-import type { IActivity } from '../../../types/activity.js';
+import type { ActivityCursor, IActivity } from '../../../types/activity.js';
 import type {
   IBaseRepository,
   PaginatedResult,
@@ -6,6 +6,8 @@ import type {
 } from './base.repository.js';
 
 export interface ActivityFilter {
+  /** Adapter-neutral text search across description and actor username. */
+  search?: string;
   type?: string | string[];
   status?: 'success' | 'failed' | 'warning' | 'info';
   'actor.user_id'?: string;
@@ -45,7 +47,8 @@ export interface IActivityRepository extends Omit<
   ): Promise<PaginatedResult<IActivity>>;
   findByUser(
     userId: string,
-    opts?: PaginationOptions
+    opts?: PaginationOptions,
+    cursor?: ActivityCursor
   ): Promise<PaginatedResult<IActivity>>;
   findByDevice(fingerprint: string): Promise<IActivity[]>;
   count(filter?: ActivityFilter): Promise<number>;

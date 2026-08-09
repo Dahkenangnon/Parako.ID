@@ -38,7 +38,11 @@ export function getDefaultFullConfig(): AppConfig {
   if (!_cachedDefaultConfig) {
     _cachedDefaultConfig = _buildDefaultFullConfig();
   }
-  return _cachedDefaultConfig;
+
+  // Keep generated secrets stable for the process, but never expose the
+  // mutable cached object to callers. Configuration merging and admin views
+  // must not be able to corrupt defaults used by later requests.
+  return structuredClone(_cachedDefaultConfig);
 }
 
 function _buildDefaultFullConfig(): AppConfig {
@@ -545,7 +549,7 @@ function _buildDefaultFullConfig(): AppConfig {
             'continue',
           ],
         },
-        accept_query_param_access_tokens: true,
+        accept_query_param_access_tokens: false,
         conform_id_token_claims: false,
         allow_omitting_single_registered_redirect_uri: true,
         enable_http_post_methods: false,

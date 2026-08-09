@@ -106,9 +106,4 @@
       handleConfirmAction,
     };
   }
-
-  // Module export for testing
-  if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { setupConfirmationHandlers, handleConfirmAction };
-  }
 })();

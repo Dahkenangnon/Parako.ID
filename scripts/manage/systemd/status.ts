@@ -1,10 +1,12 @@
 import { log } from '../shared/logger.js';
 import { executeCommand } from '../shared/utils.js';
 import { SERVICE_NAME } from './constants.js';
+import { assertServiceName } from './validation.js';
 
 export async function showStatus(
   serviceName: string = SERVICE_NAME
 ): Promise<void> {
+  assertServiceName(serviceName);
   const workerServiceName = `${serviceName}-worker`;
   const services = [serviceName, workerServiceName];
 

@@ -1,8 +1,10 @@
 import type { Document } from 'mongoose';
 
-export function serializeDocument<T extends { _id?: any; id?: string }>(
-  doc: T | Document | null
-): T | null {
+const UNSAFE_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function serializeDocument<
+  T extends Record<string, any> = Record<string, any>,
+>(doc: T | Document | null): T | null {
   if (!doc) return null;
 
   const plainDoc = (doc as Document).toObject
@@ -68,6 +70,10 @@ function processObjectIds(obj: any): any {
 
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      if (UNSAFE_OBJECT_KEYS.has(key)) {
+        modified = true;
+        continue;
+      }
       const value = obj[key];
       const processed = processObjectIds(value);
       result[key] = processed;
@@ -78,9 +84,9 @@ function processObjectIds(obj: any): any {
   return modified ? result : obj;
 }
 
-export function serializeDocuments<T extends { _id?: any; id?: string }>(
-  docs: (T | Document | null)[]
-): T[] {
+export function serializeDocuments<
+  T extends Record<string, any> = Record<string, any>,
+>(docs: (T | Document | null)[]): T[] {
   if (!Array.isArray(docs)) return [];
   return docs
     .map(doc => serializeDocument(doc))
@@ -88,7 +94,7 @@ export function serializeDocuments<T extends { _id?: any; id?: string }>(
 }
 
 export function serializePaginatedResults<
-  T extends { _id?: any; id?: string },
+  T extends Record<string, any> = Record<string, any>,
 >(paginatedData: {
   results: (T | Document | null)[];
   totalPages: number;
@@ -151,6 +157,7 @@ export function merge(target: any, ...sources: any[]): any {
     if (!isObject(source)) continue;
 
     for (const key of Object.keys(source)) {
+      if (UNSAFE_OBJECT_KEYS.has(key)) continue;
       const srcVal = source[key];
       const tgtVal = target[key];
 

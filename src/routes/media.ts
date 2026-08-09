@@ -9,8 +9,6 @@ import { validateSignature } from '../storage/signed-url.js';
  * @returns sanitized path or null if invalid
  */
 function sanitizePath(rawPath: string): string | null {
-  if (!rawPath) return null;
-
   if (rawPath.includes('\0')) return null;
 
   if (rawPath.includes('..')) return null;
@@ -19,8 +17,6 @@ function sanitizePath(rawPath: string): string | null {
 
   // Only allow alphanumeric, dash, dot, underscore, slash
   if (!/^[a-zA-Z0-9\-._/]+$/.test(cleaned)) return null;
-
-  if (!cleaned) return null;
 
   return cleaned;
 }
@@ -42,14 +38,13 @@ export function createMediaFileRoutes(
   isProduction: boolean
 ): Router {
   const router = Router();
+  const normalizedUploadsBasePath = path.resolve(uploadsBasePath);
 
   // Catch-all: /media/file/* — the path parameter contains the storage key
   router.get('/*path', (req, res) => {
     // Express 5 returns wildcard params as arrays
-    const pathParam = (req.params as any).path;
-    const rawPath = Array.isArray(pathParam)
-      ? pathParam.join('/')
-      : pathParam || '';
+    const pathSegments = (req.params as { path: string[] }).path;
+    const rawPath = pathSegments.join('/');
 
     let decodedPath: string;
     try {
@@ -71,8 +66,12 @@ export function createMediaFileRoutes(
       return;
     }
 
-    const expiresNum = parseInt(expires as string, 10);
-    if (isNaN(expiresNum)) {
+    if (typeof expires !== 'string' || !/^\d+$/.test(expires)) {
+      res.status(403).json({ error: 'Invalid expires parameter' });
+      return;
+    }
+    const expiresNum = Number(expires);
+    if (!Number.isSafeInteger(expiresNum)) {
       res.status(403).json({ error: 'Invalid expires parameter' });
       return;
     }
@@ -85,8 +84,14 @@ export function createMediaFileRoutes(
     }
 
     // Resolve absolute path and verify it stays within uploads directory
-    const absolutePath = path.resolve(uploadsBasePath, filePath);
-    if (!absolutePath.startsWith(uploadsBasePath + path.sep)) {
+    const absolutePath = path.resolve(normalizedUploadsBasePath, filePath);
+    const relativePath = path.relative(normalizedUploadsBasePath, absolutePath);
+    if (
+      !relativePath ||
+      relativePath === '..' ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }

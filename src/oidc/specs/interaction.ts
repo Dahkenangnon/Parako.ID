@@ -41,8 +41,9 @@ export default function Interaction(
       async (ctx: KoaContextWithOIDC) => {
         const { params, session } = ctx.oidc;
         const prompt = (params?.prompt as string | undefined) ?? '';
+        const requestedPrompts = prompt.split(/\s+/).filter(Boolean);
 
-        if (!prompt.includes('select_account')) {
+        if (!requestedPrompts.includes('select_account')) {
           return Check.NO_NEED_TO_PROMPT;
         }
 
@@ -52,18 +53,6 @@ export default function Interaction(
         );
 
         if (hasSelectAccount) {
-          return Check.NO_NEED_TO_PROMPT;
-        }
-
-        // Additional check: if we have a valid accountId and select_account is in the prompt,
-        // but we don't have select_account in amr, it means we need to complete the selection
-        // This prevents the infinite loop where the provider keeps creating new interactions
-        if (
-          session?.accountId &&
-          prompt.includes('select_account') &&
-          !hasSelectAccount
-        ) {
-          // This is a fallback to prevent infinite loops
           return Check.NO_NEED_TO_PROMPT;
         }
 

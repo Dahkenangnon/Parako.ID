@@ -225,18 +225,16 @@
     }
 
     private updateSidebarUI(expanded: boolean): void {
-      if (!this.sidebar || !this.mainContent) return;
-
       if (expanded) {
-        this.sidebar.classList.remove('sidebar-collapsed');
-        this.sidebar.classList.add('sidebar-expanded');
-        this.mainContent.classList.remove('main-content-collapsed');
-        this.mainContent.classList.add('main-content-expanded');
+        this.sidebar!.classList.remove('sidebar-collapsed');
+        this.sidebar!.classList.add('sidebar-expanded');
+        this.mainContent!.classList.remove('main-content-collapsed');
+        this.mainContent!.classList.add('main-content-expanded');
       } else {
-        this.sidebar.classList.remove('sidebar-expanded');
-        this.sidebar.classList.add('sidebar-collapsed');
-        this.mainContent.classList.remove('main-content-expanded');
-        this.mainContent.classList.add('main-content-collapsed');
+        this.sidebar!.classList.remove('sidebar-expanded');
+        this.sidebar!.classList.add('sidebar-collapsed');
+        this.mainContent!.classList.remove('main-content-expanded');
+        this.mainContent!.classList.add('main-content-collapsed');
       }
 
       this.updateSidebarLogos(expanded);
@@ -327,13 +325,11 @@
     }
 
     private updateThemeIcon(): void {
-      if (this.themeIcon) {
-        this.themeIcon.setAttribute(
-          'data-lucide',
-          this.currentTheme === 'dark' ? 'moon' : 'sun'
-        );
-        this.refreshLucideIcons();
-      }
+      this.themeIcon!.setAttribute(
+        'data-lucide',
+        this.currentTheme === 'dark' ? 'moon' : 'sun'
+      );
+      this.refreshLucideIcons();
     }
 
     private async toggleTheme(): Promise<void> {
@@ -653,17 +649,21 @@
       const avatarContainer = document.createElement('div');
       avatarContainer.className = `bg-muted ${avatarSize} rounded-full flex items-center justify-center border border-border ${margin} flex-shrink-0`;
 
+      let safePictureUrl: string | null = null;
       if (account.picture) {
-        const img = document.createElement('img');
-        // Only allow safe URL protocols for avatar
         try {
           const url = new URL(account.picture, window.location.origin);
           if (url.protocol === 'https:' || url.protocol === 'http:') {
-            img.src = url.href;
+            safePictureUrl = url.href;
           }
         } catch {
-          // Invalid URL — skip avatar image
+          // Invalid URL — fall back to initials below.
         }
+      }
+
+      if (safePictureUrl) {
+        const img = document.createElement('img');
+        img.src = safePictureUrl;
         img.alt = '';
         img.className = `${avatarSize} rounded-full object-cover`;
         avatarContainer.appendChild(img);

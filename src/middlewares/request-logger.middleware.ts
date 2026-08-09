@@ -5,29 +5,52 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IMetricsService } from '../di/interfaces/metrics-service.interface.js';
 
 /** Paths to skip for request logging (static assets, health checks) */
-const SKIP_PREFIXES = [
+const STATIC_SKIP_PREFIXES = [
   '/css/',
   '/js/',
   '/images/',
   '/fonts/',
   '/favicon',
-  '/health',
-  '/metrics',
 ];
+const PROBE_PATHS = ['/health', '/metrics'];
 
 function shouldSkip(path: string): boolean {
-  return SKIP_PREFIXES.some(prefix => path.startsWith(prefix));
+  return (
+    STATIC_SKIP_PREFIXES.some(prefix => path.startsWith(prefix)) ||
+    PROBE_PATHS.some(
+      probePath => path === probePath || path.startsWith(`${probePath}/`)
+    )
+  );
 }
 
-const SENSITIVE_QUERY_PARAMETER =
-  /([?&])(token|code|id_token|access_token|refresh_token|client_secret|password)=([^&#]*)/gi;
+const QUERY_PARAMETER = /([?&])([^=&#]+)=([^&#]*)/g;
+const SENSITIVE_QUERY_PARAMETERS = new Set([
+  'token',
+  'code',
+  'id_token',
+  'access_token',
+  'refresh_token',
+  'client_secret',
+  'password',
+]);
+const SAFE_REQUEST_ID = /^[A-Za-z0-9._:@/-]{1,128}$/;
 
 /** Redact bearer credentials before request URLs are written to logs. */
 export function redactSensitiveQueryParams(originalUrl: string): string {
   return originalUrl.replace(
-    SENSITIVE_QUERY_PARAMETER,
-    (_match, separator: string, parameter: string) =>
-      `${separator}${parameter}=[REDACTED]`
+    QUERY_PARAMETER,
+    (match: string, separator: string, rawParameter: string) => {
+      let parameter: string;
+      try {
+        parameter = decodeURIComponent(rawParameter.replace(/\+/g, ' '));
+      } catch {
+        return match;
+      }
+
+      return SENSITIVE_QUERY_PARAMETERS.has(parameter.toLowerCase())
+        ? `${separator}${rawParameter}=[REDACTED]`
+        : match;
+    }
   );
 }
 
@@ -60,9 +83,13 @@ export class RequestLoggerMiddleware {
     }
 
     // Use existing request ID from reverse proxy or generate one
+    const suppliedRequestId = req.headers['x-request-id'];
     const requestId =
-      (req.headers['x-request-id'] as string) || crypto.randomUUID();
-    (req as any).requestId = requestId;
+      typeof suppliedRequestId === 'string' &&
+      SAFE_REQUEST_ID.test(suppliedRequestId)
+        ? suppliedRequestId
+        : crypto.randomUUID();
+    (req as Request & { requestId?: string }).requestId = requestId;
     res.setHeader('X-Request-ID', requestId);
 
     const startTime = process.hrtime.bigint();

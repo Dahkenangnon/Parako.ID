@@ -7,7 +7,7 @@ export const BootstrapConfigSchema = z
   .object({
     deployment: z.object({
       environment: z.enum(['development', 'staging', 'production']),
-      url: z.string().optional(),
+      url: z.url('Application URL must be a valid URL').optional(),
       server: z.object({
         port: z
           .number()
@@ -18,7 +18,16 @@ export const BootstrapConfigSchema = z
     }),
     storage: z.object({
       adapter: z.enum(['mongodb', 'sqlite', 'postgresql']).default('sqlite'),
-      mongodb: z.object({ uri: z.string().min(1) }).optional(),
+      mongodb: z
+        .object({
+          uri: z
+            .string()
+            .regex(
+              /^mongodb(?:\+srv)?:\/\//,
+              'MongoDB URI must use mongodb:// or mongodb+srv://'
+            ),
+        })
+        .optional(),
       sqlite: z
         .object({
           path: z.string().default('./runtime/data/parako.db'),
@@ -26,7 +35,12 @@ export const BootstrapConfigSchema = z
         .optional(),
       postgresql: z
         .object({
-          url: z.string().url(),
+          url: z
+            .url()
+            .regex(
+              /^postgres(?:ql)?:\/\//,
+              'PostgreSQL URL must use postgres:// or postgresql://'
+            ),
         })
         .optional(),
     }),
@@ -37,6 +51,15 @@ export const BootstrapConfigSchema = z
           .optional(),
       })
       .optional(),
+    integrations: z
+      .object({
+        file_storage: z
+          .object({
+            provider: z.enum(['local', 's3']).default('local'),
+          })
+          .default({ provider: 'local' }),
+      })
+      .default({ file_storage: { provider: 'local' } }),
     redis: z
       .object({
         host: z.string().default('localhost'),

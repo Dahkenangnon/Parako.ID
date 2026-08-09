@@ -9,6 +9,22 @@
  * @module utils/nested-value
  */
 
+const UNSAFE_PATH_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function parseSafePath(path: string): string[] {
+  const keys = path.split('.');
+  if (keys.some(key => key.length === 0)) {
+    throw new TypeError(
+      'Nested property path must contain only non-empty segments'
+    );
+  }
+  const unsafeKey = keys.find(key => UNSAFE_PATH_SEGMENTS.has(key));
+  if (unsafeKey) {
+    throw new TypeError(`Unsafe nested property path segment: ${unsafeKey}`);
+  }
+  return keys;
+}
+
 /**
  * Safely read a nested property from an object using a dot-path.
  *
@@ -17,15 +33,13 @@
  * @returns Value at path, or undefined if any segment is missing
  */
 export function getNestedValue(obj: unknown, path: string): unknown {
-  return path
-    .split('.')
-    .reduce(
-      (current: unknown, key: string) =>
-        current != null && typeof current === 'object'
-          ? (current as Record<string, unknown>)[key]
-          : undefined,
-      obj
-    );
+  return parseSafePath(path).reduce(
+    (current: unknown, key: string) =>
+      current != null && typeof current === 'object'
+        ? (current as Record<string, unknown>)[key]
+        : undefined,
+    obj
+  );
 }
 
 /**
@@ -41,7 +55,7 @@ export function setNestedValue(
   path: string,
   value: unknown
 ): void {
-  const keys = path.split('.');
+  const keys = parseSafePath(path);
   const lastKey = keys.pop()!;
   const target = keys.reduce<Record<string, unknown>>((current, key) => {
     if (!current[key] || typeof current[key] !== 'object') {

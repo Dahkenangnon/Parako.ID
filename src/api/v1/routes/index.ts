@@ -135,7 +135,7 @@ export function createApiV1Router(deps: ApiV1Dependencies): Router {
   );
 
   // Catch-all for unmatched routes — produces a 404 Problem Detail response
-  router.all('/*unmatched', (req, _res, next) => {
+  router.all('/{*unmatched}', (req, _res, next) => {
     next(notFound(`No endpoint matches ${req.method} ${req.originalUrl}`));
   });
 

@@ -3,6 +3,27 @@ import type { KoaContextWithOIDC } from 'oidc-provider';
 import { errors } from 'oidc-provider';
 import type { ClientProperties } from '../../interfaces/interface.js';
 
+interface RegistrationTokenAdapter {
+  find(id: string): Promise<Record<string, unknown> | undefined>;
+  upsert(
+    id: string,
+    payload: Record<string, unknown>,
+    expiresIn?: number
+  ): Promise<void>;
+}
+
+interface InitialAccessTokenEntity {
+  adapter?: RegistrationTokenAdapter;
+  jti?: unknown;
+  remainingTTL?: unknown;
+}
+
+function invalidUsageState(): InstanceType<typeof errors.InvalidToken> {
+  return new errors.InvalidToken(
+    'Initial access token usage state cannot be persisted'
+  );
+}
+
 /**
  * Factory function to create registration configuration
  * @param configManager - Configuration manager instance
@@ -29,7 +50,10 @@ export default function Registration(configManager: IConfigManager) {
         .issue_registration_access_token,
 
     policies: {
-      'general-policy'(ctx: KoaContextWithOIDC, properties: ClientProperties) {
+      async 'general-policy'(
+        ctx: KoaContextWithOIDC,
+        properties: ClientProperties
+      ) {
         // Only require client_name (RFC 7591 doesn't mandate it, but it's
         // essential for admin dashboards and audit logs)
         if (!('client_name' in properties) || !properties.client_name) {
@@ -46,28 +70,79 @@ export default function Registration(configManager: IConfigManager) {
         }
 
         const iat = ctx.oidc.entities?.InitialAccessToken as unknown as
-          | (Record<string, unknown> & {
-              policies_metadata?: {
-                max_usage_count?: number;
-                current_usage_count?: number;
-              };
-              save?: () => Promise<unknown>;
-            })
-          | undefined;
+          InitialAccessTokenEntity | undefined;
 
-        if (iat?.policies_metadata) {
-          const meta = iat.policies_metadata;
-          const maxUsage = meta.max_usage_count;
-          const currentUsage = meta.current_usage_count ?? 0;
-
-          if (maxUsage !== undefined && currentUsage >= maxUsage) {
-            throw new errors.InvalidToken(
-              'Initial access token usage limit exceeded'
-            );
+        if (iat) {
+          if (
+            typeof iat.jti !== 'string' ||
+            !iat.jti ||
+            typeof iat.adapter?.find !== 'function' ||
+            typeof iat.adapter.upsert !== 'function'
+          ) {
+            throw invalidUsageState();
           }
 
-          // Increment usage count — persisted via adapter
-          meta.current_usage_count = currentUsage + 1;
+          const storedPayload = await iat.adapter.find(iat.jti);
+          if (!storedPayload) {
+            throw invalidUsageState();
+          }
+
+          const rawMetadata = storedPayload.policies_metadata;
+          if (
+            rawMetadata !== undefined &&
+            (typeof rawMetadata !== 'object' ||
+              rawMetadata === null ||
+              Array.isArray(rawMetadata))
+          ) {
+            throw invalidUsageState();
+          }
+
+          const meta = rawMetadata as
+            | {
+                max_usage_count?: number;
+                current_usage_count?: number;
+              }
+            | undefined;
+
+          if (meta) {
+            const maxUsage = meta.max_usage_count;
+            const currentUsage = meta.current_usage_count ?? 0;
+
+            if (
+              (maxUsage !== undefined &&
+                (!Number.isSafeInteger(maxUsage) || maxUsage < 1)) ||
+              !Number.isSafeInteger(currentUsage) ||
+              currentUsage < 0
+            ) {
+              throw invalidUsageState();
+            }
+
+            if (maxUsage !== undefined && currentUsage >= maxUsage) {
+              throw new errors.InvalidToken(
+                'Initial access token usage limit exceeded'
+              );
+            }
+
+            if (
+              typeof iat.remainingTTL !== 'number' ||
+              !Number.isFinite(iat.remainingTTL) ||
+              iat.remainingTTL <= 0
+            ) {
+              throw invalidUsageState();
+            }
+
+            await iat.adapter.upsert(
+              iat.jti,
+              {
+                ...storedPayload,
+                policies_metadata: {
+                  ...meta,
+                  current_usage_count: currentUsage + 1,
+                },
+              },
+              Math.ceil(iat.remainingTTL)
+            );
+          }
         }
 
         // Transfer policies to Registration Access Token
