@@ -2672,7 +2672,7 @@ export class SessionManager implements ISessionManager {
       saveUninitialized: this.options.saveUninitialized,
       proxy: this.options.proxy,
       store: this.store,
-      genid: request => this.generateSessionId(request),
+      genid: this.generateSessionId.bind(this),
     };
 
     this.sessionMiddleware = session(sessionOptions);

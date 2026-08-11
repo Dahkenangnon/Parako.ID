@@ -149,6 +149,15 @@ export class AuthController implements IAuthController {
     return this.configManager.getConfig();
   }
 
+  /**
+   * Repositories expose MongoDB records through `_id` and portable database
+   * records through `id`. Authentication state must use the same stable string
+   * identifier regardless of the active storage adapter.
+   */
+  private userId(user: { id?: unknown; _id?: unknown }): string {
+    return String(user._id ?? user.id ?? '');
+  }
+
   private consumeSocialRegisterIntent(
     req: Request,
     provider: SocialProvider
@@ -1257,9 +1266,7 @@ export class AuthController implements IAuthController {
         ? 'email'
         : phone
           ? 'phone_number'
-          : customRegistrationField
-            ? (`custom_identifier_${customRegistrationField.slot}` as const)
-            : 'email';
+          : (`custom_identifier_${customRegistrationField!.slot}` as const);
       const userData: AuthUserData = {
         email: email || undefined,
         phone_number: phone || undefined,
@@ -4284,19 +4291,16 @@ export class AuthController implements IAuthController {
         );
       }
 
-      // The only remaining supported challenge is secondary email. Keep this
-      // explicit fail-closed guard instead of relying on the relationship
-      // between `hasSmsChallenge` and `verification` for type narrowing.
-      if (!verification) {
-        return res.redirect(
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
-        );
-      }
+      // The initial guard allows this branch only when secondary-email state
+      // exists; the only alternative (SMS recovery) returned above.
+      const secondaryVerification = verification!;
 
       const verificationExpiresAt =
-        verification.expiresAt instanceof Date
-          ? verification.expiresAt.getTime()
-          : new Date(verification.expiresAt as unknown as string).getTime();
+        secondaryVerification.expiresAt instanceof Date
+          ? secondaryVerification.expiresAt.getTime()
+          : new Date(
+              secondaryVerification.expiresAt as unknown as string
+            ).getTime();
       if (
         !Number.isFinite(verificationExpiresAt) ||
         verificationExpiresAt <= Date.now()
@@ -4304,7 +4308,7 @@ export class AuthController implements IAuthController {
         this.sessionManager.remove(req, 'secondaryEmailVerification');
         try {
           const expiredUser = await this.userService.findById(
-            verification.userId
+            secondaryVerification.userId
           );
           if (expiredUser) {
             activityLoggerFor(this.activityLoggerDeps, req).failed(
@@ -4324,7 +4328,7 @@ export class AuthController implements IAuthController {
         } catch (expiredUserError) {
           this.logger.error(expiredUserError as Error, {
             context: 'recovery_verify_code_expired_user_lookup_failed',
-            userId: verification.userId,
+            userId: secondaryVerification.userId,
           });
         }
 
@@ -4334,7 +4338,7 @@ export class AuthController implements IAuthController {
       }
 
       const userForLockout = await this.userService.findById(
-        verification.userId
+        secondaryVerification.userId
       );
 
       if (userForLockout) {
@@ -4361,7 +4365,7 @@ export class AuthController implements IAuthController {
         }
       }
 
-      if (normalizedCode !== verification.code) {
+      if (normalizedCode !== secondaryVerification.code) {
         if (userForLockout) {
           const failedAttemptResult =
             this.recoveryUtils.recordFailedRecoveryAttempt(userForLockout);
@@ -4429,7 +4433,9 @@ export class AuthController implements IAuthController {
         return renderVerificationError('Invalid verification code');
       }
 
-      const user = await this.userService.findById(verification.userId);
+      const user = await this.userService.findById(
+        secondaryVerification.userId
+      );
       if (!user) {
         return renderVerificationError('User not found');
       }
@@ -5247,7 +5253,7 @@ export class AuthController implements IAuthController {
           return res.redirect(returnUrl);
         }
 
-        if (result.user._id?.toString() !== activeUser.id) {
+        if (this.userId(result.user) !== activeUser.id) {
           this.sessionManager
             .flash(req)
             .error(
@@ -5351,11 +5357,7 @@ export class AuthController implements IAuthController {
       this.consumeSocialRegisterIntent(req, provider);
 
       if (this.requiresPhoneVerification(result.user)) {
-        return this.startPhoneVerification(
-          req,
-          res,
-          result.user._id?.toString() || ''
-        );
+        return this.startPhoneVerification(req, res, this.userId(result.user));
       }
 
       if (this.mfaUtils.isMfaEnabled(result.user)) {
@@ -5382,7 +5384,7 @@ export class AuthController implements IAuthController {
         const needsSelection = this.mfaUtils.needsMethodSelection(result.user);
 
         this.sessionManager.set(req, 'pendingSocialMfaUser', {
-          id: result.user._id?.toString() || '',
+          id: this.userId(result.user),
           username: result.user.username,
           email: result.user.email,
           email_verified: result.user.email_verified || false,
@@ -5466,7 +5468,7 @@ export class AuthController implements IAuthController {
       }
 
       const newUserAccount = {
-        id: result.user._id?.toString() || '',
+        id: this.userId(result.user),
         username: result.user.username,
         email: result.user.email,
         email_verified: result.user.email_verified || false,
@@ -5804,6 +5806,7 @@ export class AuthController implements IAuthController {
 
       const newUser =
         await this.userService.createUserWithGeneratedUsername(userData);
+      const newUserId = this.userId(newUser);
 
       this.logger.info(
         `User created successfully for ${provider} registration`,
@@ -5826,7 +5829,7 @@ export class AuthController implements IAuthController {
       try {
         socialIntegration = await this.socialLoginManager.linkToUser(
           provider,
-          newUser._id as string,
+          newUserId,
           providerData,
           result.tokens
         );
@@ -5866,7 +5869,7 @@ export class AuthController implements IAuthController {
 
       if (socialConfig.requirePasswordOnRegistration) {
         this.sessionManager.set(req, 'socialPasswordSetup', {
-          userId: newUser._id,
+          userId: newUserId,
           provider,
           providerData,
           tokens: result.tokens,
@@ -5880,15 +5883,11 @@ export class AuthController implements IAuthController {
       }
 
       if (this.requiresPhoneVerification(newUser)) {
-        return this.startPhoneVerification(
-          req,
-          res,
-          newUser._id?.toString() || ''
-        );
+        return this.startPhoneVerification(req, res, newUserId);
       }
 
       const newUserAccount = {
-        id: newUser._id?.toString() || '',
+        id: newUserId,
         username: newUser.username,
         email: newUser.email,
         email_verified: newUser.email_verified || false,
@@ -6139,12 +6138,12 @@ export class AuthController implements IAuthController {
         return this.startPhoneVerification(
           req,
           res,
-          user._id?.toString() || socialPasswordData.userId
+          this.userId(user) || socialPasswordData.userId
         );
       }
 
       const newUserAccount = {
-        id: user._id?.toString() || '',
+        id: this.userId(user),
         username: user.username,
         email: user.email,
         email_verified: user.email_verified || false,

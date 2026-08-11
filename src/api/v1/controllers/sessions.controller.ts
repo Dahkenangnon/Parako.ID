@@ -53,16 +53,18 @@ const SESSION_SORT_FIELD = 'createdAt';
 const BULK_PAGE_SIZE = 100;
 
 function sessionId(session: any): string | undefined {
-  const value =
-    session?.payload?.jti ??
-    session?.jti ??
-    session?.logical_id ??
-    session?.id ??
-    session?._id;
+  const value = [
+    session?.payload?.jti,
+    session?.jti,
+    session?.logical_id,
+    session?.id,
+    session?._id,
+  ].find(
+    candidate =>
+      candidate !== undefined && candidate !== null && candidate !== ''
+  );
 
-  return value === undefined || value === null || value === ''
-    ? undefined
-    : String(value);
+  return value === undefined ? undefined : String(value);
 }
 
 /** Normalize MongoDB, Redis, and Prisma session rows to one API shape. */

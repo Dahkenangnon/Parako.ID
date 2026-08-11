@@ -1,4 +1,3 @@
-import { injectable } from 'inversify';
 import crypto from 'node:crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { IUser } from '../../../types/user.js';
@@ -271,7 +270,6 @@ function toIUser(row: UserFull): IUser {
   };
 }
 
-@injectable()
 export class PrismaUserRepository
   extends AbstractPrismaRepository
   implements IUserRepository
