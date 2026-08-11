@@ -176,6 +176,15 @@ describe('GitHubSocialLogin', () => {
     login.integrate.mockResolvedValue({ success: true });
 
     await expect(login.handleCallback(req)).resolves.toEqual({ success: true });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://github.example.test/user',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer github-token',
+        }),
+      })
+    );
     expect(login.integrate).toHaveBeenCalledWith(
       {
         sub: '123',
@@ -252,6 +261,54 @@ describe('GitHubSocialLogin', () => {
     expect(sessionManager.set).toHaveBeenLastCalledWith(req, 'socialLogin', {
       google: { state: 'google-state' },
     });
+  });
+
+  it('returns a provider denial only after validating callback state', async () => {
+    const { login, sessionManager, sessions } = createHarness();
+    const req = {
+      params: { provider: 'github' },
+      query: {
+        error: 'access_denied',
+        error_description: 'The user denied access',
+        state: 'github-state',
+      },
+    } as unknown as Request;
+    sessions.set('socialLogin', {
+      google: { state: 'google-state' },
+      github: { state: 'github-state', codeVerifier: 'pkce-verifier' },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(login.handleCallback(req)).resolves.toEqual({
+      success: false,
+      error: 'You denied access to your GitHub account. Please try again.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(login.integrate).not.toHaveBeenCalled();
+    expect(sessionManager.set).toHaveBeenLastCalledWith(req, 'socialLogin', {
+      google: { state: 'google-state' },
+    });
+  });
+
+  it('rejects a provider denial carrying a mismatched callback state', async () => {
+    const { login, sessions } = createHarness();
+    const req = {
+      params: { provider: 'github' },
+      query: { error: 'access_denied', state: 'attacker-state' },
+    } as unknown as Request;
+    sessions.set('socialLogin', {
+      github: { state: 'github-state', codeVerifier: 'pkce-verifier' },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(login.handleCallback(req)).resolves.toEqual({
+      success: false,
+      error: 'Invalid OAuth state parameter - possible CSRF attack',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(login.integrate).not.toHaveBeenCalled();
   });
 
   it('does not expose a GitHub token error response in logs', async () => {

@@ -100,6 +100,7 @@ function createMockAdapterBridge() {
   return {
     initialize: vi.fn().mockResolvedValue(undefined),
     adapter: {},
+    adapterForTenant: vi.fn().mockReturnValue({}),
   };
 }
 

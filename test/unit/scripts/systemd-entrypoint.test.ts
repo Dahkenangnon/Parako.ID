@@ -106,4 +106,16 @@ describe('systemd CLI entrypoint', () => {
       'Systemd command failed: unavailable'
     );
   });
+
+  it('runs automatically when evaluated as the process entrypoint', async () => {
+    dependencies.isMain = true;
+    vi.resetModules();
+
+    // This import intentionally verifies the ESM entrypoint side effect.
+    await import('../../../scripts/manage/systemd.js');
+
+    await vi.waitFor(() =>
+      expect(dependencies.parseAsync).toHaveBeenCalledWith(process.argv)
+    );
+  });
 });

@@ -27,13 +27,20 @@ type MfaManagerConstructor = new (config: MfaConfig) => MfaManagerInstance;
 
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
+  dataset: { mfaDisableMethod?: string };
   getAttribute: ReturnType<typeof vi.fn>;
+  submit: ReturnType<typeof vi.fn>;
 }
 
 function form(action: string | null = null): FormFixture {
+  const method = action
+    ? new URL(action, 'https://parako.test').searchParams.get('method')
+    : null;
   return {
     addEventListener: vi.fn(),
+    dataset: method ? { mfaDisableMethod: method } : {},
     getAttribute: vi.fn(() => action),
+    submit: vi.fn(),
   };
 }
 
@@ -65,17 +72,23 @@ async function loadManager(
     dialog: { showAlert: typeof showAlert; showConfirm: typeof showConfirm };
   } = { dialog: { showAlert, showConfirm } };
   vi.stubGlobal('window', windowRoot);
+  const querySelectorAll = vi.fn(() => options.disableForms ?? []);
   vi.stubGlobal('document', {
     getElementById: vi.fn((id: string) =>
       id === 'enable-mfa-app-form'
         ? (options.appForm ?? null)
         : (options.emailForm ?? null)
     ),
-    querySelectorAll: vi.fn(() => options.disableForms ?? []),
+    querySelectorAll,
   });
   await import('../../../src/assets/js/account/settings/mfa.js');
   if (!windowRoot.MfaManager) throw new Error('MfaManager was not published');
-  return { Manager: windowRoot.MfaManager, showAlert, showConfirm };
+  return {
+    Manager: windowRoot.MfaManager,
+    querySelectorAll,
+    showAlert,
+    showConfirm,
+  };
 }
 
 function submitEvent() {
@@ -89,13 +102,17 @@ describe('account MFA settings manager', () => {
   });
 
   it('handles absent forms and legacy method defaults without side effects', async () => {
-    const { Manager, showAlert, showConfirm } = await loadManager();
+    const { Manager, querySelectorAll, showAlert, showConfirm } =
+      await loadManager();
     const manager = new Manager(config());
 
     expect(() => manager.setupMethodHandlers()).not.toThrow();
     expect(() => manager.initialize()).not.toThrow();
     expect(showAlert).not.toHaveBeenCalled();
     expect(showConfirm).not.toHaveBeenCalled();
+    expect(querySelectorAll).toHaveBeenCalledWith(
+      'form[data-mfa-disable-method]'
+    );
   });
 
   it('blocks already-enabled TOTP and email methods', async () => {
@@ -237,7 +254,7 @@ describe('account MFA settings manager', () => {
   it.each([
     ['email', { totp: false, email: true, webauthn: false }],
     ['webauthn', { totp: false, email: false, webauthn: true }],
-  ] as const)('allows confirmed disabling of %s', async (method, methods) => {
+  ] as const)('submits confirmed disabling of %s', async (method, methods) => {
     const disableForm = form(`/account/settings?method=${method}`);
     const { Manager, showConfirm } = await loadManager({
       disableForms: [disableForm],
@@ -248,7 +265,8 @@ describe('account MFA settings manager', () => {
 
     await disableForm.addEventListener.mock.calls[0]?.[1](event);
 
-    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(disableForm.submit).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -267,11 +285,13 @@ describe('account MFA settings manager', () => {
 
       await disableForm.addEventListener.mock.calls[0]?.[1](event);
 
-      expect(event.preventDefault).toHaveBeenCalledTimes(shouldPrevent ? 1 : 0);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
       if (shouldPrevent) {
         expect(showAlert).toHaveBeenCalledOnce();
+        expect(disableForm.submit).not.toHaveBeenCalled();
       } else {
         expect(showConfirm).toHaveBeenCalledOnce();
+        expect(disableForm.submit).toHaveBeenCalledOnce();
       }
     }
   );

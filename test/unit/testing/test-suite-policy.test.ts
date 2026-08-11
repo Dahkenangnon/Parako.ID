@@ -57,46 +57,8 @@ function scanTestDirectives(repositoryRoot: string): TestDirectiveOccurrence[] {
 }
 
 describe('test suite policy', () => {
-  it('contains no focused or todo tests', () => {
-    const prohibited = scanTestDirectives(process.cwd()).filter(
-      ({ directive }) => directive !== 'skipped-test'
-    );
-
-    expect(prohibited).toEqual([]);
-  });
-
-  it('registers every skipped test with ownership and a review date', () => {
-    const registry = JSON.parse(
-      readFileSync(
-        resolve(process.cwd(), 'test/coverage/test-exceptions.json'),
-        'utf8'
-      )
-    ) as {
-      version: number;
-      exceptions: Array<
-        TestDirectiveOccurrence & {
-          reason: string;
-          requiredEnvironment: string;
-          approver: string;
-          reviewDate: string;
-        }
-      >;
-    };
-    const registeredOccurrences = registry.exceptions.map(
-      ({ file, line, directive }) => ({ file, line, directive })
-    );
-    const actualOccurrences = scanTestDirectives(process.cwd()).filter(
-      ({ directive }) => directive === 'skipped-test'
-    );
-
-    expect(registry.version).toBe(1);
-    expect(registeredOccurrences).toEqual(actualOccurrences);
-    for (const exception of registry.exceptions) {
-      expect(exception.reason).not.toBe('');
-      expect(exception.requiredEnvironment).not.toBe('');
-      expect(exception.approver).not.toBe('');
-      expect(exception.reviewDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    }
+  it('contains no focused, skipped, or todo tests', () => {
+    expect(scanTestDirectives(process.cwd())).toEqual([]);
   });
 
   it('contains no unregistered inline coverage or mutation exclusions', () => {

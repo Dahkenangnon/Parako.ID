@@ -48,7 +48,7 @@ function makeManager(options: ManagerOptions = {}) {
         routes: {
           auth: '/auth',
           accounts: '/accounts',
-          api: '/api',
+          api: '/api/v1',
           auth_routes: {
             login: '/login',
           },
@@ -205,8 +205,8 @@ describe('MainRoutesManager', () => {
       ['/fr/auth/probe', 'auth', '/fr/auth'],
       ['/accounts/probe', 'account', '/accounts'],
       ['/fr/accounts/probe', 'account', '/fr/accounts'],
-      ['/api/webauthn/probe', 'webauthn', '/api/webauthn'],
-      ['/fr/api/webauthn/probe', 'webauthn', '/fr/api/webauthn'],
+      ['/api/v1/webauthn/probe', 'webauthn', '/api/v1/webauthn'],
+      ['/fr/api/v1/webauthn/probe', 'webauthn', '/fr/api/v1/webauthn'],
       ['/admin/probe', 'admin', '/admin'],
       ['/fr/admin/probe', 'admin', '/fr/admin'],
     ] as const;
@@ -230,6 +230,20 @@ describe('MainRoutesManager', () => {
     expect(routeMocks.adminRoutes.mock.calls[0]?.at(-1)).toBe(
       platformAdminController
     );
+  });
+
+  it('routes browser WebAuthn APIs before the bearer-authenticated Management API', async () => {
+    routeMocks.webauthnRoutes.mockReturnValue(markerRouter('webauthn'));
+    const apiV1Router = express.Router();
+    apiV1Router.use((_req, res) => res.sendStatus(401));
+    const { manager } = makeManager({ apiV1Router });
+    const app = express();
+
+    manager.registerRoutes(app);
+
+    await request(app)
+      .get('/api/v1/webauthn/credentials')
+      .expect(200, { name: 'webauthn', baseUrl: '/api/v1/webauthn' });
   });
 
   it('dispatches infrastructure requests only inside the _ops tenant context', () => {

@@ -23,13 +23,16 @@ function createMockDeps(): UsersControllerDeps {
       registerUser: vi.fn().mockResolvedValue({}),
       registerManagedUser: vi.fn().mockResolvedValue({}),
       adminChangeUserPassword: vi.fn().mockResolvedValue(undefined),
+      changeUserPasswordByAuthorizedClient: vi
+        .fn()
+        .mockResolvedValue(undefined),
     },
     activityService: {
       getUserActivities: vi.fn().mockResolvedValue([]),
     },
     oidcAdapter: {
       session: {
-        findSessionsByAccountId: vi.fn().mockResolvedValue([]),
+        findByAccountId: vi.fn().mockResolvedValue([]),
       },
     },
     logger: {
@@ -674,7 +677,9 @@ describe('api/v1/controllers/UsersController', () => {
 
       await controller.passwordReset(req, res, next);
 
-      expect(deps.authService.adminChangeUserPassword).toHaveBeenCalledWith(
+      expect(
+        deps.authService.changeUserPasswordByAuthorizedClient
+      ).toHaveBeenCalledWith(
         'test-api-client',
         '507f1f77bcf86cd799439011',
         'newSecurePassword123'
@@ -719,7 +724,9 @@ describe('api/v1/controllers/UsersController', () => {
         createMockNext()
       );
 
-      expect(deps.authService.adminChangeUserPassword).toHaveBeenCalledWith(
+      expect(
+        deps.authService.changeUserPasswordByAuthorizedClient
+      ).toHaveBeenCalledWith(
         'api',
         '507f1f77bcf86cd799439011',
         'SecurePassword123!'
@@ -741,7 +748,9 @@ describe('api/v1/controllers/UsersController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
-      expect(deps.authService.adminChangeUserPassword).not.toHaveBeenCalled();
+      expect(
+        deps.authService.changeUserPasswordByAuthorizedClient
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -749,6 +758,7 @@ describe('api/v1/controllers/UsersController', () => {
   describe('mfaReset()', () => {
     it('should reset MFA and return 200', async () => {
       const mfaDisabled = { ...sampleUser, mfa: { enabled: false } };
+      vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
       vi.mocked(deps.userService.disableMfa).mockResolvedValue(mfaDisabled);
 
       const req = createMockRequest({
@@ -759,9 +769,7 @@ describe('api/v1/controllers/UsersController', () => {
 
       await controller.mfaReset(req, res, next);
 
-      expect(deps.userService.disableMfa).toHaveBeenCalledWith(
-        '507f1f77bcf86cd799439011'
-      );
+      expect(deps.userService.disableMfa).toHaveBeenCalledWith('janedoe');
       expect(res.status).toHaveBeenCalledWith(200);
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
@@ -769,6 +777,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
 
     it('should log MFA reset', async () => {
+      vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
       vi.mocked(deps.userService.disableMfa).mockResolvedValue({
         ...sampleUser,
       });
@@ -788,7 +797,7 @@ describe('api/v1/controllers/UsersController', () => {
     });
 
     it('should call next with 404 when user is not found', async () => {
-      vi.mocked(deps.userService.disableMfa).mockResolvedValue(null);
+      vi.mocked(deps.userService.findById).mockResolvedValue(null);
 
       const req = createMockRequest({ params: { user_id: 'nonexistent' } });
       const res = createMockResponse();
@@ -799,6 +808,7 @@ describe('api/v1/controllers/UsersController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
+      expect(deps.userService.disableMfa).not.toHaveBeenCalled();
     });
   });
 
@@ -978,18 +988,18 @@ describe('api/v1/controllers/UsersController', () => {
       const sessions = [
         {
           jti: 'sess-1',
-          accountId: '507f1f77bcf86cd799439011',
+          accountId: 'janedoe',
           exp: 1741348800,
         },
         {
           jti: 'sess-2',
-          accountId: '507f1f77bcf86cd799439011',
+          accountId: 'janedoe',
           exp: 1741352400,
         },
       ];
-      vi.mocked(
-        deps.oidcAdapter.session.findSessionsByAccountId!
-      ).mockResolvedValue(sessions);
+      vi.mocked(deps.oidcAdapter.session.findByAccountId!).mockResolvedValue(
+        sessions
+      );
 
       const req = createMockRequest({
         params: { user_id: '507f1f77bcf86cd799439011' },
@@ -1002,16 +1012,16 @@ describe('api/v1/controllers/UsersController', () => {
       expect(deps.userService.findById).toHaveBeenCalledWith(
         '507f1f77bcf86cd799439011'
       );
-      expect(
-        deps.oidcAdapter.session.findSessionsByAccountId
-      ).toHaveBeenCalledWith('507f1f77bcf86cd799439011');
+      expect(deps.oidcAdapter.session.findByAccountId).toHaveBeenCalledWith(
+        'janedoe'
+      );
       expect(res.status).toHaveBeenCalledWith(200);
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data).toHaveLength(2);
     });
 
-    it('should return empty array when findSessionsByAccountId is not available', async () => {
+    it('should return empty array when findByAccountId is not available', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
 
       // Remove the method to simulate adapter without this capability
@@ -1038,9 +1048,9 @@ describe('api/v1/controllers/UsersController', () => {
 
     it('should normalize a null adapter result to an empty list', async () => {
       vi.mocked(deps.userService.findById).mockResolvedValue({ ...sampleUser });
-      vi.mocked(
-        deps.oidcAdapter.session.findSessionsByAccountId!
-      ).mockResolvedValue(null as never);
+      vi.mocked(deps.oidcAdapter.session.findByAccountId!).mockResolvedValue(
+        null as never
+      );
       const res = createMockResponse();
 
       await controller.sessions(

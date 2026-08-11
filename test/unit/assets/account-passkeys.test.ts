@@ -208,10 +208,11 @@ function itemFixture(
 
 function modalFixture(options: { includeControls?: boolean } = {}) {
   const wrapper = new ElementFixture();
-  const dialog = new ElementFixture();
+  // A template's top-level element is parented by a DocumentFragment, so its
+  // parentElement is null. Model that browser behavior to catch code that
+  // incorrectly tries to append the fragment through parentElement.
+  const dialog = wrapper;
   const overlay = new ElementFixture();
-  dialog.parentElement = wrapper;
-  wrapper.queries.set('[role="dialog"]', dialog);
   wrapper.queries.set('.fixed.inset-0.bg-gray-500', overlay);
 
   const input = new ElementFixture();
@@ -724,7 +725,7 @@ describe('account passkeys manager', () => {
           'X-CSRF-Token': 'csrf-token',
         },
         credentials: 'include',
-        body: JSON.stringify({ friendly_name: 'Office key' }),
+        body: JSON.stringify({ friendlyName: 'Office key' }),
       }
     );
     expect(

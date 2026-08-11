@@ -191,6 +191,7 @@ describe('account settings confirmation handler', () => {
 
   it('does not require a window global when evaluated outside a browser', async () => {
     vi.stubGlobal('window', undefined);
+    vi.resetModules();
 
     await expect(
       import('../../../src/assets/js/account/settings/confirm-handler.js')

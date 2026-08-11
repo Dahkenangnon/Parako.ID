@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const entrypoint = vi.hoisted(() => ({ parseAsync: vi.fn() }));
+const entrypoint = vi.hoisted(() => ({
+  isMain: false,
+  parseAsync: vi.fn(),
+}));
 
 vi.mock('../../../scripts/manage/shared/entrypoint.js', () => ({
-  isMainModule: () => false,
+  isMainModule: () => entrypoint.isMain,
 }));
 
 import { runDatabaseCli } from '../../../scripts/manage/database.js';
@@ -44,6 +47,7 @@ describe('database CLI process entrypoint', () => {
   const originalExitCode = process.exitCode;
 
   beforeEach(() => {
+    entrypoint.isMain = false;
     entrypoint.parseAsync.mockReset();
     process.exitCode = undefined;
   });
@@ -78,5 +82,15 @@ describe('database CLI process entrypoint', () => {
     expect(consoleError).toHaveBeenCalledWith(
       'Database command failed: unavailable'
     );
+  });
+
+  it('runs automatically when evaluated as the process entrypoint', async () => {
+    entrypoint.isMain = true;
+    vi.resetModules();
+
+    // This import intentionally verifies the ESM entrypoint side effect.
+    await import('../../../scripts/manage/database.js');
+
+    await vi.waitFor(() => expect(entrypoint.parseAsync).toHaveBeenCalled());
   });
 });

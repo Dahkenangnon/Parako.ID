@@ -29,7 +29,6 @@ const mockPasswordUtils = {} as any;
 
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseUserRepository;
-let mongoAvailable = true;
 
 const makeUser = (overrides: Partial<Record<string, any>> = {}) => ({
   email: `test_${Date.now()}_${Math.random()}@example.com`,
@@ -64,18 +63,14 @@ const makeUser = (overrides: Partial<Record<string, any>> = {}) => ({
 });
 
 beforeAll(async () => {
-  try {
-    mongod = await MongoMemoryServer.create();
-    await mongoose.connect(mongod.getUri());
-    const UserModel = createUserModel(
-      mockLogger,
-      mockConfigManager,
-      mockPasswordUtils
-    );
-    repo = new MongooseUserRepository(UserModel);
-  } catch {
-    mongoAvailable = false;
-  }
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+  const UserModel = createUserModel(
+    mockLogger,
+    mockConfigManager,
+    mockPasswordUtils
+  );
+  repo = new MongooseUserRepository(UserModel);
 }, 60_000);
 
 afterAll(async () => {
@@ -85,11 +80,7 @@ afterAll(async () => {
   }
 });
 
-beforeEach(async ctx => {
-  if (!mongoAvailable) {
-    ctx.skip();
-    return;
-  }
+beforeEach(async () => {
   await mongoose.connection.collection('users').deleteMany({});
 });
 
@@ -160,6 +151,40 @@ describe('MongooseUserRepository', () => {
       const u = await repo.create(makeUser());
       const updated = await repo.update(u.id!, { given_name: 'Updated' });
       expect(updated.given_name).toBe('Updated');
+    });
+  });
+
+  describe('phone verification challenge persistence', () => {
+    it('round-trips and atomically clears the private challenge fields', async () => {
+      const expires = new Date('2030-01-02T03:04:05.000Z');
+      const created = await repo.create(
+        makeUser({
+          phone_verification_token: 'stored-token-hash',
+          phone_verification_code: 'stored-code-hash',
+          phone_verification_expires: expires,
+        })
+      );
+
+      const persisted = await repo.findById(created.id!);
+      expect(persisted).toMatchObject({
+        phone_verification_token: 'stored-token-hash',
+        phone_verification_code: 'stored-code-hash',
+        phone_verification_expires: expires,
+      });
+
+      await repo.update(created.id!, {
+        phone_number_verified: true,
+        phone_verification_token: null,
+        phone_verification_code: null,
+        phone_verification_expires: null,
+      });
+      const consumed = await repo.findById(created.id!);
+      expect(consumed).toMatchObject({
+        phone_number_verified: true,
+        phone_verification_token: null,
+        phone_verification_code: null,
+        phone_verification_expires: null,
+      });
     });
   });
 

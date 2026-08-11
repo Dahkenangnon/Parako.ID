@@ -10,7 +10,7 @@ import { ERROR_TYPES } from '../../../../../src/api/v1/errors.js';
 // Test constants
 
 const TEST_ISSUER = 'https://test.parako.id/oidc/v1';
-const PLATFORM_ISSUER = 'https://test.parako.id/_platforms';
+const PLATFORM_ISSUER = 'https://_platforms.test.parako.id/oidc/v1';
 const EXPECTED_AUDIENCE = 'urn:parako:api:v1';
 const TEST_TENANT = 'test-tenant';
 
@@ -424,13 +424,14 @@ describe('api/v1/middleware/jwt-auth', () => {
 
   // 10. Platform scope with platform issuer
   describe('platform scope with platform issuer', () => {
-    it('should succeed when issuer contains _platforms', async () => {
+    it('should succeed for the resolved _platforms tenant and its subdomain issuer', async () => {
       const deps = createDeps({
         configManager: {
           getConfig: vi
             .fn()
             .mockReturnValue({ oidc: { issuer: PLATFORM_ISSUER } }),
         },
+        getTenantId: vi.fn().mockReturnValue('_platforms'),
       });
       const middleware = createJwtAuthMiddleware(deps);
 
@@ -454,6 +455,31 @@ describe('api/v1/middleware/jwt-auth', () => {
       expect(apiAuth.client_id).toBe('platform-client');
       expect(apiAuth.scope).toBe('parako:tenants:read');
       expect(apiAuth.iss).toBe(PLATFORM_ISSUER);
+    });
+
+    it('should not grant platform scopes from issuer text in a regular tenant context', async () => {
+      const pathIssuer = 'https://test.parako.id/_platforms';
+      const deps = createDeps({
+        configManager: {
+          getConfig: vi.fn().mockReturnValue({ oidc: { issuer: pathIssuer } }),
+        },
+        getTenantId: vi.fn().mockReturnValue('regular-tenant'),
+      });
+      const middleware = createJwtAuthMiddleware(deps);
+      const token = await signToken(
+        { client_id: 'spoofed-platform', scope: 'parako:tenants:read' },
+        rsaPrivateKey,
+        { issuer: pathIssuer }
+      );
+      const res = createMockResponse();
+
+      await middleware(
+        createMockRequest(`Bearer ${token}`) as any,
+        res as any,
+        vi.fn()
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
     });
   });
 

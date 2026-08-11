@@ -218,7 +218,7 @@ describe('forgot password manager', () => {
     expect(context.alert).not.toHaveBeenCalled();
     expect(context.button.disabled).toBe(true);
     expect(context.button.innerHTML).toContain('Sending reset email...');
-    expect(context.button.innerHTML).toContain('0 014 12H0');
+    expect(context.button.innerHTML).toContain('A7.962 7.962 0 0 1 4 12H0');
   });
 
   it('shows an invalid-email error on blur and clears it after correction', async () => {

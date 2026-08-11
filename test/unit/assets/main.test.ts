@@ -245,7 +245,18 @@ describe('main browser entrypoint', () => {
     const dialog = (context.windowFixture as any).dialog;
     const result = dialog.showAlert('Notice', 'Done');
     const backdrop = context.created[0]!;
+    const modal = context.created[1]!;
+    const title = context.created[5]!;
+    const message = context.created[7]!;
     const button = context.created[9]!;
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+    expect(modal.getAttribute('aria-labelledby')).toBe(
+      title.getAttribute('id')
+    );
+    expect(modal.getAttribute('aria-describedby')).toBe(
+      message.getAttribute('id')
+    );
     await vi.advanceTimersByTimeAsync(100);
     expect(button.focus).toHaveBeenCalledOnce();
     button.trigger('click');
@@ -300,9 +311,20 @@ describe('main browser entrypoint', () => {
       }
     );
     const icon = context.created[4]!;
+    const modal = context.created[1]!;
+    const title = context.created[5]!;
+    const message = context.created[7]!;
     const cancelButton = context.created[9]!;
     const confirmButton = context.created[10]!;
     expect(icon.getAttribute('data-lucide')).toBe('shield-alert');
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+    expect(modal.getAttribute('aria-labelledby')).toBe(
+      title.getAttribute('id')
+    );
+    expect(modal.getAttribute('aria-describedby')).toBe(
+      message.getAttribute('id')
+    );
     expect(cancelButton.textContent).toBe('Keep it');
     expect(confirmButton.textContent).toBe('Delete');
     await vi.advanceTimersByTimeAsync(100);

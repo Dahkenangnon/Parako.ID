@@ -11,6 +11,7 @@ vi.mock('../../../src/jobs/domains/background-tasks/queue.js', () => ({
 }));
 
 import { AuthService } from '../../../src/services/auth.service.js';
+import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
 import {
   checkPasswordBreach,
   computeSha1PrefixSuffix,
@@ -154,23 +155,28 @@ function createMocks(
     verifyEmailOtp: vi.fn().mockReturnValue({ valid: true }),
   };
 
+  const config = {
+    security: {
+      authentication: {
+        password_breach_detection: breachConfig,
+        roles: roleConfig,
+        signup: {
+          require_email_verification: false,
+          require_phone_verification: false,
+        },
+      },
+    },
+    oidc_storage: {
+      oidc_adapter: {
+        redis: {
+          host: 'localhost',
+          port: 6379,
+        },
+      },
+    },
+  };
   const configManager: Partial<IConfigManager> = {
-    getConfig: vi.fn().mockReturnValue({
-      security: {
-        authentication: {
-          password_breach_detection: breachConfig,
-          roles: roleConfig,
-        },
-      },
-      oidc_storage: {
-        oidc_adapter: {
-          redis: {
-            host: 'localhost',
-            port: 6379,
-          },
-        },
-      },
-    }),
+    getConfig: vi.fn().mockReturnValue(config),
   };
 
   return {
@@ -179,6 +185,7 @@ function createMocks(
     passwordUtils: passwordUtils as IPasswordUtils,
     mfaUtils: mfaUtils as IMfaUtils,
     configManager: configManager as IConfigManager,
+    config,
   };
 }
 
@@ -769,6 +776,18 @@ describe('AuthService - login', () => {
     );
   });
 
+  it('uses safe verification defaults when signup policy is omitted', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    vi.mocked(mocks.configManager.getConfig).mockReturnValue({
+      security: { authentication: {} },
+    } as never);
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.loginWithEmail('person@example.com', 'password')
+    ).resolves.toMatchObject({ _id: 'user-123' });
+  });
+
   it('normalizes case-insensitive custom identifiers before lookup', async () => {
     const mocks = createMocks(createBreachConfig({ enabled: false }));
     vi.mocked(mocks.userService.getCustomIdentifierFieldBySlot).mockReturnValue(
@@ -840,6 +859,26 @@ describe('AuthService - login', () => {
     await expect(
       service.loginWithEmail('person@example.com', 'password')
     ).rejects.toThrow(message);
+    expect(mocks.userService.verifyPasswordWithRehash).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unverified email account when signup requires verification', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    mocks.config.security.authentication.signup.require_email_verification = true;
+    vi.mocked(mocks.userService.findByEmail).mockResolvedValueOnce(
+      makeUser({
+        _id: 'user-123',
+        username: 'person',
+        email: 'person@example.com',
+        email_verified: false,
+        password: 'hash',
+      })
+    );
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.loginWithEmail('person@example.com', 'password')
+    ).rejects.toThrow('Email verification is required');
     expect(mocks.userService.verifyPasswordWithRehash).not.toHaveBeenCalled();
   });
 
@@ -1078,6 +1117,44 @@ describe('AuthService - registration and reset-token generation', () => {
       })
     ).resolves.toBeDefined();
   });
+
+  it.each([
+    [{ custom_identifier_1: 'employee-1' }, 'custom_identifier_1'],
+    [{ custom_identifier_2: 'member-2' }, 'custom_identifier_2'],
+    [{ custom_identifier_3: 'external-3' }, 'custom_identifier_3'],
+    [{}, 'email'],
+  ])(
+    'infers the registration method from contactless identity data %#',
+    async (identifiers, expectedMethod) => {
+      const mocks = createMocks(createBreachConfig({ enabled: false }));
+      vi.mocked(mocks.configManager.getConfig).mockReturnValue({
+        security: {
+          authentication: {
+            signup: {
+              contact_channels: { require_at_least_one: false },
+            },
+            password_breach_detection: { enabled: false },
+            roles: {
+              available: ['user', 'admin', 'superadmin'],
+              default: 'user',
+            },
+          },
+        },
+      } as never);
+      const service = createAuthService(mocks);
+
+      await service.registerUser({
+        ...identifiers,
+        password: 'safe-password',
+      });
+
+      expect(
+        mocks.userService.createUserWithGeneratedUsername
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ register_with: expectedMethod })
+      );
+    }
+  );
 
   it('generates and stores a hashed reset token for a primary email', async () => {
     const mocks = createMocks(createBreachConfig({ enabled: false }));
@@ -1460,6 +1537,58 @@ describe('AuthService - password changes', () => {
     ).rejects.toThrow('Password validation failed: too weak');
     expect(mocks.userService.findByUsername).not.toHaveBeenCalled();
   });
+
+  it('changes a password for an already-authorized machine client without treating it as a user', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const target = makeUser({
+      _id: 'user-123',
+      username: 'testuser',
+      email: 'test@example.com',
+    });
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(target);
+    vi.mocked(mocks.userService.updateById).mockResolvedValueOnce(target);
+    const service = createAuthService(mocks);
+
+    await service.changeUserPasswordByAuthorizedClient(
+      'management-client',
+      'user-123',
+      'new-password'
+    );
+
+    expect(mocks.userService.findByUsername).not.toHaveBeenCalled();
+    expect(mocks.userService.findById).toHaveBeenCalledWith('user-123');
+    expect(mocks.userService.updateById).toHaveBeenCalledWith(
+      'user-123',
+      expect.objectContaining({
+        password: 'hashed-password',
+        password_hash_algo: 'argon2id',
+      })
+    );
+  });
+
+  it('logs and propagates an authorized machine-client password-change failure', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    vi.mocked(mocks.userService.findById).mockRejectedValueOnce(
+      new Error('repository unavailable')
+    );
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.changeUserPasswordByAuthorizedClient(
+        'management-client',
+        'user-123',
+        'new-password'
+      )
+    ).rejects.toThrow('repository unavailable');
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      'Error performing authorized client password change',
+      {
+        error: 'repository unavailable',
+        actorClientId: 'management-client',
+        targetUserId: 'user-123',
+      }
+    );
+  });
 });
 
 describe('AuthService - portable email OTP', () => {
@@ -1659,6 +1788,345 @@ describe('AuthService - email verification and authorization helpers', () => {
     );
 
     expect(service.hasRole(user as never, role)).toBe(expected);
+  });
+});
+
+describe('AuthService - phone verification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    ['', undefined, 'User ID is required'],
+    ['missing', undefined, 'User not found'],
+    [
+      'user-123',
+      makeUser({ phone_number: '+14155552671', phone_number_verified: true }),
+      'Phone is already verified',
+    ],
+    [
+      'user-123',
+      makeUser({ phone_number_verified: false }),
+      'User has no phone number to verify',
+    ],
+  ])(
+    'rejects an ineligible phone challenge target %#',
+    async (userId, user, message) => {
+      const mocks = createMocks(createBreachConfig({ enabled: false }));
+      vi.mocked(mocks.userService.findById).mockResolvedValueOnce(user);
+      const service = createAuthService(mocks);
+
+      await expect(
+        service.generatePhoneVerificationChallenge(userId)
+      ).rejects.toThrow(message);
+    }
+  );
+
+  it('stores only hashes for a one-time phone verification challenge', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const user = makeUser({
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+    });
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(user);
+    vi.mocked(mocks.userService.updateById).mockResolvedValueOnce(user);
+    const service = createAuthService(mocks);
+
+    const challenge =
+      await service.generatePhoneVerificationChallenge('user-123');
+
+    expect(challenge.verificationToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(challenge.code).toMatch(/^\d{6}$/);
+    expect(challenge.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(mocks.userService.updateById).toHaveBeenCalledWith('user-123', {
+      phone_verification_token: expect.stringMatching(/^[a-f0-9]{64}$/),
+      phone_verification_code: expect.stringMatching(/^[a-f0-9]{64}$/),
+      phone_verification_expires: challenge.expiresAt,
+    });
+    const persisted = vi.mocked(mocks.userService.updateById).mock.calls[0]![1];
+    expect(persisted.phone_verification_token).not.toBe(
+      challenge.verificationToken
+    );
+    expect(persisted.phone_verification_code).not.toBe(challenge.code);
+  });
+
+  it('restores the original challenge when a replacement cannot be delivered', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const originalExpiry = new Date(Date.now() + 60_000);
+    const pendingUser = makeUser({
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+      phone_verification_token: 'original-token-hash',
+      phone_verification_code: 'original-code-hash',
+      phone_verification_expires: originalExpiry,
+    });
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(pendingUser);
+    vi.mocked(mocks.userService.updateById).mockResolvedValue(pendingUser);
+    const service = createAuthService(mocks);
+    const deliver = vi.fn().mockResolvedValue(false);
+
+    await expect(
+      service.renewPhoneVerificationChallenge('original-token', deliver)
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: 'PhoneVerificationDeliveryError',
+        verificationToken: 'original-token',
+      })
+    );
+
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: expect.stringMatching(/^\d{6}$/),
+        verificationToken: expect.stringMatching(/^[a-f0-9]{64}$/),
+      })
+    );
+    expect(mocks.userService.updateById).toHaveBeenLastCalledWith('user-123', {
+      phone_verification_token: 'original-token-hash',
+      phone_verification_code: 'original-code-hash',
+      phone_verification_expires: originalExpiry,
+    });
+  });
+
+  it.each([
+    ['', null],
+    ['unknown-token', null],
+    [
+      'verified-token',
+      makeUser({
+        phone_number: '+14155552671',
+        phone_number_verified: true,
+      }),
+    ],
+  ])('rejects an invalid phone challenge renewal %#', async (token, user) => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(user);
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.renewPhoneVerificationChallenge(token)
+    ).rejects.toThrow(
+      token ? 'Invalid verification token' : 'Verification token is required'
+    );
+  });
+
+  it('renews a phone challenge without delivery using portable user identity', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const pendingUser = makeUser({
+      _id: undefined,
+      id: 'portable-user',
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+      phone_verification_token: undefined,
+      phone_verification_code: undefined,
+      phone_verification_expires: undefined,
+    });
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(pendingUser);
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.renewPhoneVerificationChallenge('original-token')
+    ).resolves.toMatchObject({ user: pendingUser });
+    expect(mocks.userService.findById).toHaveBeenCalledWith('portable-user');
+    expect(mocks.userService.updateById).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a successfully delivered replacement phone challenge', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const pendingUser = makeUser({
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+    });
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(pendingUser);
+    const service = createAuthService(mocks);
+    const deliver = vi.fn().mockResolvedValue(true);
+
+    await expect(
+      service.renewPhoneVerificationChallenge('original-token', deliver)
+    ).resolves.toEqual(expect.objectContaining({ user: pendingUser }));
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(mocks.userService.updateById).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [new Error('SMS unavailable'), 'SMS unavailable'],
+    ['SMS unavailable', 'SMS unavailable'],
+  ])(
+    'preserves delivery failure details when challenge rotation is compensated %#',
+    async (deliveryError, expectedMessage) => {
+      const mocks = createMocks(createBreachConfig({ enabled: false }));
+      const pendingUser = makeUser({
+        phone_number: '+14155552671',
+        phone_number_verified: false,
+      });
+      vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+      vi.mocked(mocks.userService.findById).mockResolvedValueOnce(pendingUser);
+      const service = createAuthService(mocks);
+
+      await expect(
+        service.renewPhoneVerificationChallenge(
+          'original-token',
+          vi.fn().mockRejectedValue(deliveryError)
+        )
+      ).rejects.toMatchObject({
+        name: 'PhoneVerificationDeliveryError',
+        cause: expect.objectContaining({ message: expectedMessage }),
+      });
+      expect(mocks.userService.updateById).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each([new Error('rollback unavailable'), 'rollback unavailable'])(
+    'propagates and logs challenge rollback failure %#',
+    async rollbackError => {
+      const mocks = createMocks(createBreachConfig({ enabled: false }));
+      const pendingUser = makeUser({
+        phone_number: '+14155552671',
+        phone_number_verified: false,
+      });
+      vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+      vi.mocked(mocks.userService.findById).mockResolvedValueOnce(pendingUser);
+      vi.mocked(mocks.userService.updateById)
+        .mockResolvedValueOnce(pendingUser)
+        .mockRejectedValueOnce(rollbackError);
+      const service = createAuthService(mocks);
+
+      await expect(
+        service.renewPhoneVerificationChallenge(
+          'original-token',
+          vi.fn().mockResolvedValue(false)
+        )
+      ).rejects.toBe(rollbackError);
+      expect(mocks.logger.error).toHaveBeenCalledWith(
+        'Failed to restore phone verification challenge',
+        {
+          userId: 'user-123',
+          error:
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : String(rollbackError),
+        }
+      );
+    }
+  );
+
+  it('consumes a matching phone verification challenge exactly once', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const service = createAuthService(mocks);
+    const generated = await (async () => {
+      const user = makeUser({
+        phone_number: '+14155552671',
+        phone_number_verified: false,
+      });
+      vi.mocked(mocks.userService.findById).mockResolvedValueOnce(user);
+      vi.mocked(mocks.userService.updateById).mockResolvedValueOnce(user);
+      return service.generatePhoneVerificationChallenge('user-123');
+    })();
+    const challenge = await generated;
+    const persisted = vi.mocked(mocks.userService.updateById).mock.calls[0]![1];
+    const pendingUser = makeUser({
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+      phone_verification_token: persisted.phone_verification_token,
+      phone_verification_code: persisted.phone_verification_code,
+      phone_verification_expires: challenge.expiresAt,
+    });
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(pendingUser);
+    vi.mocked(mocks.userService.updateById).mockResolvedValueOnce(
+      makeUser({ phone_number: '+14155552671', phone_number_verified: true })
+    );
+
+    await expect(
+      service.verifyPhone(challenge.verificationToken, challenge.code)
+    ).resolves.toEqual(
+      expect.objectContaining({ phone_number_verified: true })
+    );
+    expect(mocks.userService.updateById).toHaveBeenLastCalledWith('user-123', {
+      phone_number_verified: true,
+      phone_verification_token: null,
+      phone_verification_code: null,
+      phone_verification_expires: null,
+    });
+  });
+
+  it('rejects a phone verification when the persisted user disappears', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const service = createAuthService(mocks);
+    const user = makeUser({
+      phone_number: '+14155552671',
+      phone_number_verified: false,
+    });
+    vi.mocked(mocks.userService.findById).mockResolvedValueOnce(user);
+    const challenge =
+      await service.generatePhoneVerificationChallenge('user-123');
+    const persisted = vi.mocked(mocks.userService.updateById).mock.calls[0]![1];
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(
+      makeUser({
+        phone_number: '+14155552671',
+        phone_verification_token: persisted.phone_verification_token,
+        phone_verification_code: persisted.phone_verification_code,
+        phone_verification_expires: challenge.expiresAt,
+      })
+    );
+    vi.mocked(mocks.userService.updateById).mockResolvedValueOnce(null);
+
+    await expect(
+      service.verifyPhone(challenge.verificationToken, challenge.code)
+    ).rejects.toThrow('User not found');
+  });
+
+  it.each([
+    ['wrong-code', new Date(Date.now() + 60_000)],
+    ['123456', new Date(Date.now() - 1)],
+  ])('rejects invalid or expired phone proof %#', async (code, expiresAt) => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    const service = createAuthService(mocks);
+    vi.mocked(mocks.userService.findOne).mockResolvedValueOnce(
+      makeUser({
+        phone_number: '+14155552671',
+        phone_verification_code:
+          '8d969eef6ecad3c29a3a629280e686cff8caed6a' +
+          'ff8caed6a9a629280e686cff',
+        phone_verification_expires: expiresAt,
+      })
+    );
+
+    await expect(service.verifyPhone('challenge-token', code)).rejects.toThrow(
+      'Invalid or expired verification code'
+    );
+    expect(mocks.userService.updateById).not.toHaveBeenCalled();
+  });
+
+  it('requires phone verification only after the submitted password is valid', async () => {
+    const mocks = createMocks(createBreachConfig({ enabled: false }));
+    mocks.config.security.authentication.signup.require_phone_verification = true;
+    vi.mocked(mocks.userService.findByEmail).mockResolvedValueOnce(
+      makeUser({
+        email: 'test@example.com',
+        phone_number: '+14155552671',
+        phone_number_verified: false,
+        password: 'hashed-password',
+      })
+    );
+    const service = createAuthService(mocks);
+
+    await expect(
+      service.loginWithEmail('test@example.com', 'valid-password')
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: 'PhoneVerificationRequiredError',
+        userId: 'user-123',
+        phoneNumber: '+14155552671',
+      })
+    );
+    expect(mocks.userService.verifyPasswordWithRehash).toHaveBeenCalled();
+    await expect(
+      Promise.reject(
+        new PhoneVerificationRequiredError('user-123', '+14155552671')
+      )
+    ).rejects.toBeInstanceOf(PhoneVerificationRequiredError);
   });
 });
 

@@ -109,6 +109,40 @@ describe('PrismaUserRepository', () => {
     });
   });
 
+  describe('phone verification challenge persistence', () => {
+    it('round-trips and atomically clears the private challenge fields', async () => {
+      const expires = new Date('2030-01-02T03:04:05.000Z');
+      const created = await repo.create(
+        makeUser({
+          phone_verification_token: 'stored-token-hash',
+          phone_verification_code: 'stored-code-hash',
+          phone_verification_expires: expires,
+        })
+      );
+
+      const persisted = await repo.findById(created.id!);
+      expect(persisted).toMatchObject({
+        phone_verification_token: 'stored-token-hash',
+        phone_verification_code: 'stored-code-hash',
+        phone_verification_expires: expires,
+      });
+
+      await repo.update(created.id!, {
+        phone_number_verified: true,
+        phone_verification_token: null,
+        phone_verification_code: null,
+        phone_verification_expires: null,
+      });
+      const consumed = await repo.findById(created.id!);
+      expect(consumed).toMatchObject({
+        phone_number_verified: true,
+        phone_verification_token: undefined,
+        phone_verification_code: undefined,
+        phone_verification_expires: undefined,
+      });
+    });
+  });
+
   describe('delete', () => {
     it('removes the user', async () => {
       const created = await repo.create(makeUser());

@@ -177,7 +177,7 @@ describe('email verification manager', () => {
     expect(requestForm.style.pointerEvents).toBe('none');
     expect(resendButton.innerHTML).toContain('text-gray-700');
     expect(resendButton.innerHTML).toContain('Sending...');
-    expect(resendButton.innerHTML).toContain('0 014 12H0');
+    expect(resendButton.innerHTML).toContain('A7.962 7.962 0 0 1 4 12H0');
     expect(requestButton.innerHTML).toBe('');
 
     await vi.advanceTimersByTimeAsync(99);
@@ -197,7 +197,7 @@ describe('email verification manager', () => {
     form.triggerSubmit();
 
     expect(button.innerHTML).toContain('text-white');
-    expect(button.innerHTML).toContain('0 014 12H0');
+    expect(button.innerHTML).toContain('A7.962 7.962 0 0 1 4 12H0');
   });
 
   it('restores forms after the configured recovery timeout', async () => {

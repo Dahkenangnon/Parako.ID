@@ -726,23 +726,41 @@ describe('RedirectAuthority', () => {
   it.each([
     ['/local', '/local?next=%2Faccount%20settings'],
     ['/local?existing=1', '/local?existing=1&next=%2Faccount%20settings'],
-  ])('falls back safely for non-absolute base URL %s', (baseUrl, expected) => {
-    const { authority } = createRedirectAuthority();
+  ])(
+    'builds a local redirect URL %s without reporting an error',
+    (baseUrl, expected) => {
+      const { authority, logger } = createRedirectAuthority();
 
-    expect(
-      authority.buildRedirectUrl(baseUrl, {
-        '': 'ignored',
-        next: '/account settings',
-        nullable: null as never,
-        optional: undefined as never,
-      })
-    ).toBe(expected);
-  });
+      expect(
+        authority.buildRedirectUrl(baseUrl, {
+          '': 'ignored',
+          next: '/account settings',
+          nullable: null as never,
+          optional: undefined as never,
+        })
+      ).toBe(expected);
+      expect(logger.error).not.toHaveBeenCalled();
+    }
+  );
 
   it('preserves a non-absolute base URL when no fallback query is present', () => {
     const { authority } = createRedirectAuthority();
 
     expect(authority.buildRedirectUrl('/local')).toBe('/local');
+  });
+
+  it('falls back safely for malformed non-local URLs and preserves fragments', () => {
+    const { authority, logger } = createRedirectAuthority();
+
+    expect(
+      authority.buildRedirectUrl('not a valid URL#details', {
+        next: '/account settings',
+      })
+    ).toBe('not a valid URL?next=%2Faccount%20settings#details');
+    expect(logger.error).toHaveBeenCalledWith(expect.any(String), {
+      baseUrl: 'not a valid URL#details',
+      params: { next: '/account settings' },
+    });
   });
 
   it('builds only validated secure redirect URLs', () => {
@@ -788,6 +806,24 @@ describe('RedirectAuthority', () => {
       redirect: vi.fn(function redirect(this: { headersSent: boolean }) {
         this.headersSent = true;
       }),
+    };
+
+    authority
+      .redirect(response as never)
+      .to('/account')
+      .or('/fallback');
+
+    expect(response.redirect).toHaveBeenCalledOnce();
+    expect(response.redirect).toHaveBeenCalledWith('/account');
+  });
+
+  it('does not send a fallback while a validated redirect is pending', () => {
+    const { authority } = createRedirectAuthority();
+    const response = {
+      headersSent: false,
+      // Session-backed response middleware may persist asynchronously before
+      // delegating to Express, so headersSent can legitimately remain false.
+      redirect: vi.fn(),
     };
 
     authority

@@ -183,7 +183,7 @@ describe('OIDC logout manager', () => {
     expect(yes.disabled).toBe(true);
     expect(no.disabled).toBe(true);
     expect(yes.innerHTML).toContain('Signing Out...');
-    expect(yes.innerHTML).toContain('0 014 12H0');
+    expect(yes.innerHTML).toContain('A7.962 7.962 0 0 1 4 12H0');
     expect(no.innerHTML).toBe('Stay signed in');
     expect(form.style.pointerEvents).toBe('none');
   });

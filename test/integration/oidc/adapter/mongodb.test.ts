@@ -27,18 +27,13 @@ const logger = {
 let mongoServer: MongoMemoryServer | undefined;
 let mongoClient: MongoClient | undefined;
 let database: Db;
-let mongoAvailable = true;
 const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 
 beforeAll(async () => {
   process.env.ENCRYPTION_KEY ||= randomBytes(32).toString('hex');
-  try {
-    mongoServer = await MongoMemoryServer.create();
-    mongoClient = await MongoClient.connect(mongoServer.getUri());
-    database = mongoClient.db('parako-oidc-adapter-test');
-  } catch {
-    mongoAvailable = false;
-  }
+  mongoServer = await MongoMemoryServer.create();
+  mongoClient = await MongoClient.connect(mongoServer.getUri());
+  database = mongoClient.db('parako-oidc-adapter-test');
 }, 60_000);
 
 afterAll(async () => {
@@ -51,12 +46,7 @@ afterAll(async () => {
   }
 });
 
-beforeEach(async context => {
-  if (!mongoAvailable) {
-    context.skip();
-    return;
-  }
-
+beforeEach(async () => {
   await database.dropDatabase();
 });
 

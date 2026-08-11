@@ -143,6 +143,30 @@ describe('PrismaActivityRepository', () => {
       const result = await repo.findByUser('u1');
       expect(result.results.length).toBe(1);
     });
+
+    it('accepts the multi-field cursor sort used by user activity pagination', async () => {
+      await repo.create(
+        makeActivity({
+          actor: { actor_type: 'user', user_id: 'u1' as any },
+          timestamp: new Date('2026-08-08T10:00:00.000Z'),
+        })
+      );
+      await repo.create(
+        makeActivity({
+          actor: { actor_type: 'user', user_id: 'u1' as any },
+          timestamp: new Date('2026-08-09T10:00:00.000Z'),
+        })
+      );
+
+      const result = await repo.findByUser('u1', {
+        sort: { timestamp: -1, id: -1 },
+      });
+
+      expect(result.results.map(activity => activity.timestamp)).toEqual([
+        new Date('2026-08-09T10:00:00.000Z'),
+        new Date('2026-08-08T10:00:00.000Z'),
+      ]);
+    });
   });
 
   describe('count', () => {

@@ -329,6 +329,36 @@ describe('MicrosoftSocialLogin', () => {
     });
   });
 
+  it('returns a valid-state provider denial before Microsoft discovery', async () => {
+    const { login, sessionManager, sessions } = createHarness();
+    const req = createCallbackRequest();
+    req.query = {
+      error: 'access_denied',
+      error_description: 'The user denied access',
+      state: 'microsoft-state',
+    };
+    req.originalUrl =
+      '/auth/social/microsoft/callback?error=access_denied&state=microsoft-state';
+    sessions.set('socialLogin', {
+      github: { state: 'github-state' },
+      microsoft: {
+        state: 'microsoft-state',
+        codeVerifier: 'pkce-verifier',
+      },
+    });
+
+    await expect(login.handleCallback(req)).resolves.toEqual({
+      success: false,
+      error: 'You denied access to your Microsoft account. Please try again.',
+    });
+    expect(openidClientMocks.discovery).not.toHaveBeenCalled();
+    expect(openidClientMocks.authorizationCodeGrant).not.toHaveBeenCalled();
+    expect(login.integrate).not.toHaveBeenCalled();
+    expect(sessionManager.set).toHaveBeenLastCalledWith(req, 'socialLogin', {
+      github: { state: 'github-state' },
+    });
+  });
+
   it('waits for user integration and clears only Microsoft state after success', async () => {
     const { login, sessionManager, sessions } = createHarness();
     const req = createCallbackRequest();

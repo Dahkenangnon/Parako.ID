@@ -27,6 +27,7 @@ type WebAuthnTestConfig = {
       multi_factor: { webauthn: { rp_id: string } };
     };
   };
+  features?: { multi_tenancy: { enabled: boolean } };
 };
 
 const pendingUser = (overrides: Record<string, unknown> = {}) => ({
@@ -72,6 +73,7 @@ function makeHarness() {
     getActiveUser: vi.fn(),
     regenerate: vi.fn().mockResolvedValue(undefined),
     addAuthenticatedUser: vi.fn(),
+    setAuthenticated: vi.fn(),
   };
   const configManager = {
     getConfig: vi.fn<() => WebAuthnTestConfig>(() => ({
@@ -383,6 +385,114 @@ describe('WebAuthnController', () => {
         }),
       });
     });
+
+    it('verifies a tenant ceremony against its validated request origin', async () => {
+      const {
+        configManager,
+        controller,
+        session,
+        sessionManager,
+        webauthnService,
+      } = makeHarness();
+      configManager.getConfig.mockReturnValue({
+        deployment: {
+          url: 'https://auth.example.test/oidc/v1',
+          routes: {
+            accounts: '/accounts',
+            account_routes: { dashboard: '/dashboard' },
+          },
+        },
+        features: { multi_tenancy: { enabled: true } },
+        security: {
+          authentication: {
+            multi_factor: { webauthn: { rp_id: 'auth.example.test' } },
+          },
+        },
+      });
+      sessionManager.getActiveUser.mockReturnValue({ username: 'alice' });
+      session.set('webauthn_challenge', {
+        challenge: 'register-tenant',
+        expiresAt: Date.now() + 60_000,
+        type: 'registration',
+      });
+      webauthnService.verifyRegistration.mockResolvedValue({
+        verified: false,
+        error: 'Expected regression boundary',
+      });
+
+      await controller.verifyRegistration(
+        request({
+          body: { credential: { response: {} } },
+          protocol: 'https',
+          get: vi.fn().mockReturnValue('acme.auth.example.test'),
+        }),
+        response()
+      );
+
+      expect(webauthnService.verifyRegistration).toHaveBeenCalledWith(
+        'alice',
+        expect.any(Object),
+        'register-tenant',
+        'https://acme.auth.example.test'
+      );
+    });
+
+    it.each([
+      ['lookalike host', 'https', 'auth.example.test.attacker.test'],
+      ['scheme downgrade', 'http', 'acme.auth.example.test'],
+    ])(
+      'falls back to the configured origin for an untrusted %s',
+      async (_label, protocol, host) => {
+        const {
+          configManager,
+          controller,
+          session,
+          sessionManager,
+          webauthnService,
+        } = makeHarness();
+        configManager.getConfig.mockReturnValue({
+          deployment: {
+            url: 'https://auth.example.test/oidc/v1',
+            routes: {
+              accounts: '/accounts',
+              account_routes: { dashboard: '/dashboard' },
+            },
+          },
+          features: { multi_tenancy: { enabled: true } },
+          security: {
+            authentication: {
+              multi_factor: { webauthn: { rp_id: 'auth.example.test' } },
+            },
+          },
+        });
+        sessionManager.getActiveUser.mockReturnValue({ username: 'alice' });
+        session.set('webauthn_challenge', {
+          challenge: 'register-untrusted-origin',
+          expiresAt: Date.now() + 60_000,
+          type: 'registration',
+        });
+        webauthnService.verifyRegistration.mockResolvedValue({
+          verified: false,
+          error: 'Expected regression boundary',
+        });
+
+        await controller.verifyRegistration(
+          request({
+            body: { credential: { response: {} } },
+            protocol,
+            get: vi.fn().mockReturnValue(host),
+          }),
+          response()
+        );
+
+        expect(webauthnService.verifyRegistration).toHaveBeenCalledWith(
+          'alice',
+          expect.any(Object),
+          'register-untrusted-origin',
+          'https://auth.example.test'
+        );
+      }
+    );
 
     it.each([
       ['platform', ['internal'], 'Browser key'],
@@ -880,14 +990,16 @@ describe('WebAuthnController', () => {
         'WebAuthn MFA verification successful via social login',
         expect.any(Object)
       );
-      expect(sessionManager.addAuthenticatedUser).toHaveBeenCalledWith(
+      expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({
-          phone_number: '',
-          phone_number_verified: false,
-        }),
-        true
+        {
+          currentActiveLoggedUser: expect.objectContaining({
+            phone_number: '',
+            phone_number_verified: false,
+          }),
+        }
       );
+      expect(sessionManager.addAuthenticatedUser).not.toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith({
         ok: true,
         redirectUrl: 'https://rp.example.test/callback',
@@ -924,7 +1036,7 @@ describe('WebAuthnController', () => {
           'Failed to regenerate session after MFA verification',
           { error: 'regenerate failed' }
         );
-        expect(sessionManager.addAuthenticatedUser).toHaveBeenCalled();
+        expect(sessionManager.setAuthenticated).toHaveBeenCalled();
         expect(res.json).toHaveBeenCalledWith(
           expect.objectContaining({ ok: true })
         );
@@ -1078,11 +1190,13 @@ describe('WebAuthnController', () => {
       'WebAuthn MFA verification successful',
       expect.any(Object)
     );
-    expect(sessionManager.addAuthenticatedUser).toHaveBeenCalledWith(
+    expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ username: 'alice' }),
-      true
+      {
+        currentActiveLoggedUser: expect.objectContaining({ username: 'alice' }),
+      }
     );
+    expect(sessionManager.addAuthenticatedUser).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({
       ok: true,
       redirectUrl: '/accounts/dashboard',

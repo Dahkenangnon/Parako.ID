@@ -164,6 +164,7 @@ describe('OIDC interaction handler', () => {
 
     expect(harness.response.render).toHaveBeenCalledWith('auth/oidc/login', {
       client: harness.client,
+      clientId: 'demo-rp',
       uid: 'interaction-id',
       details: {},
       params: harness.interactionDetails.params,
@@ -299,6 +300,7 @@ describe('OIDC interaction handler', () => {
 
     expect(harness.response.render).toHaveBeenCalledWith('auth/oidc/login', {
       client: harness.client,
+      clientId: 'demo-rp',
       uid: 'interaction-id',
       details: {},
       params: harness.interactionDetails.params,

@@ -4,6 +4,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { TenantsController } from '../../../../../src/api/v1/controllers/tenants.controller.js';
 import type { TenantsControllerDeps } from '../../../../../src/api/v1/controllers/tenants.controller.js';
 import { ApiError } from '../../../../../src/api/v1/errors.js';
+import { encodeCursor } from '../../../../../src/api/v1/pagination.js';
 import { ConflictError as PlatformConflictError } from '../../../../../src/errors/platform.errors.js';
 import type { ITenantSettingsOverride } from '../../../../../src/types/tenant-settings-override.js';
 
@@ -116,6 +117,60 @@ describe('api/v1/controllers/TenantsController', () => {
       expect(jsonCall.data).toHaveLength(2);
       expect(jsonCall.pagination).toBeDefined();
       expect(jsonCall.pagination.has_more).toBe(false);
+    });
+
+    it('should sort by slug and return the requested page size', async () => {
+      vi.mocked(deps.platformAdminService.listTenants).mockResolvedValue([
+        { ...sampleTenant2 },
+        { ...sampleTenant },
+      ]);
+
+      const req = createMockRequest({ query: { limit: '1' } });
+      const res = createMockResponse();
+
+      await controller.list(req, res, createMockNext());
+
+      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
+      expect(jsonCall.data).toHaveLength(1);
+      expect(jsonCall.data[0].slug).toBe('acme-corp');
+      expect(jsonCall.pagination).toMatchObject({
+        has_more: true,
+        next_cursor: expect.any(String),
+      });
+    });
+
+    it('should resume after the tenant slug identified by the cursor', async () => {
+      vi.mocked(deps.platformAdminService.listTenants).mockResolvedValue([
+        { ...sampleTenant2 },
+        { ...sampleTenant },
+      ]);
+      const cursor = encodeCursor({
+        slug: sampleTenant.slug,
+        id: sampleTenant._id,
+      });
+      const req = createMockRequest({ query: { limit: '1', after: cursor } });
+      const res = createMockResponse();
+
+      await controller.list(req, res, createMockNext());
+
+      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
+      expect(jsonCall.data).toHaveLength(1);
+      expect(jsonCall.data[0].slug).toBe('globex-inc');
+      expect(jsonCall.pagination.has_more).toBe(false);
+    });
+
+    it('should include the filtered tenant count when requested', async () => {
+      vi.mocked(deps.platformAdminService.listTenants).mockResolvedValue([
+        { ...sampleTenant },
+        { ...sampleTenant2 },
+      ]);
+      const req = createMockRequest({ query: { include_count: 'true' } });
+      const res = createMockResponse();
+
+      await controller.list(req, res, createMockNext());
+
+      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
+      expect(jsonCall.pagination.total_count).toBe(2);
     });
 
     it('should filter by status when query param is provided', async () => {

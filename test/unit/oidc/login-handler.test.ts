@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OIDCLoginHandler } from '../../../src/oidc/flows/handlers/login.js';
+import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
 
 type LoginCredentials = {
   identifier?: string;
@@ -40,6 +41,7 @@ describe('OIDC login handler', () => {
     };
     const authService = {
       generateEmailOtp: vi.fn(),
+      generatePhoneVerificationChallenge: vi.fn(),
       loginWithCustomIdentifier: vi.fn(),
       loginWithEmail: vi.fn().mockResolvedValue(user),
       loginWithPhoneNumber: vi.fn(),
@@ -55,7 +57,7 @@ describe('OIDC login handler', () => {
     const viewResolver = {
       views: { auth: { oidc: { login: 'auth/oidc/login' } } },
     };
-    const flash = { error: vi.fn() };
+    const flash = { error: vi.fn(), success: vi.fn() };
     const sessionManager = {
       enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
       flash: vi.fn(() => flash),
@@ -93,6 +95,12 @@ describe('OIDC login handler', () => {
     };
     const config = {
       application: { title: 'Parako' },
+      deployment: {
+        routes: {
+          auth: '/auth',
+          auth_routes: { phone_verification: '/phone-verification' },
+        },
+      },
       oidc: { path: '/oidc/v1' },
       security: {
         authentication: {
@@ -122,6 +130,9 @@ describe('OIDC login handler', () => {
       isTotpEnabled: vi.fn(() => false),
     };
     const metricsService = { recordLoginAttempt: vi.fn() };
+    const smsService = {
+      sendVerificationCode: vi.fn().mockResolvedValue({ success: true }),
+    };
     const handler = new OIDCLoginHandler(
       logger as any,
       userService as any,
@@ -136,7 +147,8 @@ describe('OIDC login handler', () => {
       geolocationService as any,
       ipReputationService as any,
       mfaUtils as any,
-      metricsService as any
+      metricsService as any,
+      smsService as any
     );
     const params: {
       acr_values?: string;
@@ -194,6 +206,7 @@ describe('OIDC login handler', () => {
       request,
       response,
       sessionManager,
+      smsService,
       userService,
       user,
       viewResolver,
@@ -259,6 +272,137 @@ describe('OIDC login handler', () => {
     );
     expect(harness.authService.loginWithEmail).not.toHaveBeenCalled();
     expect(harness.provider.interactionFinished).not.toHaveBeenCalled();
+  });
+
+  it('routes a valid password through phone possession proof without reporting invalid credentials', async () => {
+    const harness = createHarness();
+    harness.oidcUtils.validateLoginCredentials.mockReturnValue({
+      identifier: 'alice@example.test',
+      isValid: true,
+      password: 'correct horse battery staple',
+    });
+    harness.authService.loginWithEmail.mockRejectedValue(
+      new PhoneVerificationRequiredError('user-id', '+22997000000')
+    );
+    harness.authService.generatePhoneVerificationChallenge.mockResolvedValue({
+      user: harness.user,
+      verificationToken: 'opaque-phone-token',
+      code: '123456',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await harness.handler.handle(
+      harness.request as any,
+      harness.response as any,
+      harness.next,
+      harness.provider as any
+    );
+
+    expect(
+      harness.authService.generatePhoneVerificationChallenge
+    ).toHaveBeenCalledWith('user-id');
+    expect(harness.smsService.sendVerificationCode).toHaveBeenCalledWith(
+      '+22997000000',
+      '123456',
+      '192.0.2.10'
+    );
+    expect(harness.sessionManager.set).toHaveBeenCalledWith(
+      harness.request,
+      'phoneVerificationOidcContinuation',
+      {
+        interactionUid: 'interaction-id',
+        createdAt: expect.any(Number),
+      }
+    );
+    expect(harness.flash.success).toHaveBeenCalledWith(
+      'A verification code has been sent to your phone.'
+    );
+    expect(harness.response.redirect).toHaveBeenCalledWith(
+      '/auth/phone-verification?token=opaque-phone-token'
+    );
+    expect(harness.response.render).not.toHaveBeenCalled();
+    expect(harness.metricsService.recordLoginAttempt).not.toHaveBeenCalledWith(
+      'error',
+      expect.anything()
+    );
+  });
+
+  it('keeps the OIDC phone proof resumable when initial SMS delivery fails', async () => {
+    const harness = createHarness();
+    harness.oidcUtils.validateLoginCredentials.mockReturnValue({
+      identifier: 'alice@example.test',
+      isValid: true,
+      password: 'correct horse battery staple',
+    });
+    harness.authService.loginWithEmail.mockRejectedValue(
+      new PhoneVerificationRequiredError('user-id', '+22997000000')
+    );
+    harness.authService.generatePhoneVerificationChallenge.mockResolvedValue({
+      user: harness.user,
+      verificationToken: 'opaque-phone-token',
+      code: '123456',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    harness.smsService.sendVerificationCode.mockResolvedValue({
+      success: false,
+      error: 'provider unavailable',
+    });
+
+    await harness.handler.handle(
+      harness.request as any,
+      harness.response as any,
+      harness.next,
+      harness.provider as any
+    );
+
+    expect(harness.sessionManager.set).toHaveBeenCalledWith(
+      harness.request,
+      'phoneVerificationOidcContinuation',
+      expect.objectContaining({ interactionUid: 'interaction-id' })
+    );
+    expect(harness.flash.error).toHaveBeenCalledWith(
+      'We could not send the verification code. Please try resending it.'
+    );
+    expect(harness.response.redirect).toHaveBeenCalledWith(
+      '/auth/phone-verification?token=opaque-phone-token'
+    );
+    expect(harness.response.render).not.toHaveBeenCalled();
+  });
+
+  it('renders login again when a phone verification challenge cannot start', async () => {
+    const harness = createHarness();
+    const challengeError = new Error('challenge store unavailable');
+    harness.oidcUtils.validateLoginCredentials.mockReturnValue({
+      identifier: 'alice@example.test',
+      isValid: true,
+      password: 'correct horse battery staple',
+    });
+    harness.authService.loginWithEmail.mockRejectedValue(
+      new PhoneVerificationRequiredError('user-id', '+22997000000')
+    );
+    harness.authService.generatePhoneVerificationChallenge.mockRejectedValue(
+      challengeError
+    );
+
+    await harness.handler.handle(
+      harness.request as any,
+      harness.response as any,
+      harness.next,
+      harness.provider as any
+    );
+
+    expect(harness.logger.error).toHaveBeenCalledWith(challengeError, {
+      context: 'Failed to start OIDC phone verification',
+      userId: 'user-id',
+    });
+    expect(harness.flash.error).toHaveBeenCalledWith(
+      'Phone verification is required. Please try again.'
+    );
+    expect(harness.response.render).toHaveBeenCalledWith(
+      'auth/oidc/login',
+      expect.any(Object)
+    );
+    expect(harness.response.redirect).not.toHaveBeenCalled();
   });
 
   it.each([

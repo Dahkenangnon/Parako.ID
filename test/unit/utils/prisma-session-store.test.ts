@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PrismaSessionStore } from '../../../src/utils/prisma-session-store.js';
+import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
 // Minimal Prisma session stub
 function makeStubPrisma() {
@@ -7,6 +8,9 @@ function makeStubPrisma() {
     {};
 
   return {
+    tenant: {
+      findMany: vi.fn(async (): Promise<Array<{ slug: string }>> => []),
+    },
     session: {
       findUnique: vi.fn(async ({ where }: any) =>
         store[where.sid] ? { ...store[where.sid] } : null
@@ -19,6 +23,10 @@ function makeStubPrisma() {
         }
         return store[where.sid];
       }),
+      create: vi.fn(async ({ data }: any) => {
+        store[data.sid] = { ...data };
+        return store[data.sid];
+      }),
       deleteMany: vi.fn(async ({ where }: any) => {
         delete store[where.sid];
         return { count: 1 };
@@ -26,8 +34,9 @@ function makeStubPrisma() {
       updateMany: vi.fn(async ({ where, data }: any) => {
         if (store[where.sid]) {
           store[where.sid] = { ...store[where.sid], ...data };
+          return { count: 1 };
         }
-        return { count: 1 };
+        return { count: 0 };
       }),
     },
     _store: store,
@@ -45,6 +54,7 @@ describe('PrismaSessionStore', () => {
   });
 
   afterEach(() => {
+    tenantContext.disableStrictMode();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -53,6 +63,7 @@ describe('PrismaSessionStore', () => {
     it('deletes expired sessions on schedule and stops cleanup idempotently', async () => {
       vi.useFakeTimers();
       const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      prisma.tenant.findMany.mockResolvedValueOnce([{ slug: 'tenant-a' }]);
 
       sessionStore.stopCleanup();
       sessionStore.startCleanup(1_000);
@@ -61,6 +72,7 @@ describe('PrismaSessionStore', () => {
       expect(prisma.session.deleteMany).toHaveBeenCalledWith({
         where: { expires_at: { lt: expect.any(Date) } },
       });
+      expect(prisma.session.deleteMany).toHaveBeenCalledTimes(3);
 
       sessionStore.stopCleanup();
       sessionStore.stopCleanup();
@@ -123,18 +135,41 @@ describe('PrismaSessionStore', () => {
 
   describe('set()', () => {
     it('stores a new session', async () => {
-      const session = { user: 'alice', cookie: {} } as any;
+      const session = {
+        user: 'alice',
+        tenantId: 'tenant-a',
+        cookie: {},
+      } as any;
 
       await new Promise<void>((resolve, reject) => {
-        sessionStore.set('sid-1', session, err =>
+        sessionStore.set('tenant-a.sid-1', session, err =>
           err ? reject(err) : resolve()
         );
       });
 
-      expect(prisma.session.upsert).toHaveBeenCalledOnce();
-      const call = prisma.session.upsert.mock.calls[0][0];
-      expect(call.where).toEqual({ sid: 'sid-1' });
-      expect(JSON.parse(call.create.data)).toEqual(session);
+      expect(prisma.session.upsert).not.toHaveBeenCalled();
+      expect(prisma.session.updateMany).toHaveBeenCalledWith({
+        where: { sid: 'tenant-a.sid-1' },
+        data: {
+          data: expect.any(String),
+          expires_at: expect.any(Date),
+          tenant_id: 'tenant-a',
+        },
+      });
+      const call = prisma.session.create.mock.calls[0][0];
+      expect(JSON.parse(call.data.data)).toEqual(session);
+      expect(call.data.tenant_id).toBe('tenant-a');
+    });
+
+    it('stores legacy sessions without a tenant as default-tenant sessions', async () => {
+      await new Promise<void>((resolve, reject) => {
+        sessionStore.set('sid-default', { cookie: {} } as any, err =>
+          err ? reject(err) : resolve()
+        );
+      });
+
+      const call = prisma.session.create.mock.calls[0][0];
+      expect(call.data.tenant_id).toBe('default');
     });
 
     it('uses cookie.expires when available', async () => {
@@ -147,8 +182,8 @@ describe('PrismaSessionStore', () => {
         );
       });
 
-      const call = prisma.session.upsert.mock.calls[0][0];
-      expect(call.create.expires_at).toEqual(future);
+      const call = prisma.session.create.mock.calls[0][0];
+      expect(call.data.expires_at).toEqual(future);
     });
 
     it('reports unserializable session data through the callback', async () => {
@@ -162,6 +197,8 @@ describe('PrismaSessionStore', () => {
 
       expect(callback).toHaveBeenCalledWith(expect.any(TypeError));
       expect(prisma.session.upsert).not.toHaveBeenCalled();
+      expect(prisma.session.updateMany).not.toHaveBeenCalled();
+      expect(prisma.session.create).not.toHaveBeenCalled();
     });
 
     it('falls back to the configured TTL for an invalid cookie expiration', async () => {
@@ -175,13 +212,98 @@ describe('PrismaSessionStore', () => {
         );
       });
 
-      const call = prisma.session.upsert.mock.calls[0][0];
-      expect(call.create.expires_at).toEqual(new Date(100_000 + TTL * 1000));
+      const call = prisma.session.create.mock.calls[0][0];
+      expect(call.data.expires_at).toEqual(new Date(100_000 + TTL * 1000));
       now.mockRestore();
+    });
+
+    it('updates an existing session without opening an upsert transaction', async () => {
+      prisma._store['sid-existing'] = {
+        sid: 'sid-existing',
+        data: JSON.stringify({ old: true }),
+        expires_at: new Date(0),
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        sessionStore.set(
+          'sid-existing',
+          { fresh: true, cookie: {} } as any,
+          err => (err ? reject(err) : resolve())
+        );
+      });
+
+      expect(prisma.session.updateMany).toHaveBeenCalledOnce();
+      expect(prisma.session.create).not.toHaveBeenCalled();
+      expect(prisma.session.upsert).not.toHaveBeenCalled();
+      expect(JSON.parse(prisma._store['sid-existing'].data)).toEqual({
+        fresh: true,
+        cookie: {},
+      });
+    });
+
+    it('retries the update when a concurrent creator wins the insert race', async () => {
+      prisma.session.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValueOnce({ count: 1 });
+      prisma.session.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      await new Promise<void>((resolve, reject) => {
+        sessionStore.set('sid-raced', { cookie: {} } as any, err =>
+          err ? reject(err) : resolve()
+        );
+      });
+
+      expect(prisma.session.updateMany).toHaveBeenCalledTimes(2);
+      expect(prisma.session.create).toHaveBeenCalledOnce();
+    });
+
+    it('propagates the unique violation when the raced session still cannot be updated', async () => {
+      const failure = { code: 'P2002' };
+      prisma.session.updateMany.mockResolvedValue({ count: 0 });
+      prisma.session.create.mockRejectedValueOnce(failure);
+
+      await expect(
+        new Promise<void>((resolve, reject) => {
+          sessionStore.set('sid-lost-race', { cookie: {} } as any, err =>
+            err ? reject(err) : resolve()
+          );
+        })
+      ).rejects.toBe(failure);
+      expect(prisma.session.updateMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('propagates non-unique create failures', async () => {
+      const failure = new Error('create failed');
+      prisma.session.create.mockRejectedValueOnce(failure);
+
+      await expect(
+        new Promise<void>((resolve, reject) => {
+          sessionStore.set('sid-create-failure', { cookie: {} } as any, err =>
+            err ? reject(err) : resolve()
+          );
+        })
+      ).rejects.toBe(failure);
     });
   });
 
   describe('get()', () => {
+    it('establishes strict tenant context from the signed session ID', async () => {
+      let queryTenant: string | undefined;
+      tenantContext.enableStrictMode();
+      prisma.session.findUnique.mockImplementationOnce(async () => {
+        queryTenant = tenantContext.getTenantId();
+        return null;
+      });
+
+      await new Promise((resolve, reject) => {
+        sessionStore.get('tenant-a.random-session-id', (err, session) =>
+          err ? reject(err) : resolve(session)
+        );
+      });
+
+      expect(queryTenant).toBe('tenant-a');
+    });
+
     it('retrieves a stored session', async () => {
       const session = { user: 'bob', cookie: {} } as any;
       await new Promise<void>((resolve, reject) => {
@@ -226,6 +348,22 @@ describe('PrismaSessionStore', () => {
       expect(result).toBeNull();
     });
 
+    it('returns null when stored session data belongs to another tenant', async () => {
+      prisma.session.findUnique.mockResolvedValueOnce({
+        sid: 'tenant-a.sid-mismatch',
+        data: JSON.stringify({ tenantId: 'tenant-b', cookie: {} }),
+        expires_at: new Date(Date.now() + 60_000),
+      });
+
+      const result = await new Promise((resolve, reject) => {
+        sessionStore.get('tenant-a.sid-mismatch', (err, sess) =>
+          err ? reject(err) : resolve(sess)
+        );
+      });
+
+      expect(result).toBeNull();
+    });
+
     it('reports corrupted stored session data through the callback', async () => {
       prisma.session.findUnique.mockResolvedValueOnce({
         sid: 'sid-corrupt',
@@ -255,7 +393,7 @@ describe('PrismaSessionStore', () => {
     ).rejects.toBe(getError);
 
     const setError = new Error('set failed');
-    prisma.session.upsert.mockRejectedValueOnce(setError);
+    prisma.session.updateMany.mockRejectedValueOnce(setError);
     await expect(
       new Promise<void>((resolve, reject) => {
         sessionStore.set('sid', { cookie: {} } as any, err =>

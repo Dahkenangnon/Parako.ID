@@ -10,6 +10,9 @@ describe('user authentication values', () => {
     expect(RegisterWithValues).toEqual([
       'email',
       'phone_number',
+      'custom_identifier_1',
+      'custom_identifier_2',
+      'custom_identifier_3',
       'github',
       'google',
       'facebook',

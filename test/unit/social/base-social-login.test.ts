@@ -37,6 +37,10 @@ class TestSocialLogin extends BaseSocialLogin {
     return this.verifyOAuthState(req);
   }
 
+  public runGetVerifiedOAuthCallbackError(req: Request) {
+    return this.getVerifiedOAuthCallbackError(req);
+  }
+
   public runGetDefaultProviderConfig<T>() {
     return this.getDefaultProviderConfig<T>('google');
   }
@@ -71,6 +75,7 @@ function createDependencies(allowMultipleProviders = true) {
   };
   const config = {
     deployment: { url: 'https://parako.example.test' },
+    oidc: { issuer: 'https://parako.example.test/oidc/v1' },
     features: {
       social_providers: {
         behavior: {
@@ -191,13 +196,21 @@ describe('BaseSocialLogin', () => {
           ? { ...expected, providerData, tokens }
           : expected
       );
-      expect(socialIntegrationService.findByProviderSub).not.toHaveBeenCalled();
+      expect(socialIntegrationService.findByProviderSub).toHaveBeenCalledWith(
+        providerData.sub,
+        'google'
+      );
     }
   );
 
   it('fails safely when an active integration references a missing user', async () => {
-    const { logger, login, socialIntegrationService, userService } =
-      createDependencies();
+    const {
+      logger,
+      login,
+      sessionManager,
+      socialIntegrationService,
+      userService,
+    } = createDependencies();
     const existingIntegration = {
       _id: 'google-integration',
       user_id: 'deleted-user',
@@ -209,6 +222,7 @@ describe('BaseSocialLogin', () => {
     socialIntegrationService.findByProviderSub.mockResolvedValue(
       existingIntegration
     );
+    sessionManager.getAuthenticatedUsers.mockReturnValue(undefined);
     userService.findById.mockResolvedValue(null);
 
     await expect(
@@ -281,6 +295,86 @@ describe('BaseSocialLogin', () => {
       existingIntegration._id
     );
     expect(socialIntegrationService.createIntegration).not.toHaveBeenCalled();
+  });
+
+  it('rejects a provider identity owned by another user during authenticated linking', async () => {
+    const { login, sessionManager, socialIntegrationService, userService } =
+      createDependencies();
+    const providerData = {
+      sub: 'other-user-google-subject',
+      email: 'other-user@example.test',
+    } as ProviderUserData;
+    const existingIntegration = {
+      _id: 'other-user-google-integration',
+      user_id: 'other-user',
+      method: 'google',
+      provider_sub: providerData.sub,
+      provider_data: providerData,
+      is_active: true,
+    };
+    sessionManager.getAuthenticatedUsers.mockReturnValue({
+      active: { id: 'user-1' },
+    });
+    socialIntegrationService.findByProviderSub.mockResolvedValue(
+      existingIntegration
+    );
+
+    await expect(
+      login.runUserIntegration(
+        providerData,
+        { access_token: 'other-user-token' } as TokenData,
+        { params: { provider: 'google' } } as unknown as Request
+      )
+    ).resolves.toEqual({
+      success: false,
+      error: 'This google account is already linked to another user',
+    });
+    expect(userService.findById).not.toHaveBeenCalled();
+    expect(
+      socialIntegrationService.updateIntegrationProviderData
+    ).not.toHaveBeenCalled();
+    expect(
+      socialIntegrationService.updateIntegrationTokens
+    ).not.toHaveBeenCalled();
+    expect(
+      socialIntegrationService.markIntegrationAsUsed
+    ).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing integration when the provider omits contact claims', async () => {
+    const { login, socialIntegrationService, userService } =
+      createDependencies();
+    const providerData = { sub: 'google-subject' } as ProviderUserData;
+    const tokens = { access_token: 'updated-access-token' } as TokenData;
+    const existingIntegration = {
+      _id: 'google-integration',
+      user_id: 'user-1',
+      method: 'google',
+      provider_sub: providerData.sub,
+      provider_data: providerData,
+      is_active: true,
+    };
+    const user = { _id: 'user-1', email: 'local-contact@example.test' };
+    socialIntegrationService.findByProviderSub.mockResolvedValue(
+      existingIntegration
+    );
+    userService.findById.mockResolvedValue(user);
+
+    await expect(
+      login.runUserIntegration(providerData, tokens, {
+        params: { provider: 'google' },
+      } as unknown as Request)
+    ).resolves.toEqual({
+      success: true,
+      user,
+      integration: existingIntegration,
+    });
+    expect(
+      socialIntegrationService.updateIntegrationProviderData
+    ).toHaveBeenCalledWith(existingIntegration._id, providerData);
+    expect(
+      socialIntegrationService.updateIntegrationTokens
+    ).toHaveBeenCalledWith(existingIntegration._id, tokens);
   });
 
   it('returns a structured conflict when the authenticated user already has the provider', async () => {
@@ -955,6 +1049,13 @@ describe('BaseSocialLogin', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  it('maps a verified provider error even without a description', () => {
+    const { login } = createDependencies();
+    const req = { query: { error: 'access_denied' } } as unknown as Request;
+
+    expect(login.runGetVerifiedOAuthCallbackError(req)).toBeTruthy();
+  });
+
   it('builds the default provider config without mutating provider fields', () => {
     const { config, login } = createDependencies();
     const providerConfig = login.runGetDefaultProviderConfig<{
@@ -972,6 +1073,15 @@ describe('BaseSocialLogin', () => {
       client_id: 'google-id',
       client_secret: 'google-secret',
     });
+  });
+
+  it('uses the tenant-aware issuer origin for direct social callbacks', () => {
+    const { config, login } = createDependencies();
+    config.oidc.issuer = 'https://tenant.parako.example.test/oidc/v1';
+
+    expect(
+      login.runGetDefaultProviderConfig<{ redirect_uri: string }>().redirect_uri
+    ).toBe('https://tenant.parako.example.test/auth/social/google/callback');
   });
 
   it('removes only the current provider from the social login session', () => {

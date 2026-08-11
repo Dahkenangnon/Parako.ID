@@ -99,11 +99,13 @@ function createMockOidcConfig(): IOIDCConfig {
 }
 
 function createMockAdapterBridge(): IOIDCAdapterBridge {
+  const adapter = vi.fn();
   return {
     initialize: vi.fn().mockResolvedValue(undefined),
     get adapter() {
-      return vi.fn();
+      return adapter;
     },
+    adapterForTenant: vi.fn().mockReturnValue(adapter),
     get adapterType() {
       return 'mongodb' as const;
     },
@@ -360,6 +362,15 @@ describe('TenantProviderRegistry', () => {
       await registry.getProvider('acme');
 
       expect(adapterBridge.initialize).toHaveBeenCalled();
+    });
+
+    it('binds the provider adapter factory to its tenant', async () => {
+      await registry.getProvider('acme');
+
+      expect(adapterBridge.adapterForTenant).toHaveBeenCalledWith('acme');
+      expect(vi.mocked(providerFactory).mock.calls[0]?.[1].adapter).toBe(
+        adapterBridge.adapterForTenant('acme')
+      );
     });
 
     it('loads database resource servers before provider construction', async () => {

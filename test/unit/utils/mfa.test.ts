@@ -204,6 +204,7 @@ describe('MfaUtils', () => {
     expect(otpMocks.verifySync).toHaveBeenCalledWith({
       secret: 'SECRET',
       token: '123456',
+      epochTolerance: [30, 0],
     });
   });
 

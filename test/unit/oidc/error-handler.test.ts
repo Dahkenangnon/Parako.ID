@@ -4,7 +4,7 @@ import { errors as oidcErrors } from 'oidc-provider';
 
 import { OIDCErrorHandler } from '../../../src/oidc/flows/handlers/error.js';
 
-function createHandler(activityFailed = vi.fn()) {
+function createHandler(activityFailed = vi.fn(), loggerError = vi.fn()) {
   const viewResolver = {
     views: { auth: { oidc: { error: 'auth/oidc/error' } } },
   };
@@ -16,12 +16,14 @@ function createHandler(activityFailed = vi.fn()) {
     })),
   };
   const sessionManager = { getActiveUser: vi.fn(() => null) };
+  const logger = { error: loggerError };
 
   return new OIDCErrorHandler(
     viewResolver as never,
     activityService as never,
     clientDeviceInfoManager as never,
-    sessionManager as never
+    sessionManager as never,
+    logger as never
   );
 }
 
@@ -149,6 +151,31 @@ describe('OIDCErrorHandler', () => {
     expect(response.render).toHaveBeenCalledWith('auth/oidc/error', {
       errorType: 'server_error',
       errorMessage: '<script>alert(1)</script>',
+    });
+  });
+
+  it('logs unexpected provider failures with stable request context', async () => {
+    const loggerError = vi.fn();
+    const handler = createHandler(vi.fn(), loggerError);
+    const error = new Error('tenant provider unavailable');
+    const request = {
+      method: 'GET',
+      originalUrl: '/oidc/v1/interaction/example',
+    } as Request;
+
+    await handler.handle(
+      error as any,
+      request,
+      createResponse(),
+      vi.fn() as NextFunction
+    );
+
+    expect(loggerError).toHaveBeenCalledWith(error, {
+      context: 'oidc_error_handler',
+      errorType: 'server_error',
+      method: 'GET',
+      status: 500,
+      url: '/oidc/v1/interaction/example',
     });
   });
 

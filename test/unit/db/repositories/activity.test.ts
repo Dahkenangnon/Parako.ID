@@ -673,6 +673,11 @@ describe('Prisma activity repository', () => {
         orderBy: { actor: { username: 'asc' } },
       })
     );
+
+    await repository.findMany({}, { sort: {} });
+    expect(findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ orderBy: {} })
+    );
   });
 
   it('delegates user/device queries, counts, deletes, and distinct types', async () => {
@@ -720,7 +725,7 @@ describe('Prisma activity repository', () => {
       },
       take: 5,
       skip: 0,
-      orderBy: { timestamp: 'desc', id: 'desc' },
+      orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
       include: includeRelations,
     });
     await expect(

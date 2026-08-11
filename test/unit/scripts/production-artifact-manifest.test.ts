@@ -310,9 +310,9 @@ describe('production artifact manifest', () => {
     );
   });
 
-  it('exposes a stable command for refreshing the versioned manifest', () => {
-    expect(packageJson.scripts['test:manifest:update']).toBe(
-      'cross-env PARAKO_PRODUCTION_MANIFEST_OUTPUT=test/coverage/production-artifacts.json node scripts/testing/generate-production-artifact-manifest.mjs'
+  it('does not couple repository verification to a generated manifest file', () => {
+    expect(Object.hasOwn(packageJson.scripts, 'test:manifest:update')).toBe(
+      false
     );
   });
 });

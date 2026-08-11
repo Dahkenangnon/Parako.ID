@@ -20,17 +20,6 @@ describe('repository production artifact manifest', () => {
     ).toEqual([]);
   });
 
-  it('keeps the versioned manifest synchronized with repository files', () => {
-    expect(
-      readFileSync(
-        resolve(repositoryRoot, 'test/coverage/production-artifacts.json'),
-        'utf8'
-      )
-    ).toBe(
-      renderProductionArtifactManifest(listRepositoryFiles(repositoryRoot))
-    );
-  });
-
   it('generates the manifest through a hermetic CLI entry point', async () => {
     const temporaryDirectory = mkdtempSync(
       join(tmpdir(), 'parako-production-manifest-')
@@ -40,6 +29,8 @@ describe('repository production artifact manifest', () => {
 
     try {
       process.env.PARAKO_PRODUCTION_MANIFEST_OUTPUT = outputPath;
+      // A cache-busting query executes the CLI entry point for each scenario;
+      // the production module itself remains a normal static import elsewhere.
       const entryPoint = pathToFileURL(
         resolve(
           repositoryRoot,

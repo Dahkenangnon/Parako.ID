@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MongooseUserRepository } from '../../../../src/db/repositories/mongoose/user.repository.js';
 import { PrismaUserRepository } from '../../../../src/db/repositories/prisma/user.repository.js';
+import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 
 function mongooseQuery<T>(result: T) {
   const chain = {
@@ -97,7 +98,7 @@ function prismaUserClient(overrides: Record<string, unknown> = {}) {
       updateMany: vi.fn(),
     },
     userSecurityQuestion: { create: vi.fn() },
-    userMfaEmailOtp: { upsert: vi.fn(), deleteMany: vi.fn() },
+    userMfaEmailOtp: { upsert: vi.fn(), updateMany: vi.fn() },
   };
 }
 
@@ -220,13 +221,23 @@ describe('Prisma user repository', () => {
       register_with: 'google',
       auth_provider: 'google',
       account_enabled: false,
-      mfa: { enabled: true, preferred_method: 'webauthn' },
+      mfa: {
+        enabled: true,
+        preferred_method: 'webauthn',
+        webauthn_enabled: true,
+        webauthn_verified_at: verifiedAt,
+      },
       mfa_totp: {
         enabled: true,
         secret: 'totp-secret',
         verified_at: verifiedAt,
       },
-      mfa_email_otp: { otp_hash: 'otp-hash', expires_at: expiresAt },
+      mfa_email_otp: {
+        enabled: true,
+        verified_at: verifiedAt,
+        otp_hash: 'otp-hash',
+        expires_at: expiresAt,
+      },
       webauthn_credentials: [
         {
           credential_id: 'credential-1',
@@ -236,6 +247,8 @@ describe('Prisma user repository', () => {
           backed_up: true,
           transports: '["internal","usb"]',
           created_at: credentialCreated,
+          friendly_name: 'Work laptop',
+          last_used_at: verifiedAt,
         },
       ],
       recovery: {
@@ -291,9 +304,10 @@ describe('Prisma user repository', () => {
               secret: 'totp-secret',
               verified_at: verifiedAt,
             },
-            email: { enabled: true },
+            email: { enabled: true, verified_at: verifiedAt },
             webauthn: {
               enabled: true,
+              verified_at: verifiedAt,
               credentials: [
                 {
                   credential_id: 'credential-1',
@@ -303,7 +317,8 @@ describe('Prisma user repository', () => {
                   backed_up: true,
                   transports: ['internal', 'usb'],
                   created_at: credentialCreated,
-                  friendly_name: 'credential-1',
+                  friendly_name: 'Work laptop',
+                  last_used_at: verifiedAt,
                 },
               ],
             },
@@ -351,13 +366,46 @@ describe('Prisma user repository', () => {
     );
   });
 
+  it('keeps a pending email OTP distinct from enabled email MFA', async () => {
+    const expiresAt = new Date('2026-08-01T00:10:00.000Z');
+    const row = prismaUserRow({
+      mfa: { enabled: false, preferred_method: null },
+      mfa_email_otp: {
+        enabled: false,
+        verified_at: null,
+        otp_hash: 'pending-otp-hash',
+        expires_at: expiresAt,
+      },
+    });
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ findFirst: vi.fn().mockResolvedValue(row) }) as never
+    );
+
+    const user = await repository.findOne({ email: 'pending@example.test' });
+
+    expect(user?.mfa).toEqual(
+      expect.objectContaining({
+        enabled: false,
+        methods: expect.objectContaining({
+          email: { enabled: false, verified_at: undefined },
+        }),
+        email_otp: { hash: 'pending-otp-hash', expires: expiresAt },
+      })
+    );
+  });
+
   it('maps sparse relation rows without requiring their parent records', async () => {
     const rows = [
       prismaUserRow({
         mfa_totp: { enabled: false, secret: null, verified_at: null },
       }),
       prismaUserRow({
-        mfa_email_otp: { otp_hash: null, expires_at: null },
+        mfa_email_otp: {
+          enabled: true,
+          verified_at: null,
+          otp_hash: null,
+          expires_at: null,
+        },
       }),
       prismaUserRow({
         webauthn_credentials: [
@@ -426,7 +474,9 @@ describe('Prisma user repository', () => {
     );
     expect(email?.mfa).toEqual(
       expect.objectContaining({
-        methods: expect.objectContaining({ email: { enabled: true } }),
+        methods: expect.objectContaining({
+          email: { enabled: true, verified_at: undefined },
+        }),
         email_otp: undefined,
       })
     );
@@ -715,6 +765,7 @@ describe('Prisma user repository', () => {
           totp: { enabled: true, secret: 'secret', verified_at: now },
           webauthn: {
             enabled: true,
+            verified_at: now,
             credentials: [
               {
                 credential_id: 'credential',
@@ -724,6 +775,8 @@ describe('Prisma user repository', () => {
                 backed_up: true,
                 transports: ['internal'],
                 created_at: now,
+                last_used_at: expires,
+                friendly_name: 'Primary passkey',
               },
             ],
           },
@@ -780,13 +833,23 @@ describe('Prisma user repository', () => {
         roles: '["admin"]',
         blocked_from: '["1.2.3.4"]',
         mfa: {
-          create: { enabled: true, preferred_method: 'webauthn' },
+          create: {
+            enabled: true,
+            preferred_method: 'webauthn',
+            webauthn_enabled: true,
+            webauthn_verified_at: now,
+          },
         },
         mfa_totp: {
           create: { enabled: true, secret: 'secret', verified_at: now },
         },
         mfa_email_otp: {
-          create: { otp_hash: 'otp', expires_at: expires },
+          create: {
+            enabled: false,
+            verified_at: null,
+            otp_hash: 'otp',
+            expires_at: expires,
+          },
         },
         webauthn_credentials: {
           create: [
@@ -797,6 +860,9 @@ describe('Prisma user repository', () => {
               device_type: 'multiDevice',
               backed_up: true,
               transports: '["internal"]',
+              created_at: now,
+              last_used_at: expires,
+              friendly_name: 'Primary passkey',
             },
           ],
         },
@@ -868,7 +934,14 @@ describe('Prisma user repository', () => {
 
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
-        mfa: { create: { enabled: false, preferred_method: null } },
+        mfa: {
+          create: {
+            enabled: false,
+            preferred_method: null,
+            webauthn_enabled: true,
+            webauthn_verified_at: null,
+          },
+        },
         mfa_totp: {
           create: { enabled: false, secret: null, verified_at: null },
         },
@@ -881,11 +954,15 @@ describe('Prisma user repository', () => {
               device_type: null,
               backed_up: false,
               transports: '[]',
+              created_at: new Date('2026-08-01T00:00:00.000Z'),
+              last_used_at: null,
+              friendly_name: 'credential',
             },
           ],
         },
         recovery: {
           create: {
+            tenant_id: 'default',
             enabled: false,
             methods: '[]',
             secondary_email: null,
@@ -910,6 +987,43 @@ describe('Prisma user repository', () => {
       }),
       include: expect.any(Object),
     });
+  });
+
+  it('creates email MFA without inventing WebAuthn or pending OTP state', async () => {
+    const create = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ create }) as never
+    );
+
+    await repository.create({
+      mfa: {
+        enabled: true,
+        methods: { email: { enabled: true } },
+      },
+    } as never);
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          mfa: {
+            create: {
+              enabled: true,
+              preferred_method: null,
+              webauthn_enabled: false,
+              webauthn_verified_at: null,
+            },
+          },
+          mfa_email_otp: {
+            create: {
+              enabled: true,
+              verified_at: null,
+              otp_hash: null,
+              expires_at: null,
+            },
+          },
+        }),
+      })
+    );
   });
 
   it('updates every supported scalar user field', async () => {
@@ -962,6 +1076,9 @@ describe('Prisma user repository', () => {
       reset_password_expires: now,
       email_verification_token: 'verify',
       email_verification_expires: now,
+      phone_verification_token: 'phone-token',
+      phone_verification_code: '123456',
+      phone_verification_expires: now,
       blocked_from: ['1.2.3.4'],
       account_is_anonymized: true,
       register_with: 'google',
@@ -978,6 +1095,394 @@ describe('Prisma user repository', () => {
         name: 'Updated User',
         roles: '["admin"]',
         blocked_from: '["1.2.3.4"]',
+      },
+      include: expect.any(Object),
+    });
+  });
+
+  it('assigns the active tenant to nested recovery rows', async () => {
+    const create = vi.fn().mockResolvedValue(prismaUserRow());
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ create, update }) as never
+    );
+    const recovery = { enabled: false, methods: [] };
+
+    await tenantContext.run('tenant-a', async () => {
+      await repository.create({ recovery } as never);
+      await repository.update('user-1', { recovery } as never);
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recovery: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+        }),
+      })
+    );
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recovery: {
+            upsert: expect.objectContaining({
+              create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+            }),
+          },
+        }),
+      })
+    );
+  });
+
+  it('upserts notification preferences when updating an existing user', async () => {
+    const update = vi.fn().mockResolvedValue(
+      prismaUserRow({
+        notification_prefs: {
+          preferred_channel: 'email',
+          security_alerts: false,
+          new_session_alerts: false,
+          marketing: true,
+        },
+      })
+    );
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+    const preferences = {
+      preferred_channel: 'email' as const,
+      security_alerts: false,
+      new_session_alerts: false,
+      marketing: true,
+    };
+
+    await repository.update('user-1', {
+      notification_preferences: preferences,
+    } as never);
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        notification_prefs: {
+          upsert: {
+            create: preferences,
+            update: preferences,
+          },
+        },
+      },
+      include: expect.any(Object),
+    });
+  });
+
+  it('atomically replaces complete relational MFA state when updating a user', async () => {
+    const verifiedAt = new Date('2026-08-01T00:00:00.000Z');
+    const lastUsedAt = new Date('2026-08-02T00:00:00.000Z');
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      mfa: {
+        enabled: true,
+        preferred_method: 'webauthn',
+        methods: {
+          totp: { enabled: false },
+          email: { enabled: true, verified_at: verifiedAt },
+          webauthn: {
+            enabled: true,
+            verified_at: verifiedAt,
+            credentials: [
+              {
+                credential_id: 'credential-1',
+                credential_public_key: 'public-key',
+                counter: 7,
+                device_type: 'singleDevice',
+                backed_up: false,
+                transports: ['internal'],
+                created_at: verifiedAt,
+                last_used_at: lastUsedAt,
+                friendly_name: 'Laptop passkey',
+              },
+            ],
+          },
+        },
+      },
+    } as never);
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        mfa: {
+          upsert: {
+            create: {
+              enabled: true,
+              preferred_method: 'webauthn',
+              webauthn_enabled: true,
+              webauthn_verified_at: verifiedAt,
+            },
+            update: {
+              enabled: true,
+              preferred_method: 'webauthn',
+              webauthn_enabled: true,
+              webauthn_verified_at: verifiedAt,
+            },
+          },
+        },
+        mfa_totp: {
+          upsert: {
+            create: { enabled: false, secret: null, verified_at: null },
+            update: { enabled: false, secret: null, verified_at: null },
+          },
+        },
+        mfa_email_otp: {
+          upsert: {
+            create: {
+              enabled: true,
+              verified_at: verifiedAt,
+              otp_hash: null,
+              expires_at: null,
+            },
+            update: {
+              enabled: true,
+              verified_at: verifiedAt,
+              otp_hash: null,
+              expires_at: null,
+            },
+          },
+        },
+        webauthn_credentials: {
+          deleteMany: {},
+          create: [
+            {
+              credential_id: 'credential-1',
+              public_key: 'public-key',
+              counter: 7,
+              device_type: 'singleDevice',
+              backed_up: false,
+              transports: '["internal"]',
+              created_at: verifiedAt,
+              last_used_at: lastUsedAt,
+              friendly_name: 'Laptop passkey',
+            },
+          ],
+        },
+      },
+      include: expect.any(Object),
+    });
+  });
+
+  it('replaces sparse MFA state without inventing optional method data', async () => {
+    const createdAt = new Date('2026-08-01T00:00:00.000Z');
+    const expiresAt = new Date('2026-08-01T00:05:00.000Z');
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      mfa: {
+        enabled: false,
+        email_otp: { hash: 'pending-hash', expires: expiresAt },
+        methods: {
+          webauthn: {
+            enabled: false,
+            credentials: [
+              {
+                credential_id: 'credential-1',
+                credential_public_key: 'public-key',
+                counter: 0,
+                backed_up: false,
+                created_at: createdAt,
+              },
+            ],
+          },
+        },
+      },
+    } as never);
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          mfa: {
+            upsert: {
+              create: {
+                enabled: false,
+                preferred_method: null,
+                webauthn_enabled: false,
+                webauthn_verified_at: null,
+              },
+              update: {
+                enabled: false,
+                preferred_method: null,
+                webauthn_enabled: false,
+                webauthn_verified_at: null,
+              },
+            },
+          },
+          mfa_email_otp: {
+            upsert: {
+              create: {
+                enabled: false,
+                verified_at: null,
+                otp_hash: 'pending-hash',
+                expires_at: expiresAt,
+              },
+              update: {
+                enabled: false,
+                verified_at: null,
+                otp_hash: 'pending-hash',
+                expires_at: expiresAt,
+              },
+            },
+          },
+          webauthn_credentials: {
+            deleteMany: {},
+            create: [
+              {
+                credential_id: 'credential-1',
+                public_key: 'public-key',
+                counter: 0,
+                device_type: null,
+                backed_up: false,
+                transports: '[]',
+                created_at: createdAt,
+                last_used_at: null,
+                friendly_name: 'credential-1',
+              },
+            ],
+          },
+        },
+      })
+    );
+  });
+
+  it('replaces minimal MFA state without creating method relations', async () => {
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      mfa: { enabled: false, methods: {} },
+    } as never);
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        mfa: {
+          upsert: {
+            create: {
+              enabled: false,
+              preferred_method: null,
+              webauthn_enabled: false,
+              webauthn_verified_at: null,
+            },
+            update: {
+              enabled: false,
+              preferred_method: null,
+              webauthn_enabled: false,
+              webauthn_verified_at: null,
+            },
+          },
+        },
+      },
+      include: expect.any(Object),
+    });
+  });
+
+  it('clears stored WebAuthn credentials when the replacement list is absent', async () => {
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      mfa: {
+        enabled: true,
+        methods: { webauthn: { enabled: false } },
+      },
+    } as never);
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          webauthn_credentials: { deleteMany: {} },
+        }),
+      })
+    );
+  });
+
+  it('replaces relational recovery state when updating an existing user', async () => {
+    const generatedAt = new Date('2026-08-01T00:00:00.000Z');
+    const expiresAt = new Date('2027-08-01T00:00:00.000Z');
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      recovery: {
+        enabled: true,
+        methods: ['backup_codes', 'security_questions'],
+        backup_codes: {
+          codes: ['hash-1', 'hash-2'],
+          generated_at: generatedAt,
+          expires_at: expiresAt,
+        },
+        security_questions: {
+          questions: [
+            {
+              id: 'question-1',
+              question_key: 'first-school',
+              answer_hash: 'answer-hash',
+            },
+          ],
+        },
+      },
+    } as never);
+
+    const recoveryRow = {
+      enabled: true,
+      methods: '["backup_codes","security_questions"]',
+      secondary_email: null,
+      secondary_email_verified: false,
+      secondary_email_token: null,
+      secondary_email_token_exp: null,
+      sms_phone_number: null,
+      sms_verified: false,
+      sms_code: null,
+      sms_code_exp: null,
+      backup_codes_generated_at: generatedAt,
+      backup_codes_expires_at: expiresAt,
+      sq_setup_at: null,
+      sq_last_used_at: null,
+      sq_failed_attempts: 0,
+      sq_last_failed_at: null,
+      sq_locked_until: null,
+    };
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: {
+        recovery: {
+          upsert: {
+            create: { ...recoveryRow, tenant_id: 'default' },
+            update: recoveryRow,
+          },
+        },
+        backup_codes: {
+          deleteMany: {},
+          create: [
+            { code_hash: 'hash-1', used: false },
+            { code_hash: 'hash-2', used: false },
+          ],
+        },
+        security_questions: {
+          deleteMany: {},
+          create: [
+            { question_key: 'first-school', answer_hash: 'answer-hash' },
+          ],
+        },
       },
       include: expect.any(Object),
     });
@@ -1083,6 +1588,9 @@ describe('Prisma user repository', () => {
       reset_password_expires: null,
       email_verification_token: null,
       email_verification_expires: null,
+      phone_verification_token: null,
+      phone_verification_code: null,
+      phone_verification_expires: null,
       picture: null,
       locale: null,
       country: null,
@@ -1108,7 +1616,7 @@ describe('Prisma user repository', () => {
     );
   });
 
-  it('upserts master MFA and complete TOTP state, and ignores an empty update', async () => {
+  it('upserts master MFA and complete TOTP and email state, and ignores an empty update', async () => {
     const client = prismaUserClient();
     const repository = new PrismaUserRepository(client as never);
     const verifiedAt = new Date('2026-08-01T00:00:00.000Z');
@@ -1121,6 +1629,7 @@ describe('Prisma user repository', () => {
         secret: 'secret',
         verified_at: verifiedAt,
       },
+      'methods.email': { enabled: true, verified_at: verifiedAt },
     });
     await repository.updateMfa('user-2', {});
 
@@ -1143,6 +1652,15 @@ describe('Prisma user repository', () => {
       },
       update: { enabled: true, secret: 'secret', verified_at: verifiedAt },
     });
+    expect(client.userMfaEmailOtp.upsert).toHaveBeenCalledWith({
+      where: { user_id: 'user-1' },
+      create: {
+        user_id: 'user-1',
+        enabled: true,
+        verified_at: verifiedAt,
+      },
+      update: { enabled: true, verified_at: verifiedAt },
+    });
     expect(client.userMfa.upsert).toHaveBeenCalledOnce();
     expect(client.userMfaTotp.upsert).toHaveBeenCalledOnce();
   });
@@ -1154,6 +1672,7 @@ describe('Prisma user repository', () => {
     await repository.updateMfa('user-1', {
       preferred_method: 'email',
       'methods.totp': {},
+      'methods.email': {},
     });
 
     expect(client.userMfa.upsert).toHaveBeenCalledWith({
@@ -1172,6 +1691,61 @@ describe('Prisma user repository', () => {
         enabled: false,
         secret: null,
         verified_at: null,
+      },
+      update: {},
+    });
+    expect(client.userMfaEmailOtp.upsert).toHaveBeenCalledWith({
+      where: { user_id: 'user-1' },
+      create: {
+        user_id: 'user-1',
+        enabled: false,
+        verified_at: null,
+      },
+      update: {},
+    });
+  });
+
+  it('persists WebAuthn method state through the focused MFA update path', async () => {
+    const client = prismaUserClient();
+    const repository = new PrismaUserRepository(client as never);
+    const verifiedAt = new Date('2026-08-01T00:00:00.000Z');
+
+    await repository.updateMfa('user-1', {
+      'methods.webauthn': { enabled: true, verified_at: verifiedAt },
+    });
+
+    expect(client.userMfa.upsert).toHaveBeenCalledWith({
+      where: { user_id: 'user-1' },
+      create: {
+        user_id: 'user-1',
+        enabled: false,
+        preferred_method: null,
+        webauthn_enabled: true,
+        webauthn_verified_at: verifiedAt,
+      },
+      update: {
+        webauthn_enabled: true,
+        webauthn_verified_at: verifiedAt,
+      },
+    });
+  });
+
+  it('uses safe defaults for a partial WebAuthn method update', async () => {
+    const client = prismaUserClient();
+    const repository = new PrismaUserRepository(client as never);
+
+    await repository.updateMfa('user-1', {
+      'methods.webauthn': {},
+    });
+
+    expect(client.userMfa.upsert).toHaveBeenCalledWith({
+      where: { user_id: 'user-1' },
+      create: {
+        user_id: 'user-1',
+        enabled: false,
+        preferred_method: null,
+        webauthn_enabled: false,
+        webauthn_verified_at: null,
       },
       update: {},
     });
@@ -1237,6 +1811,9 @@ describe('Prisma user repository', () => {
       device_type: 'platform',
       backed_up: true,
       transports: ['internal'],
+      friendly_name: 'Laptop passkey',
+      created_at: new Date('2026-08-09T12:00:00.000Z'),
+      last_used_at: new Date('2026-08-09T13:00:00.000Z'),
     });
     await repository.addWebAuthnCredential('user-2', {
       credential_id: 'credential-2',
@@ -1254,6 +1831,9 @@ describe('Prisma user repository', () => {
         device_type: 'platform',
         backed_up: true,
         transports: '["internal"]',
+        friendly_name: 'Laptop passkey',
+        created_at: new Date('2026-08-09T12:00:00.000Z'),
+        last_used_at: new Date('2026-08-09T13:00:00.000Z'),
       },
     });
     expect(client.userWebauthnCredential.create).toHaveBeenNthCalledWith(2, {
@@ -1265,6 +1845,8 @@ describe('Prisma user repository', () => {
         device_type: null,
         backed_up: false,
         transports: '[]',
+        friendly_name: 'credential-2',
+        last_used_at: null,
       },
     });
     expect(client.userWebauthnCredential.deleteMany).toHaveBeenCalledWith({
@@ -1366,8 +1948,9 @@ describe('Prisma user repository', () => {
       },
       update: { otp_hash: 'otp-hash', expires_at: otp.expires },
     });
-    expect(client.userMfaEmailOtp.deleteMany).toHaveBeenCalledWith({
+    expect(client.userMfaEmailOtp.updateMany).toHaveBeenCalledWith({
       where: { user_id: 'user-1' },
+      data: { otp_hash: null, expires_at: null },
     });
     expect(client.user.update).toHaveBeenCalledWith({
       where: { id: 'user-1' },
@@ -1496,6 +2079,41 @@ describe('Prisma user repository', () => {
 });
 
 describe('Mongoose user repository', () => {
+  it('keeps the derived display name in sync during atomic profile updates', async () => {
+    const exec = vi.fn().mockResolvedValue({
+      _id: { toString: () => 'user-1' },
+      given_name: 'Replaced',
+      family_name: 'Management User',
+      name: 'Replaced Management User',
+    });
+    const lean = vi.fn().mockReturnValue({ exec });
+    const findByIdAndUpdate = vi.fn().mockReturnValue({ lean });
+    const repository = new MongooseUserRepository({
+      findByIdAndUpdate,
+    } as never);
+
+    await expect(
+      repository.update('user-1', {
+        given_name: 'Replaced',
+        family_name: 'Management User',
+      })
+    ).resolves.toMatchObject({
+      name: 'Replaced Management User',
+    });
+
+    expect(findByIdAndUpdate).toHaveBeenCalledWith(
+      'user-1',
+      {
+        $set: {
+          given_name: 'Replaced',
+          family_name: 'Management User',
+          name: 'Replaced Management User',
+        },
+      },
+      { returnDocument: 'after', runValidators: true }
+    );
+  });
+
   it('looks users up by each supported identifier', async () => {
     const queries = [
       mongooseQuery({ _id: { toString: () => 'email-user' } }),

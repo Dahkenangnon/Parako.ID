@@ -322,6 +322,17 @@ describe('OIDCAdapterBridge public guards and monitoring', () => {
     }
   );
 
+  it('creates a tenant-owned adapter factory after initialization', () => {
+    const { bridge } = setupBridge();
+    const delegateFactory = vi.fn(() => ({}) as never);
+    (bridge as any)._isInitialized = true;
+    (bridge as any)._adapterFactory = delegateFactory;
+
+    const factory = bridge.adapterForTenant('acme');
+    expect(factory('Session')).toBeDefined();
+    expect(delegateFactory).toHaveBeenCalledWith('Session');
+  });
+
   it('reports an uninitialized bridge without reading runtime config', () => {
     const { bridge, configManager } = setupBridge();
     expect(bridge.getConnectionInfo()).toEqual({

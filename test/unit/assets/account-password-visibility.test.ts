@@ -119,4 +119,13 @@ describe('account password visibility', () => {
   it('can be evaluated without a browser window', async () => {
     expect(() => installPasswordVisibilityGlobal(undefined)).not.toThrow();
   });
+
+  it('publishes to the ambient browser window by default', () => {
+    const windowRoot: PasswordVisibilityWindow = {};
+    vi.stubGlobal('window', windowRoot);
+
+    installPasswordVisibilityGlobal();
+
+    expect(windowRoot.PasswordVisibilityToggle).toBe(PasswordVisibilityToggle);
+  });
 });

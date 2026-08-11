@@ -96,4 +96,28 @@ describe('service-worker registration bootstrap', () => {
     listener();
     expect(fixture.register).toHaveBeenCalledWith('/service-worker.js');
   });
+
+  it('installs automatically when evaluated in a browser environment', async () => {
+    const fixture = installBrowser('complete');
+    vi.resetModules();
+
+    // The cache reset is required to exercise the script entrypoint exactly as
+    // a browser does when it loads the module for the first time.
+    await import('../../../src/assets/js/sw/register.js');
+
+    expect(fixture.register).toHaveBeenCalledWith('/service-worker.js');
+  });
+
+  it.each(['window', 'document', 'navigator'] as const)(
+    'does not install automatically without the %s global',
+    async missingGlobal => {
+      installBrowser('complete');
+      vi.stubGlobal(missingGlobal, undefined);
+      vi.resetModules();
+
+      await expect(
+        import('../../../src/assets/js/sw/register.js')
+      ).resolves.toBeDefined();
+    }
+  );
 });

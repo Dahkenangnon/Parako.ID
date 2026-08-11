@@ -6,7 +6,6 @@ import { MongooseActivityRepository } from '../../../../src/db/repositories/mong
 
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseActivityRepository;
-let mongoAvailable = true;
 
 const makeActivity = (overrides: Record<string, unknown> = {}) => ({
   type: 'test.action',
@@ -18,14 +17,10 @@ const makeActivity = (overrides: Record<string, unknown> = {}) => ({
 });
 
 beforeAll(async () => {
-  try {
-    mongod = await MongoMemoryServer.create();
-    await mongoose.connect(mongod.getUri());
-    const ActivityModel = createActivityModel();
-    repo = new MongooseActivityRepository(ActivityModel);
-  } catch {
-    mongoAvailable = false;
-  }
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+  const ActivityModel = createActivityModel();
+  repo = new MongooseActivityRepository(ActivityModel);
 }, 60_000);
 
 afterAll(async () => {
@@ -35,11 +30,7 @@ afterAll(async () => {
   }
 });
 
-beforeEach(async ctx => {
-  if (!mongoAvailable) {
-    ctx.skip();
-    return;
-  }
+beforeEach(async () => {
   await mongoose.connection.collection('activities').deleteMany({});
 });
 

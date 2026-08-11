@@ -159,6 +159,35 @@ describe('FacebookSocialLogin', () => {
     });
   });
 
+  it('returns a valid-state provider denial without calling Facebook', async () => {
+    const { login, sessionManager, sessions } = createHarness();
+    const req = {
+      params: { provider: 'facebook' },
+      query: {
+        error: 'access_denied',
+        error_description: 'The user denied access',
+        state: 'facebook-state',
+      },
+    } as unknown as Request;
+    sessions.set('socialLogin', {
+      github: { state: 'github-state' },
+      facebook: { state: 'facebook-state', codeVerifier: 'pkce-verifier' },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(login.handleCallback(req)).resolves.toEqual({
+      success: false,
+      error:
+        'You denied access to your account. Please try again and grant the required permissions.',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(login.integrate).not.toHaveBeenCalled();
+    expect(sessionManager.set).toHaveBeenLastCalledWith(req, 'socialLogin', {
+      github: { state: 'github-state' },
+    });
+  });
+
   it('cleans OAuth state after a successful callback', async () => {
     const { login, sessionManager, sessions } = createHarness();
     const req = {

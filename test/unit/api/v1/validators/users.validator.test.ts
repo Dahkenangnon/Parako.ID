@@ -94,7 +94,7 @@ describe('createUserSchema', () => {
     }
   );
 
-  it.each(['a', 'user-name', 'x'.repeat(100)])(
+  it.each(['a', 'user-name', 'x'.repeat(50)])(
     'accepts normalized username %j',
     username => {
       expect(
@@ -106,7 +106,7 @@ describe('createUserSchema', () => {
     }
   );
 
-  it.each(['', '   ', 'x'.repeat(101), 42])(
+  it.each(['', '   ', 'x'.repeat(51), 42])(
     'rejects invalid username %j',
     username => {
       expect(

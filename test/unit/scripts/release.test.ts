@@ -127,6 +127,10 @@ describe('generateBody', () => {
     expect(generateBody('v0.1.0')).toBe('');
   });
 
+  it('treats an executor without output as an empty commit range', () => {
+    expect(generateBody('v0.1.0', () => null)).toBe('');
+  });
+
   it('returns empty string when all commits are non-allow-listed types', () => {
     execFileSyncMock.mockReturnValueOnce(
       [
@@ -231,6 +235,10 @@ describe('previousTagFor', () => {
     });
     expect(previousTagFor('v')).toBe('');
   });
+
+  it('returns empty string when git describe produces no output', () => {
+    expect(previousTagFor('v', () => null)).toBe('');
+  });
 });
 
 function createReleaseFixture(
@@ -297,6 +305,17 @@ describe('release preparation workflow', () => {
       ['push', 'origin', 'dev'],
       expect.anything()
     );
+    expect(fixture.stdout.write).toHaveBeenCalledWith(
+      expect.stringContaining('Committed chore(release): v1.2.3 locally')
+    );
+  });
+
+  it('reports a detached branch safely when preparing without a push', () => {
+    const fixture = createReleaseFixture({
+      'git rev-parse --abbrev-ref HEAD': null,
+    });
+
+    expect(main({ argv: ['patch', '--no-push'], ...fixture })).toBe(0);
     expect(fixture.stdout.write).toHaveBeenCalledWith(
       expect.stringContaining('Committed chore(release): v1.2.3 locally')
     );

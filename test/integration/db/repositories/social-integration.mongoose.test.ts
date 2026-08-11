@@ -7,7 +7,6 @@ import { MongooseSocialIntegrationRepository } from '../../../../src/db/reposito
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseSocialIntegrationRepository;
 let counter = 0;
-let mongoAvailable = true;
 
 // unique provider_sub per call; also unique user_id+method combo avoids index conflicts
 const makeIntegration = (overrides: Record<string, unknown> = {}) => {
@@ -24,14 +23,10 @@ const makeIntegration = (overrides: Record<string, unknown> = {}) => {
 };
 
 beforeAll(async () => {
-  try {
-    mongod = await MongoMemoryServer.create();
-    await mongoose.connect(mongod.getUri());
-    const SocialIntegrationModel = createSocialIntegrationModel();
-    repo = new MongooseSocialIntegrationRepository(SocialIntegrationModel);
-  } catch {
-    mongoAvailable = false;
-  }
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+  const SocialIntegrationModel = createSocialIntegrationModel();
+  repo = new MongooseSocialIntegrationRepository(SocialIntegrationModel);
 }, 60_000);
 
 afterAll(async () => {
@@ -41,11 +36,7 @@ afterAll(async () => {
   }
 });
 
-beforeEach(async ctx => {
-  if (!mongoAvailable) {
-    ctx.skip();
-    return;
-  }
+beforeEach(async () => {
   await mongoose.connection.collection('socialintegrations').deleteMany({});
 });
 

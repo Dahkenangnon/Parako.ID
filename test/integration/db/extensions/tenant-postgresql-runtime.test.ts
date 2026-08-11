@@ -8,10 +8,7 @@ import { PrismaOidcStoreAdapter } from '../../../../src/oidc/adapter/prisma/inde
 import { PrismaOidcAdminService } from '../../../../src/oidc/adapter/prisma/admin-service.js';
 import type { ILogger } from '../../../../src/di/interfaces/logger.interface.js';
 
-const describePostgresql =
-  process.env.ADAPTER_NAME === 'postgresql' ? describe : describe.skip;
-
-describePostgresql('PostgreSQL generated client and RLS runtime', () => {
+describe('PostgreSQL generated client and RLS runtime', () => {
   let client: PrismaClient;
   const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
   const tenantA = `ci-a-${suffix}`;
@@ -21,8 +18,14 @@ describePostgresql('PostgreSQL generated client and RLS runtime', () => {
   const logger = { error: () => {} } as unknown as ILogger;
 
   beforeAll(() => {
-    const url = process.env.STORAGE_POSTGRESQL_URL;
-    if (!url) throw new Error('STORAGE_POSTGRESQL_URL is required');
+    const url =
+      process.env.STORAGE_POSTGRESQL_URL ??
+      process.env.PARAKO_E2E_POSTGRESQL_URL;
+    if (!url) {
+      throw new Error(
+        'STORAGE_POSTGRESQL_URL or PARAKO_E2E_POSTGRESQL_URL is required'
+      );
+    }
 
     client = createPrismaClient({
       deployment: {

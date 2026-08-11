@@ -93,6 +93,25 @@ describe('createPrecompressedStaticMiddleware', () => {
     );
   });
 
+  it('prevents stale precompressed service workers from being cached', async () => {
+    const root = makeTempPublicRoot();
+    writeFileSync(join(root, 'service-worker.js.br'), 'compressed');
+
+    const middleware = createPrecompressedStaticMiddleware(root);
+    const res = makeRes();
+    const finished = new Promise<void>(resolve => {
+      res.once('finish', () => resolve());
+    });
+
+    middleware(makeReq('/service-worker.js', 'br'), res, vi.fn());
+    await finished;
+
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Cache-Control',
+      'public, no-cache'
+    );
+  });
+
   it('does not resolve traversal-like request paths into filesystem paths', () => {
     const root = makeTempPublicRoot();
     writeFileSync(join(root, 'app.js.br'), 'compressed');

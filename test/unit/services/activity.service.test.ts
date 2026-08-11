@@ -491,6 +491,34 @@ describe('ActivityService — IActivityRepository delegation', () => {
       );
     });
 
+    it('preserves raw target identity fields that are not extractable user fields', async () => {
+      service.info('target-fallback', 'Target fallback', undefined, {
+        target: {
+          target_type: 'service',
+          user_id: 'raw-user-id',
+          username: '',
+          email: false,
+          full_name: 17,
+          given_name: false,
+          family_name: false,
+        },
+      } as any);
+      await service.shutdown();
+
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            user_id: 'raw-user-id',
+            username: '',
+            email: false,
+            full_name: 17,
+            given_name: false,
+            family_name: false,
+          }),
+        })
+      );
+    });
+
     it('skips immediate processing while active or empty', async () => {
       (service as any).processingBatch = true;
       (service as any).activityQueue = [{ type: 'queued' }];

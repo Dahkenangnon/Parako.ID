@@ -259,6 +259,33 @@ describe('GoogleSocialLogin', () => {
     });
   });
 
+  it('returns a valid-state provider denial before Google discovery', async () => {
+    const { login, sessionManager, sessions } = createHarness();
+    const req = createCallbackRequest();
+    req.query = {
+      error: 'access_denied',
+      error_description: 'The user denied access',
+      state: 'google-state',
+    };
+    req.originalUrl =
+      '/auth/social/google/callback?error=access_denied&state=google-state';
+    sessions.set('socialLogin', {
+      github: { state: 'github-state' },
+      google: { state: 'google-state', codeVerifier: 'pkce-verifier' },
+    });
+
+    await expect(login.handleCallback(req)).resolves.toEqual({
+      success: false,
+      error: 'You denied access to your Google account. Please try again.',
+    });
+    expect(openidClientMocks.discovery).not.toHaveBeenCalled();
+    expect(openidClientMocks.authorizationCodeGrant).not.toHaveBeenCalled();
+    expect(login.integrate).not.toHaveBeenCalled();
+    expect(sessionManager.set).toHaveBeenLastCalledWith(req, 'socialLogin', {
+      github: { state: 'github-state' },
+    });
+  });
+
   it('waits for user integration and clears only Google state after success', async () => {
     const { login, sessionManager, sessions } = createHarness();
     const req = createCallbackRequest();

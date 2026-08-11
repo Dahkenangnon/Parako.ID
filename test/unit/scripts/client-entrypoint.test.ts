@@ -62,6 +62,18 @@ describe('OIDC client CLI module lifecycle', () => {
     expect(processOn).not.toHaveBeenCalled();
   });
 
+  it('runs automatically when evaluated as the process entrypoint', async () => {
+    dependencies.isMainModule.mockReturnValue(true);
+    vi.resetModules();
+
+    // This import intentionally verifies the ESM entrypoint side effect.
+    await import('../../../scripts/manage/client.js');
+
+    await vi.waitFor(() =>
+      expect(dependencies.addClientInteractive).toHaveBeenCalledOnce()
+    );
+  });
+
   it('builds a versioned program whose extended help names only supported commands', () => {
     const program = buildClientProgram();
 

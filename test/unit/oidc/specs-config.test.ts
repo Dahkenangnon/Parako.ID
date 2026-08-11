@@ -186,11 +186,54 @@ describe('OIDC provider specification configuration', () => {
 
     const metadata = ExtraClientMetadata(configManager as any);
     const accumulated = { client_id: 'client' } as any;
-    expect(metadata.properties).toBe(properties);
+    expect(metadata.properties).toEqual([...properties, 'ttl']);
+    expect(properties).toEqual(['allowedResources', 'isInternalClient']);
     expect(
       metadata.validator({} as any, 'isInternalClient', true, accumulated)
     ).toBeUndefined();
     expect(accumulated).toEqual({ client_id: 'client' });
+  });
+
+  it('registers and accepts supported positive per-client TTL overrides', () => {
+    const metadata = ExtraClientMetadata(configManager as any);
+    const ttl = {
+      AccessToken: 60,
+      BackchannelAuthenticationRequest: 90,
+      ClientCredentials: 120,
+      RefreshToken: 180,
+    };
+
+    expect(metadata.properties).toContain('ttl');
+    expect(() =>
+      metadata.validator({} as any, 'ttl', ttl, { ttl } as any)
+    ).not.toThrow();
+  });
+
+  it('accepts omitted TTL metadata and always exposes the required property', () => {
+    config.features.oidc.extra_client_metadata = undefined as never;
+    const metadata = ExtraClientMetadata(configManager as any);
+
+    expect(metadata.properties).toEqual(['ttl']);
+    expect(() =>
+      metadata.validator({} as any, 'ttl', undefined, {} as any)
+    ).not.toThrow();
+  });
+
+  it.each([
+    null,
+    [],
+    { UnsupportedArtifact: 60 },
+    { ClientCredentials: 0 },
+    { ClientCredentials: -1 },
+    { ClientCredentials: 1.5 },
+    { ClientCredentials: Number.POSITIVE_INFINITY },
+    { ClientCredentials: '60' },
+  ])('rejects unsafe per-client TTL metadata %j', ttl => {
+    const metadata = ExtraClientMetadata(configManager as any);
+
+    expect(() =>
+      metadata.validator({} as any, 'ttl', ttl, { ttl } as any)
+    ).toThrow(errors.InvalidClientMetadata);
   });
 
   it('does not expose extra authorization parameters when disabled', () => {

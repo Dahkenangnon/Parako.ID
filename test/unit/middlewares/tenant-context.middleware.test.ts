@@ -812,6 +812,61 @@ describe('TenantContextMiddleware', () => {
       expect(capturedTenantId).toBe(DEFAULT_TENANT_ID);
       expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
     });
+
+    it('does not treat an IPv4 literal as a tenant subdomain', async () => {
+      const configManager = createMockConfigManager({
+        extraction_priority: ['subdomain'],
+      });
+      tenantRepo = createMockTenantRepo(new Map());
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+
+      const req = createMockReq({
+        hostname: '127.0.0.1',
+      });
+      const res = createMockRes();
+
+      let capturedTenantId: string | undefined;
+      const next: NextFunction = vi.fn(() => {
+        capturedTenantId = tenantContext.getTenantId();
+      });
+
+      await middleware.handler(req, res, next);
+
+      expect(capturedTenantId).toBe(DEFAULT_TENANT_ID);
+      expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
+    });
+
+    it('does not treat a bracketed IPv6 literal as a tenant subdomain', async () => {
+      const configManager = createMockConfigManager({
+        extraction_priority: ['subdomain'],
+      });
+      tenantRepo = createMockTenantRepo(new Map());
+      const middleware = new TenantContextMiddleware(
+        logger,
+        configManager,
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({ hostname: '[2001:db8::1]' });
+      const res = createMockRes();
+      let capturedTenantId: string | undefined;
+
+      await middleware.handler(
+        req,
+        res,
+        vi.fn(() => {
+          capturedTenantId = tenantContext.getTenantId();
+        })
+      );
+
+      expect(capturedTenantId).toBe(DEFAULT_TENANT_ID);
+      expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
+    });
   });
 
   describe('session tenant binding', () => {

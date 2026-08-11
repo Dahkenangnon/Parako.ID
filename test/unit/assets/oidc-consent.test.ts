@@ -63,4 +63,16 @@ describe('installConsentSubmissionGuard', () => {
 
     expect(documentRoot.getElementById).toHaveBeenCalledWith('consent-form');
   });
+
+  it('installs automatically when evaluated in a browser document', async () => {
+    const documentRoot = { getElementById: vi.fn(() => null) };
+    vi.stubGlobal('document', documentRoot);
+    vi.resetModules();
+
+    // Resetting the module cache is intentional: this verifies the browser
+    // entrypoint side effect rather than the exported installer.
+    await import('../../../src/assets/js/auth/oidc/consent.js');
+
+    expect(documentRoot.getElementById).toHaveBeenCalledWith('consent-form');
+  });
 });

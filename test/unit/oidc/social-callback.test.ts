@@ -22,10 +22,17 @@ describe('OIDC social callback handler', () => {
       warning: vi.fn(),
     };
     const config = {
+      deployment: {
+        routes: {
+          auth: '/auth',
+          auth_routes: { phone_verification: '/phone-verification' },
+        },
+      },
       oidc: { path: '/oidc/v1' },
       security: {
         authentication: {
           session: { require_2fa_for_new_device: false },
+          signup: { require_phone_verification: false },
         },
       },
     };
@@ -57,8 +64,13 @@ describe('OIDC social callback handler', () => {
       timestamp: Date.now(),
       uid: 'interaction-id',
     };
+    const flash = {
+      error: vi.fn(),
+      success: vi.fn(),
+    };
     const sessionManager = {
       enforceSessionLimit: vi.fn().mockResolvedValue(undefined),
+      flash: vi.fn(() => flash),
       get: vi.fn((_req, key) =>
         key === 'oidcSocialContext' ? oidcContext : null
       ),
@@ -101,9 +113,15 @@ describe('OIDC social callback handler', () => {
       checkIPReputation: vi.fn(),
       isEnabled: vi.fn(() => false),
     };
-    const authService = { generateEmailOtp: vi.fn() };
+    const authService = {
+      generateEmailOtp: vi.fn(),
+      generatePhoneVerificationChallenge: vi.fn(),
+    };
     const mfaUtils = { isTotpEnabled: vi.fn(() => false) };
     const metricsService = { recordFederationLogin: vi.fn() };
+    const smsService = {
+      sendVerificationCode: vi.fn().mockResolvedValue({ success: true }),
+    };
     const handler = new OIDCSocialCallbackHandler(
       logger as any,
       activityService as any,
@@ -117,7 +135,8 @@ describe('OIDC social callback handler', () => {
       ipReputationService as any,
       authService as any,
       mfaUtils as any,
-      metricsService as any
+      metricsService as any,
+      smsService as any
     );
     const request: {
       headers: { 'user-agent'?: string };
@@ -157,6 +176,7 @@ describe('OIDC social callback handler', () => {
       request,
       response,
       sessionManager,
+      smsService,
       socialLoginManager,
       user,
       viewResolver,
@@ -340,6 +360,82 @@ describe('OIDC social callback handler', () => {
     );
     expect(harness.response.redirect).toHaveBeenCalledWith(
       '/oidc/v1/interaction/interaction-id'
+    );
+  });
+
+  it('requires phone possession proof before resuming an OIDC social login', async () => {
+    const harness = createHarness();
+    harness.config.security.authentication.signup.require_phone_verification = true;
+    harness.user.phone_number_verified = false;
+    harness.authService.generatePhoneVerificationChallenge.mockResolvedValue({
+      code: '123456',
+      verificationToken: 'phone-token',
+      user: harness.user,
+    });
+
+    await harness.handler.handle(
+      harness.request as any,
+      harness.response as any,
+      harness.next
+    );
+
+    expect(
+      harness.authService.generatePhoneVerificationChallenge
+    ).toHaveBeenCalledWith('user-id');
+    expect(harness.smsService.sendVerificationCode).toHaveBeenCalledWith(
+      '+22997000000',
+      '123456',
+      '192.0.2.10'
+    );
+    expect(harness.sessionManager.set).toHaveBeenCalledWith(
+      harness.request,
+      'phoneVerificationOidcContinuation',
+      {
+        interactionUid: 'interaction-id',
+        createdAt: expect.any(Number),
+      }
+    );
+    expect(harness.sessionManager.setAuthenticated).not.toHaveBeenCalled();
+    expect(harness.sessionManager.remove).toHaveBeenCalledWith(
+      harness.request,
+      'oidcSocialContext'
+    );
+    expect(harness.response.redirect).toHaveBeenCalledWith(
+      '/auth/phone-verification?token=phone-token'
+    );
+  });
+
+  it('keeps phone verification completable when social-login SMS delivery reports failure', async () => {
+    const harness = createHarness();
+    harness.config.security.authentication.signup.require_phone_verification = true;
+    harness.user.phone_number_verified = false;
+    harness.authService.generatePhoneVerificationChallenge.mockResolvedValue({
+      code: '123456',
+      verificationToken: 'phone-token',
+      user: harness.user,
+    });
+    harness.smsService.sendVerificationCode.mockResolvedValue({
+      error: 'SMS provider unavailable',
+      success: false,
+    });
+
+    await harness.handler.handle(
+      harness.request as any,
+      harness.response as any,
+      harness.next
+    );
+
+    expect(harness.sessionManager.set).toHaveBeenCalledWith(
+      harness.request,
+      'phoneVerificationOidcContinuation',
+      expect.objectContaining({ interactionUid: 'interaction-id' })
+    );
+    expect(harness.sessionManager.flash().error).toHaveBeenCalledWith(
+      'We could not send the verification code. Please try resending it.'
+    );
+    expect(harness.sessionManager.setAuthenticated).not.toHaveBeenCalled();
+    expect(harness.response.redirect).toHaveBeenCalledWith(
+      '/auth/phone-verification?token=phone-token'
     );
   });
 

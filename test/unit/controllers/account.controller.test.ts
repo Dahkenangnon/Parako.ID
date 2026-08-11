@@ -68,6 +68,7 @@ function createHarness() {
   };
   const config = {
     application: { title: 'Parako' },
+    oidc: { issuer: 'https://id.example.test/oidc/v1' },
     deployment: {
       url: 'https://id.example.test',
       routes: {
@@ -149,7 +150,9 @@ function createHarness() {
   const notificationService = {
     sendOtp: vi.fn().mockResolvedValue(undefined),
     sendSecurityAlert: vi.fn().mockResolvedValue(undefined),
-    sendTemplatedEmail: vi.fn().mockResolvedValue(undefined),
+    sendTemplatedEmail: vi
+      .fn()
+      .mockResolvedValue({ success: true, channel: 'email' }),
     sendVerification: vi.fn().mockResolvedValue(undefined),
   };
   const viewResolver = {
@@ -1750,6 +1753,10 @@ describe('AccountsController read pages', () => {
       harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
       harness.userService.findByUsername.mockResolvedValue(databaseUser());
       harness.oidcAdapter.session.revokeAllSessionsExcept.mockResolvedValue(2);
+      harness.sessionManager.findExpressSessionsForUser.mockResolvedValue([
+        { _id: 'current-express-session' },
+        { _id: 'other-express-session' },
+      ]);
       const req = request({
         body: {
           currentPassword: 'old-password',
@@ -1757,6 +1764,7 @@ describe('AccountsController read pages', () => {
           confirmPassword: 'new-password',
         },
         session: { id: 'current-session' } as Request['session'],
+        sessionID: 'current-express-session',
       });
       const res = response();
 
@@ -1772,6 +1780,15 @@ describe('AccountsController read pages', () => {
       expect(
         harness.oidcAdapter.session.revokeAllSessionsExcept
       ).toHaveBeenCalledWith('alice', 'current-session');
+      expect(
+        harness.sessionManager.findExpressSessionsForUser
+      ).toHaveBeenCalledWith('alice');
+      expect(
+        harness.sessionManager.revokeExpressSession
+      ).toHaveBeenCalledOnce();
+      expect(harness.sessionManager.revokeExpressSession).toHaveBeenCalledWith(
+        'other-express-session'
+      );
       expect(harness.sessionManager.regenerate).toHaveBeenCalledWith(req);
       expect(activityMocks.success).toHaveBeenCalledWith(
         'password_changed',
@@ -1782,7 +1799,7 @@ describe('AccountsController read pages', () => {
       expect(activityMocks.info).toHaveBeenCalledWith(
         'sessions_revoked_password_change',
         null,
-        'Revoked 2 other sessions after password change',
+        'Revoked 3 other sessions after password change',
         expect.anything()
       );
       expect(
@@ -2013,6 +2030,41 @@ describe('AccountsController read pages', () => {
         'Password changed successfully'
       );
       expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/security');
+    });
+
+    it('does not claim that a password notification was sent when delivery returns a failure result', async () => {
+      const harness = createHarness();
+      harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
+      harness.userService.findByUsername.mockResolvedValue(databaseUser());
+      harness.notificationService.sendTemplatedEmail.mockResolvedValue({
+        success: false,
+        channel: 'email',
+        error: 'email server unavailable',
+      });
+
+      await harness.controller.changePassword(
+        request({
+          body: {
+            currentPassword: 'old-password',
+            newPassword: 'new-password',
+            confirmPassword: 'new-password',
+          },
+        }),
+        response()
+      );
+
+      expect(harness.logger.info).not.toHaveBeenCalledWith(
+        'Password change notification email sent',
+        expect.anything()
+      );
+      expect(harness.logger.warn).toHaveBeenCalledWith(
+        'Password change notification email was not delivered',
+        {
+          username: 'alice',
+          email: 'alice@example.test',
+          error: 'email server unavailable',
+        }
+      );
     });
 
     it('reports password persistence failures without claiming success', async () => {
@@ -2914,6 +2966,11 @@ describe('AccountsController read pages', () => {
         maskedEmail: 'a***@example.test',
         cancelUrl: '/accounts/settings/security',
       });
+      expect(res.set).toHaveBeenCalledWith(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate'
+      );
+      expect(res.set).toHaveBeenCalledWith('Pragma', 'no-cache');
     });
 
     it('masks the active session email when the database email is absent', async () => {
@@ -2989,8 +3046,14 @@ describe('AccountsController read pages', () => {
         title: 'Setup 2FA',
         method: 'totp',
         qrDataUri: 'data:image/png;base64,qr',
+        totpSecret: 'totp-secret',
         cancelUrl: '/accounts/settings/security',
       });
+      expect(res.set).toHaveBeenCalledWith(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate'
+      );
+      expect(res.set).toHaveBeenCalledWith('Pragma', 'no-cache');
     });
 
     it('uses the username as the TOTP label when email is absent', async () => {
@@ -3659,6 +3722,30 @@ describe('AccountsController read pages', () => {
   });
 
   describe('revocation persistence boundaries', () => {
+    it('accepts the snake_case client identifier rendered by the account form', async () => {
+      const harness = createHarness();
+      harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
+      harness.oidcAdapter.grant.findGrantsByAccountId.mockResolvedValue([
+        {
+          _id: 'stored-grant',
+          payload: { clientId: 'client-1', jti: 'grant-1' },
+        },
+      ]);
+      harness.oidcAdapter.grant.find.mockResolvedValue({
+        payload: { jti: 'grant-1' },
+      });
+
+      await harness.controller.revokeApp(
+        request({ body: { client_id: 'client-1' } }),
+        response()
+      );
+
+      expect(harness.oidcAdapter.grant.destroy).toHaveBeenCalledWith('grant-1');
+      expect(harness.flash.success).toHaveBeenCalledWith(
+        'Application access revoked successfully'
+      );
+    });
+
     it('redirects anonymous users before loading application grants', async () => {
       const harness = createHarness();
       const res = response();
@@ -5913,6 +6000,46 @@ describe('AccountsController read pages', () => {
         expect.objectContaining({
           content: expect.stringContaining('<p>Hello alice,</p>'),
           username: 'alice',
+        })
+      );
+    });
+
+    it('uses the tenant issuer origin in recovery verification links', async () => {
+      const harness = createHarness();
+      harness.configManager.getConfig.mockReturnValue({
+        ...harness.configManager.getConfig(),
+        oidc: { issuer: 'https://acme.id.example.test/oidc/v1' },
+      });
+      harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
+      harness.recoveryUtils.getRecoveryConfig.mockReturnValue({
+        enabled: true,
+        methods: {
+          backup_codes: { enabled: true },
+          secondary_email: { enabled: true },
+        },
+      });
+      harness.userService.findByUsername.mockResolvedValue(databaseUser());
+
+      await harness.controller.enableRecovery(
+        request({
+          body: {
+            source: 'recovery_setup',
+            email: 'recovery@example.test',
+          },
+        }),
+        response()
+      );
+
+      expect(
+        harness.notificationService.sendTemplatedEmail
+      ).toHaveBeenCalledWith(
+        'recovery@example.test',
+        expect.any(String),
+        'email/mail.njk',
+        expect.objectContaining({
+          content: expect.stringContaining(
+            'href="https://acme.id.example.test/accounts/verify-recovery-email?token=raw-verification-token"'
+          ),
         })
       );
     });

@@ -82,6 +82,7 @@ describe('dialog utility', () => {
       buttonText: 'Understood',
     });
     const backdrop = elements[0]!;
+    const modal = elements[1]!;
     const iconElement = elements[4]!;
     const title = elements[5]!;
     const message = elements[7]!;
@@ -92,6 +93,21 @@ describe('dialog utility', () => {
     expect(iconElement.className).toContain(color);
     expect(title.textContent).toBe('Title');
     expect(message.textContent).toBe('Message');
+    expect(modal.setAttribute).toHaveBeenCalledWith('role', 'dialog');
+    expect(modal.setAttribute).toHaveBeenCalledWith('aria-modal', 'true');
+    const titleId = title.setAttribute.mock.calls.find(
+      call => call[0] === 'id'
+    )?.[1] as string;
+    const messageId = message.setAttribute.mock.calls.find(
+      call => call[0] === 'id'
+    )?.[1] as string;
+    expect(titleId).toMatch(/^dialog-title-/);
+    expect(messageId).toMatch(/^dialog-message-/);
+    expect(modal.setAttribute).toHaveBeenCalledWith('aria-labelledby', titleId);
+    expect(modal.setAttribute).toHaveBeenCalledWith(
+      'aria-describedby',
+      messageId
+    );
     expect(button.textContent).toBe('Understood');
     expect(createIcons).toHaveBeenCalledOnce();
 
@@ -152,9 +168,27 @@ describe('dialog utility', () => {
     });
     const cancelButton = elements[9]!;
     const confirmButton = elements[10]!;
+    const modal = elements[1]!;
+    const title = elements[5]!;
+    const message = elements[7]!;
 
     expect(cancelButton.textContent).toBe('Stop');
     expect(confirmButton.textContent).toBe('Proceed');
+    expect(modal.setAttribute).toHaveBeenCalledWith('role', 'dialog');
+    expect(modal.setAttribute).toHaveBeenCalledWith('aria-modal', 'true');
+    const titleId = title.setAttribute.mock.calls.find(
+      call => call[0] === 'id'
+    )?.[1] as string;
+    const messageId = message.setAttribute.mock.calls.find(
+      call => call[0] === 'id'
+    )?.[1] as string;
+    expect(titleId).toMatch(/^dialog-title-/);
+    expect(messageId).toMatch(/^dialog-message-/);
+    expect(modal.setAttribute).toHaveBeenCalledWith('aria-labelledby', titleId);
+    expect(modal.setAttribute).toHaveBeenCalledWith(
+      'aria-describedby',
+      messageId
+    );
     expect(elements[4]?.setAttribute).toHaveBeenCalledWith(
       'data-lucide',
       'shield-alert'

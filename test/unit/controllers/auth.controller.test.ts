@@ -25,6 +25,8 @@ vi.mock('../../../src/utils/custom-identifier-validation.js', () => ({
 }));
 
 import { AuthController } from '../../../src/controllers/auth.controller.js';
+import { PhoneVerificationDeliveryError } from '../../../src/errors/phone-verification-delivery.error.js';
+import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
 import type { IUser } from '../../../src/types/user.js';
 
 const user = (overrides: Record<string, unknown> = {}) => ({
@@ -142,6 +144,7 @@ function makeHarness() {
         auth: '/auth',
         auth_routes: {
           login: '/login',
+          phone_verification: '/phone-verification',
           register: '/register',
           account_select: '/account-select',
           mfa_select: '/mfa/select',
@@ -163,7 +166,11 @@ function makeHarness() {
           social_password_setup: '/social/password-setup',
         },
         accounts: '/accounts',
-        account_routes: { dashboard: '/dashboard', settings: '/settings' },
+        account_routes: {
+          dashboard: '/dashboard',
+          settings: '/settings',
+          settings_social: '/settings/social',
+        },
       },
     },
     oidc: { path: '/oidc/v1' },
@@ -215,6 +222,7 @@ function makeHarness() {
     warn: vi.fn(),
   };
   const authService = {
+    generatePhoneVerificationChallenge: vi.fn(),
     generateEmailVerificationToken: vi
       .fn()
       .mockResolvedValue({ verificationToken: 'verification-token' }),
@@ -223,9 +231,11 @@ function makeHarness() {
     loginWithCustomIdentifier: vi.fn(),
     loginWithEmail: vi.fn(),
     loginWithPhoneNumber: vi.fn(),
+    renewPhoneVerificationChallenge: vi.fn(),
     registerUser: vi.fn(),
     resetPassword: vi.fn(),
     verifyEmail: vi.fn(),
+    verifyPhone: vi.fn(),
     verifyTotp: vi.fn(),
   };
   const userService = {
@@ -268,6 +278,7 @@ function makeHarness() {
         mfa_webauthn: 'auth/mfa-webauthn',
         multi_factor: 'auth/multi-factor',
         logout: 'auth/logout',
+        phone_verification: 'auth/phone-verification',
         register: 'auth/register',
         reset_password: 'auth/reset-password',
         recovery_backup_codes: 'auth/recovery-backup-codes',
@@ -353,6 +364,7 @@ function makeHarness() {
   };
   const recoveryService = {
     getAvailableMethods: vi.fn(),
+    verifyAndConsumeSmsRecoveryCode: vi.fn(),
     verifySecurityQuestions: vi.fn(),
   };
   const clientDeviceInfoManager = {
@@ -377,6 +389,7 @@ function makeHarness() {
   };
   const smsService = {
     sendRecoveryCode: vi.fn(),
+    sendVerificationCode: vi.fn(),
   };
   const oidcUtils = {
     detectIdentifierType: vi.fn().mockReturnValue('email'),
@@ -602,6 +615,36 @@ describe('AuthController', () => {
         expect(method).toBeTypeOf('string');
       }
     );
+
+    it('returns to login when the required phone challenge cannot be created', async () => {
+      const { authService, controller, flash, logger } = makeHarness();
+      authService.loginWithEmail.mockRejectedValue(
+        new PhoneVerificationRequiredError('user-1', '+22900000000')
+      );
+      const failure = new Error('challenge store unavailable');
+      authService.generatePhoneVerificationChallenge.mockRejectedValue(failure);
+      const res = response();
+
+      await controller.processLogin(
+        request({
+          body: {
+            email: 'alice@example.test',
+            password: 'correct-password',
+          },
+        }),
+        res
+      );
+
+      expect(logger.error).toHaveBeenCalledWith(failure, {
+        userId: 'user-1',
+        context: 'phone_verification_challenge_failed',
+      });
+      expect(flash.error).toHaveBeenCalledWith(
+        'Phone verification is required. Please try again.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/auth/login');
+      expect(res.locals.loginFailed).not.toBe(true);
+    });
 
     it.each([
       ['legacy email', { email: 'alice@example.test' }, 'email', undefined],
@@ -982,22 +1025,43 @@ describe('AuthController', () => {
     });
 
     it.each([
-      ['success', { success: true }, undefined, 'Account added successfully.'],
+      [
+        'success',
+        { success: true },
+        undefined,
+        'Account added successfully.',
+        true,
+      ],
       [
         'session limit',
         { success: false, reason: 'max_limit_reached' },
         'Maximum number of accounts per session reached.',
         undefined,
+        false,
       ],
       [
         'duplicate account',
         { success: false, reason: 'already_exists' },
         'This account is already signed in.',
         undefined,
+        true,
+      ],
+      [
+        'single-account replacement',
+        { success: false, reason: 'multi_account_disabled' },
+        'This account is already signed in.',
+        undefined,
+        true,
       ],
     ])(
       'handles OIDC continue account addition %s',
-      async (_label, addResult, infoMessage, successMessage) => {
+      async (
+        _label,
+        addResult,
+        infoMessage,
+        successMessage,
+        shouldAuthenticate
+      ) => {
         const {
           authService,
           controller,
@@ -1028,6 +1092,19 @@ describe('AuthController', () => {
         }
         if (successMessage) {
           expect(flash.success).toHaveBeenCalledWith(successMessage);
+        }
+        if (shouldAuthenticate) {
+          expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(
+            expect.anything(),
+            {
+              currentActiveLoggedUser: expect.objectContaining({
+                id: 'user-1',
+                username: 'alice',
+              }),
+            }
+          );
+        } else {
+          expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
         }
         expect(redirectChain.to).toHaveBeenCalledWith(
           'https://rp.example.test/callback'
@@ -1220,12 +1297,111 @@ describe('AuthController', () => {
       expect(flash.error).toHaveBeenCalledWith(expectedMessage);
       expect(res.redirect).toHaveBeenCalledWith('/auth/login');
     });
+
+    it.each([
+      {
+        delivered: true,
+        message: 'A verification code has been sent to your phone.',
+        flashKind: 'success',
+      },
+      {
+        delivered: false,
+        message:
+          'We could not send the verification code. Please try resending it.',
+        flashKind: 'error',
+      },
+    ] as const)(
+      'starts required phone proof after a valid password when delivery is $delivered',
+      async ({ delivered, flashKind, message }) => {
+        const { authService, controller, flash, smsService } = makeHarness();
+        authService.loginWithEmail.mockRejectedValue(
+          new PhoneVerificationRequiredError('user-1', '+22900000000')
+        );
+        authService.generatePhoneVerificationChallenge.mockResolvedValue({
+          user: user({ phone_number: '+22900000000' }),
+          verificationToken: 'opaque-token',
+          code: '123456',
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+        smsService.sendVerificationCode.mockResolvedValue({
+          success: delivered,
+          error: delivered ? undefined : 'provider unavailable',
+        });
+        const res = response();
+
+        await controller.processLogin(
+          request({
+            body: {
+              email: 'alice@example.test',
+              password: 'correct-password',
+            },
+          }),
+          res
+        );
+
+        expect(
+          authService.generatePhoneVerificationChallenge
+        ).toHaveBeenCalledWith('user-1');
+        expect(smsService.sendVerificationCode).toHaveBeenCalledWith(
+          '+22900000000',
+          '123456',
+          '127.0.0.1'
+        );
+        expect(flash[flashKind]).toHaveBeenCalledWith(message);
+        expect(res.redirect).toHaveBeenCalledWith(
+          '/auth/phone-verification?token=opaque-token'
+        );
+        expect(res.locals.loginFailed).not.toBe(true);
+      }
+    );
+
+    it.each([
+      new Error('Invalid email or password'),
+      new Error('Invalid phone_number or password'),
+      new Error('Invalid custom_identifier or password'),
+      new Error('Invalid credentials'),
+    ])(
+      'normalizes credential failure %j without exposing account existence',
+      async failure => {
+        const { authService, controller, flash } = makeHarness();
+        authService.loginWithEmail.mockRejectedValue(failure);
+
+        await controller.processLogin(
+          request({
+            body: { email: 'alice@example.test', password: 'incorrect' },
+          }),
+          response()
+        );
+
+        expect(flash.error).toHaveBeenCalledWith(
+          'Invalid credentials. Please try again.'
+        );
+      }
+    );
   });
 
   describe('registration', () => {
     it('renders registration with policy, intent, trimmed prefills, and configured channels', async () => {
       const { config, controller, logger, redirectAuthority, userService } =
         makeHarness();
+      const registrationIdentifier = {
+        slot: 1,
+        key: 'employee_id',
+        name: 'Employee ID',
+        edit_policy: 'set_once',
+        required_for_registration: true,
+        usable_for_login: true,
+      };
+      userService.getCustomIdentifierFields.mockReturnValue([
+        registrationIdentifier,
+        {
+          ...registrationIdentifier,
+          slot: 2,
+          key: 'internal_id',
+          name: 'Internal ID',
+          edit_policy: 'admin_only',
+        },
+      ]);
       const req = request({
         query: {
           continue: 'https://rp.example.test/callback',
@@ -1262,6 +1438,9 @@ describe('AuthController', () => {
           },
           contactChannels:
             config.security.authentication.signup.contact_channels,
+          authentication: {
+            customIdentifierFields: [registrationIdentifier],
+          },
           prefilledEmail: 'alice@example.test',
           stepMessage: 'Create an account',
         })
@@ -1473,7 +1652,7 @@ describe('AuthController', () => {
       expect(authService.registerUser).toHaveBeenCalledWith(
         expect.objectContaining({
           custom_identifier_1: 'member-42',
-          register_with: 'phone_number',
+          register_with: 'custom_identifier_1',
         })
       );
       expect(authService.registerUser).toHaveBeenCalledWith(
@@ -1883,15 +2062,7 @@ describe('AuthController', () => {
       await controller.processRegister(req, res);
 
       expect(sessionManager.regenerate).toHaveBeenCalledWith(req);
-      expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(
-        req,
-        expect.objectContaining({
-          currentActiveLoggedUser: expect.objectContaining({
-            zoneinfo: 'UTC',
-            locale: 'fr',
-          }),
-        })
-      );
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
       expect(notificationService.sendVerification).toHaveBeenCalledWith(
         {
           email: 'alice@example.test',
@@ -1951,6 +2122,130 @@ describe('AuthController', () => {
 
       expect(res.redirect).toHaveBeenCalledWith(
         '/auth/email-verification?status=pending'
+      );
+    });
+
+    it.each([
+      { delivered: true, emailDeliveryFails: false, flashKind: 'success' },
+      { delivered: false, emailDeliveryFails: true, flashKind: 'error' },
+    ] as const)(
+      'starts dual-contact verification when phone delivery is $delivered',
+      async ({ delivered, emailDeliveryFails, flashKind }) => {
+        const {
+          authService,
+          config,
+          controller,
+          flash,
+          logger,
+          notificationService,
+          sessionManager,
+          smsService,
+        } = makeHarness();
+        config.security.authentication.signup.require_phone_verification = true;
+        const pendingUser = user({
+          _id: 'new-user',
+          given_name: delivered ? 'Alice' : undefined,
+          email_verified: false,
+          phone_number: '+22997000000',
+          phone_number_verified: false,
+        });
+        authService.registerUser.mockResolvedValue(pendingUser);
+        authService.generatePhoneVerificationChallenge.mockResolvedValue({
+          user: pendingUser,
+          verificationToken: 'phone-token',
+          code: '123456',
+          expiresAt: new Date(Date.now() + 60_000),
+        });
+        smsService.sendVerificationCode.mockResolvedValue({
+          success: delivered,
+        });
+        const emailFailure = new Error('mail unavailable');
+        if (emailDeliveryFails) {
+          notificationService.sendVerification.mockRejectedValue(emailFailure);
+        }
+        const res = response();
+
+        await controller.processRegister(
+          request({
+            body: {
+              fullname: 'Alice Doe',
+              email: 'alice@example.test',
+              phone: '+22997000000',
+              password: 'valid-password',
+            },
+          }),
+          res
+        );
+
+        expect(authService.generateEmailVerificationToken).toHaveBeenCalledWith(
+          'new-user'
+        );
+        expect(notificationService.sendVerification).toHaveBeenCalledOnce();
+        if (emailDeliveryFails) {
+          expect(logger.error).toHaveBeenCalledWith(emailFailure, {
+            userId: 'new-user',
+            context: 'registration_email_verification_delivery_failed',
+          });
+        }
+        expect(
+          authService.generatePhoneVerificationChallenge
+        ).toHaveBeenCalledWith('new-user');
+        expect(flash[flashKind]).toHaveBeenCalledWith(
+          delivered
+            ? 'A verification code has been sent to your phone.'
+            : 'We could not send the verification code. Please try resending it.'
+        );
+        expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+        expect(res.redirect).toHaveBeenCalledWith(
+          '/auth/phone-verification?token=phone-token'
+        );
+      }
+    );
+
+    it('starts phone verification without attempting email delivery for a phone-only account', async () => {
+      const {
+        authService,
+        config,
+        controller,
+        notificationService,
+        smsService,
+      } = makeHarness();
+      config.security.authentication.signup.require_phone_verification = true;
+      const pendingUser = user({
+        _id: 'new-user',
+        email: undefined,
+        given_name: undefined,
+        phone_number: '+22997000000',
+        phone_number_verified: false,
+      });
+      authService.registerUser.mockResolvedValue(pendingUser);
+      authService.generatePhoneVerificationChallenge.mockResolvedValue({
+        user: pendingUser,
+        verificationToken: 'phone-token',
+        code: '123456',
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      smsService.sendVerificationCode.mockResolvedValue({ success: true });
+      const res = response();
+
+      await controller.processRegister(
+        request({
+          body: {
+            fullname: 'Alice Doe',
+            phone: '+22997000000',
+            password: 'valid-password',
+          },
+        }),
+        res
+      );
+
+      expect(authService.generateEmailVerificationToken).not.toHaveBeenCalled();
+      expect(notificationService.sendVerification).not.toHaveBeenCalled();
+      expect(
+        authService.generatePhoneVerificationChallenge
+      ).toHaveBeenCalledWith('new-user');
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=phone-token'
       );
     });
 
@@ -2112,7 +2407,7 @@ describe('AuthController', () => {
       );
     });
 
-    it('stores boolean account state and sends redirected verification in the background', async () => {
+    it('keeps redirected verification registrations anonymous and sends verification in the background', async () => {
       const {
         authService,
         controller,
@@ -2154,21 +2449,7 @@ describe('AuthController', () => {
       expect(logger.error).toHaveBeenCalledWith(expect.any(Error), {
         context: 'Failed to regenerate session after registration',
       });
-      expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(req, {
-        currentActiveLoggedUser: expect.objectContaining({
-          id: 'new-user',
-          phone_number: '',
-          phone_number_verified: false,
-          given_name: '',
-          family_name: '',
-          full_name: '',
-          picture: '',
-          roles: ['user'],
-          is_admin: false,
-          zoneinfo: 'UTC',
-          locale: 'en',
-        }),
-      });
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
       expect(redirectAuthority.buildRedirectUrl).toHaveBeenCalledWith(
         'https://rp.example.test/callback',
         {
@@ -3211,15 +3492,14 @@ describe('AuthController', () => {
         expect.any(Object)
       );
       expect(sessionManager.regenerate).toHaveBeenCalledWith(req);
-      expect(sessionManager.addAuthenticatedUser).toHaveBeenCalledWith(
-        req,
-        expect.objectContaining({
+      expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(req, {
+        currentActiveLoggedUser: expect.objectContaining({
           id: 'user-1',
           username: 'alice',
           last_used: expect.any(Number),
         }),
-        true
-      );
+      });
+      expect(sessionManager.addAuthenticatedUser).not.toHaveBeenCalled();
       expect(sessionManager.remove).toHaveBeenCalledWith(req, 'pendingMfaUser');
       expect(flash.success).toHaveBeenCalledWith('Login successful!');
       expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
@@ -4447,6 +4727,296 @@ describe('AuthController', () => {
     );
   });
 
+  describe('phone verification', () => {
+    it('renders the verification page with a safe missing-token error', () => {
+      const { controller } = makeHarness();
+      const res = response();
+
+      controller.phoneVerification(request(), res);
+
+      expect(res.render).toHaveBeenCalledWith('auth/phone-verification', {
+        title: 'Verify Phone - Parako',
+        token: '',
+        error: 'Invalid verification token.',
+        phoneVerificationPath: '/auth/phone-verification',
+      });
+    });
+
+    it('renders a supplied phone verification token without an error', () => {
+      const { controller } = makeHarness();
+      const res = response();
+
+      controller.phoneVerification(
+        request({ query: { token: 'opaque-token' } }),
+        res
+      );
+
+      expect(res.render).toHaveBeenCalledWith('auth/phone-verification', {
+        title: 'Verify Phone - Parako',
+        token: 'opaque-token',
+        error: null,
+        phoneVerificationPath: '/auth/phone-verification',
+      });
+    });
+
+    it('verifies one-time phone proof and sends the user back to sign in', async () => {
+      const { authService, controller, flash } = makeHarness();
+      authService.verifyPhone.mockResolvedValue(
+        user({ phone_number_verified: true })
+      );
+      const res = response();
+
+      await controller.processPhoneVerification(
+        request({ body: { token: 'opaque-token', code: '123456' } }),
+        res
+      );
+
+      expect(authService.verifyPhone).toHaveBeenCalledWith(
+        'opaque-token',
+        '123456'
+      );
+      expect(flash.success).toHaveBeenCalledWith(
+        'Your phone number has been verified. You can now sign in.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/auth/login');
+    });
+
+    it('returns verified phone registration intent to the relying party', async () => {
+      const { authService, controller, redirectAuthority, redirectChain } =
+        makeHarness();
+      authService.verifyPhone.mockResolvedValue(
+        user({ email: undefined, phone_number_verified: true })
+      );
+      redirectAuthority.getIntent.mockReturnValue(
+        'https://rp.example.test/callback'
+      );
+      redirectAuthority.buildRedirectUrl.mockReturnValue(
+        'https://rp.example.test/callback?status=phone_verified'
+      );
+      const res = response();
+
+      await controller.processPhoneVerification(
+        request({ body: { token: 'opaque-token', code: '123456' } }),
+        res
+      );
+
+      expect(redirectAuthority.buildRedirectUrl).toHaveBeenCalledWith(
+        'https://rp.example.test/callback',
+        { email: '', status: 'phone_verified' }
+      );
+      expect(redirectChain.to).toHaveBeenCalledWith(
+        'https://rp.example.test/callback?status=phone_verified'
+      );
+      expect(redirectChain.or).toHaveBeenCalledWith('/auth/login');
+    });
+
+    it('continues to pending email verification after phone proof', async () => {
+      const { authService, controller } = makeHarness();
+      authService.verifyPhone.mockResolvedValue(
+        user({ email_verified: false, phone_number_verified: true })
+      );
+      const res = response();
+
+      await controller.processPhoneVerification(
+        request({ body: { token: 'opaque-token', code: '123456' } }),
+        res
+      );
+
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/email-verification?status=pending'
+      );
+    });
+
+    it('resumes the pending OIDC interaction after successful phone proof', async () => {
+      const {
+        authService,
+        controller,
+        redirectAuthority,
+        session,
+        sessionManager,
+      } = makeHarness();
+      authService.verifyPhone.mockResolvedValue(
+        user({ phone_number_verified: true })
+      );
+      session.set('phoneVerificationOidcContinuation', {
+        interactionUid: 'interaction / opaque',
+        createdAt: Date.now(),
+      });
+      const req = request({ body: { token: 'opaque-token', code: '123456' } });
+      const res = response();
+
+      await controller.processPhoneVerification(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'phoneVerificationOidcContinuation'
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/oidc/v1/interaction/interaction%20%2F%20opaque'
+      );
+      expect(redirectAuthority.getIntent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      {
+        name: 'expired',
+        continuation: {
+          interactionUid: 'expired-interaction',
+          createdAt: Date.now() - 16 * 60 * 1000,
+        },
+      },
+      {
+        name: 'malformed',
+        continuation: { interactionUid: '', createdAt: 'not-a-time' },
+      },
+    ])(
+      'discards a $name OIDC continuation after successful phone proof',
+      async ({ continuation }) => {
+        const { authService, controller, session, sessionManager } =
+          makeHarness();
+        authService.verifyPhone.mockResolvedValue(
+          user({ phone_number_verified: true })
+        );
+        session.set('phoneVerificationOidcContinuation', continuation);
+        const req = request({
+          body: { token: 'opaque-token', code: '123456' },
+        });
+        const res = response();
+
+        await controller.processPhoneVerification(req, res);
+
+        expect(sessionManager.remove).toHaveBeenCalledWith(
+          req,
+          'phoneVerificationOidcContinuation'
+        );
+        expect(res.redirect).toHaveBeenCalledWith('/auth/login');
+      }
+    );
+
+    it('renders a generic error for invalid phone proof', async () => {
+      const { authService, controller } = makeHarness();
+      authService.verifyPhone.mockRejectedValue(new Error('database detail'));
+      const res = response();
+
+      await controller.processPhoneVerification(
+        request({ body: { token: 'opaque-token', code: 'wrong' } }),
+        res
+      );
+
+      expect(res.render).toHaveBeenCalledWith('auth/phone-verification', {
+        title: 'Verify Phone - Parako',
+        token: 'opaque-token',
+        error: 'Invalid or expired verification code.',
+        phoneVerificationPath: '/auth/phone-verification',
+      });
+    });
+
+    it('normalizes malformed phone proof and non-Error failures', async () => {
+      const { authService, controller, logger } = makeHarness();
+      authService.verifyPhone.mockRejectedValue('verification unavailable');
+      const res = response();
+
+      await controller.processPhoneVerification(
+        request({ body: { token: [], code: {} } }),
+        res
+      );
+
+      expect(authService.verifyPhone).toHaveBeenCalledWith('', '');
+      expect(logger.warn).toHaveBeenCalledWith('Phone verification failed', {
+        error: 'verification unavailable',
+      });
+      expect(res.render).toHaveBeenCalledWith(
+        'auth/phone-verification',
+        expect.objectContaining({
+          token: '',
+          error: 'Invalid or expired verification code.',
+        })
+      );
+    });
+
+    it('delivers a replacement through the compensated renewal boundary', async () => {
+      const { authService, controller, flash, smsService } = makeHarness();
+      const challenge = {
+        user: user({ phone_number: '+14155552671' }),
+        verificationToken: 'replacement-token',
+        code: '654321',
+        expiresAt: new Date(Date.now() + 60_000),
+      };
+      smsService.sendVerificationCode.mockResolvedValue({ success: true });
+      authService.renewPhoneVerificationChallenge.mockImplementation(
+        async (_token, deliver) => {
+          expect(await deliver(challenge)).toBe(true);
+          return challenge;
+        }
+      );
+      const res = response();
+
+      await controller.resendPhoneVerification(
+        request({ body: { token: 'original-token' } }),
+        res
+      );
+
+      expect(authService.renewPhoneVerificationChallenge).toHaveBeenCalledWith(
+        'original-token',
+        expect.any(Function)
+      );
+      expect(flash.success).toHaveBeenCalledWith(
+        'A new verification code has been sent to your phone.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=replacement-token'
+      );
+    });
+
+    it('keeps the original token usable when replacement delivery fails', async () => {
+      const { authService, controller, flash } = makeHarness();
+      authService.renewPhoneVerificationChallenge.mockRejectedValue(
+        new PhoneVerificationDeliveryError('original-token')
+      );
+      const res = response();
+
+      await controller.resendPhoneVerification(
+        request({ body: { token: 'original-token' } }),
+        res
+      );
+
+      expect(flash.error).toHaveBeenCalledWith(
+        'We could not send the verification code. Please try again.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=original-token'
+      );
+    });
+
+    it.each([new Error('renewal unavailable'), 'renewal unavailable'])(
+      'returns generic resend failure %j to the tokenless page',
+      async failure => {
+        const { authService, controller, flash, logger } = makeHarness();
+        authService.renewPhoneVerificationChallenge.mockRejectedValue(failure);
+        const res = response();
+
+        await controller.resendPhoneVerification(
+          request({ body: { token: [] } }),
+          res
+        );
+
+        expect(
+          authService.renewPhoneVerificationChallenge
+        ).toHaveBeenCalledWith('', expect.any(Function));
+        expect(logger.warn).toHaveBeenCalledWith(
+          'Phone verification resend failed',
+          {
+            error: failure instanceof Error ? failure.message : String(failure),
+          }
+        );
+        expect(flash.error).toHaveBeenCalledWith(
+          'The verification request is invalid. Please sign in again.'
+        );
+        expect(res.redirect).toHaveBeenCalledWith('/auth/phone-verification');
+      }
+    );
+  });
+
   describe('account recovery', () => {
     it('renders account recovery with only login-capable custom identifiers', () => {
       const { controller, userService } = makeHarness();
@@ -4977,7 +5547,24 @@ describe('AuthController', () => {
         userService,
       } = makeHarness();
       const foundUser = securityQuestionsUser();
-      const updatedUser = securityQuestionsUser();
+      const updatedUser = securityQuestionsUser({
+        recovery: {
+          security_questions: {
+            questions: [
+              {
+                id: 'persisted-question-1',
+                question_key: 'first_pet',
+                answer_hash: 'persisted-hash-1',
+              },
+              {
+                id: 'persisted-question-2',
+                question_key: 'birth_city',
+                answer_hash: 'persisted-hash-2',
+              },
+            ],
+          },
+        },
+      });
       session.set(
         'recoveryAttempt',
         recoveryAttempt({ method: 'security_questions' })
@@ -5018,6 +5605,10 @@ describe('AuthController', () => {
         'auth/recovery-security-questions',
         expect.objectContaining({
           error: 'Answers do not match',
+          questions: [
+            { id: 'persisted-question-1', question_key: 'first_pet' },
+            { id: 'persisted-question-2', question_key: 'birth_city' },
+          ],
           lockout: {
             locked: false,
             minutesRemaining: 0,
@@ -5387,7 +5978,16 @@ describe('AuthController', () => {
     });
 
     it.each([
-      [undefined, { enabled: false, methods: [], phone: '', verified: false }],
+      [
+        undefined,
+        {
+          enabled: false,
+          methods: [],
+          phone: '+22900000000',
+          verified: true,
+          userVerified: true,
+        },
+      ],
       [
         {
           enabled: true,
@@ -5399,6 +5999,21 @@ describe('AuthController', () => {
           methods: ['sms'],
           phone: '+22900000000',
           verified: true,
+          userVerified: true,
+        },
+      ],
+      [
+        {
+          enabled: true,
+          methods: ['sms'],
+          sms: {},
+        },
+        {
+          enabled: true,
+          methods: ['sms'],
+          phone: '+22900000000',
+          verified: false,
+          userVerified: undefined,
         },
       ],
     ])(
@@ -5414,7 +6029,10 @@ describe('AuthController', () => {
           userService,
         } = makeHarness();
         const expiresAt = new Date('2026-08-07T17:00:00.000Z');
-        const foundUser = user({ recovery: existingRecovery });
+        const foundUser = user({
+          recovery: existingRecovery,
+          phone_number_verified: expected.userVerified,
+        });
         const attempt = recoveryAttempt({
           method: 'sms',
           methodDetails: { maskedPhone: '+229***' },
@@ -6440,8 +7058,185 @@ describe('AuthController', () => {
 
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: null,
       });
+    });
+
+    it('renders a pending SMS verification challenge', () => {
+      const { controller, session } = makeHarness();
+      session.set(
+        'recoveryAttempt',
+        recoveryAttempt({ method: 'sms', smsSent: true })
+      );
+      const res = response();
+
+      controller.recoveryVerifyCode(request(), res);
+
+      expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
+        title: 'auth.recovery_verify_code.title - Parako',
+        method: 'sms',
+        error: null,
+      });
+    });
+
+    it('keeps an invalid SMS recovery code on the verification page', async () => {
+      const {
+        clientDeviceInfoManager,
+        controller,
+        recoveryService,
+        session,
+        sessionManager,
+        userService,
+      } = makeHarness();
+      const foundUser = user({
+        recovery: {
+          enabled: true,
+          methods: ['sms'],
+          sms: {
+            phone_number: '+22900000000',
+            verified: true,
+            verification_code: 'stored-code',
+            verification_expires: new Date('2999-01-01T00:00:00.000Z'),
+          },
+        },
+      });
+      session.set(
+        'recoveryAttempt',
+        recoveryAttempt({ method: 'sms', smsSent: true })
+      );
+      userService.findById.mockResolvedValue(foundUser);
+      recoveryService.verifyAndConsumeSmsRecoveryCode.mockResolvedValue({
+        success: false,
+        error: 'Invalid or expired code',
+      });
+      const req = request({ body: { code: ' 000000 ' } });
+      const res = response();
+
+      await controller.processRecoveryVerifyCode(req, res);
+
+      expect(
+        clientDeviceInfoManager.getClientInfoFromRequest
+      ).toHaveBeenCalledWith(req);
+      expect(
+        recoveryService.verifyAndConsumeSmsRecoveryCode
+      ).toHaveBeenCalledWith(foundUser, '000000', {
+        ip: '127.0.0.1',
+        userAgent: 'vitest',
+      });
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
+        title: 'auth.recovery_verify_code.title - Parako',
+        method: 'sms',
+        error: 'Invalid or expired code',
+      });
+    });
+
+    it('reports a missing user for a pending SMS recovery challenge', async () => {
+      const { controller, session, userService } = makeHarness();
+      session.set(
+        'recoveryAttempt',
+        recoveryAttempt({ method: 'sms', smsSent: true })
+      );
+      userService.findById.mockResolvedValue(undefined);
+      const res = response();
+
+      await controller.processRecoveryVerifyCode(
+        request({ body: { code: '123456' } }),
+        res
+      );
+
+      expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
+        title: 'auth.recovery_verify_code.title - Parako',
+        method: 'sms',
+        error: 'User not found',
+      });
+    });
+
+    it('uses a stable error when SMS recovery verification gives no detail', async () => {
+      const { controller, recoveryService, session, userService } =
+        makeHarness();
+      session.set(
+        'recoveryAttempt',
+        recoveryAttempt({ method: 'sms', smsSent: true })
+      );
+      userService.findById.mockResolvedValue(user());
+      recoveryService.verifyAndConsumeSmsRecoveryCode.mockResolvedValue({
+        success: false,
+      });
+      const res = response();
+
+      await controller.processRecoveryVerifyCode(
+        request({ body: { code: '123456' } }),
+        res
+      );
+
+      expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
+        title: 'auth.recovery_verify_code.title - Parako',
+        method: 'sms',
+        error: 'Invalid or expired code',
+      });
+    });
+
+    it('completes SMS recovery through the persisted challenge', async () => {
+      const {
+        controller,
+        flash,
+        recoveryService,
+        session,
+        sessionManager,
+        userService,
+      } = makeHarness();
+      const foundUser = user({
+        is_admin: undefined,
+        name: 'Alice Doe',
+        zoneinfo: undefined,
+        locale: undefined,
+        recovery: {
+          enabled: true,
+          methods: ['sms'],
+          sms: {
+            phone_number: '+22900000000',
+            verified: true,
+            verification_code: 'stored-code',
+            verification_expires: new Date('2999-01-01T00:00:00.000Z'),
+          },
+        },
+      });
+      session.set(
+        'recoveryAttempt',
+        recoveryAttempt({ method: 'sms', smsSent: true })
+      );
+      userService.findById.mockResolvedValue(foundUser);
+      recoveryService.verifyAndConsumeSmsRecoveryCode.mockResolvedValue({
+        success: true,
+        userId: 'user-1',
+        method: 'sms',
+      });
+      const req = request({ body: { code: ' 123456 ' } });
+      const res = response();
+
+      await controller.processRecoveryVerifyCode(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'recoveryAttempt'
+      );
+      expect(session.has('recoveryAttempt')).toBe(false);
+      expect(sessionManager.setAuthenticated).toHaveBeenCalledWith(req, {
+        currentActiveLoggedUser: expect.objectContaining({
+          id: 'user-1',
+          username: 'alice',
+          full_name: 'Alice Doe',
+          is_admin: false,
+          zoneinfo: 'UTC',
+          locale: 'en',
+        }),
+      });
+      expect(flash.success).toHaveBeenCalledWith(
+        'Account recovered successfully! It is crucial to change your password immediately or enforce security options for your account.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
     });
 
     it('redirects verification-code processing without a pending challenge', async () => {
@@ -6484,6 +7279,7 @@ describe('AuthController', () => {
         expect(userService.findById).not.toHaveBeenCalled();
         expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
           title: 'auth.recovery_verify_code.title - Parako',
+          method: 'secondary_email',
           error: 'Verification code is required',
         });
       }
@@ -6538,6 +7334,7 @@ describe('AuthController', () => {
         }
         expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
           title: 'auth.recovery_verify_code.title - Parako',
+          method: 'secondary_email',
           error: 'Verification code has expired. Please try again.',
         });
       }
@@ -6569,6 +7366,7 @@ describe('AuthController', () => {
       });
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: 'Verification code has expired. Please try again.',
       });
     });
@@ -6608,6 +7406,7 @@ describe('AuthController', () => {
       );
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: 'Too many failed attempts. Please try again in 12 minutes.',
       });
     });
@@ -6631,6 +7430,7 @@ describe('AuthController', () => {
       expect(recoveryUtils.recordFailedRecoveryAttempt).not.toHaveBeenCalled();
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: 'Invalid verification code',
       });
     });
@@ -6711,6 +7511,7 @@ describe('AuthController', () => {
         }
         expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
           title: 'auth.recovery_verify_code.title - Parako',
+          method: 'secondary_email',
           error: expectedError,
         });
       }
@@ -6766,6 +7567,7 @@ describe('AuthController', () => {
       ).not.toHaveBeenCalled();
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: 'User not found',
       });
     });
@@ -6954,6 +7756,7 @@ describe('AuthController', () => {
       });
       expect(res.render).toHaveBeenCalledWith('auth/recovery-verify-code', {
         title: 'auth.recovery_verify_code.title - Parako',
+        method: 'secondary_email',
         error: 'An error occurred. Please try again.',
       });
     });
@@ -8228,6 +9031,162 @@ describe('AuthController', () => {
       });
     });
 
+    it('consumes a successful explicit-link intent without replacing the active account', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      const socialUser = user({ _id: 'user-1' });
+      session.set('linkSocialAccountIntent', {
+        provider: 'github',
+        returnUrl: '/accounts/settings/social',
+      });
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: socialUser,
+      });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'linkSocialAccountIntent'
+      );
+      expect(flash.success).toHaveBeenCalledWith(
+        'Github account linked successfully'
+      );
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(sessionManager.regenerate).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/social');
+    });
+
+    it('refuses an explicit-link result belonging to a different active account', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      session.set('linkSocialAccountIntent', {
+        provider: 'github',
+        returnUrl: '/accounts/settings/social',
+      });
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: user({ _id: 'other-user' }),
+      });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'linkSocialAccountIntent'
+      );
+      expect(flash.error).toHaveBeenCalledWith(
+        'This Github account is linked to a different user'
+      );
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(sessionManager.regenerate).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/social');
+    });
+
+    it('returns an explicit-link failure to settings instead of registration', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      session.set('linkSocialAccountIntent', {
+        provider: 'github',
+        returnUrl: '/accounts/settings/social',
+      });
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: false,
+        requiresLinking: true,
+        error: 'Provider identity cannot be linked',
+      });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'linkSocialAccountIntent'
+      );
+      expect(flash.error).toHaveBeenCalledWith(
+        'Provider identity cannot be linked'
+      );
+      expect(res.render).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/social');
+    });
+
+    it('rejects a mismatched explicit-link provider and ignores an untrusted return URL', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      session.set('linkSocialAccountIntent', {
+        provider: 'google',
+        returnUrl: 'https://attacker.example/collect',
+      });
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: user(),
+      });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(sessionManager.remove).toHaveBeenCalledWith(
+        req,
+        'linkSocialAccountIntent'
+      );
+      expect(flash.error).toHaveBeenCalledWith(
+        'Social account linking request is invalid or expired'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/social');
+    });
+
+    it('requires an active account before completing an explicit social link', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      session.set('linkSocialAccountIntent', {
+        provider: 'github',
+        returnUrl: '/accounts/settings/social',
+      });
+      sessionManager.getActiveUser.mockReturnValue(undefined);
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: user(),
+      });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(flash.error).toHaveBeenCalledWith(
+        'Please sign in to link a social account'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/auth/login');
+    });
+
+    it('uses stable provider feedback when an explicit social link fails without details', async () => {
+      const { controller, flash, session, sessionManager, socialLoginManager } =
+        makeHarness();
+      session.set('linkSocialAccountIntent', {
+        provider: 'github',
+        returnUrl: '/accounts/settings/social',
+      });
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      socialLoginManager.handleCallback.mockResolvedValue({ success: false });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(flash.error).toHaveBeenCalledWith('Failed to link Github account');
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/settings/social');
+    });
+
     it('ignores malformed query redirects when creating pending social MFA state', async () => {
       const {
         controller,
@@ -8453,6 +9412,72 @@ describe('AuthController', () => {
         }),
       });
       expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
+    });
+
+    it('consumes only the completed provider registration intent after social login', async () => {
+      const { controller, session, socialLoginManager } = makeHarness();
+      const googleIntent = { intent: 'register', timestamp: Date.now() - 1 };
+      session.set('socialRegister', {
+        github: { intent: 'register', timestamp: Date.now() },
+        google: googleIntent,
+      });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: user(),
+      });
+
+      await controller.socialCallback(
+        request({ params: { provider: 'github' } }),
+        response()
+      );
+
+      expect(session.get('socialRegister')).toEqual({
+        google: googleIntent,
+      });
+    });
+
+    it('requires phone possession proof before authenticating an existing social account', async () => {
+      const {
+        authService,
+        config,
+        controller,
+        flash,
+        sessionManager,
+        smsService,
+        socialLoginManager,
+      } = makeHarness();
+      config.security.authentication.signup.require_phone_verification = true;
+      const existingUser = user({
+        _id: undefined,
+        id: 'existing-user',
+        phone_number: '+22997000000',
+        phone_number_verified: false,
+      });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: true,
+        user: existingUser,
+      });
+      authService.generatePhoneVerificationChallenge.mockResolvedValue({
+        code: '123456',
+        verificationToken: 'phone-token',
+        user: existingUser,
+      });
+      smsService.sendVerificationCode.mockResolvedValue({ success: false });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(
+        authService.generatePhoneVerificationChallenge
+      ).toHaveBeenCalledWith('existing-user');
+      expect(flash.error).toHaveBeenCalledWith(
+        'We could not send the verification code. Please try resending it.'
+      );
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=phone-token'
+      );
     });
 
     it('normalizes absent social-user fields after normal login', async () => {
@@ -9129,7 +10154,65 @@ describe('AuthController', () => {
           is_admin: false,
         }),
       });
+      expect(session.get('socialRegister')).toBeUndefined();
       expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
+    });
+
+    it('requires phone possession proof before authenticating a passwordless social registration', async () => {
+      const {
+        authService,
+        config,
+        controller,
+        session,
+        sessionManager,
+        smsService,
+        socialLoginManager,
+        userService,
+      } = makeHarness();
+      config.features.social_providers.behavior.require_password_on_registration = false;
+      config.security.authentication.signup.require_phone_verification = true;
+      session.set('socialRegister', {
+        github: { intent: 'register', timestamp: Date.now() },
+      });
+      socialLoginManager.handleCallback.mockResolvedValue({
+        success: false,
+        requiresLinking: true,
+        providerData: { phone_number: '+22997000000' },
+      });
+      const newUser = user({
+        _id: undefined,
+        id: 'new-user',
+        email: undefined,
+        phone_number: '+22997000000',
+        phone_number_verified: false,
+      });
+      userService.createUserWithGeneratedUsername.mockResolvedValue(newUser);
+      socialLoginManager.linkToUser.mockResolvedValue({
+        _id: 'integration-1',
+      });
+      authService.generatePhoneVerificationChallenge.mockResolvedValue({
+        code: '123456',
+        verificationToken: 'phone-token',
+        user: newUser,
+      });
+      smsService.sendVerificationCode.mockResolvedValue({ success: true });
+      const req = request({ params: { provider: 'github' } });
+      const res = response();
+
+      await controller.socialCallback(req, res);
+
+      expect(
+        authService.generatePhoneVerificationChallenge
+      ).toHaveBeenCalledWith('new-user');
+      expect(smsService.sendVerificationCode).toHaveBeenCalledWith(
+        '+22997000000',
+        '123456',
+        '127.0.0.1'
+      );
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=phone-token'
+      );
     });
 
     it.each([false, undefined] as const)(
@@ -9578,6 +10661,61 @@ describe('AuthController', () => {
         'Failed to complete password setup'
       );
       expect(res.redirect).toHaveBeenCalledWith('/auth/register');
+    });
+
+    it('requires phone possession proof after completing social password setup', async () => {
+      const {
+        authService,
+        config,
+        controller,
+        session,
+        sessionManager,
+        smsService,
+        userService,
+      } = makeHarness();
+      config.security.authentication.signup.require_phone_verification = true;
+      session.set('socialPasswordSetup', {
+        userId: 'new-user',
+        provider: 'github',
+        providerData: { phone_number: '+22997000000' },
+        integrationId: 'integration-1',
+        timestamp: Date.now(),
+      });
+      const newUser = user({
+        _id: undefined,
+        id: undefined,
+        phone_number: '+22997000000',
+        phone_number_verified: false,
+      });
+      userService.findById.mockResolvedValue(newUser);
+      authService.generatePhoneVerificationChallenge.mockResolvedValue({
+        code: '123456',
+        verificationToken: 'phone-token',
+        user: newUser,
+      });
+      smsService.sendVerificationCode.mockResolvedValue({ success: true });
+      const req = request({
+        body: {
+          password: 'ValidPassword!123',
+          confirmPassword: 'ValidPassword!123',
+        },
+        query: { provider: 'github' },
+      });
+      const res = response();
+
+      await controller.processSocialPasswordSetup(req, res);
+
+      expect(userService.updateById).toHaveBeenCalledWith('new-user', {
+        password: 'hashed-password',
+        account_enabled: true,
+      });
+      expect(
+        authService.generatePhoneVerificationChallenge
+      ).toHaveBeenCalledWith('new-user');
+      expect(sessionManager.setAuthenticated).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith(
+        '/auth/phone-verification?token=phone-token'
+      );
     });
 
     it('activates a social superadmin and establishes an authenticated session', async () => {

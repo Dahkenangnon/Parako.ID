@@ -28,6 +28,28 @@ describe('PostgreSQL Prisma client discovery', () => {
     expect(findPostgresqlPrismaClient(nested)).toBe(client);
   });
 
+  it('falls back to the installed release when the runtime root stores only data', () => {
+    const runtimeRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'parako-runtime-')
+    );
+    const releaseRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'parako-release-')
+    );
+    temporaryDirectories.push(runtimeRoot, releaseRoot);
+    const client = path.join(
+      releaseRoot,
+      'prisma/generated/postgresql/index.js'
+    );
+    const moduleDirectory = path.join(releaseRoot, 'dist/src/db');
+    fs.mkdirSync(path.dirname(client), { recursive: true });
+    fs.mkdirSync(moduleDirectory, { recursive: true });
+    fs.writeFileSync(client, '');
+
+    expect(findPostgresqlPrismaClient(runtimeRoot, moduleDirectory)).toBe(
+      client
+    );
+  });
+
   it('fails clearly when the generated client is absent', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'parako-prisma-'));
     temporaryDirectories.push(root);

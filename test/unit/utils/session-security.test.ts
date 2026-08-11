@@ -97,6 +97,13 @@ function createManager(options: { encryptSessionData?: boolean } = {}) {
         type: 'sqlite',
       },
     },
+    features: {
+      multi_tenancy: {
+        enabled: false,
+        extraction_priority: ['header', 'subdomain'],
+        tenant_header: 'x-tenant-id',
+      },
+    },
   };
 
   const configManager = {
@@ -291,6 +298,93 @@ describe('SessionManager configuration and initialization', () => {
     expect(second).not.toBe(first);
   });
 
+  it('prefixes multi-tenant session IDs from the configured request source', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+
+    const fromHeader = (manager as any).generateSessionId({
+      headers: { 'x-tenant-id': 'tenant-a' },
+      hostname: 'parako.example',
+    });
+    const fromSubdomain = (manager as any).generateSessionId({
+      headers: {},
+      hostname: 'tenant-b.parako.example',
+    });
+
+    expect(fromHeader).toMatch(/^tenant-a\.[0-9a-f-]{36}$/);
+    expect(fromSubdomain).toMatch(/^tenant-b\.[0-9a-f-]{36}$/);
+  });
+
+  it('fails malformed multi-tenant session prefixes closed to default', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+
+    const sessionId = (manager as any).generateSessionId({
+      headers: { 'x-tenant-id': 'INVALID' },
+      hostname: 'parako.example',
+    });
+
+    expect(sessionId).toMatch(/^default\.[0-9a-f-]{36}$/);
+  });
+
+  it('uses default ownership when a multi-tenant session has no request', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+
+    const sessionId = (manager as any).generateSessionId();
+
+    expect(sessionId).toMatch(/^default\.[0-9a-f-]{36}$/);
+  });
+
+  it('keeps generated session identifiers unprefixed in single-tenant mode', () => {
+    const { manager } = createManager();
+
+    const sessionId = (manager as any).generateSessionId({ headers: {} });
+
+    expect(sessionId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('uses extraction defaults when optional multi-tenant settings are absent', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+    (config.features.multi_tenancy as any).extraction_priority = undefined;
+    (config.features.multi_tenancy as any).tenant_header = undefined;
+
+    const sessionId = (manager as any).generateSessionId({
+      headers: { 'x-tenant-id': 'tenant-a' },
+      hostname: 'tenant-b.parako.example',
+    });
+
+    expect(sessionId).toMatch(/^default\.[0-9a-f-]{36}$/);
+  });
+
+  it('uses the standard tenant header when no custom header is configured', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+    config.features.multi_tenancy.extraction_priority = ['header'];
+    (config.features.multi_tenancy as any).tenant_header = undefined;
+
+    const sessionId = (manager as any).generateSessionId({
+      headers: { 'x-tenant-id': 'tenant-a' },
+      hostname: 'parako.example',
+    });
+
+    expect(sessionId).toMatch(/^tenant-a\.[0-9a-f-]{36}$/);
+  });
+
+  it('uses default ownership when a configured subdomain source has no tenant label', () => {
+    const { config, manager } = createManager();
+    config.features.multi_tenancy.enabled = true;
+    config.features.multi_tenancy.extraction_priority = ['subdomain'];
+
+    const sessionId = (manager as any).generateSessionId({
+      headers: {},
+      hostname: 'parako.example',
+    });
+
+    expect(sessionId).toMatch(/^default\.[0-9a-f-]{36}$/);
+  });
+
   it('initializes once with the effective Prisma adapter and exposes middleware', () => {
     const { manager, logger } = createManager();
     const store = { startCleanup: vi.fn(), on: vi.fn() };
@@ -308,8 +402,8 @@ describe('SessionManager configuration and initialization', () => {
     manager.initialize(app as never);
 
     expect(store.startCleanup).toHaveBeenCalledOnce();
-    expect(app.use).toHaveBeenCalledOnce();
-    expect(app.use).toHaveBeenCalledWith(middleware);
+    expect(app.use).toHaveBeenCalledTimes(2);
+    expect(app.use).toHaveBeenNthCalledWith(1, middleware);
     expect(logger.info).toHaveBeenCalledWith(
       'Session middleware configured with postgresql store'
     );
@@ -4288,4 +4382,96 @@ describe('SessionManager session-store circuit breaker', () => {
       expect(store.getCircuitState()).toMatchObject({ failures: 1 });
     }
   );
+});
+
+describe('SessionManager redirect persistence', () => {
+  it('redirects immediately when a request has no persistable session', () => {
+    const { manager } = createManager();
+    const redirectBarrier = (
+      manager as any
+    ).redirectAfterSessionSaveMiddleware();
+    const request = {} as Request;
+    const response = createApiResponse();
+    const originalRedirect = vi.mocked(response.redirect);
+    const next = vi.fn();
+
+    redirectBarrier(request, response, next);
+    response.redirect('/auth/login');
+
+    expect(originalRedirect).toHaveBeenCalledWith('/auth/login');
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('persists session changes before exposing redirect headers', () => {
+    const { manager } = createManager();
+    const store = { startCleanup: vi.fn(), on: vi.fn() };
+    vi.mocked(PrismaSessionStore).mockImplementation(function MockStore() {
+      return store;
+    } as never);
+    (manager as any).prismaClient = { session: {} };
+    const app = { use: vi.fn() };
+    manager.initialize(app as never);
+    const redirectBarrier = app.use.mock.calls[1]?.[0] as (
+      req: Request,
+      res: Response,
+      next: NextFunction
+    ) => void;
+    let saved: ((error?: unknown) => void) | undefined;
+    const request = {
+      session: {
+        save: vi.fn((callback: (error?: unknown) => void) => {
+          saved = callback;
+        }),
+      },
+    } as unknown as Request;
+    const response = createApiResponse();
+    const originalRedirect = vi.mocked(response.redirect);
+    const next = vi.fn();
+
+    redirectBarrier(request, response, next);
+    response.redirect('/auth/login');
+
+    expect(request.session.save).toHaveBeenCalledOnce();
+    expect(originalRedirect).not.toHaveBeenCalled();
+
+    saved?.();
+
+    expect(originalRedirect).toHaveBeenCalledOnce();
+    expect(originalRedirect).toHaveBeenCalledWith('/auth/login');
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('reports redirect session-persistence failures without sending headers', () => {
+    const { manager } = createManager();
+    const store = { startCleanup: vi.fn(), on: vi.fn() };
+    vi.mocked(PrismaSessionStore).mockImplementation(function MockStore() {
+      return store;
+    } as never);
+    (manager as any).prismaClient = { session: {} };
+    const app = { use: vi.fn() };
+    manager.initialize(app as never);
+    const redirectBarrier = app.use.mock.calls[1]?.[0] as (
+      req: Request,
+      res: Response,
+      next: NextFunction
+    ) => void;
+    const persistenceError = new Error('session store unavailable');
+    const request = {
+      session: {
+        save: vi.fn((callback: (error?: unknown) => void) => {
+          callback(persistenceError);
+        }),
+      },
+    } as unknown as Request;
+    const response = createApiResponse();
+    const originalRedirect = vi.mocked(response.redirect);
+    const next = vi.fn();
+
+    redirectBarrier(request, response, next);
+    response.redirect('/auth/login');
+
+    expect(originalRedirect).not.toHaveBeenCalled();
+    expect(next).toHaveBeenNthCalledWith(1);
+    expect(next).toHaveBeenNthCalledWith(2, persistenceError);
+  });
 });

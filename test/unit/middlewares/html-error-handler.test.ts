@@ -186,7 +186,11 @@ describe('createHtmlErrorHandler', () => {
 
     expect(deps.logger.error).toHaveBeenCalledWith(
       err,
-      expect.objectContaining({ url: '/admin/x' })
+      expect.objectContaining({
+        url: '/admin/x',
+        errorName: 'Error',
+        errorMessage: 'boom',
+      })
     );
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.render).toHaveBeenCalledWith('error/500', expect.any(Object));

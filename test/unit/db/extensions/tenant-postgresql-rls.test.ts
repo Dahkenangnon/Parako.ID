@@ -63,6 +63,22 @@ describe('Prisma tenant query extension', () => {
     expect(query).toHaveBeenCalledWith({ where: { tenant_id: '_platforms' } });
   });
 
+  it('identifies the deferred model operation when tenant context is missing', async () => {
+    const operation = captureOperation();
+    tenantContext.enableStrictMode();
+
+    await expect(
+      operation({
+        model: 'User',
+        operation: 'findFirst',
+        args: {},
+        query: vi.fn(),
+      })
+    ).rejects.toThrow(
+      /Tenant context unavailable while executing User\.findFirst/
+    );
+  });
+
   it.each([
     ['', 'empty'],
     ['Uppercase', 'uppercase'],

@@ -139,7 +139,7 @@ describe('device info collector', () => {
 
     await collector.initialize();
 
-    expect(fp.load).toHaveBeenCalledWith(undefined);
+    expect(fp.load).toHaveBeenCalledWith({ monitoring: false });
     expect(existing.value).toBe(
       JSON.stringify({
         visitorId: 'visitor-123',
@@ -167,7 +167,10 @@ describe('device info collector', () => {
       debug: true,
     }).initialize();
 
-    expect(fp.load).toHaveBeenCalledWith({ apiKey: 'api-key' });
+    expect(fp.load).toHaveBeenCalledWith({
+      apiKey: 'api-key',
+      monitoring: false,
+    });
     expect(createdInputs[0]).toMatchObject({
       type: 'hidden',
       name: '_deviceInfo',

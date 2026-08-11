@@ -11,7 +11,16 @@ export default defineConfig({
     // Playwright owns browser/protocol E2E specs. Importing those files in a
     // Vitest worker makes Playwright reject their top-level test declarations
     // and also pollutes unit-test coverage.
-    exclude: ['node_modules', 'dist', '**/*.d.ts', 'test/e2e/**'],
+    exclude: [
+      'node_modules',
+      'dist',
+      '**/*.d.ts',
+      'test/e2e/**',
+      // This contract requires a generated PostgreSQL client and a real
+      // disposable database. The explicit PostgreSQL integration command owns
+      // that prerequisite and must fail rather than silently skip it.
+      'test/integration/db/extensions/tenant-postgresql-runtime.test.ts',
+    ],
 
     // Coverage configuration
     coverage: {

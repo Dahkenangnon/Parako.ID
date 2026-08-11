@@ -173,6 +173,21 @@ describe('Prisma social integration repository', () => {
     );
   });
 
+  it('preserves non-date metadata values without coercion', async () => {
+    const findUnique = vi.fn().mockResolvedValue(
+      row({
+        metadata: JSON.stringify({ linked_at: 42, last_sync: null }),
+      })
+    );
+    const repository = new PrismaSocialIntegrationRepository(
+      prismaClient({ findUnique }) as never
+    );
+
+    await expect(repository.findById('social-1')).resolves.toMatchObject({
+      metadata: { linked_at: 42, last_sync: null },
+    });
+  });
+
   it('handles found and missing id, filter, and provider lookups', async () => {
     const findUnique = vi
       .fn()

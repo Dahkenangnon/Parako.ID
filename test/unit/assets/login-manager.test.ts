@@ -369,7 +369,7 @@ describe('login manager', () => {
     expect(duplicate.stopPropagation).toHaveBeenCalledOnce();
     expect(submitButton.disabled).toBe(true);
     expect(submitButton.innerHTML).toContain('Signing in...');
-    expect(submitButton.innerHTML).toContain('0 014 12H0');
+    expect(submitButton.innerHTML).toContain('A7.962 7.962 0 0 1 4 12H0');
 
     await vi.advanceTimersByTimeAsync(99);
     expect(form!.submitNative).not.toHaveBeenCalled();
@@ -433,8 +433,8 @@ describe('login manager', () => {
       ElementFixture | undefined;
     const path = spinner?.appendChild.mock.calls[1]?.[0] as
       ElementFixture | undefined;
-    expect(path?.getAttribute('d')).toContain('0 018-8V0');
-    expect(path?.getAttribute('d')).toContain('0 014 12H0');
+    expect(path?.getAttribute('d')).toContain('M4 12a8 8 0 0 1 8-8V0');
+    expect(path?.getAttribute('d')).toContain('A7.962 7.962 0 0 1 4 12H0');
   });
 
   it('ignores social-login clicks without an element target', async () => {

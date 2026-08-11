@@ -2180,6 +2180,21 @@ describe('UserService — statistics, creation, and lifecycle', () => {
           auth_provider: 'ldap',
         },
       ],
+      [
+        'custom registration preserves its explicit source',
+        {
+          custom_identifier_1: 'employee-42',
+          register_with: 'custom_identifier_1',
+        },
+        {
+          register_with: 'custom_identifier_1',
+          email_verified: false,
+          phone_number_verified: false,
+          account_enabled: true,
+          roles: ['user'],
+          auth_provider: 'local',
+        },
+      ],
     ])('creates a user with $0', async (_name, input, expected) => {
       const created = makeUser(input as Partial<IUser>);
       vi.spyOn(service, 'generateUniqueUsername').mockResolvedValueOnce(

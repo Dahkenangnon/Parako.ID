@@ -9,21 +9,16 @@ const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 let mongod: MongoMemoryServer | undefined;
 let repo: MongooseSettingsRepository;
-let mongoAvailable = true;
 
 // Use the canonical default config — guaranteed to pass schema validation.
 // Overrides are merged shallowly at the top level only; don't pass nested partials.
 const makeValue = () => ({ ...DEFAULT_FULL_CONFIG }) as any;
 
 beforeAll(async () => {
-  try {
-    mongod = await MongoMemoryServer.create();
-    await mongoose.connect(mongod.getUri());
-    const SettingsModel = createSettingsModel();
-    repo = new MongooseSettingsRepository(SettingsModel);
-  } catch {
-    mongoAvailable = false;
-  }
+  mongod = await MongoMemoryServer.create();
+  await mongoose.connect(mongod.getUri());
+  const SettingsModel = createSettingsModel();
+  repo = new MongooseSettingsRepository(SettingsModel);
 }, 60_000);
 
 afterAll(async () => {
@@ -33,11 +28,7 @@ afterAll(async () => {
   }
 });
 
-beforeEach(async ctx => {
-  if (!mongoAvailable) {
-    ctx.skip();
-    return;
-  }
+beforeEach(async () => {
   await mongoose.connection.collection('settings').deleteMany({});
 });
 

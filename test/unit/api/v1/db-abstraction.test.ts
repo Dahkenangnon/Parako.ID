@@ -140,6 +140,7 @@ describe('API v1 — DB abstraction contract', () => {
           registerUser: vi.fn(),
           registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
+          changeUserPasswordByAuthorizedClient: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },
         oidcAdapter: { session: {} },
@@ -258,6 +259,7 @@ describe('API v1 — DB abstraction contract', () => {
           registerUser: vi.fn(),
           registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
+          changeUserPasswordByAuthorizedClient: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },
         oidcAdapter: { session: {} },
@@ -420,6 +422,7 @@ describe('API v1 — DB abstraction contract', () => {
           registerUser: vi.fn(),
           registerManagedUser: vi.fn(),
           adminChangeUserPassword: vi.fn(),
+          changeUserPasswordByAuthorizedClient: vi.fn(),
         },
         activityService: { getUserActivities: vi.fn() },
         oidcAdapter: { session: {} },
@@ -445,13 +448,18 @@ describe('API v1 — DB abstraction contract', () => {
       expect(filterStr).not.toContain('$lte');
     });
 
-    it('sessions: no MongoDB operators in filter', async () => {
+    it('sessions: uses the canonical nested filter translated by every adapter', async () => {
       const deps: SessionsControllerDeps = {
         oidcAdapter: {
           session: {
             find: vi.fn(),
             destroy: vi.fn(),
-            findAll: vi.fn().mockResolvedValue([]),
+            countSessions: vi.fn().mockResolvedValue(0),
+            findSessionsWithPagination: vi.fn().mockResolvedValue([]),
+            deleteSessionsByAccountId: vi
+              .fn()
+              .mockResolvedValue({ deletedCount: 0 }),
+            deleteSessionsByIds: vi.fn().mockResolvedValue({ deletedCount: 0 }),
           },
         },
         logger: { error: vi.fn(), info: vi.fn() },
@@ -462,10 +470,13 @@ describe('API v1 — DB abstraction contract', () => {
 
       await controller.list(req, res, createMockNext());
 
-      const filter = vi.mocked(deps.oidcAdapter.session.findAll!).mock
-        .calls[0][0];
-      const filterStr = JSON.stringify(filter);
-      expect(filterStr).not.toContain('$');
+      const filter = vi.mocked(
+        deps.oidcAdapter.session.findSessionsWithPagination
+      ).mock.calls[0][0];
+      expect(filter).toEqual({
+        'payload.kind': 'Session',
+        'payload.accountId': 'testuser',
+      });
     });
   });
 });
