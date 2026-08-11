@@ -1,5 +1,41 @@
-import type { ClientMetadata, KoaContextWithOIDC } from 'oidc-provider';
+import {
+  errors,
+  type ClientMetadata,
+  type KoaContextWithOIDC,
+} from 'oidc-provider';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
+
+const REQUIRED_EXTRA_CLIENT_METADATA = ['ttl'] as const;
+const CLIENT_TTL_KEYS = new Set([
+  'AccessToken',
+  'BackchannelAuthenticationRequest',
+  'ClientCredentials',
+  'RefreshToken',
+]);
+
+function validateClientTtl(value: unknown): void {
+  if (value === undefined) return;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new errors.InvalidClientMetadata(
+      'ttl must be an object of positive integer lifetimes'
+    );
+  }
+
+  const entries = Object.entries(value);
+  if (
+    entries.length === 0 ||
+    entries.some(
+      ([key, ttl]) =>
+        !CLIENT_TTL_KEYS.has(key) ||
+        !Number.isSafeInteger(ttl) ||
+        (ttl as number) <= 0
+    )
+  ) {
+    throw new errors.InvalidClientMetadata(
+      'ttl contains an unsupported artifact or invalid lifetime'
+    );
+  }
+}
 
 /**
  * Factory function to create extra client metadata configuration
@@ -30,10 +66,16 @@ export default function ExtraClientMetadata(configManager: IConfigManager) {
      * - isInternalClient: Boolean indicating if the client is for Parako.ID or third party
      * - resourcesScopes: String containing resource scopes the client is allowed to request
      * - allowedResources: Array of resource servers the client is allowed to request tokens for
+     * - ttl: Positive per-client lifetimes for the supported token artifacts
      *
      * @type {string[]} Array of property names
      */
-    properties: config.features.oidc.extra_client_metadata?.properties,
+    properties: [
+      ...new Set([
+        ...(config.features.oidc.extra_client_metadata?.properties ?? []),
+        ...REQUIRED_EXTRA_CLIENT_METADATA,
+      ]),
+    ],
 
     /**
      * Validator function for custom client metadata properties.
@@ -48,12 +90,11 @@ export default function ExtraClientMetadata(configManager: IConfigManager) {
      */
     validator: function extraClientMetadataValidator(
       _ctx: KoaContextWithOIDC,
-      _key: string,
-      _value: any,
+      key: string,
+      value: unknown,
       _metadata: ClientMetadata
     ) {
-      // Validations for key, value, other related metadata
-      // metadata[key] = value; to (re)assign metadata values
+      if (key === 'ttl') validateClientTtl(value);
     },
   };
 }

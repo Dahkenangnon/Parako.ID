@@ -14,7 +14,11 @@ import type { Request, Response, NextFunction } from 'express';
 
 import { notFound, validationError } from '../errors.js';
 import { apiSuccess, apiList, apiNoContent } from '../response.js';
-import { buildCursorResponse, parsePaginationParams } from '../pagination.js';
+import {
+  buildCursorResponse,
+  decodeCursor,
+  parsePaginationParams,
+} from '../pagination.js';
 import { sessionQuerySchema } from '../validators/sessions.validator.js';
 
 /** Service and logger dependencies required by {@link SessionsController}. */
@@ -23,14 +27,76 @@ export interface SessionsControllerDeps {
     session: {
       find(jti: string): Promise<any>;
       destroy(jti: string): Promise<void>;
-      findAll?(filter?: any): Promise<any[]>;
-      revokeByAccountId?(accountId: string): Promise<number>;
+      countSessions(filter?: any): Promise<number>;
+      findSessionsWithPagination(
+        filter?: any,
+        sortBy?: string,
+        sortOrder?: number,
+        skip?: number,
+        limit?: number
+      ): Promise<any[]>;
+      deleteSessionsByAccountId(
+        accountId: string
+      ): Promise<{ deletedCount: number }>;
+      deleteSessionsByIds(
+        sessionIds: string[]
+      ): Promise<{ deletedCount: number }>;
     };
   };
   logger: {
     error(error: Error, context?: Record<string, unknown>): void;
     info(message: string, context?: Record<string, unknown>): void;
   };
+}
+
+const SESSION_SORT_FIELD = 'createdAt';
+const BULK_PAGE_SIZE = 100;
+
+function sessionId(session: any): string | undefined {
+  const value =
+    session?.payload?.jti ??
+    session?.jti ??
+    session?.logical_id ??
+    session?.id ??
+    session?._id;
+
+  return value === undefined || value === null || value === ''
+    ? undefined
+    : String(value);
+}
+
+/** Normalize MongoDB, Redis, and Prisma session rows to one API shape. */
+function normalizeSession(session: any): Record<string, unknown> {
+  const payload =
+    session?.payload && typeof session.payload === 'object'
+      ? session.payload
+      : session;
+  const id = sessionId(session);
+
+  return id === undefined
+    ? { ...payload }
+    : { ...payload, id, jti: payload?.jti ? String(payload.jti) : id };
+}
+
+function buildSessionFilter(query: {
+  username?: string;
+  client_id?: string;
+  active?: 'true' | 'false';
+}): Record<string, unknown> {
+  const filter: Record<string, unknown> = {
+    'payload.kind': 'Session',
+  };
+
+  if (query.username) filter['payload.accountId'] = query.username;
+  if (query.client_id) filter['payload.clientId'] = query.client_id;
+
+  if (query.active !== undefined) {
+    const now = Math.floor(Date.now() / 1000);
+    filter['payload.exp'] =
+      query.active === 'true' ? { $gt: now } : { $lte: now };
+  }
+
+  return filter;
 }
 
 export class SessionsController {
@@ -47,6 +113,62 @@ export class SessionsController {
     return this.oidcAdapter.session;
   }
 
+  /**
+   * Resolve an opaque session cursor to the adapter offset immediately after
+   * that session. The session adapters expose offset pagination rather than a
+   * shared keyset query, so scanning in bounded pages is the only portable
+   * implementation across Redis, MongoDB, and Prisma-backed storage.
+   */
+  private async offsetAfterCursor(
+    filter: Record<string, unknown>,
+    cursor: string
+  ): Promise<number> {
+    const fields = decodeCursor(cursor);
+    const cursorId = fields.jti ?? fields.id;
+
+    if (!cursorId) {
+      throw validationError(
+        'Invalid cursor: cursor is missing a session identifier',
+        [
+          {
+            field: 'after',
+            message: 'Cursor must contain a jti or id field',
+          },
+        ]
+      );
+    }
+
+    let skip = 0;
+
+    while (true) {
+      const sessions = await this.adapter.findSessionsWithPagination(
+        filter,
+        SESSION_SORT_FIELD,
+        -1,
+        skip,
+        BULK_PAGE_SIZE
+      );
+      const index = sessions.findIndex(
+        session => sessionId(session) === cursorId
+      );
+
+      if (index >= 0) return skip + index + 1;
+      if (sessions.length < BULK_PAGE_SIZE) break;
+
+      skip += BULK_PAGE_SIZE;
+    }
+
+    throw validationError(
+      'Invalid cursor: cursor does not identify a session in this result set',
+      [
+        {
+          field: 'after',
+          message: 'Cursor is stale or does not match the current filters',
+        },
+      ]
+    );
+  }
+
   /** List sessions with cursor-based pagination and optional filters. */
   list = async (
     req: Request,
@@ -54,22 +176,29 @@ export class SessionsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { limit } = parsePaginationParams(
+      const { limit, cursor, includeCount } = parsePaginationParams(
         req.query as Record<string, unknown>
       );
 
       const query = sessionQuerySchema.parse(req.query);
-
-      const filter: Record<string, unknown> = {};
-      if (query.username) filter.accountId = query.username;
-      if (query.client_id) filter.clientId = query.client_id;
-      if (query.active !== undefined) filter.active = query.active === 'true';
-
-      const docs = this.adapter.findAll
-        ? await this.adapter.findAll({ ...filter, limit: limit + 1 })
-        : [];
-
-      const page = buildCursorResponse(docs, limit);
+      const filter = buildSessionFilter(query);
+      const skip = cursor ? await this.offsetAfterCursor(filter, cursor) : 0;
+      const docs = await this.adapter.findSessionsWithPagination(
+        filter,
+        SESSION_SORT_FIELD,
+        -1,
+        skip,
+        limit + 1
+      );
+      const totalCount = includeCount
+        ? await this.adapter.countSessions(filter)
+        : undefined;
+      const page = buildCursorResponse(
+        docs.map(normalizeSession),
+        limit,
+        'jti',
+        totalCount
+      );
 
       apiList(res, page);
     } catch (error) {
@@ -90,7 +219,7 @@ export class SessionsController {
         throw notFound(`Session '${req.params.jti}' not found`);
       }
 
-      apiSuccess(res, session);
+      apiSuccess(res, normalizeSession(session));
     } catch (error) {
       next(error);
     }
@@ -144,25 +273,40 @@ export class SessionsController {
 
       let revokedCount = 0;
 
-      if (
-        query.username &&
-        !query.client_id &&
-        this.adapter.revokeByAccountId
-      ) {
-        revokedCount = await this.adapter.revokeByAccountId(query.username);
-      } else if (this.adapter.findAll) {
-        const filter: Record<string, unknown> = {};
-        if (query.username) filter.accountId = query.username;
-        if (query.client_id) filter.clientId = query.client_id;
+      if (query.username && !query.client_id) {
+        const result = await this.adapter.deleteSessionsByAccountId(
+          query.username
+        );
+        revokedCount = result.deletedCount;
+      } else {
+        const filter = buildSessionFilter(query);
+        const ids: string[] = [];
+        let skip = 0;
 
-        const sessions = await this.adapter.findAll(filter);
+        while (true) {
+          const sessions = await this.adapter.findSessionsWithPagination(
+            filter,
+            SESSION_SORT_FIELD,
+            -1,
+            skip,
+            BULK_PAGE_SIZE
+          );
 
-        for (const session of sessions) {
-          const jti = session.jti ?? session.id;
-          if (jti) {
-            await this.adapter.destroy(String(jti));
-            revokedCount++;
-          }
+          ids.push(
+            ...sessions
+              .map(sessionId)
+              .filter((id): id is string => id !== undefined)
+          );
+
+          if (sessions.length < BULK_PAGE_SIZE) break;
+          skip += BULK_PAGE_SIZE;
+        }
+
+        if (ids.length > 0) {
+          const result = await this.adapter.deleteSessionsByIds([
+            ...new Set(ids),
+          ]);
+          revokedCount = result.deletedCount;
         }
       }
 

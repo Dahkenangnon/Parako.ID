@@ -1,5 +1,16 @@
 {% extends "layouts/account-layout.njk" %}
 
+{# These values are consumed by both the visible content block and the scripts
+   block. Define them in the template scope so child blocks do not receive
+   undefined values. Keep them boolean-only; a truthy TOTP secret must never be
+   serialized into browser state. #}
+{% set totpEnabled = true if pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.totp and pageUser.mfa.methods.totp.enabled and pageUser.mfa.methods.totp.secret else false %}
+{% set emailMfaEnabled = true if pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.email and pageUser.mfa.methods.email.enabled else false %}
+{% set webauthnEnabled = true if pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.webauthn and pageUser.mfa.methods.webauthn.enabled and pageUser.mfa.methods.webauthn.credentials and pageUser.mfa.methods.webauthn.credentials.length > 0 else false %}
+{% set anyMfaEnabled = totpEnabled or emailMfaEnabled or webauthnEnabled %}
+{% set enabledMethodsCount = (1 if totpEnabled else 0) + (1 if emailMfaEnabled else 0) + (1 if webauthnEnabled else 0) %}
+{% set anyMethodAvailable = mfaConfig and mfaConfig.enabled and (mfaConfig.methods.totp.enabled or mfaConfig.methods.email.enabled or mfaConfig.methods.webauthn.enabled) %}
+
 {% block account_content %}
     {% include "partials/account-settings-tabs.njk" %}
 
@@ -18,14 +29,6 @@
                     </svg>
                     {{ t('account-settings.security.title') }}
                 </h2>
-                {# Calculate enabled MFA methods from multi-method schema #}
-                {% set totpEnabled = pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.totp and pageUser.mfa.methods.totp.enabled and pageUser.mfa.methods.totp.secret %}
-                {% set emailMfaEnabled = pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.email and pageUser.mfa.methods.email.enabled %}
-                {% set webauthnEnabled = pageUser.mfa and pageUser.mfa.methods and pageUser.mfa.methods.webauthn and pageUser.mfa.methods.webauthn.enabled and pageUser.mfa.methods.webauthn.credentials and pageUser.mfa.methods.webauthn.credentials.length > 0 %}
-                {% set anyMfaEnabled = totpEnabled or emailMfaEnabled or webauthnEnabled %}
-                {% set enabledMethodsCount = (1 if totpEnabled else 0) + (1 if emailMfaEnabled else 0) + (1 if webauthnEnabled else 0) %}
-                {% set anyMethodAvailable = mfaConfig and mfaConfig.enabled and (mfaConfig.methods.totp.enabled or mfaConfig.methods.email.enabled or mfaConfig.methods.webauthn.enabled) %}
-
                 {% if mfaConfig and mfaConfig.enabled and (anyMethodAvailable or anyMfaEnabled) %}
                 <!-- MFA Status Banner -->
                 {% if anyMfaEnabled %}
@@ -94,7 +97,7 @@
                             </div>
                             <div class="flex gap-2">
                                 {% if totpEnabled %}
-                                    <form action="{{ routes.accountFull.disable_mfa }}?method=totp" method="POST" class="inline">
+                                    <form action="{{ routes.accountFull.disable_mfa }}?method=totp" method="POST" class="inline" data-mfa-disable-method="totp">
                                         <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                         <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                             {{ t('common.disable', 'Disable') }}
@@ -138,7 +141,7 @@
                             </div>
                             <div class="flex gap-2">
                                 {% if emailMfaEnabled %}
-                                    <form action="{{ routes.accountFull.disable_mfa }}?method=email" method="POST" class="inline">
+                                    <form action="{{ routes.accountFull.disable_mfa }}?method=email" method="POST" class="inline" data-mfa-disable-method="email">
                                         <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                         <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                             {{ t('common.disable', 'Disable') }}
@@ -186,7 +189,7 @@
                                     <a href="{{ routes.accountFull.passkeys }}" class="inline-flex items-center px-3 py-1.5 border border-border text-sm font-medium text-foreground bg-background hover:border-primary transition-colors">
                                         {{ t('account-settings.security.mfa.manage_passkeys', 'Manage Passkeys') }}
                                     </a>
-                                    <form action="{{ routes.accountFull.disable_mfa }}?method=webauthn" method="POST" class="inline">
+                                    <form action="{{ routes.accountFull.disable_mfa }}?method=webauthn" method="POST" class="inline" data-mfa-disable-method="webauthn">
                                         <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                         <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                             {{ t('common.disable', 'Disable') }}
@@ -400,7 +403,12 @@
     <script id="___SETTINGS_STATE___" type="application/json">
     {
       "csrfToken": {{ csrfToken | tojson | safe }},
-      "isMfaEnabled": {{ (pageUser.mfa and pageUser.mfa.methods and ((pageUser.mfa.methods.totp and pageUser.mfa.methods.totp.enabled and pageUser.mfa.methods.totp.secret) or (pageUser.mfa.methods.email and pageUser.mfa.methods.email.enabled) or (pageUser.mfa.methods.webauthn and pageUser.mfa.methods.webauthn.enabled and pageUser.mfa.methods.webauthn.credentials and pageUser.mfa.methods.webauthn.credentials.length > 0))) | tojson }},
+      "isMfaEnabled": {{ anyMfaEnabled | tojson }},
+      "mfaMethodsEnabled": {
+        "totp": {{ totpEnabled | tojson }},
+        "email": {{ emailMfaEnabled | tojson }},
+        "webauthn": {{ webauthnEnabled | tojson }}
+      },
       "isSpecialPasswordCase": {{ isSpecialPasswordCase | tojson }},
       "translations": {
         "mfaAlreadyEnabled": {{ t('account-settings.security.mfa.already_enabled_message') | tojson | safe }},

@@ -222,6 +222,11 @@ export class MainRoutesManager implements IMainRoutesManager {
       });
     }
 
+    // Browser WebAuthn APIs use the interactive session and CSRF boundary.
+    // Mount them before the Management API because the configured browser path
+    // is nested under /api/v1 and the Management API has its own bearer auth.
+    app.use(`${routes.api}/webauthn`, webauthnRouter);
+
     // Management API v1 — pure JSON API, no locale prefix, own auth model
     if (this.apiV1Router) {
       // Body-parser error interceptor — catches malformed JSON and oversized
@@ -260,7 +265,6 @@ export class MainRoutesManager implements IMainRoutesManager {
     // Routes WITHOUT locale prefix (default)
     app.use(routes.auth, authRouter);
     app.use(routes.accounts, accountRouter);
-    app.use(`${routes.api}/webauthn`, webauthnRouter);
     app.use('/admin', adminRouter);
 
     // Routes WITH optional locale parameter (path-to-regexp v8 syntax)

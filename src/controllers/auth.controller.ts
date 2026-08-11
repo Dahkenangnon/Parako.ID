@@ -6,6 +6,7 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type {
   IAuthService,
   AuthUserData,
+  PhoneVerificationChallenge,
 } from '../di/interfaces/auth-service.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IActivityService } from '../di/interfaces/activity-service.interface.js';
@@ -25,6 +26,8 @@ import type { IOIDCUtils } from '../di/interfaces/oidc-utils.interface.js';
 import { TYPES } from '../di/types.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import { SmsService } from '../services/sms.service.js';
+import { PhoneVerificationRequiredError } from '../errors/phone-verification-required.error.js';
+import { PhoneVerificationDeliveryError } from '../errors/phone-verification-delivery.error.js';
 import { validateIdentifier } from '../utils/custom-identifier-validation.js';
 import { activityLoggerFor } from '../utils/activity-logger.factory.js';
 import type { ClearOIDCUserDataResult } from '../oidc/interfaces/interface.js';
@@ -32,13 +35,16 @@ import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.in
 import type {
   PendingMfaUser,
   AddAccountIntent,
+  LinkSocialAccountIntent,
   RecoveryAttempt,
   OIDCSocialContext,
   SocialRegisterData,
   SocialPasswordSetup,
   SocialContactData,
   SecondaryEmailVerification,
+  PhoneVerificationOIDCContinuation,
 } from '../types/session-data.js';
+import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
 
 const KNOWN_SOCIAL_PROVIDERS: readonly SocialProvider[] = [
   'google',
@@ -94,6 +100,9 @@ function withSocialRegisterIntent(
 
 @injectable()
 export class AuthController implements IAuthController {
+  private static readonly PHONE_VERIFICATION_CONTINUATION_TTL_MS =
+    15 * 60 * 1000;
+
   constructor(
     @inject(TYPES.Logger) private readonly logger: ILogger,
     @inject(TYPES.AuthService) private readonly authService: IAuthService,
@@ -140,11 +149,107 @@ export class AuthController implements IAuthController {
     return this.configManager.getConfig();
   }
 
+  private consumeSocialRegisterIntent(
+    req: Request,
+    provider: SocialProvider
+  ): void {
+    const existing =
+      this.sessionManager.get<Partial<SocialRegisterData>>(
+        req,
+        'socialRegister'
+      ) || {};
+
+    if (!existing[provider]) {
+      return;
+    }
+
+    const remaining = { ...existing };
+    delete remaining[provider];
+
+    if (Object.keys(remaining).length === 0) {
+      this.sessionManager.remove(req, 'socialRegister');
+      return;
+    }
+
+    this.sessionManager.set(req, 'socialRegister', remaining);
+  }
+
+  private phoneVerificationPath(verificationToken?: string): string {
+    const path = `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.phone_verification}`;
+    return verificationToken
+      ? `${path}?token=${encodeURIComponent(verificationToken)}`
+      : path;
+  }
+
+  private async deliverPhoneVerificationChallenge(
+    challenge: PhoneVerificationChallenge,
+    ip?: string
+  ): Promise<boolean> {
+    const result = await this.smsService.sendVerificationCode(
+      challenge.user.phone_number!,
+      challenge.code,
+      ip
+    );
+    if (!result.success) {
+      this.logger.warn('Phone verification SMS delivery failed', {
+        userId: challenge.user._id,
+        error: result.error,
+      });
+    }
+    return result.success;
+  }
+
+  private requiresPhoneVerification(user: {
+    phone_number?: string;
+    phone_number_verified?: boolean;
+  }): boolean {
+    return Boolean(
+      this.config().security.authentication.signup.require_phone_verification &&
+      user.phone_number &&
+      !user.phone_number_verified
+    );
+  }
+
+  private async startPhoneVerification(
+    req: Request,
+    res: Response,
+    userId: string
+  ): Promise<void> {
+    const challenge =
+      await this.authService.generatePhoneVerificationChallenge(userId);
+    const delivered = await this.deliverPhoneVerificationChallenge(
+      challenge,
+      req.ip
+    );
+    if (delivered) {
+      this.sessionManager
+        .flash(req)
+        .success('A verification code has been sent to your phone.');
+    } else {
+      this.sessionManager
+        .flash(req)
+        .error(
+          'We could not send the verification code. Please try resending it.'
+        );
+    }
+    res.redirect(this.phoneVerificationPath(challenge.verificationToken));
+  }
+
   /**
    * Get custom identifier fields from config
    */
   private getCustomIdentifierFields() {
     return this.userService.getCustomIdentifierFields();
+  }
+
+  /**
+   * Registration pages must not expose identifiers that only administrators
+   * are allowed to view or edit.
+   */
+  private getRegistrationCustomIdentifierFields() {
+    return this.getCustomIdentifierFields().filter(
+      field => field.edit_policy !== 'admin_only'
+    );
   }
 
   /**
@@ -554,6 +659,11 @@ export class AuthController implements IAuthController {
             true
           );
 
+          const canEstablishLogin =
+            addResult.success ||
+            addResult.reason === 'already_exists' ||
+            addResult.reason === 'multi_account_disabled';
+
           if (!addResult.success) {
             const reason =
               addResult.reason === 'max_limit_reached'
@@ -583,6 +693,18 @@ export class AuthController implements IAuthController {
             this.sessionManager
               .flash(req)
               .success('Account added successfully.');
+          }
+
+          if (canEstablishLogin) {
+            // addAuthenticatedUser() manages the multi-account collection but
+            // deliberately does not establish the top-level authentication
+            // marker. The account may also already exist in a session whose
+            // marker was cleared, or replace the active account when multiple
+            // accounts are disabled. A valid password must re-establish that
+            // marker unless the configured account limit rejected the login.
+            this.sessionManager.setAuthenticated(req, {
+              currentActiveLoggedUser: newUserAccount,
+            });
           }
 
           this.logger.info('User added account from OIDC continue flow', {
@@ -747,15 +869,63 @@ export class AuthController implements IAuthController {
         }
       }
     } catch (error) {
+      if (error instanceof PhoneVerificationRequiredError) {
+        try {
+          const challenge =
+            await this.authService.generatePhoneVerificationChallenge(
+              error.userId
+            );
+          const delivered = await this.deliverPhoneVerificationChallenge(
+            challenge,
+            req.ip
+          );
+          if (delivered) {
+            this.sessionManager
+              .flash(req)
+              .success('A verification code has been sent to your phone.');
+          } else {
+            this.sessionManager
+              .flash(req)
+              .error(
+                'We could not send the verification code. Please try resending it.'
+              );
+          }
+          return res.redirect(
+            this.phoneVerificationPath(challenge.verificationToken)
+          );
+        } catch (challengeError) {
+          this.logger.error(challengeError as Error, {
+            userId: error.userId,
+            context: 'phone_verification_challenge_failed',
+          });
+          this.sessionManager
+            .flash(req)
+            .error('Phone verification is required. Please try again.');
+          return res.redirect(
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
+          );
+        }
+      }
       res.locals.loginFailed = true;
       const errorMessage =
         error instanceof Error
           ? error.message
           : 'An unexpected error occurred during login.';
+      // User lookup and password verification fail at different layers with
+      // different internal messages. Normalize only credential failures at
+      // the browser boundary so the response cannot disclose whether an
+      // identifier exists; retain actionable account-state and service errors.
+      const publicErrorMessage =
+        errorMessage === 'Invalid credentials' ||
+        /^Invalid (?:email|phone_number|custom_identifier|username) or password$/.test(
+          errorMessage
+        )
+          ? 'Invalid credentials. Please try again.'
+          : errorMessage;
       this.logger.error(error as Error, { context: 'login_error' });
 
       // Flash error message and redirect back to login page
-      this.sessionManager.flash(req).error(errorMessage);
+      this.sessionManager.flash(req).error(publicErrorMessage);
       return res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
       );
@@ -829,6 +999,9 @@ export class AuthController implements IAuthController {
       passwordPolicy,
       registrationConfig,
       contactChannels,
+      authentication: {
+        customIdentifierFields: this.getRegistrationCustomIdentifierFields(),
+      },
       prefilledEmail: prefilledEmail.trim(),
       stepMessage: stepMessage.trim(),
     });
@@ -886,6 +1059,23 @@ export class AuthController implements IAuthController {
       (typeof req.query.step_message === 'string' && req.query.step_message) ||
       (typeof req.body.step_message === 'string' && req.body.step_message) ||
       '';
+
+    // Keep every validation response on the same complete view model as the
+    // initial GET. This prevents optional validation branches from silently
+    // dropping configured fields or contact-channel rules.
+    const renderRegistration = () =>
+      res.render(this.viewResolver.views.auth.register, {
+        title: `Register - ${this.getAppTitle()}`,
+        message: 'Register',
+        passwordPolicy: this.userService.getPasswordPolicy(),
+        registrationConfig,
+        contactChannels,
+        authentication: {
+          customIdentifierFields: this.getRegistrationCustomIdentifierFields(),
+        },
+        prefilledEmail: email || '',
+        stepMessage: stepMessage.trim(),
+      });
 
     this.logger.info(
       'REGISTRATION: Processing registration with redirect check',
@@ -946,15 +1136,7 @@ export class AuthController implements IAuthController {
         this.sessionManager
           .flash(req)
           .error(`Please provide a valid ${requiredCreds}.`);
-        return res.render(this.viewResolver.views.auth.register, {
-          title: `Register - ${this.getAppTitle()}`,
-          message: 'Register',
-          passwordPolicy: this.userService.getPasswordPolicy(),
-          registrationConfig,
-          contactChannels,
-          prefilledEmail: email || '', // Preserve form data
-          stepMessage: stepMessage.trim(),
-        });
+        return renderRegistration();
       }
 
       const passwordValidation = this.userService.validatePassword(password);
@@ -978,15 +1160,7 @@ export class AuthController implements IAuthController {
               ', '
             )}`
           );
-        return res.render(this.viewResolver.views.auth.register, {
-          title: `Register - ${this.getAppTitle()}`,
-          message: 'Register',
-          passwordPolicy: this.userService.getPasswordPolicy(),
-          registrationConfig,
-          contactChannels,
-          prefilledEmail: email || '', // Preserve form data
-          stepMessage: stepMessage.trim(),
-        });
+        return renderRegistration();
       }
 
       // Enforce contact channel requirements server-side
@@ -1025,15 +1199,7 @@ export class AuthController implements IAuthController {
         this.sessionManager
           .flash(req)
           .error(`${contactChannelErrors.join('. ')}.`);
-        return res.render(this.viewResolver.views.auth.register, {
-          title: `Register - ${this.getAppTitle()}`,
-          message: 'Register',
-          passwordPolicy: this.userService.getPasswordPolicy(),
-          registrationConfig,
-          contactChannels,
-          prefilledEmail: email || '',
-          stepMessage: stepMessage.trim(),
-        });
+        return renderRegistration();
       }
 
       // Validate custom identifier fields
@@ -1047,14 +1213,7 @@ export class AuthController implements IAuthController {
 
           if (field.required_for_registration && !fieldValue) {
             this.sessionManager.flash(req).error(`${field.name} is required.`);
-            return res.render(this.viewResolver.views.auth.register, {
-              title: `Register - ${this.getAppTitle()}`,
-              message: 'Register',
-              passwordPolicy: this.userService.getPasswordPolicy(),
-              registrationConfig,
-              prefilledEmail: email || '',
-              stepMessage: stepMessage.trim(),
-            });
+            return renderRegistration();
           }
 
           if (fieldValue) {
@@ -1063,14 +1222,7 @@ export class AuthController implements IAuthController {
               this.sessionManager
                 .flash(req)
                 .error(`Invalid ${field.name} format.`);
-              return res.render(this.viewResolver.views.auth.register, {
-                title: `Register - ${this.getAppTitle()}`,
-                message: 'Register',
-                passwordPolicy: this.userService.getPasswordPolicy(),
-                registrationConfig,
-                prefilledEmail: email || '',
-                stepMessage: stepMessage.trim(),
-              });
+              return renderRegistration();
             }
 
             // Check uniqueness
@@ -1086,14 +1238,7 @@ export class AuthController implements IAuthController {
               this.sessionManager
                 .flash(req)
                 .error(`This ${field.name} is already registered.`);
-              return res.render(this.viewResolver.views.auth.register, {
-                title: `Register - ${this.getAppTitle()}`,
-                message: 'Register',
-                passwordPolicy: this.userService.getPasswordPolicy(),
-                registrationConfig,
-                prefilledEmail: email || '',
-                stepMessage: stepMessage.trim(),
-              });
+              return renderRegistration();
             }
           }
         }
@@ -1105,13 +1250,23 @@ export class AuthController implements IAuthController {
       const family_name =
         nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
 
+      const customRegistrationField = ciFields.find(field =>
+        Boolean(getCustomIdentifierValue(field.slot))
+      );
+      const registerWith = email
+        ? 'email'
+        : phone
+          ? 'phone_number'
+          : customRegistrationField
+            ? (`custom_identifier_${customRegistrationField.slot}` as const)
+            : 'email';
       const userData: AuthUserData = {
         email: email || undefined,
         phone_number: phone || undefined,
         password,
         given_name,
         family_name,
-        register_with: email ? 'email' : 'phone_number',
+        register_with: registerWith,
       };
       // Add custom identifier values from form
       for (const field of ciFields) {
@@ -1182,6 +1337,17 @@ export class AuthController implements IAuthController {
         }
       }
 
+      const emailVerificationPending = Boolean(
+        email &&
+        !user.email_verified &&
+        registrationConfig.requireEmailVerification
+      );
+      const phoneVerificationPending = Boolean(
+        phone &&
+        !user.phone_number_verified &&
+        registrationConfig.requirePhoneVerification
+      );
+
       // Regenerate session ID to prevent session fixation attacks after registration
       try {
         await this.sessionManager.regenerate(req);
@@ -1191,42 +1357,44 @@ export class AuthController implements IAuthController {
         });
       }
 
-      this.sessionManager.setAuthenticated(req, {
-        currentActiveLoggedUser: {
-          id: user._id?.toString() || '',
-          username: user.username,
-          email: user.email,
-          email_verified: user.email_verified || false,
-          phone_number: user.phone_number || '',
-          phone_number_verified: user.phone_number_verified || false,
-          given_name: user.given_name || '',
-          family_name: user.family_name || '',
-          full_name:
-            `${user.given_name || ''} ${user.family_name || ''}`.trim(),
-          picture: user.picture || '',
-          roles: user.roles || ['user'],
-          is_admin: Boolean(
-            user.roles &&
-            (user.roles.includes('admin') || user.roles.includes('superadmin'))
-          ),
-          last_used: Date.now(),
-          zoneinfo: user.zoneinfo || 'UTC',
-          locale: user.locale || 'en',
-        },
-      });
+      // Verification-required registrations remain anonymous until the
+      // delivered proof is completed. This keeps the documented activation
+      // boundary from being bypassed by navigating directly to account pages.
+      if (!emailVerificationPending && !phoneVerificationPending) {
+        this.sessionManager.setAuthenticated(req, {
+          currentActiveLoggedUser: {
+            id: user._id?.toString() || '',
+            username: user.username,
+            email: user.email,
+            email_verified: user.email_verified || false,
+            phone_number: user.phone_number || '',
+            phone_number_verified: user.phone_number_verified || false,
+            given_name: user.given_name || '',
+            family_name: user.family_name || '',
+            full_name:
+              `${user.given_name || ''} ${user.family_name || ''}`.trim(),
+            picture: user.picture || '',
+            roles: user.roles || ['user'],
+            is_admin: Boolean(
+              user.roles &&
+              (user.roles.includes('admin') ||
+                user.roles.includes('superadmin'))
+            ),
+            last_used: Date.now(),
+            zoneinfo: user.zoneinfo || 'UTC',
+            locale: user.locale || 'en',
+          },
+        });
+      }
 
       // CRITICAL: If redirect URL exists, immediately redirect - do NOT show verification page
-      if (redirectUrl) {
+      if (redirectUrl && !phoneVerificationPending) {
         // Consume the redirect intent now that we're using it
         // getRegistrationIntent(req, true);
         this.redirectAuthority.getIntent(req, 'register', true);
 
         let emailVerificationStatus = 'registered';
-        if (
-          email &&
-          !user.email_verified &&
-          registrationConfig.requireEmailVerification
-        ) {
+        if (emailVerificationPending) {
           emailVerificationStatus = 'verification_pending';
 
           (async () => {
@@ -1235,7 +1403,11 @@ export class AuthController implements IAuthController {
                 await this.authService.generateEmailVerificationToken(
                   user._id as string
                 );
-              const verificationUrl = `${this.config().deployment.url}${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}?token=${verificationToken}`;
+              const verificationUrl = buildExternalApplicationUrl(
+                this.config(),
+                `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
+                { token: verificationToken }
+              );
 
               await this.notificationService.sendVerification(
                 {
@@ -1294,18 +1466,73 @@ export class AuthController implements IAuthController {
         return;
       }
 
+      // A phone challenge must stay on Parako so the registrant can prove
+      // possession. Keep any trusted continuation intent until verification
+      // succeeds instead of redirecting an anonymous, unverified account.
+      if (phoneVerificationPending) {
+        if (emailVerificationPending) {
+          try {
+            const { verificationToken } =
+              await this.authService.generateEmailVerificationToken(
+                user._id as string
+              );
+            const verificationUrl = buildExternalApplicationUrl(
+              this.config(),
+              `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
+              { token: verificationToken }
+            );
+            await this.notificationService.sendVerification(
+              {
+                email: user.email,
+                username: user.given_name || user.username,
+                locale: user.locale,
+              },
+              verificationUrl
+            );
+          } catch (verificationError) {
+            this.logger.error(verificationError as Error, {
+              userId: user._id,
+              context: 'registration_email_verification_delivery_failed',
+            });
+          }
+        }
+
+        const challenge =
+          await this.authService.generatePhoneVerificationChallenge(
+            user._id as string
+          );
+        const delivered = await this.deliverPhoneVerificationChallenge(
+          challenge,
+          req.ip
+        );
+        if (delivered) {
+          this.sessionManager
+            .flash(req)
+            .success('A verification code has been sent to your phone.');
+        } else {
+          this.sessionManager
+            .flash(req)
+            .error(
+              'We could not send the verification code. Please try resending it.'
+            );
+        }
+        return res.redirect(
+          this.phoneVerificationPath(challenge.verificationToken)
+        );
+      }
+
       // No redirect URL - handle internal flow with email verification
-      if (
-        email &&
-        !user.email_verified &&
-        registrationConfig.requireEmailVerification
-      ) {
+      if (emailVerificationPending) {
         try {
           const { verificationToken } =
             await this.authService.generateEmailVerificationToken(
               user._id as string
             );
-          const verificationUrl = `${this.config().deployment.url}${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}?token=${verificationToken}`;
+          const verificationUrl = buildExternalApplicationUrl(
+            this.config(),
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
+            { token: verificationToken }
+          );
 
           await this.notificationService.sendVerification(
             {
@@ -1362,15 +1589,7 @@ export class AuthController implements IAuthController {
       this.sessionManager.flash(req).error(errorMessage);
 
       // Re-render registration form with preserved form data
-      return res.render(this.viewResolver.views.auth.register, {
-        title: `Register - ${this.getAppTitle()}`,
-        message: 'Register',
-        passwordPolicy: this.userService.getPasswordPolicy(),
-        registrationConfig,
-        contactChannels,
-        prefilledEmail: email || '', // Preserve form data on error
-        stepMessage: stepMessage.trim(),
-      });
+      return renderRegistration();
     }
   };
 
@@ -1567,7 +1786,11 @@ export class AuthController implements IAuthController {
         const { user, resetToken } =
           await this.authService.generatePasswordResetToken(email);
 
-        const resetUrl = `${this.config().deployment.url}${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.reset_password}?token=${resetToken}`;
+        const resetUrl = buildExternalApplicationUrl(
+          this.config(),
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.reset_password}`,
+          { token: resetToken }
+        );
 
         // This allows sending to recovery email if that's what was submitted
         await this.notificationService.sendPasswordReset(
@@ -1982,7 +2205,13 @@ export class AuthController implements IAuthController {
         });
       }
 
-      this.sessionManager.addAuthenticatedUser(req, newUserAccount, true);
+      // The session was just regenerated, so restore the complete authenticated
+      // state rather than only appending an account to the account switcher.
+      // setAuthenticated also preserves existing accounts when multi-account
+      // sessions are enabled.
+      this.sessionManager.setAuthenticated(req, {
+        currentActiveLoggedUser: newUserAccount,
+      });
 
       this.sessionManager.remove(req, 'pendingMfaUser');
       this.sessionManager.remove(req, 'pendingSocialMfaUser');
@@ -2484,7 +2713,11 @@ export class AuthController implements IAuthController {
               user._id as string
             );
 
-          const verificationUrl = `${this.config().deployment.url}${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}?token=${verificationToken}`;
+          const verificationUrl = buildExternalApplicationUrl(
+            this.config(),
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
+            { token: verificationToken }
+          );
 
           await this.notificationService.sendVerification(
             {
@@ -2595,7 +2828,11 @@ export class AuthController implements IAuthController {
           user._id as string
         );
 
-      const verificationUrl = `${this.config().deployment.url}${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}?token=${verificationToken}`;
+      const verificationUrl = buildExternalApplicationUrl(
+        this.config(),
+        `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
+        { token: verificationToken }
+      );
 
       await this.notificationService.sendVerification(
         {
@@ -2725,6 +2962,139 @@ export class AuthController implements IAuthController {
       return res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}`
       );
+    }
+  };
+
+  public phoneVerification = (req: Request, res: Response): void => {
+    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    res.render(this.viewResolver.views.auth.phone_verification, {
+      title: `Verify Phone - ${this.getAppTitle()}`,
+      token,
+      error: token ? null : 'Invalid verification token.',
+      phoneVerificationPath: this.phoneVerificationPath(),
+    });
+  };
+
+  public processPhoneVerification = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    const token = typeof req.body.token === 'string' ? req.body.token : '';
+    const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
+    const renderError = (error: string) =>
+      res.render(this.viewResolver.views.auth.phone_verification, {
+        title: `Verify Phone - ${this.getAppTitle()}`,
+        token,
+        error,
+        phoneVerificationPath: this.phoneVerificationPath(),
+      });
+
+    try {
+      const user = await this.authService.verifyPhone(token, code);
+      this.logger.info('Phone verified successfully', {
+        userId: user._id,
+      });
+      this.sessionManager
+        .flash(req)
+        .success('Your phone number has been verified. You can now sign in.');
+
+      const oidcContinuation =
+        this.sessionManager.get<PhoneVerificationOIDCContinuation>(
+          req,
+          'phoneVerificationOidcContinuation'
+        );
+      if (oidcContinuation !== undefined && oidcContinuation !== null) {
+        this.sessionManager.remove(req, 'phoneVerificationOidcContinuation');
+      }
+      if (
+        oidcContinuation &&
+        typeof oidcContinuation.interactionUid === 'string' &&
+        oidcContinuation.interactionUid.length > 0 &&
+        typeof oidcContinuation.createdAt === 'number' &&
+        Number.isFinite(oidcContinuation.createdAt) &&
+        oidcContinuation.createdAt <= Date.now() &&
+        Date.now() - oidcContinuation.createdAt <=
+          AuthController.PHONE_VERIFICATION_CONTINUATION_TTL_MS
+      ) {
+        return res.redirect(
+          `${this.config().oidc.path}/interaction/${encodeURIComponent(oidcContinuation.interactionUid)}`
+        );
+      }
+
+      const redirectUrl = this.redirectAuthority.getIntent(
+        req,
+        'register',
+        true
+      );
+      if (redirectUrl) {
+        const finalRedirectUrl = this.redirectAuthority.buildRedirectUrl(
+          redirectUrl,
+          {
+            email: user.email ?? '',
+            status: 'phone_verified',
+          }
+        );
+        this.redirectAuthority
+          .redirect(res)
+          .to(finalRedirectUrl)
+          .or(
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
+          );
+        return;
+      }
+
+      const emailVerificationPending = Boolean(
+        this.config().security.authentication.signup
+          .require_email_verification &&
+        user.email &&
+        !user.email_verified
+      );
+      return res.redirect(
+        emailVerificationPending
+          ? `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
+          : `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
+      );
+    } catch (error) {
+      this.logger.warn('Phone verification failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return renderError('Invalid or expired verification code.');
+    }
+  };
+
+  public resendPhoneVerification = async (
+    req: Request,
+    res: Response
+  ): Promise<void> => {
+    const token = typeof req.body.token === 'string' ? req.body.token : '';
+    try {
+      const challenge = await this.authService.renewPhoneVerificationChallenge(
+        token,
+        replacement =>
+          this.deliverPhoneVerificationChallenge(replacement, req.ip)
+      );
+      this.sessionManager
+        .flash(req)
+        .success('A new verification code has been sent to your phone.');
+      return res.redirect(
+        this.phoneVerificationPath(challenge.verificationToken)
+      );
+    } catch (error) {
+      if (error instanceof PhoneVerificationDeliveryError) {
+        this.sessionManager
+          .flash(req)
+          .error('We could not send the verification code. Please try again.');
+        return res.redirect(
+          this.phoneVerificationPath(error.verificationToken)
+        );
+      }
+      this.logger.warn('Phone verification resend failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.sessionManager
+        .flash(req)
+        .error('The verification request is invalid. Please sign in again.');
+      return res.redirect(this.phoneVerificationPath());
     }
   };
 
@@ -3071,7 +3441,16 @@ export class AuthController implements IAuthController {
           ? this.recoveryUtils.checkSecurityQuestionsLockout(updatedUser)
           : { locked: false, remainingAttempts: 0 };
 
-        const questions = user.recovery.security_questions.questions.map(q => ({
+        // Persisting recovery state may replace relational question rows (and
+        // therefore their generated IDs). Re-render the persisted questions so
+        // the next submission contains IDs accepted by the repository state.
+        const persistedQuestions =
+          updatedUser?.recovery?.security_questions?.questions;
+        const questions = (
+          persistedQuestions?.length
+            ? persistedQuestions
+            : user.recovery.security_questions.questions
+        ).map(q => ({
           id: q.id,
           question_key: q.question_key,
         }));
@@ -3254,8 +3633,12 @@ export class AuthController implements IAuthController {
             methods: user.recovery?.methods ?? [],
             sms: {
               ...user.recovery?.sms,
-              phone_number: user.recovery?.sms?.phone_number || '',
-              verified: user.recovery?.sms?.verified || false,
+              phone_number:
+                user.recovery?.sms?.phone_number || user.phone_number,
+              verified:
+                user.recovery?.sms?.verified ??
+                user.phone_number_verified ??
+                false,
               verification_code: hash,
               verification_expires: expiresAt,
             },
@@ -3519,7 +3902,10 @@ export class AuthController implements IAuthController {
 
       const remainingCodesCount = updatedCodes.length;
       if (remainingCodesCount <= 2) {
-        const settingsUrl = `${this.config().deployment.url}${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.settings}#recovery`;
+        const settingsUrl = buildExternalApplicationUrl(
+          this.config(),
+          `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.settings}#recovery`
+        );
         this.notificationService
           .sendBackupCodeWarning(
             { email: user.email, username: user.username, locale: user.locale },
@@ -3788,8 +4174,14 @@ export class AuthController implements IAuthController {
       req,
       'secondaryEmailVerification'
     );
+    const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
+      req,
+      'recoveryAttempt'
+    );
+    const hasSmsChallenge =
+      recoveryAttempt?.method === 'sms' && recoveryAttempt.smsSent === true;
 
-    if (!verification) {
+    if (!verification && !hasSmsChallenge) {
       return res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
       );
@@ -3797,6 +4189,7 @@ export class AuthController implements IAuthController {
 
     res.render(this.viewResolver.views.auth.recovery_verify_code, {
       title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
+      method: hasSmsChallenge ? 'sms' : 'secondary_email',
       error: null,
     });
   };
@@ -3808,14 +4201,29 @@ export class AuthController implements IAuthController {
     req: Request,
     res: Response
   ): Promise<void> => {
+    let recoveryMethod: 'sms' | 'secondary_email' = 'secondary_email';
+    const renderVerificationError = (error: string) =>
+      res.render(this.viewResolver.views.auth.recovery_verify_code, {
+        title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
+        method: recoveryMethod,
+        error,
+      });
+
     try {
       const { code } = req.body;
       const verification = this.sessionManager.get<SecondaryEmailVerification>(
         req,
         'secondaryEmailVerification'
       );
+      const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
+        req,
+        'recoveryAttempt'
+      );
+      const hasSmsChallenge =
+        recoveryAttempt?.method === 'sms' && recoveryAttempt.smsSent === true;
+      recoveryMethod = hasSmsChallenge ? 'sms' : 'secondary_email';
 
-      if (!verification) {
+      if (!verification && !hasSmsChallenge) {
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
         );
@@ -3823,10 +4231,66 @@ export class AuthController implements IAuthController {
 
       const normalizedCode = typeof code === 'string' ? code.trim() : '';
       if (!normalizedCode) {
-        return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-          title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-          error: 'Verification code is required',
+        return renderVerificationError('Verification code is required');
+      }
+
+      if (hasSmsChallenge) {
+        const user = await this.userService.findById(recoveryAttempt.userId);
+        if (!user) {
+          return renderVerificationError('User not found');
+        }
+
+        const deviceInfos =
+          this.clientDeviceInfoManager.getClientInfoFromRequest(req);
+        const result =
+          await this.recoveryService.verifyAndConsumeSmsRecoveryCode(
+            user,
+            normalizedCode,
+            {
+              ip: deviceInfos.ip,
+              userAgent: deviceInfos.user_agent,
+            }
+          );
+
+        if (!result.success) {
+          return renderVerificationError(
+            result.error || 'Invalid or expired code'
+          );
+        }
+
+        this.sessionManager.remove(req, 'recoveryAttempt');
+        this.sessionManager.setAuthenticated(req, {
+          currentActiveLoggedUser: {
+            id: user._id!.toString(),
+            username: user.username,
+            email: user.email,
+            given_name: user.given_name,
+            family_name: user.family_name,
+            full_name: user.name,
+            picture: user.picture,
+            is_admin: (user as any).is_admin || false,
+            last_used: Date.now(),
+            zoneinfo: user.zoneinfo || 'UTC',
+            locale: user.locale || 'en',
+          },
         });
+        this.sessionManager
+          .flash(req)
+          .success(
+            'Account recovered successfully! It is crucial to change your password immediately or enforce security options for your account.'
+          );
+        return res.redirect(
+          `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`
+        );
+      }
+
+      // The only remaining supported challenge is secondary email. Keep this
+      // explicit fail-closed guard instead of relying on the relationship
+      // between `hasSmsChallenge` and `verification` for type narrowing.
+      if (!verification) {
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.account_recovery}`
+        );
       }
 
       const verificationExpiresAt =
@@ -3864,10 +4328,9 @@ export class AuthController implements IAuthController {
           });
         }
 
-        return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-          title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-          error: 'Verification code has expired. Please try again.',
-        });
+        return renderVerificationError(
+          'Verification code has expired. Please try again.'
+        );
       }
 
       const userForLockout = await this.userService.findById(
@@ -3892,10 +4355,9 @@ export class AuthController implements IAuthController {
               },
             }
           );
-          return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-            title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-            error: `Too many failed attempts. Please try again in ${lockoutStatus.minutesRemaining} minutes.`,
-          });
+          return renderVerificationError(
+            `Too many failed attempts. Please try again in ${lockoutStatus.minutesRemaining} minutes.`
+          );
         }
       }
 
@@ -3961,24 +4423,15 @@ export class AuthController implements IAuthController {
             errorMessage += ` (${remainingAttempts} attempts remaining)`;
           }
 
-          return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-            title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-            error: errorMessage,
-          });
+          return renderVerificationError(errorMessage);
         }
 
-        return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-          title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-          error: 'Invalid verification code',
-        });
+        return renderVerificationError('Invalid verification code');
       }
 
       const user = await this.userService.findById(verification.userId);
       if (!user) {
-        return res.render(this.viewResolver.views.auth.recovery_verify_code, {
-          title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-          error: 'User not found',
-        });
+        return renderVerificationError('User not found');
       }
 
       const deviceInfos =
@@ -4055,10 +4508,7 @@ export class AuthController implements IAuthController {
       this.logger.error(error as Error, {
         context: 'process_recovery_verify_code_failed',
       });
-      res.render(this.viewResolver.views.auth.recovery_verify_code, {
-        title: `${req.t('auth.recovery_verify_code.title')} - ${this.getAppTitle()}`,
-        error: 'An error occurred. Please try again.',
-      });
+      renderVerificationError('An error occurred. Please try again.');
     }
   };
 
@@ -4754,6 +5204,64 @@ export class AuthController implements IAuthController {
         error: result.error,
       });
 
+      const linkIntent = this.sessionManager.get<LinkSocialAccountIntent>(
+        req,
+        'linkSocialAccountIntent'
+      );
+      if (linkIntent) {
+        // A social callback may authenticate a provider identity that belongs
+        // to a different local user. Consume the one-time intent before any
+        // redirect and never replace the active account during explicit
+        // linking.
+        this.sessionManager.remove(req, 'linkSocialAccountIntent');
+
+        const settingsUrl = `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.settings_social}`;
+        const returnUrl =
+          linkIntent.returnUrl === settingsUrl
+            ? linkIntent.returnUrl
+            : settingsUrl;
+        const activeUser = this.sessionManager.getActiveUser(req);
+        const providerName =
+          provider.charAt(0).toUpperCase() + provider.slice(1);
+
+        if (linkIntent.provider !== provider) {
+          this.sessionManager
+            .flash(req)
+            .error('Social account linking request is invalid or expired');
+          return res.redirect(returnUrl);
+        }
+
+        if (!activeUser) {
+          this.sessionManager
+            .flash(req)
+            .error('Please sign in to link a social account');
+          return res.redirect(
+            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
+          );
+        }
+
+        if (!result.success || !result.user) {
+          this.sessionManager
+            .flash(req)
+            .error(result.error || `Failed to link ${providerName} account`);
+          return res.redirect(returnUrl);
+        }
+
+        if (result.user._id?.toString() !== activeUser.id) {
+          this.sessionManager
+            .flash(req)
+            .error(
+              `This ${providerName} account is linked to a different user`
+            );
+          return res.redirect(returnUrl);
+        }
+
+        this.sessionManager
+          .flash(req)
+          .success(`${providerName} account linked successfully`);
+        return res.redirect(returnUrl);
+      }
+
       if (!result.success) {
         if (result.requiresLinking) {
           const socialConfig = this.getSocialBehaviorConfig();
@@ -4838,6 +5346,16 @@ export class AuthController implements IAuthController {
           error: 'User not found after social authentication',
           redirectUrl: `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`,
         });
+      }
+
+      this.consumeSocialRegisterIntent(req, provider);
+
+      if (this.requiresPhoneVerification(result.user)) {
+        return this.startPhoneVerification(
+          req,
+          res,
+          result.user._id?.toString() || ''
+        );
       }
 
       if (this.mfaUtils.isMfaEnabled(result.user)) {
@@ -5341,6 +5859,11 @@ export class AuthController implements IAuthController {
         integrationId: socialIntegration._id,
       });
 
+      // Registration is now durable. Consume only this provider's intent so a
+      // later login in the same browser cannot be misclassified as a new
+      // registration while unrelated provider flows remain resumable.
+      this.consumeSocialRegisterIntent(req, provider);
+
       if (socialConfig.requirePasswordOnRegistration) {
         this.sessionManager.set(req, 'socialPasswordSetup', {
           userId: newUser._id,
@@ -5353,6 +5876,14 @@ export class AuthController implements IAuthController {
 
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.social_password_setup}?provider=${provider}`
+        );
+      }
+
+      if (this.requiresPhoneVerification(newUser)) {
+        return this.startPhoneVerification(
+          req,
+          res,
+          newUser._id?.toString() || ''
         );
       }
 
@@ -5601,6 +6132,14 @@ export class AuthController implements IAuthController {
         this.sessionManager.flash(req).error('User not found');
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
+        );
+      }
+
+      if (this.requiresPhoneVerification(user)) {
+        return this.startPhoneVerification(
+          req,
+          res,
+          user._id?.toString() || socialPasswordData.userId
         );
       }
 

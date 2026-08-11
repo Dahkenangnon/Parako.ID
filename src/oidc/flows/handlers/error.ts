@@ -7,6 +7,7 @@ import type { IOIDCErrorHandler } from '../../../di/interfaces/oidc-error-handle
 import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 
 /** Known OIDC error types for validation */
@@ -40,7 +41,8 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
     @inject(TYPES.ClientDeviceInfoManager)
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager,
     @inject(TYPES.SessionManager)
-    private readonly sessionManager: ISessionManager
+    private readonly sessionManager: ISessionManager,
+    @inject(TYPES.Logger) private readonly logger: ILogger
   ) {}
 
   private get activityLoggerDeps() {
@@ -113,6 +115,21 @@ export class OIDCErrorHandler implements IOIDCErrorHandler {
       typeof rawMessage === 'string' && rawMessage.length > 0
         ? rawMessage.slice(0, 500) // Limit message length
         : 'An error occurred during the authentication process.';
+
+    // Protocol errors are rendered for the user, but unexpected server errors
+    // must also retain their original exception and stable request context in
+    // operational logs. Otherwise this OIDC-specific middleware hides failures
+    // before the application-wide HTML error handler can observe them.
+    if (status >= 500) {
+      const error = err instanceof Error ? err : new Error(errorMessage);
+      this.logger.error(error, {
+        context: 'oidc_error_handler',
+        errorType,
+        method: req.method,
+        status,
+        url: req.originalUrl,
+      });
+    }
 
     res.status(status).render(this.viewResolver.views.auth.oidc.error, {
       errorType,

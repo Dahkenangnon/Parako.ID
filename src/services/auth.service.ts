@@ -13,6 +13,8 @@ import type {
   EmailVerificationResult,
   AdminPasswordChangeOptions,
   LoginResult,
+  PhoneVerificationChallenge,
+  PhoneVerificationDelivery,
 } from '../di/interfaces/auth-service.interface.js';
 import { TYPES } from '../di/types.js';
 import crypto from 'node:crypto';
@@ -22,6 +24,8 @@ import {
 } from '../utils/password-breach.js';
 import { createBackgroundTaskQueue } from '../jobs/domains/background-tasks/queue.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import { PhoneVerificationRequiredError } from '../errors/phone-verification-required.error.js';
+import { PhoneVerificationDeliveryError } from '../errors/phone-verification-delivery.error.js';
 
 interface RegistrationProfile {
   username?: string;
@@ -35,6 +39,7 @@ interface RegistrationProfile {
 export class AuthService implements IAuthService {
   private static readonly PASSWORD_RESET_EXPIRY_HOURS = 1;
   private static readonly EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
+  private static readonly PHONE_VERIFICATION_EXPIRY_MINUTES = 15;
   private static readonly TOKEN_BYTES = 32;
   private static readonly HASH_ALGORITHM = 'sha256';
   private static readonly EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -180,6 +185,20 @@ export class AuthService implements IAuthService {
     await this.validateUserLoginStatus(user);
     await this.validatePassword(password, user.password, user);
 
+    const requirePhoneVerification =
+      this.configManager.getConfig().security?.authentication?.signup
+        ?.require_phone_verification ?? false;
+    if (
+      requirePhoneVerification &&
+      user.phone_number &&
+      !user.phone_number_verified
+    ) {
+      throw new PhoneVerificationRequiredError(
+        String(user._id),
+        user.phone_number
+      );
+    }
+
     // Non-blocking: enqueue async breach check (fire-and-forget)
     this.enqueueLoginBreachCheck(password, user);
 
@@ -256,6 +275,13 @@ export class AuthService implements IAuthService {
 
     if (!user.account_enabled) {
       throw new Error('This account is disabled');
+    }
+
+    const requireEmailVerification =
+      this.configManager.getConfig().security?.authentication?.signup
+        ?.require_email_verification ?? false;
+    if (requireEmailVerification && user.email && !user.email_verified) {
+      throw new Error('Email verification is required');
     }
 
     if (user.blocked_from && user.blocked_from.length > 0) {
@@ -414,7 +440,19 @@ export class AuthService implements IAuthService {
 
       await this.checkPasswordBreachBlocking(password, 'check_on_registration');
 
-      const registerWith = register_with || (email ? 'email' : 'phone_number');
+      const registerWith: RegisterWith =
+        register_with ||
+        (email
+          ? 'email'
+          : phone_number
+            ? 'phone_number'
+            : custom_identifier_1
+              ? 'custom_identifier_1'
+              : custom_identifier_2
+                ? 'custom_identifier_2'
+                : custom_identifier_3
+                  ? 'custom_identifier_3'
+                  : 'email');
 
       const hashedPassword = await this.passwordUtils.hashPassword(password);
 
@@ -423,7 +461,7 @@ export class AuthService implements IAuthService {
         password: hashedPassword,
         username: profile.username,
         phone_number,
-        register_with: registerWith as RegisterWith,
+        register_with: registerWith,
         roles: profile.roles,
         password_hash_algo: 'argon2id',
         account_enabled: profile.account_enabled,
@@ -503,6 +541,15 @@ export class AuthService implements IAuthService {
       .createHash(AuthService.HASH_ALGORITHM)
       .update(token)
       .digest('hex');
+  }
+
+  private tokenHashesMatch(actual: string, expected: string): boolean {
+    const actualBytes = Buffer.from(actual, 'hex');
+    const expectedBytes = Buffer.from(expected, 'hex');
+    return (
+      actualBytes.length === expectedBytes.length &&
+      crypto.timingSafeEqual(actualBytes, expectedBytes)
+    );
   }
 
   public async resetPassword(
@@ -659,55 +706,14 @@ export class AuthService implements IAuthService {
     options: AdminPasswordChangeOptions = {}
   ): Promise<IUser> {
     try {
-      const { requireReset = false, sendEmail = true } = options;
-
-      if (!adminUsername || !targetUserId || !newPassword) {
-        throw new Error(
-          'Admin username, target user ID, and new password are required'
-        );
-      }
-
-      const passwordValidation = this.userService.validatePassword(newPassword);
-      if (!passwordValidation.isValid) {
-        throw new Error(
-          `Password validation failed: ${passwordValidation.messages.join(', ')}`
-        );
-      }
-
-      await this.checkPasswordBreachBlocking(
+      return await this.changeUserPasswordForAuthorizedActor(
+        adminUsername,
+        targetUserId,
         newPassword,
-        'check_on_password_change'
+        options,
+        true,
+        'Admin username, target user ID, and new password are required'
       );
-
-      await this.validateAdmin(adminUsername);
-      const targetUser = await this.getTargetUser(targetUserId);
-
-      const hashedNewPassword =
-        await this.passwordUtils.hashPassword(newPassword);
-
-      const updateData: any = {
-        password: hashedNewPassword,
-        password_hash_algo: 'argon2id',
-        password_updated_at: new Date(),
-      };
-
-      if (requireReset) {
-        updateData.password_force_reset = true;
-      }
-
-      const updatedUser = await this.userService.updateById(
-        targetUser._id!,
-        updateData
-      );
-
-      if (sendEmail && targetUser.email) {
-        this.logger.info('Should send password change email notification', {
-          targetUsername: targetUser.username,
-          targetEmail: targetUser.email,
-        });
-      }
-
-      return updatedUser!;
     } catch (error) {
       const err = error as Error;
       this.logger.error('Error performing admin password change', {
@@ -717,6 +723,99 @@ export class AuthService implements IAuthService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Change a user's password after a machine client has already been
+   * authenticated and authorized by the Management API route guards.
+   *
+   * The client identifier is an audit actor, not a Parako user identity, so
+   * this path intentionally does not perform the human-admin role lookup used
+   * by {@link adminChangeUserPassword}.
+   */
+  public async changeUserPasswordByAuthorizedClient(
+    actorClientId: string,
+    targetUserId: string,
+    newPassword: string,
+    options: AdminPasswordChangeOptions = {}
+  ): Promise<IUser> {
+    try {
+      return await this.changeUserPasswordForAuthorizedActor(
+        actorClientId,
+        targetUserId,
+        newPassword,
+        options,
+        false,
+        'Client ID, target user ID, and new password are required'
+      );
+    } catch (error) {
+      const err = error as Error;
+      this.logger.error('Error performing authorized client password change', {
+        error: err.message,
+        actorClientId,
+        targetUserId,
+      });
+      throw error;
+    }
+  }
+
+  private async changeUserPasswordForAuthorizedActor(
+    actorId: string,
+    targetUserId: string,
+    newPassword: string,
+    options: AdminPasswordChangeOptions,
+    validateHumanAdmin: boolean,
+    requiredFieldsMessage: string
+  ): Promise<IUser> {
+    const { requireReset = false, sendEmail = true } = options;
+
+    if (!actorId || !targetUserId || !newPassword) {
+      throw new Error(requiredFieldsMessage);
+    }
+
+    const passwordValidation = this.userService.validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      throw new Error(
+        `Password validation failed: ${passwordValidation.messages.join(', ')}`
+      );
+    }
+
+    await this.checkPasswordBreachBlocking(
+      newPassword,
+      'check_on_password_change'
+    );
+
+    if (validateHumanAdmin) {
+      await this.validateAdmin(actorId);
+    }
+
+    const targetUser = await this.getTargetUser(targetUserId);
+    const hashedNewPassword =
+      await this.passwordUtils.hashPassword(newPassword);
+    const updateData: any = {
+      password: hashedNewPassword,
+      password_hash_algo: 'argon2id',
+      password_updated_at: new Date(),
+    };
+
+    if (requireReset) {
+      updateData.password_force_reset = true;
+    }
+
+    const updatedUser = await this.userService.updateById(
+      targetUser._id!,
+      updateData
+    );
+
+    if (sendEmail && targetUser.email) {
+      this.logger.info('Should send password change email notification', {
+        actorId,
+        targetUsername: targetUser.username,
+        targetEmail: targetUser.email,
+      });
+    }
+
+    return updatedUser!;
   }
 
   private async validateAdmin(adminUsername: string): Promise<IUser> {
@@ -825,6 +924,126 @@ export class AuthService implements IAuthService {
       });
       throw error;
     }
+  }
+
+  public async generatePhoneVerificationChallenge(
+    userId: string
+  ): Promise<PhoneVerificationChallenge> {
+    if (!userId) throw new Error('User ID is required');
+
+    const user = await this.userService.findById(userId);
+    if (!user) throw new Error('User not found');
+    if (user.phone_number_verified) {
+      throw new Error('Phone is already verified');
+    }
+    if (!user.phone_number) {
+      throw new Error('User has no phone number to verify');
+    }
+
+    const verificationToken = crypto
+      .randomBytes(AuthService.TOKEN_BYTES)
+      .toString('hex');
+    const code = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const expiresAt = new Date(
+      Date.now() + AuthService.PHONE_VERIFICATION_EXPIRY_MINUTES * 60 * 1000
+    );
+
+    await this.userService.updateById(userId, {
+      phone_verification_token: this.hashToken(verificationToken),
+      phone_verification_code: this.hashToken(code),
+      phone_verification_expires: expiresAt,
+    });
+
+    return { user, verificationToken, code, expiresAt };
+  }
+
+  public async renewPhoneVerificationChallenge(
+    verificationToken: string,
+    deliver?: PhoneVerificationDelivery
+  ): Promise<PhoneVerificationChallenge> {
+    if (!verificationToken) {
+      throw new Error('Verification token is required');
+    }
+    const user = await this.userService.findOne({
+      phone_verification_token: this.hashToken(verificationToken),
+    });
+    if (!user || user.phone_number_verified) {
+      throw new Error('Invalid verification token');
+    }
+
+    const userId = String(user._id ?? user.id);
+    const previousChallenge = {
+      phone_verification_token: user.phone_verification_token ?? null,
+      phone_verification_code: user.phone_verification_code ?? null,
+      phone_verification_expires: user.phone_verification_expires ?? null,
+    };
+    const challenge = await this.generatePhoneVerificationChallenge(userId);
+    if (!deliver) return challenge;
+
+    let deliveryFailure: unknown;
+    try {
+      if (await deliver(challenge)) return challenge;
+    } catch (error) {
+      deliveryFailure = error;
+    }
+
+    try {
+      // Challenge rotation and provider delivery cannot share a database
+      // transaction. Compensate a failed external delivery so the opaque token
+      // already displayed in the browser remains usable for its original code.
+      await this.userService.updateById(userId, previousChallenge);
+    } catch (rollbackError) {
+      this.logger.error('Failed to restore phone verification challenge', {
+        userId,
+        error:
+          rollbackError instanceof Error
+            ? rollbackError.message
+            : String(rollbackError),
+      });
+      throw rollbackError;
+    }
+
+    throw new PhoneVerificationDeliveryError(verificationToken, {
+      cause:
+        deliveryFailure instanceof Error
+          ? deliveryFailure
+          : deliveryFailure === undefined
+            ? undefined
+            : new Error(String(deliveryFailure)),
+    });
+  }
+
+  public async verifyPhone(
+    verificationToken: string,
+    code: string
+  ): Promise<IUser> {
+    if (!verificationToken || !/^\d{6}$/.test(code)) {
+      throw new Error('Invalid or expired verification code');
+    }
+
+    const user = await this.userService.findOne({
+      phone_verification_token: this.hashToken(verificationToken),
+    });
+    const expectedCode = user?.phone_verification_code;
+    const expiresAt = user?.phone_verification_expires;
+    if (
+      !user ||
+      !expectedCode ||
+      !expiresAt ||
+      new Date(expiresAt).getTime() <= Date.now() ||
+      !this.tokenHashesMatch(this.hashToken(code), expectedCode)
+    ) {
+      throw new Error('Invalid or expired verification code');
+    }
+
+    const updatedUser = await this.userService.updateById(String(user._id), {
+      phone_number_verified: true,
+      phone_verification_token: null,
+      phone_verification_code: null,
+      phone_verification_expires: null,
+    });
+    if (!updatedUser) throw new Error('User not found');
+    return updatedUser;
   }
 
   public isAdmin(user: IUser): boolean {

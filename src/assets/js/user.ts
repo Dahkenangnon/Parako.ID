@@ -69,23 +69,21 @@ export class DeviceInfoCollector {
 
   private async loadFingerprintJS(): Promise<{ visitorId: string }> {
     // FingerprintJS is vendored locally via
-    // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the
-    // base layout, so it is always present on `window` by the time
-    // this runs. No network fetch, no CSP violation.
+    // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the base layout.
+    // Disable its optional package monitoring request: device collection must
+    // remain self-contained and compatible with Parako's same-origin CSP.
     const FingerprintJS = (window as any).FingerprintJS;
     if (!FingerprintJS) {
       throw new Error('FingerprintJS not loaded');
     }
 
-    const loadOptions: Record<string, unknown> = {};
+    const loadOptions: Record<string, unknown> = { monitoring: false };
     if (this.config.fingerprintJSApiKey) {
       loadOptions.apiKey = this.config.fingerprintJSApiKey;
       this.log('Using FingerprintJS Pro');
     }
 
-    const fp = await FingerprintJS.load(
-      Object.keys(loadOptions).length > 0 ? loadOptions : undefined
-    );
+    const fp = await FingerprintJS.load(loadOptions);
     const result = await fp.get();
     return { visitorId: result.visitorId };
   }

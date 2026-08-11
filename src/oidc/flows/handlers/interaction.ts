@@ -94,6 +94,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
 
               return res.render(this.viewResolver.views.auth.oidc.login, {
                 client,
+                clientId: params.client_id,
                 uid,
                 details: prompt.details,
                 params,
@@ -148,6 +149,7 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
 
           return res.render(this.viewResolver.views.auth.oidc.login, {
             client,
+            clientId: params.client_id,
             uid,
             details: prompt.details,
             params,

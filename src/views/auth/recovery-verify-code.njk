@@ -17,7 +17,11 @@
                 </div>
 
                 <p class="text-center text-sm text-gray-600 dark:text-muted-foreground mb-6">
+                    {% if method == 'sms' %}
+                    Enter the verification code sent to your phone
+                    {% else %}
                     Enter the verification code sent to your secondary email
+                    {% endif %}
                 </p>
 
                 <!-- Error Messages -->
@@ -54,7 +58,11 @@
                         <!-- Hidden input to store the complete code -->
                         <input type="hidden" id="code" name="code" />
                         <p class="text-xs text-gray-500 dark:text-muted-foreground text-center">
+                            {% if method == 'sms' %}
+                            Enter the 6-digit code sent to your phone number
+                            {% else %}
                             Enter the 6-digit code sent to your secondary email address
+                            {% endif %}
                         </p>
                     </div>
 
@@ -75,9 +83,9 @@
                 <div class="mt-6 bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border p-4">
                     <h3 class="text-sm font-medium text-gray-900 dark:text-foreground mb-2">Need Help?</h3>
                     <div class="text-sm text-gray-600 dark:text-muted-foreground space-y-1">
-                        <p>• Check your email inbox for the verification code</p>
+                        <p>• Check your {% if method == 'sms' %}phone{% else %}email inbox{% endif %} for the verification code</p>
                         <p>• The code expires in 15 minutes</p>
-                        <p>• Check your spam folder if you don't see the email</p>
+                        {% if method != 'sms' %}<p>• Check your spam folder if you don't see the email</p>{% endif %}
                         <p>• If the code has expired, you can request a new one</p>
                     </div>
                 </div>

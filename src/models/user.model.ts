@@ -335,6 +335,20 @@ export const createUserModel = (
         type: Date,
         required: false,
       },
+      phone_verification_token: {
+        type: String,
+        required: false,
+        private: true,
+      },
+      phone_verification_code: {
+        type: String,
+        required: false,
+        private: true,
+      },
+      phone_verification_expires: {
+        type: Date,
+        required: false,
+      },
       blocked_from: {
         type: [String],
         default: [],

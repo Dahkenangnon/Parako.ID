@@ -18,6 +18,8 @@ import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { ISocialIntegrationService } from '../di/interfaces/social-integration-service.interface.js';
 import { capitalizeFirstLetter } from '../utils/misc.js';
 import { ensureDecrypted } from '../utils/encryption.js';
+import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
+import { getUserFriendlyError } from './social-login-errors.js';
 
 /**
  * Abstract base class for all social login providers
@@ -255,31 +257,29 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     const isRegistration =
       socialRegister[req.params?.provider]?.intent === 'register';
 
-    if (!mappedProviderData.email && !mappedProviderData.phone_number) {
-      if (config.missingContactInfo === 'redirect_to_form' && isRegistration) {
-        return {
-          success: false,
-          requiresLinking: true,
-          error: `Please provide your contact information to complete the ${capitalizeFirstLetter(this.provider)} registration process`,
-          providerData: mappedProviderData,
-          tokens,
-        };
-      }
-
-      return {
-        success: false,
-        error: `${capitalizeFirstLetter(this.provider)} account must have an email address or phone number to sign in`,
-      };
-    }
-
+    // Contact claims are needed only when creating or linking a local account.
+    // A returning provider subject is already bound to a local user whose
+    // contact policy was enforced when the integration was created. Resolve
+    // that binding before applying missing-contact registration policy because
+    // providers may legitimately omit email and phone claims on later logins.
     const existingIntegration =
       await this.socialIntegrationService.findByProviderSub(
         mappedProviderData.sub,
         this.provider
       );
+    const authenticatedUsers = this.sessionManager.getAuthenticatedUsers(req);
 
     if (existingIntegration) {
-      // User already has this integration - log them in
+      if (
+        authenticatedUsers?.active &&
+        existingIntegration.user_id !== authenticatedUsers.active.id
+      ) {
+        return {
+          success: false,
+          error: `This ${this.provider} account is already linked to another user`,
+        };
+      }
+
       const existingUser = await this.userService.findById(
         existingIntegration.user_id
       );
@@ -317,7 +317,22 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
       };
     }
 
-    const authenticatedUsers = this.sessionManager.getAuthenticatedUsers(req);
+    if (!mappedProviderData.email && !mappedProviderData.phone_number) {
+      if (config.missingContactInfo === 'redirect_to_form' && isRegistration) {
+        return {
+          success: false,
+          requiresLinking: true,
+          error: `Please provide your contact information to complete the ${capitalizeFirstLetter(this.provider)} registration process`,
+          providerData: mappedProviderData,
+          tokens,
+        };
+      }
+
+      return {
+        success: false,
+        error: `${capitalizeFirstLetter(this.provider)} account must have an email address or phone number to sign in`,
+      };
+    }
 
     if (authenticatedUsers?.active) {
       const currentlyLoggedInUser = authenticatedUsers.active;
@@ -555,7 +570,7 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     error?: string;
     sessionData?: any;
   } {
-    const { code, state } = req.query;
+    const { code, error, state } = req.query;
     const socialLoginSession = this.sessionManager.get<Record<string, any>>(
       req,
       'socialLogin',
@@ -563,7 +578,8 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     );
     const providerSessionData = socialLoginSession?.[this.provider];
 
-    if (!code || !state || !providerSessionData) {
+    const hasProviderError = typeof error === 'string' && error.length > 0;
+    if ((!code && !hasProviderError) || !state || !providerSessionData) {
       this.logger.error(`Invalid callback parameters for ${this.provider}`, {
         provider: this.provider,
         hasCode: !!code,
@@ -598,9 +614,26 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     };
   }
 
+  /**
+   * Translate an OAuth authorization error only after verifyOAuthState() has
+   * authenticated the callback to the browser session. This preserves useful
+   * provider feedback without trusting attacker-controlled callback text.
+   */
+  protected getVerifiedOAuthCallbackError(req: Request): string | undefined {
+    const { error, error_description: description } = req.query;
+    if (typeof error !== 'string' || error.length === 0) {
+      return undefined;
+    }
+
+    const technicalError =
+      typeof description === 'string' && description.length > 0
+        ? `${error}: ${description}`
+        : error;
+    return getUserFriendlyError(this.provider, technicalError);
+  }
+
   protected getDefaultProviderConfig<T>(provider: SocialProvider): T {
     const config = this.configManager.getConfig();
-    const applicationBaseUrl = config.deployment.url;
     const featuresSocialProviders = config.features.social_providers;
     const rawConfig =
       featuresSocialProviders[provider as keyof typeof featuresSocialProviders];
@@ -608,7 +641,12 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     // Use configuration directly as defined in schema (underscore-based)
     const providerConfig = {
       ...rawConfig,
-      redirect_uri: `${applicationBaseUrl}/auth/social/${provider}/callback`,
+      // Tenant-owned provider credentials use a tenant-local callback so the
+      // browser returns with the tenant's session cookie and OAuth state.
+      redirect_uri: buildExternalApplicationUrl(
+        config,
+        `/auth/social/${provider}/callback`
+      ),
     };
 
     return providerConfig as T;

@@ -62,6 +62,9 @@ export interface IWebAuthnCredential {
   device_type?: string;
   backed_up?: boolean;
   transports?: string[];
+  friendly_name?: string;
+  created_at?: Date;
+  last_used_at?: Date;
 }
 
 export interface IUserRepository extends Omit<

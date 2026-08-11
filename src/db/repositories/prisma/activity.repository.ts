@@ -141,11 +141,16 @@ function toIActivity(row: ActivityFull): IActivity {
 
 function normalizeActivityOrderBy(
   orderBy: Record<string, unknown>
-): Record<string, unknown> {
-  const { username, ...remaining } = orderBy;
-  return username === undefined
-    ? orderBy
-    : { ...remaining, actor: { username } };
+): Record<string, unknown> | Record<string, unknown>[] {
+  const normalized = Object.entries(orderBy).map(([field, direction]) =>
+    field === 'username'
+      ? { actor: { username: direction } }
+      : { [field]: direction }
+  );
+
+  // Prisma accepts an object for a single field but requires an ordered array
+  // when more than one sort field is supplied.
+  return normalized.length > 1 ? normalized : (normalized[0] ?? orderBy);
 }
 
 @injectable()
@@ -303,7 +308,13 @@ export class PrismaActivityRepository
     return this.paginateDelegate(
       {
         findMany: args =>
-          this.prisma.activity.findMany({ ...args, include: ACTIVITY_INCLUDE }),
+          this.prisma.activity.findMany({
+            ...args,
+            orderBy: normalizeActivityOrderBy(
+              args.orderBy as Record<string, unknown>
+            ),
+            include: ACTIVITY_INCLUDE,
+          }),
         count: args => this.prisma.activity.count(args as any),
       },
       where,

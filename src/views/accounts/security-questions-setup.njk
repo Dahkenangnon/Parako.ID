@@ -81,7 +81,10 @@
                 </div>
 
                 <!-- Validation messages area -->
-                <div id="validation-errors" class="hidden p-4 bg-destructive/10 border border-destructive/20 text-destructive text-sm"></div>
+                <div
+                    id="validation-errors"
+                    class="hidden p-4 bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                    data-duplicate-message="{{ t('security-questions.validation.select_different_questions', 'Please select different questions for each.') }}"></div>
 
                 <!-- Submit Button -->
                 <div class="flex justify-center pt-4">
@@ -104,26 +107,8 @@
         </div>
     </div>
 
-    <script>
-        // Client-side validation to prevent duplicate questions
-        document.getElementById('security-questions-form').addEventListener('submit', function(e) {
-            const q1 = document.getElementById('question_1').value;
-            const q2 = document.getElementById('question_2').value;
-            const q3 = document.getElementById('question_3').value;
-
-            const questions = [q1, q2, q3].filter(q => q !== '');
-            const uniqueQuestions = new Set(questions);
-
-            if (uniqueQuestions.size !== questions.length) {
-                e.preventDefault();
-                const errorDiv = document.getElementById('validation-errors');
-                errorDiv.textContent = '{{ t("security-questions.validation.select_different_questions") if t("security-questions.validation.select_different_questions") else "Please select different questions for each." }}';
-                errorDiv.classList.remove('hidden');
-                return false;
-            }
-
-            // Hide any previous errors
-            document.getElementById('validation-errors').classList.add('hidden');
-        });
-    </script>
+{% endblock %}
+{% block scripts %}
+    {{ super() }}
+    <script src="{{ asset('js/account/security-questions-setup.js') }}"></script>
 {% endblock %}

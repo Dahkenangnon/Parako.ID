@@ -156,6 +156,30 @@ export const authRoutes = (
       authController.emailVerificationSuccess
     )
   );
+  router.get(
+    routes.phone_verification,
+    validateAuthQuery,
+    asyncHandler(
+      'auth.phone_verification.form',
+      authController.phoneVerification
+    )
+  );
+  router.post(
+    routes.phone_verification,
+    securityMiddleware.validateCsrfToken,
+    asyncHandler(
+      'auth.phone_verification.process',
+      authController.processPhoneVerification
+    )
+  );
+  router.post(
+    `${routes.phone_verification}/resend`,
+    securityMiddleware.validateCsrfToken,
+    asyncHandler(
+      'auth.phone_verification.resend',
+      authController.resendPhoneVerification
+    )
+  );
 
   // Multi-factor authentication routes
   router.get(

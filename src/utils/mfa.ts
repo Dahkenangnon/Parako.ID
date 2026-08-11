@@ -188,7 +188,13 @@ export class MfaUtils implements IMfaUtils {
         };
       }
 
-      const { valid } = verifySync({ secret, token: sanitizedCode });
+      const { valid } = verifySync({
+        secret,
+        token: sanitizedCode,
+        // Allow one completed period for network and form-submission delay,
+        // without accepting tokens generated for a future time window.
+        epochTolerance: [30, 0],
+      });
 
       return { valid };
     } catch (error) {

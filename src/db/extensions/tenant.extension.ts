@@ -130,7 +130,15 @@ export function createTenantExtension(
             return query(args);
           }
 
-          const tenantId = tenantContext.getTenantId();
+          let tenantId: string;
+          try {
+            tenantId = tenantContext.getTenantId();
+          } catch (error) {
+            throw new Error(
+              `[tenant-extension] Tenant context unavailable while executing ${model}.${operation}`,
+              { cause: error }
+            );
+          }
 
           // Validate tenant slug format to prevent injection in SET LOCAL
           // and ensure only well-formed identifiers reach DB operations.

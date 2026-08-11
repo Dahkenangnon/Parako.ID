@@ -285,7 +285,7 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
     const provider = this.providerFactory(issuer, {
       ...oidcConfiguration,
       jwks,
-      adapter: this.adapterBridge.adapter as unknown as
+      adapter: this.adapterBridge.adapterForTenant(tenantId) as unknown as
         AdapterConstructor | AdapterFactory,
     });
 

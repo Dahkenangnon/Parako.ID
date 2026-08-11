@@ -19,6 +19,8 @@ import type { IGeolocationService } from '../../../di/interfaces/geolocation-ser
 import type { IIPReputationService } from '../../../di/interfaces/ip-reputation-service.interface.js';
 import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IMetricsService } from '../../../di/interfaces/metrics-service.interface.js';
+import { SmsService } from '../../../services/sms.service.js';
+import { PhoneVerificationRequiredError } from '../../../errors/phone-verification-required.error.js';
 
 /**
  * OIDC Login Handler
@@ -47,7 +49,8 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
     private readonly ipReputationService: IIPReputationService,
     @inject(TYPES.MfaUtils) private readonly mfaUtils: IMfaUtils,
     @inject(TYPES.MetricsService)
-    private readonly metricsService: IMetricsService
+    private readonly metricsService: IMetricsService,
+    @inject(TYPES.SmsService) private readonly smsService: SmsService
   ) {}
 
   private get activityLoggerDeps() {
@@ -546,18 +549,69 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
           mergeWithLastSubmission: false,
         });
       } catch (error) {
-        this.logger.error(error as Error, {
-          context: 'Error during login process',
-        });
-        this.metricsService.recordLoginAttempt(
-          'error',
-          (req.body.login_method as string) || 'unknown'
-        );
-        res.locals.loginFailed = true;
+        if (error instanceof PhoneVerificationRequiredError) {
+          try {
+            const challenge =
+              await this.authService.generatePhoneVerificationChallenge(
+                error.userId
+              );
+            const delivery = await this.smsService.sendVerificationCode(
+              challenge.user.phone_number!,
+              challenge.code,
+              req.ip
+            );
 
-        this.sessionManager
-          .flash(req)
-          .error('The credentials you provided are not valid.');
+            // Keep only the opaque oidc-provider interaction identifier in
+            // the browser session. The user re-enters their password after
+            // proving phone possession, so no credentials cross this step.
+            this.sessionManager.set(req, 'phoneVerificationOidcContinuation', {
+              interactionUid: uid,
+              createdAt: Date.now(),
+            });
+
+            if (delivery.success) {
+              this.sessionManager
+                .flash(req)
+                .success('A verification code has been sent to your phone.');
+            } else {
+              this.logger.warn('OIDC phone verification SMS delivery failed', {
+                userId: error.userId,
+                error: delivery.error,
+              });
+              this.sessionManager
+                .flash(req)
+                .error(
+                  'We could not send the verification code. Please try resending it.'
+                );
+            }
+
+            const config = this.configManager.getConfig();
+            const verificationPath = `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.phone_verification}`;
+            return res.redirect(
+              `${verificationPath}?token=${encodeURIComponent(challenge.verificationToken)}`
+            );
+          } catch (challengeError) {
+            this.logger.error(challengeError as Error, {
+              context: 'Failed to start OIDC phone verification',
+              userId: error.userId,
+            });
+            this.sessionManager
+              .flash(req)
+              .error('Phone verification is required. Please try again.');
+          }
+        } else {
+          this.logger.error(error as Error, {
+            context: 'Error during login process',
+          });
+          this.metricsService.recordLoginAttempt(
+            'error',
+            (req.body.login_method as string) || 'unknown'
+          );
+          this.sessionManager
+            .flash(req)
+            .error('The credentials you provided are not valid.');
+        }
+        res.locals.loginFailed = true;
 
         const stepMessage = (params.step_message as string) || '';
 

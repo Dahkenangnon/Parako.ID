@@ -11,6 +11,7 @@ import type { AdapterFactory } from '../../di/interfaces/oidc-adapter-bridge.int
 import { connectMongoDB, createMongoAdapterFactory } from './mongodb/index.js';
 import { connectRedis, createRedisAdapterFactory } from './redis/index.js';
 import { createPrismaAdapterFactory } from './prisma/index.js';
+import { createTenantBoundAdapterFactory } from './tenant-bound.js';
 import { PrismaOidcAdminService } from './prisma/admin-service.js';
 import { MongodbOidcAdminService } from './mongodb/admin-service.js';
 import { RedisOidcAdminService } from './redis/admin-service.js';
@@ -286,6 +287,15 @@ export class OIDCAdapterBridge {
       );
     }
     return this._adapterFactory;
+  }
+
+  /**
+   * Return an adapter factory with explicit ownership by one tenant Provider.
+   * This is used only for multi-tenant Provider instances; the ordinary
+   * adapter getter preserves the single-tenant behavior and public contract.
+   */
+  adapterForTenant(tenantId: string): AdapterFactory {
+    return createTenantBoundAdapterFactory(this.adapter, tenantId, this.logger);
   }
 
   get session():

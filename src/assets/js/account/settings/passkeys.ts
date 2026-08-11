@@ -379,8 +379,9 @@
         const clone = this.renameModalTemplate.content.cloneNode(
           true
         ) as DocumentFragment;
-        this.renameModal = clone.querySelector('[role="dialog"]')
-          ?.parentElement as HTMLElement;
+        // The dialog is the template's top-level element. Its parent is the
+        // DocumentFragment, so parentElement is null until it is mounted.
+        this.renameModal = clone.querySelector<HTMLElement>('[role="dialog"]');
 
         if (this.renameModal) {
           const input = this.renameModal.querySelector(
@@ -465,7 +466,7 @@
               'X-CSRF-Token': this.config.csrfToken,
             },
             credentials: 'include',
-            body: JSON.stringify({ friendly_name: newName }),
+            body: JSON.stringify({ friendlyName: newName }),
           }
         );
 

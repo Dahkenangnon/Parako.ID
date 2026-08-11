@@ -103,6 +103,12 @@ export class GitHubSocialLogin
         };
       }
 
+      const callbackError = this.getVerifiedOAuthCallbackError(req);
+      if (callbackError) {
+        this.cleanupSocialLoginSession(req);
+        return { success: false, error: callbackError };
+      }
+
       const providerSessionData = stateVerification.sessionData!;
       const { code } = req.query;
 
@@ -204,8 +210,13 @@ export class GitHubSocialLogin
    * Fetch user info from GitHub API
    */
   private async fetchUserInfo(accessToken: string): Promise<any> {
+    const providerConfig = this.getDefaultProviderConfig<OAuth2ProviderConfig>(
+      this.provider
+    );
+    const userInfoEndpoint = new URL(providerConfig.userinfo_endpoint);
+
     // First, get basic user info
-    const userResponse = await fetch('https://api.github.com/user', {
+    const userResponse = await fetch(userInfoEndpoint.toString(), {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'User-Agent': 'parako-id/1.0.0',
@@ -228,16 +239,15 @@ export class GitHubSocialLogin
     // If email is not public, try to get it from user/emails endpoint
     if (!userInfo.email) {
       try {
-        const emailsResponse = await fetch(
-          'https://api.github.com/user/emails',
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'User-Agent': 'parako-id/1.0.0',
-              Accept: 'application/vnd.github.v3+json',
-            },
-          }
-        );
+        const emailEndpoint = new URL(userInfoEndpoint);
+        emailEndpoint.pathname = `${emailEndpoint.pathname.replace(/\/$/, '')}/emails`;
+        const emailsResponse = await fetch(emailEndpoint.toString(), {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'User-Agent': 'parako-id/1.0.0',
+            Accept: 'application/vnd.github.v3+json',
+          },
+        });
 
         if (emailsResponse.ok) {
           const emails = await emailsResponse.json();

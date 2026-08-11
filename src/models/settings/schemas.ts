@@ -323,6 +323,7 @@ const deploymentAuthRoutesSchema = new Schema(
     email_verification: { type: String, required: true },
     verify_email: { type: String, required: true },
     email_verification_success: { type: String, required: true },
+    phone_verification: { type: String, required: true },
     account_select: { type: String, required: true },
     continue: { type: String, required: true },
     multi_factor: { type: String, required: true },

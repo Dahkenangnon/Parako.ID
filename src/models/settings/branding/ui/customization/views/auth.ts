@@ -10,6 +10,7 @@ export const brandingAuthViewsSchema = new Schema(
     email_verification: { type: String },
     verify_email: { type: String },
     email_verification_success: { type: String },
+    phone_verification: { type: String },
     account_select: { type: String },
     continue: { type: String },
     multi_factor: { type: String },

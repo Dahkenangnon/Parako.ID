@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -13,31 +14,45 @@ type PrismaClientModule = {
 };
 let postgresqlClientModule: PrismaClientModule | undefined;
 
-export function findPostgresqlPrismaClient(start: string): string {
-  let current = resolve(start);
-  while (true) {
-    const candidate = join(
-      current,
-      'prisma',
-      'generated',
-      'postgresql',
-      'index.js'
-    );
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) {
-      throw new Error(
-        'Generated PostgreSQL Prisma client is missing. Run pnpm db:generate:pg or use a complete release artifact.'
+export function findPostgresqlPrismaClient(
+  start: string,
+  fallbackStart?: string
+): string {
+  const visitedDirectories = new Set<string>();
+  for (const startDirectory of fallbackStart
+    ? [start, fallbackStart]
+    : [start]) {
+    let current = resolve(startDirectory);
+    while (!visitedDirectories.has(current)) {
+      visitedDirectories.add(current);
+      const candidate = join(
+        current,
+        'prisma',
+        'generated',
+        'postgresql',
+        'index.js'
       );
+      if (existsSync(candidate)) return candidate;
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
     }
-    current = parent;
   }
+
+  throw new Error(
+    'Generated PostgreSQL Prisma client is missing. Run pnpm db:generate:pg or use a complete release artifact.'
+  );
 }
 
 function loadPostgresqlPrismaClient(): PrismaClientModule {
   if (postgresqlClientModule) return postgresqlClientModule;
   const start = process.env.PARAKO_ROOT ?? process.cwd();
-  const modulePath = findPostgresqlPrismaClient(start);
+  // PARAKO_ROOT may intentionally contain runtime data only. The generated
+  // client is a code artifact, so fall back to the installed module tree.
+  const modulePath = findPostgresqlPrismaClient(
+    start,
+    dirname(fileURLToPath(import.meta.url))
+  );
   postgresqlClientModule = createRequire(import.meta.url)(
     modulePath
   ) as PrismaClientModule;

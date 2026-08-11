@@ -234,6 +234,10 @@ export const AppConfigSchema = z.object({
                   .string()
                   .default('auth/email-verification-success.njk')
                   .describe('Email verification success template'),
+                phone_verification: z
+                  .string()
+                  .default('auth/phone-verification.njk')
+                  .describe('Phone verification template'),
                 account_select: z
                   .string()
                   .default('auth/account-select.njk')
@@ -409,6 +413,7 @@ export const AppConfigSchema = z.object({
                 verify_email: 'auth/verify-email.njk',
                 email_verification_success:
                   'auth/email-verification-success.njk',
+                phone_verification: 'auth/phone-verification.njk',
                 account_select: 'auth/account-select.njk',
                 continue: 'auth/continue.njk',
                 multi_factor: 'auth/multi-factor.njk',
@@ -606,6 +611,7 @@ export const AppConfigSchema = z.object({
               email_verification: 'auth/email-verification.njk',
               verify_email: 'auth/verify-email.njk',
               email_verification_success: 'auth/email-verification-success.njk',
+              phone_verification: 'auth/phone-verification.njk',
               account_select: 'auth/account-select.njk',
               continue: 'auth/continue.njk',
               multi_factor: 'auth/multi-factor.njk',
@@ -1320,6 +1326,11 @@ export const AppConfigSchema = z.object({
           .startsWith('/')
           .min(2)
           .default('/email-verification-success'),
+        phone_verification: z
+          .string()
+          .startsWith('/')
+          .min(2)
+          .default('/phone-verification'),
         account_select: z
           .string()
           .startsWith('/')
@@ -2404,6 +2415,7 @@ export const AppConfigSchema = z.object({
                 'allowedResources',
                 'resourcesScopes',
                 'isInternalClient',
+                'ttl',
               ]),
             validator: z.function().optional(),
           })

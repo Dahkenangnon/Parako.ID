@@ -109,10 +109,6 @@ export class MicrosoftSocialLogin
         hasSession: !!req.session,
       });
 
-      if (!this.remoteConfig) {
-        await this.initializeMicrosoftClient();
-      }
-
       const stateVerification = this.verifyOAuthState(req);
       if (!stateVerification.isValid) {
         this.cleanupSocialLoginSession(req);
@@ -120,6 +116,16 @@ export class MicrosoftSocialLogin
           success: false,
           error: stateVerification.error!,
         };
+      }
+
+      const callbackError = this.getVerifiedOAuthCallbackError(req);
+      if (callbackError) {
+        this.cleanupSocialLoginSession(req);
+        return { success: false, error: callbackError };
+      }
+
+      if (!this.remoteConfig) {
+        await this.initializeMicrosoftClient();
       }
 
       const providerSessionData = stateVerification.sessionData!;

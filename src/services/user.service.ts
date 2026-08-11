@@ -1617,7 +1617,8 @@ export class UserService implements IUserService {
       const user = await this.userRepo.create({
         ...userData,
         username,
-        register_with: email ? 'email' : 'phone_number',
+        register_with:
+          userData.register_with ?? (email ? 'email' : 'phone_number'),
         email_verified: userData.email_verified ?? false,
         phone_number_verified: userData.phone_number_verified ?? false,
         account_enabled: userData.account_enabled ?? true,

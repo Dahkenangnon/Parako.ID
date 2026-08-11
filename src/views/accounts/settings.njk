@@ -700,7 +700,7 @@
                                 </div>
                                 <div class="flex gap-2">
                                     {% if totpEnabled %}
-                                        <form action="{{ routes.accountFull.disable_mfa }}?method=totp" method="POST" class="inline">
+                                        <form action="{{ routes.accountFull.disable_mfa }}?method=totp" method="POST" class="inline" data-mfa-disable-method="totp">
                                             <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                                 {{ t('common.disable', 'Disable') }}
@@ -742,7 +742,7 @@
                                 </div>
                                 <div class="flex gap-2">
                                     {% if emailMfaEnabled %}
-                                        <form action="{{ routes.accountFull.disable_mfa }}?method=email" method="POST" class="inline">
+                                        <form action="{{ routes.accountFull.disable_mfa }}?method=email" method="POST" class="inline" data-mfa-disable-method="email">
                                             <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                                 {{ t('common.disable', 'Disable') }}
@@ -788,7 +788,7 @@
                                         <a href="{{ routes.accountFull.passkeys }}" class="inline-flex items-center px-3 py-1.5 border border-border text-sm font-medium text-foreground bg-background hover:border-primary transition-colors">
                                             {{ t('account-settings.security.mfa.manage_passkeys', 'Manage Passkeys') }}
                                         </a>
-                                        <form action="{{ routes.accountFull.disable_mfa }}?method=webauthn" method="POST" class="inline">
+                                        <form action="{{ routes.accountFull.disable_mfa }}?method=webauthn" method="POST" class="inline" data-mfa-disable-method="webauthn">
                                             <input type="hidden" name="_csrf" value="{{ csrfToken }}"/>
                                             <button type="submit" class="inline-flex items-center px-3 py-1.5 border border-destructive/30 text-sm font-medium text-destructive bg-background hover:border-destructive transition-colors">
                                                 {{ t('common.disable', 'Disable') }}

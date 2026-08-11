@@ -1,4 +1,4 @@
-import { type IUser } from '../../types/user.js';
+import { type IUser, type RegisterWith } from '../../types/user.js';
 
 export interface AuthUserData {
   email?: string;
@@ -6,7 +6,7 @@ export interface AuthUserData {
   given_name?: string;
   family_name?: string;
   phone_number?: string;
-  register_with?: string;
+  register_with?: RegisterWith;
   custom_identifier_1?: string;
   custom_identifier_2?: string;
   custom_identifier_3?: string;
@@ -29,6 +29,17 @@ export interface EmailVerificationResult {
   user: IUser;
   verificationToken: string;
 }
+
+export interface PhoneVerificationChallenge {
+  user: IUser;
+  verificationToken: string;
+  code: string;
+  expiresAt: Date;
+}
+
+export type PhoneVerificationDelivery = (
+  challenge: PhoneVerificationChallenge
+) => Promise<boolean>;
 
 export interface AdminPasswordChangeOptions {
   requireReset?: boolean;
@@ -74,11 +85,25 @@ export interface IAuthService {
     newPassword: string,
     options?: AdminPasswordChangeOptions
   ): Promise<IUser>;
+  changeUserPasswordByAuthorizedClient(
+    actorClientId: string,
+    targetUserId: string,
+    newPassword: string,
+    options?: AdminPasswordChangeOptions
+  ): Promise<IUser>;
 
   verifyEmail(token: string): Promise<IUser>;
   generateEmailVerificationToken(
     userId: string
   ): Promise<EmailVerificationResult>;
+  generatePhoneVerificationChallenge(
+    userId: string
+  ): Promise<PhoneVerificationChallenge>;
+  renewPhoneVerificationChallenge(
+    verificationToken: string,
+    deliver?: PhoneVerificationDelivery
+  ): Promise<PhoneVerificationChallenge>;
+  verifyPhone(verificationToken: string, code: string): Promise<IUser>;
 
   isAdmin(user: IUser): boolean;
   hasRole(user: IUser, role: string): boolean;

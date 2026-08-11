@@ -19,15 +19,21 @@
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
 
                     <!-- Email Field -->
+                    {% if contactChannels.email.enabled %}
                     <div>
                         <label for="email" class="block text-sm font-medium text-gray-700 dark:text-muted-foreground mb-2">
-                            Email Address <span class="text-red-500">*</span>
+                            Email Address
+                            {% if contactChannels.email.required %}
+                            <span class="text-red-500">*</span>
+                            {% else %}
+                            <span class="text-gray-400">(optional)</span>
+                            {% endif %}
                         </label>
                         <input
                             type="email"
                             id="email"
                             name="email"
-                            required
+                            {% if contactChannels.email.required %}required{% endif %}
                             class="w-full px-3 py-2 border-2 border-gray-200 dark:border-border placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-2 focus:border-primary bg-gray-50 dark:bg-muted text-gray-900 dark:text-foreground rounded-md"
                             placeholder="Enter your email address"
                             value="{{ providerData.email or '' }}"
@@ -36,16 +42,24 @@
                             We'll use this to send you important account updates
                         </p>
                     </div>
+                    {% endif %}
 
                     <!-- Phone Number Field -->
+                    {% if contactChannels.phone.enabled %}
                     <div>
                         <label for="phone_number" class="block text-sm font-medium text-gray-700 dark:text-muted-foreground mb-2">
-                            Phone Number <span class="text-gray-400">(optional)</span>
+                            Phone Number
+                            {% if contactChannels.phone.required %}
+                            <span class="text-red-500">*</span>
+                            {% else %}
+                            <span class="text-gray-400">(optional)</span>
+                            {% endif %}
                         </label>
                         <input
                             type="tel"
                             id="phone_number"
                             name="phone_number"
+                            {% if contactChannels.phone.required %}required{% endif %}
                             class="w-full px-3 py-2 border-2 border-gray-200 dark:border-border placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-2 focus:border-primary bg-gray-50 dark:bg-muted text-gray-900 dark:text-foreground rounded-md"
                             placeholder="Enter your phone number"
                             value="{{ providerData.phone_number or '' }}"
@@ -54,6 +68,7 @@
                             Include country code (e.g., +1 555 123 4567)
                         </p>
                     </div>
+                    {% endif %}
 
                     <!-- Provider Info -->
                     <div class="bg-gray-50 dark:bg-muted border-2 border-gray-200 dark:border-border p-3 rounded-md">

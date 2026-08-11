@@ -20,6 +20,7 @@ import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IMetricsService } from '../../../di/interfaces/metrics-service.interface.js';
 import type { OIDCSocialContext } from '../../../types/session-data.js';
 import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
+import { SmsService } from '../../../services/sms.service.js';
 
 /**
  * OIDC Social Callback Handler
@@ -50,7 +51,8 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
     @inject(TYPES.AuthService) private readonly authService: IAuthService,
     @inject(TYPES.MfaUtils) private readonly mfaUtils: IMfaUtils,
     @inject(TYPES.MetricsService)
-    private readonly metricsService: IMetricsService
+    private readonly metricsService: IMetricsService,
+    @inject(TYPES.SmsService) private readonly smsService: SmsService
   ) {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
@@ -167,6 +169,58 @@ export class OIDCSocialCallbackHandler implements IOIDCSocialCallbackHandler {
           error: 'User not found after social authentication',
           redirectUrl: `${this.oidcPath}/interaction/${oidcContext.uid}`,
         });
+      }
+
+      const signupConfig =
+        this.configManager.getConfig().security.authentication.signup;
+      if (
+        signupConfig.require_phone_verification &&
+        result.user.phone_number &&
+        !result.user.phone_number_verified
+      ) {
+        const challenge =
+          await this.authService.generatePhoneVerificationChallenge(
+            result.user._id!.toString()
+          );
+        const delivery = await this.smsService.sendVerificationCode(
+          challenge.user.phone_number!,
+          challenge.code,
+          req.ip
+        );
+
+        // Preserve only the opaque oidc-provider interaction reference while
+        // the user proves phone possession. Provider callback state is no
+        // longer needed and must not remain reusable in the browser session.
+        this.sessionManager.set(req, 'phoneVerificationOidcContinuation', {
+          interactionUid: oidcContext.uid,
+          createdAt: Date.now(),
+        });
+        this.sessionManager.remove(req, 'oidcSocialContext');
+
+        if (delivery.success) {
+          this.sessionManager
+            .flash(req)
+            .success('A verification code has been sent to your phone.');
+        } else {
+          this.logger.warn(
+            'OIDC social phone verification SMS delivery failed',
+            {
+              userId: result.user._id,
+              error: delivery.error,
+            }
+          );
+          this.sessionManager
+            .flash(req)
+            .error(
+              'We could not send the verification code. Please try resending it.'
+            );
+        }
+
+        const config = this.configManager.getConfig();
+        const verificationPath = `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.phone_verification}`;
+        return res.redirect(
+          `${verificationPath}?token=${encodeURIComponent(challenge.verificationToken)}`
+        );
       }
 
       const userAccount = {

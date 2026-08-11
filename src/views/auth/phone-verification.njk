@@ -1,0 +1,60 @@
+{% extends "layouts/auth-layout.njk" %}
+
+{% block auth_content %}
+<div class="flex justify-center mb-3">
+  {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+  {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
+</div>
+
+<h1 class="auth-heading text-center font-bold text-primary text-xl sm:text-2xl mb-3">
+  Verify your phone
+</h1>
+<p class="text-center text-sm text-muted-foreground mb-6">
+  Enter the six-digit code sent to your phone number.
+</p>
+
+{% if error %}
+<div role="alert" class="border-2 border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-950 p-4 mb-4 text-sm text-red-800 dark:text-red-200">
+  {{ error }}
+</div>
+{% endif %}
+
+{% if token %}
+<form action="{{ phoneVerificationPath }}" method="POST" class="space-y-4">
+  <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+  <input type="hidden" name="token" value="{{ token }}" />
+  <div class="space-y-2">
+    <label for="code" class="block text-sm font-semibold text-foreground">
+      Verification code
+    </label>
+    <input
+      id="code"
+      name="code"
+      type="text"
+      inputmode="numeric"
+      autocomplete="one-time-code"
+      pattern="[0-9]{6}"
+      minlength="6"
+      maxlength="6"
+      required
+      class="auth-input w-full h-12 border-2 border-border bg-background px-3 text-center text-xl tracking-widest font-mono focus:outline-none focus:border-primary"
+    />
+  </div>
+  <button type="submit" class="auth-btn w-full h-10 bg-primary text-primary-foreground font-semibold border-2 border-transparent focus:outline-none focus:border-foreground">
+    Verify phone
+  </button>
+</form>
+
+<form action="{{ phoneVerificationPath }}/resend" method="POST" class="mt-3">
+  <input type="hidden" name="_csrf" value="{{ csrfToken }}" />
+  <input type="hidden" name="token" value="{{ token }}" />
+  <button type="submit" class="w-full h-10 border-2 border-border bg-background text-foreground font-semibold hover:border-primary focus:outline-none focus:border-primary">
+    Resend code
+  </button>
+</form>
+{% else %}
+<a href="{{ routes.authFull.login }}" class="auth-btn flex items-center justify-center w-full h-10 bg-primary text-primary-foreground font-semibold border-2 border-transparent focus:outline-none focus:border-foreground">
+  Return to sign in
+</a>
+{% endif %}
+{% endblock %}

@@ -18,6 +18,11 @@
       <div class="flex justify-center mb-6">
         <img src="{{ qrDataUri }}" alt="QR Code" class="h-48 w-48" />
       </div>
+
+      <div class="mb-6 border border-border bg-muted/50 p-4 text-center">
+        <p class="mb-2 text-sm text-muted-foreground">{{ t('auth.setup_mfa.manual_key_description', 'Cannot scan the QR code? Enter this setup key manually:') }}</p>
+        <code id="manual-setup-key" class="block break-all font-mono text-sm font-semibold text-foreground" aria-label="{{ t('auth.setup_mfa.manual_key_label', 'Manual authenticator setup key') }}">{{ totpSecret }}</code>
+      </div>
     {% endif %}
 
     <form action="{{ routes.accountFull.setup_mfa }}{% if method == 'email' %}?method=email{% endif %}" method="POST" class="space-y-4">

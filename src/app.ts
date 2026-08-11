@@ -33,6 +33,7 @@ import { createMediaFileRoutes } from './routes/media.js';
 import { HARDENING } from './config/hardening-defaults.js';
 import { varyHeadersMiddleware } from './middlewares/vary-headers.middleware.js';
 import { createPrecompressedStaticMiddleware } from './middlewares/precompressed-static.middleware.js';
+import { setStaticAssetCacheHeaders } from './middlewares/static-cache-policy.js';
 import { isShuttingDown } from './utils/shutdown.js';
 import { createHtmlErrorHandler } from './middlewares/html-error-handler.middleware.js';
 
@@ -588,14 +589,7 @@ export class Application implements IApplication {
         maxAge: this.isProduction ? HARDENING.static.maxAge : 0,
         immutable: this.isProduction && HARDENING.static.immutable,
         etag: true,
-        setHeaders: (res, filePath) => {
-          if (
-            filePath.endsWith(`${path.sep}manifest.json`) ||
-            filePath.endsWith(`${path.sep}service-worker.js`)
-          ) {
-            res.setHeader('Cache-Control', 'public, no-cache');
-          }
-        },
+        setHeaders: setStaticAssetCacheHeaders,
       })
     );
 

@@ -113,6 +113,12 @@ export class FacebookSocialLogin
         };
       }
 
+      const callbackError = this.getVerifiedOAuthCallbackError(req);
+      if (callbackError) {
+        this.cleanupSocialLoginSession(req);
+        return { success: false, error: callbackError };
+      }
+
       const providerSessionData = stateVerification.sessionData!;
       const { code } = req.query;
 

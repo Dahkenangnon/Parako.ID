@@ -44,13 +44,19 @@ export interface UsersControllerDeps {
       password: string,
       options?: any
     ): Promise<any>;
+    changeUserPasswordByAuthorizedClient(
+      actorClientId: string,
+      userId: string,
+      password: string,
+      options?: any
+    ): Promise<any>;
   };
   activityService: {
     getUserActivities(userId: string, options?: any): Promise<any>;
   };
   oidcAdapter: {
     session: {
-      findSessionsByAccountId?(accountId: string): Promise<any[]>;
+      findByAccountId?(accountId: string): Promise<any[]>;
     };
   };
   logger: {
@@ -417,7 +423,9 @@ export class UsersController {
 
       const adminUsername = req.apiAuth?.client_id ?? 'api';
 
-      await this.authService.adminChangeUserPassword(
+      // Authentication and users:write scope authorization are enforced by
+      // the Management API route before this controller is invoked.
+      await this.authService.changeUserPasswordByAuthorizedClient(
         adminUsername,
         req.params.user_id,
         new_password
@@ -443,11 +451,15 @@ export class UsersController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const user = await this.userService.disableMfa(req.params.user_id);
+      const existingUser = await this.userService.findById(req.params.user_id);
 
-      if (!user) {
+      if (!existingUser) {
         throw notFound(`User '${req.params.user_id}' not found`);
       }
+
+      // UserService MFA operations use the stable OIDC account identifier
+      // (username), while Management API resources are addressed by DB ID.
+      await this.userService.disableMfa(existingUser.username);
 
       this.logger.info('User MFA reset via API', {
         user_id: req.params.user_id,
@@ -541,14 +553,12 @@ export class UsersController {
 
       const sessionAdapter = this.oidcAdapter.session;
 
-      if (!sessionAdapter.findSessionsByAccountId) {
+      if (!sessionAdapter.findByAccountId) {
         apiSuccess(res, []);
         return;
       }
 
-      const sessions = await sessionAdapter.findSessionsByAccountId(
-        req.params.user_id
-      );
+      const sessions = await sessionAdapter.findByAccountId(user.username);
 
       apiSuccess(res, sessions ?? []);
     } catch (error) {

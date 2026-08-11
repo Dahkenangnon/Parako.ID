@@ -21,6 +21,7 @@ import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import { TYPES } from '../di/types.js';
 import { PrismaSessionStore } from './prisma-session-store.js';
+import { createTenantSessionId } from './session-id.js';
 import { encryptValue, decryptValue, isEncrypted } from './encryption.js';
 import { createConnectRedisClientAdapter } from './connect-redis-client.js';
 import {
@@ -945,7 +946,7 @@ export interface SessionManagerOptions {
   /** MongoDB collection name for sessions (only used when OIDC adapter is MongoDB) */
   collection?: string;
   /** Custom session ID generator function */
-  sessionIdGenerator?: () => string;
+  sessionIdGenerator?: (request?: Request) => string;
 }
 
 /**
@@ -1162,6 +1163,61 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Resolve enough tenant identity to create a tenant-scoped session ID.
+   *
+   * This deliberately mirrors the configured header/subdomain extraction used
+   * by TenantContextMiddleware, but does not authorize the tenant. The complete
+   * ID is signed by express-session, and the middleware still validates tenant
+   * existence and status before any application route runs.
+   */
+  private resolveNewSessionTenantId(request?: Request): string {
+    const multiTenancy = this.configManager.getConfig().features?.multi_tenancy;
+    if (!multiTenancy?.enabled || !request) {
+      return DEFAULT_TENANT_ID;
+    }
+
+    let candidate = DEFAULT_TENANT_ID;
+    for (const source of multiTenancy.extraction_priority ?? []) {
+      if (source === 'header') {
+        const headerName = multiTenancy.tenant_header || 'x-tenant-id';
+        const value = request.headers?.[headerName];
+        if (typeof value === 'string' && value.length > 0) {
+          candidate = value;
+          break;
+        }
+      }
+
+      if (source === 'subdomain' && typeof request.hostname === 'string') {
+        const parts = request.hostname.split('.');
+        if (parts.length >= 3) {
+          candidate = parts[0];
+          break;
+        }
+      }
+    }
+
+    try {
+      createTenantSessionId(candidate, 'validation');
+      return candidate;
+    } catch {
+      return DEFAULT_TENANT_ID;
+    }
+  }
+
+  private generateSessionId(request?: Request): string {
+    const randomComponent = this.options.sessionIdGenerator!(request);
+    const multiTenancy = this.configManager.getConfig().features?.multi_tenancy;
+    if (!multiTenancy?.enabled) {
+      return randomComponent;
+    }
+
+    return createTenantSessionId(
+      this.resolveNewSessionTenantId(request),
+      randomComponent
+    );
+  }
+
+  /**
    * Initialize the session manager and attach middleware to Express app
    *
    * @param app - Express application instance
@@ -1182,6 +1238,7 @@ export class SessionManager implements ISessionManager {
 
     if (app && this.sessionMiddleware) {
       app.use(this.sessionMiddleware);
+      app.use(this.redirectAfterSessionSaveMiddleware());
       this.logger.info(
         `Session middleware configured with ${this.options.storeType} store`
       );
@@ -2562,6 +2619,47 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Hold redirects until the current session has reached its backing store.
+   *
+   * express-session normally saves from its res.end() wrapper. That wrapper
+   * may write response headers before an asynchronous store callback returns,
+   * allowing a browser to follow a Location header and read stale session
+   * state. Persisting first prevents flash messages and authentication changes
+   * from being lost when database-backed stores have non-trivial latency.
+   */
+  private redirectAfterSessionSaveMiddleware(): (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => void {
+    return (req: Request, res: Response, next: NextFunction): void => {
+      const originalRedirect = res.redirect.bind(res);
+
+      res.redirect = ((...args: unknown[]): Response => {
+        const performRedirect = (): Response =>
+          Reflect.apply(originalRedirect, res, args) as Response;
+
+        if (!req.session || typeof req.session.save !== 'function') {
+          return performRedirect();
+        }
+
+        req.session.save(error => {
+          if (error) {
+            next(error);
+            return;
+          }
+
+          performRedirect();
+        });
+
+        return res;
+      }) as Response['redirect'];
+
+      next();
+    };
+  }
+
+  /**
    * Configure the Express session middleware
    */
   private setupMiddleware(): void {
@@ -2574,7 +2672,7 @@ export class SessionManager implements ISessionManager {
       saveUninitialized: this.options.saveUninitialized,
       proxy: this.options.proxy,
       store: this.store,
-      genid: this.options.sessionIdGenerator,
+      genid: request => this.generateSessionId(request),
     };
 
     this.sessionMiddleware = session(sessionOptions);

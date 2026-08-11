@@ -37,6 +37,15 @@ export interface AddAccountIntent {
 }
 
 /**
+ * Explicit request to link a social provider to the active local account.
+ * Stored under key: 'linkSocialAccountIntent'
+ */
+export interface LinkSocialAccountIntent {
+  provider: SocialProvider;
+  returnUrl: string;
+}
+
+/**
  * Type for recovery attempt stored in session
  * Stored under key: 'recoveryAttempt'
  */
@@ -63,6 +72,15 @@ export interface OIDCSocialContext {
   timestamp: number;
   uid: string;
   client_id: string;
+}
+
+/**
+ * OIDC interaction resumed after a user proves possession of their phone.
+ * Stored under key: 'phoneVerificationOidcContinuation'
+ */
+export interface PhoneVerificationOIDCContinuation {
+  interactionUid: string;
+  createdAt: number;
 }
 
 /**

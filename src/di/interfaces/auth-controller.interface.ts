@@ -39,6 +39,9 @@ export interface IAuthController {
   resendEmailVerification(req: Request, res: Response): Promise<void>;
   verifyEmail(req: Request, res: Response): Promise<void>;
   emailVerificationSuccess(req: Request, res: Response): void;
+  phoneVerification(req: Request, res: Response): void;
+  processPhoneVerification(req: Request, res: Response): Promise<void>;
+  resendPhoneVerification(req: Request, res: Response): Promise<void>;
 
   accountRecovery(req: Request, res: Response): void;
   processAccountRecovery(req: Request, res: Response): Promise<void>;

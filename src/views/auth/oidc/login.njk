@@ -172,7 +172,7 @@
     "autoDetectIdentifier": true,
     "oidcPath": {{ oidc.path | tojson | safe }},
     "uid": {{ uid | tojson | safe }},
-    "clientId": {{ client_id | tojson | safe }},
+    "clientId": {{ clientId | tojson | safe }},
     "prompt": {{ prompt | tojson | safe }},
     "acrValues": {{ acr_values | tojson | safe }},
     "debug": {{ (app.env === 'development') | tojson }},

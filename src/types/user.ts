@@ -5,6 +5,9 @@ export type Gender = 'M' | 'F';
 export type RegisterWith =
   | 'email'
   | 'phone_number'
+  | 'custom_identifier_1'
+  | 'custom_identifier_2'
+  | 'custom_identifier_3'
   | 'github'
   | 'google'
   | 'facebook'
@@ -28,6 +31,9 @@ export type AuthProvider =
 export const RegisterWithValues: readonly RegisterWith[] = Object.freeze([
   'email',
   'phone_number',
+  'custom_identifier_1',
+  'custom_identifier_2',
+  'custom_identifier_3',
   'github',
   'google',
   'facebook',
@@ -182,6 +188,9 @@ export interface IUser extends IBaseModel {
   reset_password_expires?: Date | null;
   email_verification_token?: string | null;
   email_verification_expires?: Date | null;
+  phone_verification_token?: string | null;
+  phone_verification_code?: string | null;
+  phone_verification_expires?: Date | null;
   blocked_from: string[];
   account_is_anonymized: boolean;
   register_with: RegisterWith;

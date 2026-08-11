@@ -22,21 +22,8 @@ import {
   AbstractPrismaRepository,
   normalizeToPrisma,
 } from './base.repository.js';
-
-function computeName(
-  givenName: string | null | undefined,
-  familyName: string | null | undefined,
-  customIdentifier1: string | null | undefined,
-  storedName: string | null | undefined
-): string | undefined {
-  const given = givenName?.trim() || '';
-  const family = familyName?.trim() || '';
-  if (given && family) return `${given} ${family}`;
-  if (given) return given;
-  if (family) return family;
-  // Fall back to whatever is stored, then custom_identifier_1
-  return storedName?.trim() || customIdentifier1?.trim() || undefined;
-}
+import { computeUserName } from '../user-name.js';
+import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
 
 /**
  * User roles are stored as a JSON-encoded string in both Prisma schemas.
@@ -116,11 +103,19 @@ function toIUser(row: UserFull): IUser {
                 verified_at: row.mfa_totp.verified_at ?? undefined,
               }
             : undefined,
-          email: row.mfa_email_otp ? { enabled: true } : undefined,
+          email: row.mfa_email_otp
+            ? {
+                enabled: row.mfa_email_otp.enabled,
+                verified_at: row.mfa_email_otp.verified_at ?? undefined,
+              }
+            : undefined,
           webauthn:
-            row.webauthn_credentials.length > 0
+            row.mfa?.webauthn_enabled || row.webauthn_credentials.length > 0
               ? {
-                  enabled: true,
+                  enabled:
+                    row.mfa?.webauthn_enabled ??
+                    row.webauthn_credentials.length > 0,
+                  verified_at: row.mfa?.webauthn_verified_at ?? undefined,
                   credentials: row.webauthn_credentials.map(c => ({
                     credential_id: c.credential_id,
                     credential_public_key: c.public_key,
@@ -133,7 +128,8 @@ function toIUser(row: UserFull): IUser {
                       c.transports
                     ) as WebAuthnCredential['transports'],
                     created_at: c.created_at,
-                    friendly_name: c.credential_id,
+                    friendly_name: c.friendly_name,
+                    last_used_at: c.last_used_at ?? undefined,
                   })),
                 }
               : undefined,
@@ -215,7 +211,7 @@ function toIUser(row: UserFull): IUser {
     sub: row.sub ?? undefined,
     given_name: row.given_name ?? undefined,
     family_name: row.family_name ?? undefined,
-    name: computeName(
+    name: computeUserName(
       row.given_name,
       row.family_name,
       row.custom_identifier_1,
@@ -251,6 +247,9 @@ function toIUser(row: UserFull): IUser {
     reset_password_expires: row.reset_password_expires ?? undefined,
     email_verification_token: row.email_verification_token ?? undefined,
     email_verification_expires: row.email_verification_expires ?? undefined,
+    phone_verification_token: row.phone_verification_token ?? undefined,
+    phone_verification_code: row.phone_verification_code ?? undefined,
+    phone_verification_expires: row.phone_verification_expires ?? undefined,
     blocked_from: JSON.parse(row.blocked_from) as string[],
     account_is_anonymized: row.account_is_anonymized,
     register_with: row.register_with as IUser['register_with'],
@@ -339,7 +338,7 @@ export class PrismaUserRepository
         given_name: data.given_name ?? null,
         family_name: data.family_name ?? null,
         name:
-          computeName(
+          computeUserName(
             data.given_name,
             data.family_name,
             data.custom_identifier_1,
@@ -375,6 +374,9 @@ export class PrismaUserRepository
         reset_password_expires: data.reset_password_expires ?? null,
         email_verification_token: data.email_verification_token ?? null,
         email_verification_expires: data.email_verification_expires ?? null,
+        phone_verification_token: data.phone_verification_token ?? null,
+        phone_verification_code: data.phone_verification_code ?? null,
+        phone_verification_expires: data.phone_verification_expires ?? null,
         blocked_from: JSON.stringify(data.blocked_from ?? []),
         account_is_anonymized: data.account_is_anonymized ?? false,
         register_with: data.register_with ?? 'email',
@@ -385,6 +387,9 @@ export class PrismaUserRepository
               create: {
                 enabled: data.mfa.enabled,
                 preferred_method: data.mfa.preferred_method ?? null,
+                webauthn_enabled: data.mfa.methods?.webauthn?.enabled ?? false,
+                webauthn_verified_at:
+                  data.mfa.methods?.webauthn?.verified_at ?? null,
               },
             }
           : undefined,
@@ -397,14 +402,17 @@ export class PrismaUserRepository
               },
             }
           : undefined,
-        mfa_email_otp: data.mfa?.email_otp
-          ? {
-              create: {
-                otp_hash: data.mfa.email_otp.hash,
-                expires_at: data.mfa.email_otp.expires,
-              },
-            }
-          : undefined,
+        mfa_email_otp:
+          data.mfa?.methods?.email || data.mfa?.email_otp
+            ? {
+                create: {
+                  enabled: data.mfa.methods?.email?.enabled ?? false,
+                  verified_at: data.mfa.methods?.email?.verified_at ?? null,
+                  otp_hash: data.mfa.email_otp?.hash ?? null,
+                  expires_at: data.mfa.email_otp?.expires ?? null,
+                },
+              }
+            : undefined,
         webauthn_credentials: data.mfa?.methods?.webauthn?.credentials?.length
           ? {
               create: data.mfa.methods.webauthn.credentials.map(c => ({
@@ -414,12 +422,16 @@ export class PrismaUserRepository
                 device_type: c.device_type ?? null,
                 backed_up: c.backed_up,
                 transports: JSON.stringify(c.transports ?? []),
+                created_at: c.created_at,
+                last_used_at: c.last_used_at ?? null,
+                friendly_name: c.friendly_name || c.credential_id,
               })),
             }
           : undefined,
         recovery: data.recovery
           ? {
               create: {
+                tenant_id: tenantContext.getTenantId(),
                 enabled: data.recovery.enabled,
                 methods: JSON.stringify(data.recovery.methods),
                 secondary_email: data.recovery.secondary_email?.email ?? null,
@@ -498,7 +510,7 @@ export class PrismaUserRepository
       data.name !== undefined
     ) {
       updateData.name =
-        computeName(
+        computeUserName(
           data.given_name,
           data.family_name,
           data.custom_identifier_1,
@@ -540,6 +552,14 @@ export class PrismaUserRepository
     if (data.email_verification_expires !== undefined)
       updateData.email_verification_expires =
         data.email_verification_expires ?? null;
+    if (data.phone_verification_token !== undefined)
+      updateData.phone_verification_token =
+        data.phone_verification_token ?? null;
+    if (data.phone_verification_code !== undefined)
+      updateData.phone_verification_code = data.phone_verification_code ?? null;
+    if (data.phone_verification_expires !== undefined)
+      updateData.phone_verification_expires =
+        data.phone_verification_expires ?? null;
     if (data.picture !== undefined) updateData.picture = data.picture ?? null;
     if (data.locale !== undefined) updateData.locale = data.locale ?? null;
     if (data.country !== undefined) updateData.country = data.country ?? null;
@@ -573,6 +593,144 @@ export class PrismaUserRepository
       updateData.custom_identifier_2 = data.custom_identifier_2 ?? null;
     if (data.custom_identifier_3 !== undefined)
       updateData.custom_identifier_3 = data.custom_identifier_3 ?? null;
+    if (data.mfa !== undefined) {
+      const mfa = data.mfa;
+      const webauthn = mfa.methods?.webauthn;
+      const mfaRow = {
+        enabled: mfa.enabled,
+        preferred_method: mfa.preferred_method ?? null,
+        webauthn_enabled: webauthn?.enabled ?? false,
+        webauthn_verified_at: webauthn?.verified_at ?? null,
+      };
+      updateData.mfa = {
+        upsert: {
+          create: mfaRow,
+          update: mfaRow,
+        },
+      };
+
+      const totp = mfa.methods?.totp;
+      if (totp !== undefined) {
+        const totpRow = {
+          enabled: totp.enabled,
+          secret: totp.secret ?? null,
+          verified_at: totp.verified_at ?? null,
+        };
+        updateData.mfa_totp = {
+          upsert: {
+            create: totpRow,
+            update: totpRow,
+          },
+        };
+      }
+
+      const email = mfa.methods?.email;
+      if (email !== undefined || mfa.email_otp !== undefined) {
+        const emailRow = {
+          enabled: email?.enabled ?? false,
+          verified_at: email?.verified_at ?? null,
+          otp_hash: mfa.email_otp?.hash ?? null,
+          expires_at: mfa.email_otp?.expires ?? null,
+        };
+        updateData.mfa_email_otp = {
+          upsert: {
+            create: emailRow,
+            update: emailRow,
+          },
+        };
+      }
+
+      if (webauthn !== undefined) {
+        updateData.webauthn_credentials = {
+          deleteMany: {},
+          ...(webauthn.credentials?.length
+            ? {
+                create: webauthn.credentials.map(credential => ({
+                  credential_id: credential.credential_id,
+                  public_key: credential.credential_public_key,
+                  counter: credential.counter,
+                  device_type: credential.device_type ?? null,
+                  backed_up: credential.backed_up,
+                  transports: JSON.stringify(credential.transports ?? []),
+                  created_at: credential.created_at,
+                  last_used_at: credential.last_used_at ?? null,
+                  friendly_name:
+                    credential.friendly_name || credential.credential_id,
+                })),
+              }
+            : {}),
+        };
+      }
+    }
+    if (data.notification_preferences !== undefined) {
+      const preferences = {
+        preferred_channel: data.notification_preferences.preferred_channel,
+        security_alerts: data.notification_preferences.security_alerts,
+        new_session_alerts: data.notification_preferences.new_session_alerts,
+        marketing: data.notification_preferences.marketing,
+      };
+      updateData.notification_prefs = {
+        upsert: {
+          create: preferences,
+          update: preferences,
+        },
+      };
+    }
+    if (data.recovery !== undefined) {
+      const recovery = data.recovery;
+      const recoveryRow = {
+        enabled: recovery.enabled,
+        methods: JSON.stringify(recovery.methods),
+        secondary_email: recovery.secondary_email?.email ?? null,
+        secondary_email_verified: recovery.secondary_email?.verified ?? false,
+        secondary_email_token:
+          recovery.secondary_email?.verification_token ?? null,
+        secondary_email_token_exp:
+          recovery.secondary_email?.verification_expires ?? null,
+        sms_phone_number: recovery.sms?.phone_number ?? null,
+        sms_verified: recovery.sms?.verified ?? false,
+        sms_code: recovery.sms?.verification_code ?? null,
+        sms_code_exp: recovery.sms?.verification_expires ?? null,
+        backup_codes_generated_at: recovery.backup_codes?.generated_at ?? null,
+        backup_codes_expires_at: recovery.backup_codes?.expires_at ?? null,
+        sq_setup_at: recovery.security_questions?.setup_at ?? null,
+        sq_last_used_at: recovery.security_questions?.last_used_at ?? null,
+        sq_failed_attempts: recovery.security_questions?.failed_attempts ?? 0,
+        sq_last_failed_at: recovery.security_questions?.last_failed_at ?? null,
+        sq_locked_until: recovery.security_questions?.locked_until ?? null,
+      };
+      updateData.recovery = {
+        upsert: {
+          create: {
+            ...recoveryRow,
+            tenant_id: tenantContext.getTenantId(),
+          },
+          update: recoveryRow,
+        },
+      };
+      updateData.backup_codes = {
+        deleteMany: {},
+        ...(recovery.backup_codes?.codes.length
+          ? {
+              create: recovery.backup_codes.codes.map(code => ({
+                code_hash: code,
+                used: false,
+              })),
+            }
+          : {}),
+      };
+      updateData.security_questions = {
+        deleteMany: {},
+        ...(recovery.security_questions?.questions.length
+          ? {
+              create: recovery.security_questions.questions.map(question => ({
+                question_key: question.question_key,
+                answer_hash: question.answer_hash,
+              })),
+            }
+          : {}),
+      };
+    }
 
     const row = await this.prisma.user.update({
       where: { id },
@@ -623,18 +781,33 @@ export class PrismaUserRepository
   }
 
   async updateMfa(id: string, mfa: IUserMfaUpdate): Promise<void> {
-    if (mfa.enabled !== undefined || mfa.preferred_method !== undefined) {
+    const webauthn = mfa['methods.webauthn'];
+    if (
+      mfa.enabled !== undefined ||
+      mfa.preferred_method !== undefined ||
+      webauthn !== undefined
+    ) {
       await this.prisma.userMfa.upsert({
         where: { user_id: id },
         create: {
           user_id: id,
           enabled: mfa.enabled ?? false,
           preferred_method: mfa.preferred_method ?? null,
+          ...(webauthn !== undefined && {
+            webauthn_enabled: webauthn.enabled ?? false,
+            webauthn_verified_at: webauthn.verified_at ?? null,
+          }),
         },
         update: {
           ...(mfa.enabled !== undefined && { enabled: mfa.enabled }),
           ...(mfa.preferred_method !== undefined && {
             preferred_method: mfa.preferred_method,
+          }),
+          ...(webauthn?.enabled !== undefined && {
+            webauthn_enabled: webauthn.enabled,
+          }),
+          ...(webauthn?.verified_at !== undefined && {
+            webauthn_verified_at: webauthn.verified_at,
           }),
         },
       });
@@ -654,6 +827,23 @@ export class PrismaUserRepository
           ...(totp.secret !== undefined && { secret: totp.secret }),
           ...(totp.verified_at !== undefined && {
             verified_at: totp.verified_at,
+          }),
+        },
+      });
+    }
+    if (mfa['methods.email'] !== undefined) {
+      const email = mfa['methods.email'];
+      await this.prisma.userMfaEmailOtp.upsert({
+        where: { user_id: id },
+        create: {
+          user_id: id,
+          enabled: email.enabled ?? false,
+          verified_at: email.verified_at ?? null,
+        },
+        update: {
+          ...(email.enabled !== undefined && { enabled: email.enabled }),
+          ...(email.verified_at !== undefined && {
+            verified_at: email.verified_at,
           }),
         },
       });
@@ -688,6 +878,11 @@ export class PrismaUserRepository
         device_type: credential.device_type ?? null,
         backed_up: credential.backed_up ?? false,
         transports: JSON.stringify(credential.transports ?? []),
+        friendly_name: credential.friendly_name || credential.credential_id,
+        ...(credential.created_at !== undefined && {
+          created_at: credential.created_at,
+        }),
+        last_used_at: credential.last_used_at ?? null,
       },
     });
   }
@@ -760,7 +955,13 @@ export class PrismaUserRepository
   }
 
   async clearEmailOtp(id: string): Promise<void> {
-    await this.prisma.userMfaEmailOtp.deleteMany({ where: { user_id: id } });
+    // The same relational row stores durable email-MFA enablement and the
+    // short-lived challenge. Clear only the challenge so verification does
+    // not erase the method's configured state.
+    await this.prisma.userMfaEmailOtp.updateMany({
+      where: { user_id: id },
+      data: { otp_hash: null, expires_at: null },
+    });
   }
 
   async forcePasswordReset(id: string): Promise<void> {

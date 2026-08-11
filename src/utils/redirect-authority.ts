@@ -38,6 +38,27 @@ export interface RedirectValidationResult {
   reason?: string;
 }
 
+function appendQueryParameters(
+  baseUrl: string,
+  params: Record<string, string>
+): string {
+  const [urlWithoutFragment, ...fragmentParts] = baseUrl.split('#');
+  const fragment =
+    fragmentParts.length > 0 ? `#${fragmentParts.join('#')}` : '';
+  const separator = urlWithoutFragment.includes('?') ? '&' : '?';
+  const queryString = Object.entries(params)
+    .filter(([key, value]) => key && value !== undefined && value !== null)
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
+    )
+    .join('&');
+
+  return queryString
+    ? `${urlWithoutFragment}${separator}${queryString}${fragment}`
+    : baseUrl;
+}
+
 /**
  * Fluent redirect builder for secure redirects
  */
@@ -45,6 +66,7 @@ export class RedirectBuilder {
   private response: Response;
   private redirectAuthority: RedirectAuthority;
   private validationOptions: RedirectValidationOptions;
+  private redirectStarted = false;
 
   constructor(
     response: Response,
@@ -72,6 +94,7 @@ export class RedirectBuilder {
     );
 
     if (validation.isValid && validation.url) {
+      this.redirectStarted = true;
       this.response.redirect(validation.url);
     }
 
@@ -84,7 +107,8 @@ export class RedirectBuilder {
    * @returns RedirectBuilder for method chaining
    */
   or(fallbackUrl: string): RedirectBuilder {
-    if (!this.response.headersSent) {
+    if (!this.redirectStarted && !this.response.headersSent) {
+      this.redirectStarted = true;
       this.response.redirect(fallbackUrl);
     }
 
@@ -892,6 +916,13 @@ export default class RedirectAuthority implements IRedirectAuthority {
       return '';
     }
 
+    // Local paths are valid redirect targets. Handle them directly instead of
+    // deliberately throwing in URL(), which would misreport normal navigation
+    // as an application error.
+    if (baseUrl.startsWith('/') && !baseUrl.startsWith('//')) {
+      return appendQueryParameters(baseUrl, params);
+    }
+
     try {
       const url = new URL(baseUrl);
 
@@ -907,17 +938,8 @@ export default class RedirectAuthority implements IRedirectAuthority {
         baseUrl,
         params,
       });
-      // If URL parsing fails, fall back to simple string concatenation
-      const separator = baseUrl.includes('?') ? '&' : '?';
-      const queryString = Object.entries(params)
-        .filter(([key, value]) => key && value !== undefined && value !== null)
-        .map(
-          ([key, value]) =>
-            `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
-        )
-        .join('&');
-
-      return queryString ? `${baseUrl}${separator}${queryString}` : baseUrl;
+      // Preserve the historical best-effort behavior for malformed inputs.
+      return appendQueryParameters(baseUrl, params);
     }
   }
 

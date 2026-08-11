@@ -37,6 +37,7 @@ export interface ViewKeys {
     email_verification: string;
     verify_email: string;
     email_verification_success: string;
+    phone_verification: string;
     account_select: string;
     continue: string;
     multi_factor: string;
@@ -343,6 +344,7 @@ export class ViewResolver implements IViewResolver {
       'auth.email_verification': 'auth/email-verification',
       'auth.verify_email': 'auth/verify-email',
       'auth.email_verification_success': 'auth/email-verification-success',
+      'auth.phone_verification': 'auth/phone-verification',
       'auth.account_select': 'auth/account-select',
       'auth.continue': 'auth/continue',
       'auth.multi_factor': 'auth/multi-factor',
@@ -444,6 +446,7 @@ export class ViewResolver implements IViewResolver {
         email_verification_success: this.ensureViewExtension(
           'auth/email-verification-success'
         ),
+        phone_verification: this.ensureViewExtension('auth/phone-verification'),
         account_select: this.ensureViewExtension('auth/account-select'),
         continue: this.ensureViewExtension('auth/continue'),
         multi_factor: this.ensureViewExtension('auth/multi-factor'),

@@ -32,6 +32,8 @@
     icon?: string;
   }
 
+  let dialogIdSequence = 0;
+
   /**
    * Get icon and colors based on dialog variant
    */
@@ -78,6 +80,9 @@
     const { variant = 'info', buttonText = 'OK', icon } = options;
     const config = getVariantConfig(variant);
     const iconName = icon || config.icon;
+    const dialogId = ++dialogIdSequence;
+    const titleId = `dialog-title-${dialogId}`;
+    const messageId = `dialog-message-${dialogId}`;
 
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
@@ -89,6 +94,10 @@
       modal.className =
         'bg-background border border-border rounded-lg shadow-lg max-w-md w-full';
       modal.style.animation = 'slideIn 0.2s ease-out';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', titleId);
+      modal.setAttribute('aria-describedby', messageId);
 
       const header = document.createElement('div');
       header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -102,6 +111,7 @@
       iconContainer.appendChild(iconElement);
 
       const titleElement = document.createElement('h3');
+      titleElement.setAttribute('id', titleId);
       titleElement.className = 'font-semibold text-lg text-foreground flex-1';
       titleElement.textContent = title;
 
@@ -112,6 +122,7 @@
       body.className = 'px-6 pb-4';
 
       const messageElement = document.createElement('p');
+      messageElement.setAttribute('id', messageId);
       messageElement.className =
         'text-sm text-muted-foreground whitespace-pre-line';
       messageElement.textContent = message;
@@ -182,6 +193,9 @@
     } = options;
     const config = getVariantConfig(variant);
     const iconName = icon || config.icon;
+    const dialogId = ++dialogIdSequence;
+    const titleId = `dialog-title-${dialogId}`;
+    const messageId = `dialog-message-${dialogId}`;
 
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
@@ -193,6 +207,10 @@
       modal.className =
         'bg-background border border-border rounded-lg shadow-lg max-w-md w-full';
       modal.style.animation = 'slideIn 0.2s ease-out';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', titleId);
+      modal.setAttribute('aria-describedby', messageId);
 
       const header = document.createElement('div');
       header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -206,6 +224,7 @@
       iconContainer.appendChild(iconElement);
 
       const titleElement = document.createElement('h3');
+      titleElement.setAttribute('id', titleId);
       titleElement.className = 'font-semibold text-lg text-foreground flex-1';
       titleElement.textContent = title;
 
@@ -216,6 +235,7 @@
       body.className = 'px-6 pb-4';
 
       const messageElement = document.createElement('p');
+      messageElement.setAttribute('id', messageId);
       messageElement.className =
         'text-sm text-muted-foreground whitespace-pre-line';
       messageElement.textContent = message;

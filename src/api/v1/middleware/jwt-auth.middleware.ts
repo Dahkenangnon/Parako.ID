@@ -258,11 +258,17 @@ export function createJwtAuthMiddleware(
     const scopes = apiAuth.scope.split(' ').filter(Boolean);
     const hasPlatformScope = scopes.some(s => isPlatformOnlyScope(s));
 
-    if (hasPlatformScope && !apiAuth.iss.endsWith('/_platforms')) {
+    // Tenant context is resolved and validated before the Management API is
+    // reached. Use that authoritative context instead of parsing the issuer:
+    // platform issuers may be subdomain-based, custom-domain based, or
+    // explicitly configured, and issuer-string matching is both brittle and
+    // spoofable.
+    if (hasPlatformScope && tenantId !== '_platforms') {
       logger.warn('Non-platform issuer attempted platform-only scope', {
         client_id: apiAuth.client_id,
         scopes: apiAuth.scope,
         issuer: apiAuth.iss,
+        tenantId,
       });
       sendProblem(
         res,

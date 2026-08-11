@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 import type { Request, Response, NextFunction } from 'express';
 import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
@@ -17,6 +19,14 @@ import {
  * Must start with a letter or digit.
  */
 const TENANT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
+
+function isIpHostname(hostname: string): boolean {
+  const normalized =
+    hostname.startsWith('[') && hostname.endsWith(']')
+      ? hostname.slice(1, -1)
+      : hostname;
+  return isIP(normalized) !== 0;
+}
 
 /**
  * Express middleware that extracts the tenant identity from the incoming
@@ -193,7 +203,9 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
    * e.g. "acme.parako.test" → "acme", "parako.test" → undefined
    */
   private extractSubdomain(req: Request): string | undefined {
-    const parts = req.hostname.split('.');
+    const hostname = req.hostname;
+    if (isIpHostname(hostname)) return undefined;
+    const parts = hostname.split('.');
     return parts.length >= 3 ? parts[0] : undefined;
   }
 
@@ -217,10 +229,8 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
           break;
         }
         case 'subdomain': {
-          const host = req.hostname;
-          const parts = host.split('.');
-          // Need at least 3 parts for a subdomain (e.g., acme.parako.id)
-          if (parts.length >= 3) return parts[0];
+          const subdomain = this.extractSubdomain(req);
+          if (subdomain) return subdomain;
           break;
         }
       }

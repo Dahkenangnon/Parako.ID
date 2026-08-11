@@ -53,14 +53,36 @@ export class WebAuthnController implements IWebAuthnController {
   /**
    * Get origin for WebAuthn operations
    */
-  private getOrigin(): string {
+  private getOrigin(req: Request): string {
     const config = this.configManager.getConfig();
-    if (config.deployment?.url) {
-      return new URL(config.deployment.url).origin;
-    }
-    // Fallback to rpId
     const rpId = config.security?.authentication?.multi_factor?.webauthn?.rp_id;
-    return `https://${rpId}`;
+    const configuredOrigin = config.deployment?.url
+      ? new URL(config.deployment.url).origin
+      : `https://${rpId}`;
+    const requestHost =
+      typeof req.get === 'function' ? req.get('host') : undefined;
+    if (!requestHost || !rpId) return configuredOrigin;
+
+    try {
+      const requestOrigin = new URL(`${req.protocol}://${requestHost}`);
+      const configuredUrl = new URL(configuredOrigin);
+      const hostname = requestOrigin.hostname.toLowerCase();
+      const normalizedRpId = rpId.toLowerCase().replace(/\.$/, '');
+      const isMultiTenant = config.features?.multi_tenancy?.enabled === true;
+      const isAllowedHost =
+        hostname === normalizedRpId ||
+        (isMultiTenant && hostname.endsWith(`.${normalizedRpId}`));
+
+      // WebAuthn validates the exact client origin. Tenant subdomains are safe
+      // only when they remain under the configured RP ID and use its scheme.
+      if (isAllowedHost && requestOrigin.protocol === configuredUrl.protocol) {
+        return requestOrigin.origin;
+      }
+    } catch {
+      // Malformed request hosts fall back to the configured trusted origin.
+    }
+
+    return configuredOrigin;
   }
 
   /**
@@ -246,7 +268,7 @@ export class WebAuthnController implements IWebAuthnController {
         user.username,
         credential,
         challenge,
-        this.getOrigin()
+        this.getOrigin(req)
       );
 
       if (!result.verified || !result.credential) {
@@ -622,7 +644,7 @@ export class WebAuthnController implements IWebAuthnController {
         matchingCredential,
         credential,
         challenge,
-        this.getOrigin()
+        this.getOrigin(req)
       );
 
       if (result.verified && result.newCounter !== undefined) {
@@ -722,7 +744,12 @@ export class WebAuthnController implements IWebAuthnController {
         );
       }
 
-      this.sessionManager.addAuthenticatedUser(req, newUserAccount, true);
+      // Session regeneration discards the prior authentication marker. Restore
+      // the complete authenticated state; merely adding an account leaves the
+      // next protected request unauthenticated.
+      this.sessionManager.setAuthenticated(req, {
+        currentActiveLoggedUser: newUserAccount,
+      });
 
       this.sessionManager.remove(req, 'pendingMfaUser');
       this.sessionManager.remove(req, 'pendingSocialMfaUser');

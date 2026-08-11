@@ -18,6 +18,7 @@ import type {
 import { AbstractMongooseRepository } from './base.repository.js';
 import { serializeDocument } from '../../utils.js';
 import crypto from 'node:crypto';
+import { computeUserName } from '../user-name.js';
 
 @injectable()
 export class MongooseUserRepository
@@ -26,6 +27,27 @@ export class MongooseUserRepository
 {
   constructor(private readonly userModel: UserModel) {
     super(userModel);
+  }
+
+  async update(id: string, data: UpdateUserDto): Promise<IUser> {
+    const update = { ...data };
+
+    // findByIdAndUpdate does not run the schema's pre-save hook. Materialize
+    // the derived name here so MongoDB and Prisma expose the same profile.
+    if (
+      data.given_name !== undefined ||
+      data.family_name !== undefined ||
+      data.name !== undefined
+    ) {
+      update.name = computeUserName(
+        data.given_name,
+        data.family_name,
+        data.custom_identifier_1,
+        data.name
+      );
+    }
+
+    return super.update(id, update);
   }
 
   async findByEmail(email: string): Promise<IUser | null> {

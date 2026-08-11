@@ -69,6 +69,8 @@ export function createHtmlErrorHandler(
       url: req.originalUrl,
       method: req.method,
       ip: req.ip,
+      errorName: error.name,
+      errorMessage: error.message,
       context: 'html_unhandled_error',
     });
 

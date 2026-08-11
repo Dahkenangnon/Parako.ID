@@ -9,6 +9,7 @@ export type AdapterFactory = (modelName: string) => BaseOIDCAdapter;
 export interface IOIDCAdapterBridge {
   initialize(): Promise<void>;
   get adapter(): AdapterFactory;
+  adapterForTenant(tenantId: string): AdapterFactory;
   get session():
     MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService;
   get grant():

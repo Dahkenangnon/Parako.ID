@@ -71,7 +71,7 @@
         'enable-mfa-email-form'
       ) as HTMLFormElement;
       this.disableMfaForms = document.querySelectorAll(
-        'form[action*="disable_mfa"]'
+        'form[data-mfa-disable-method]'
       ) as NodeListOf<HTMLFormElement>;
 
       this.setupMethodHandlers();
@@ -128,13 +128,19 @@
       if (this.disableMfaForms && this.disableMfaForms.length > 0) {
         this.disableMfaForms.forEach(form => {
           form.addEventListener('submit', async e => {
+            // Browsers do not await asynchronous event listeners. Stop the
+            // native submit immediately, then submit explicitly after the
+            // user confirms the destructive action.
+            e.preventDefault();
             const action = form.getAttribute('action') || '';
             const urlParams = new URLSearchParams(action.split('?')[1] || '');
-            const method = urlParams.get('method') || 'unknown';
+            const method =
+              form.dataset.mfaDisableMethod ||
+              urlParams.get('method') ||
+              'unknown';
 
             const methodEnabled = this.isMethodEnabled(method);
             if (!methodEnabled) {
-              e.preventDefault();
               await (window as any).dialog.showAlert(
                 'MFA Not Enabled',
                 this.config.translations.mfaNotEnabled,
@@ -154,10 +160,10 @@
             );
 
             if (!confirmed) {
-              e.preventDefault();
               this.log(`User cancelled disabling ${method} MFA`);
             } else {
               this.log(`User confirmed disabling ${method} MFA`);
+              form.submit();
             }
           });
         });

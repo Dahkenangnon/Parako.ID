@@ -34,6 +34,8 @@ import { checkPasswordBreach } from '../utils/password-breach.js';
 import type { OidcClientData } from '../oidc/adapter/client.interface.js';
 import type { BackupCodeResult } from '../utils/recovery.js';
 import { emailSchema } from '../validators/base-schemas.js';
+import type { LinkSocialAccountIntent } from '../types/session-data.js';
+import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
 
 const SUPPORTED_RECOVERY_METHODS: readonly RecoveryMethod[] = [
   'backup_codes',
@@ -120,6 +122,11 @@ export class AccountsController implements IAccountController {
     return this.configManager.getConfig().application.title;
   }
 
+  private preventSensitiveResponseCaching(res: Response): void {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+  }
+
   private isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
   }
@@ -128,6 +135,39 @@ export class AccountsController implements IAccountController {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : null;
+  }
+
+  /**
+   * Revoke every Express session for an account except the request's current
+   * session. The session store may contain legacy or malformed records, which
+   * are ignored rather than preventing valid sessions from being revoked.
+   */
+  private async revokeOtherExpressSessions(
+    username: string,
+    currentSessionId: string | undefined
+  ): Promise<number> {
+    const expressSessions =
+      await this.sessionManager.findExpressSessionsForUser(username);
+    let revokedCount = 0;
+
+    for (const sessionDocument of expressSessions) {
+      const sessionId = this.asRecord(sessionDocument)?._id;
+      if (!this.isNonEmptyString(sessionId)) {
+        this.logger.warn(
+          'Skipping malformed Express session during bulk revocation'
+        );
+        continue;
+      }
+
+      if (
+        sessionId !== currentSessionId &&
+        (await this.sessionManager.revokeExpressSession(sessionId))
+      ) {
+        revokedCount++;
+      }
+    }
+
+    return revokedCount;
   }
 
   private isSupportedMfaEnrollmentMethod(
@@ -1062,11 +1102,16 @@ export class AccountsController implements IAccountController {
       try {
         const currentSessionId = req.session?.id;
         if (currentSessionId) {
-          const revokedCount =
+          const oidcRevokedCount =
             await this.oidcAdapter.session.revokeAllSessionsExcept(
               userData.username,
               currentSessionId
             );
+          const expressRevokedCount = await this.revokeOtherExpressSessions(
+            userData.username,
+            req.sessionID
+          );
+          const revokedCount = oidcRevokedCount + expressRevokedCount;
           if (revokedCount > 0) {
             this.logger.info('Revoked sessions after password change', {
               username: userData.username,
@@ -1101,13 +1146,14 @@ export class AccountsController implements IAccountController {
       }
 
       try {
-        await this.notificationService.sendTemplatedEmail(
-          userData.email as string,
-          `Your ${this.getAppTitle()} password has been changed`,
-          'email/mail.njk',
-          {
-            title: `Your ${this.getAppTitle()} password has been changed`,
-            content: `
+        const notificationResult =
+          await this.notificationService.sendTemplatedEmail(
+            userData.email as string,
+            `Your ${this.getAppTitle()} password has been changed`,
+            'email/mail.njk',
+            {
+              title: `Your ${this.getAppTitle()} password has been changed`,
+              content: `
               <p>Hello ${userData.given_name || userData.email},</p>
               <p>Your password has been successfully changed. If you did not make this change, please contact support immediately.</p>
               <p><strong>Account:</strong> ${userData.email}</p>
@@ -1116,15 +1162,26 @@ export class AccountsController implements IAccountController {
               <p><strong>Browser:</strong> ${req.get('User-Agent') || 'Unknown'}</p>
               <p>If this was not you, please secure your account immediately.</p>
             `,
-            username:
-              `${userData.given_name || ''} ${userData.family_name || ''}`.trim(),
-          }
-        );
+              username:
+                `${userData.given_name || ''} ${userData.family_name || ''}`.trim(),
+            }
+          );
 
-        this.logger.info('Password change notification email sent', {
-          username: userData.username,
-          email: userData.email,
-        });
+        if (notificationResult.success) {
+          this.logger.info('Password change notification email sent', {
+            username: userData.username,
+            email: userData.email,
+          });
+        } else {
+          this.logger.warn(
+            'Password change notification email was not delivered',
+            {
+              username: userData.username,
+              email: userData.email,
+              error: notificationResult.error,
+            }
+          );
+        }
       } catch (emailError) {
         this.logger.error('Failed to send password change notification email', {
           username: userData.username,
@@ -1479,6 +1536,7 @@ export class AccountsController implements IAccountController {
           user.email || userData.email || ''
         );
 
+        this.preventSensitiveResponseCaching(res);
         return res.render(this.viewResolver.views.auth.setup_mfa, {
           title: 'Verify Your Email',
           method: 'email',
@@ -1504,10 +1562,12 @@ export class AccountsController implements IAccountController {
       );
       const qrDataUri = await this.mfaUtils.generateQrCode(otpauth);
 
+      this.preventSensitiveResponseCaching(res);
       res.render(this.viewResolver.views.auth.setup_mfa, {
         title: 'Setup 2FA',
         method: 'totp',
         qrDataUri,
+        totpSecret,
         cancelUrl: securityUrl,
       });
     } catch (err) {
@@ -2536,7 +2596,9 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const clientId = req.body?.clientId;
+      // Account views submit snake_case field names; retain camelCase support
+      // for existing programmatic callers of the controller.
+      const clientId = req.body?.client_id ?? req.body?.clientId;
       if (!this.isNonEmptyString(clientId)) {
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.apps}`
@@ -2870,24 +2932,10 @@ export class AccountsController implements IAccountController {
       // Also revoke all other Express sessions (excluding the current express session)
       let expressRevokedCount = 0;
       try {
-        const expressSessions =
-          await this.sessionManager.findExpressSessionsForUser(
-            userData.username
-          );
-        for (const sessDoc of expressSessions) {
-          const sessId = this.asRecord(sessDoc)?._id;
-          if (!this.isNonEmptyString(sessId)) {
-            this.logger.warn(
-              'Skipping malformed Express session during bulk revocation'
-            );
-            continue;
-          }
-          if (sessId !== req.sessionID) {
-            const revoked =
-              await this.sessionManager.revokeExpressSession(sessId);
-            if (revoked) expressRevokedCount++;
-          }
-        }
+        expressRevokedCount = await this.revokeOtherExpressSessions(
+          userData.username,
+          req.sessionID
+        );
       } catch (err) {
         this.logger.error(err as Error, {
           context: 'express_sessions_revocation_failed',
@@ -3053,10 +3101,11 @@ export class AccountsController implements IAccountController {
         );
       }
 
-      this.sessionManager.set(req, 'linkSocialAccountIntent', {
+      const linkIntent: LinkSocialAccountIntent = {
         provider,
         returnUrl: `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_social}`,
-      });
+      };
+      this.sessionManager.set(req, 'linkSocialAccountIntent', linkIntent);
 
       const authUrl = await this.socialLoginManager.getAuthorizationUrl(
         provider,
@@ -3284,6 +3333,11 @@ export class AccountsController implements IAccountController {
           };
 
           try {
+            const verificationUrl = buildExternalApplicationUrl(
+              this.configManager.getConfig(),
+              `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`,
+              { token: verificationResult.verificationToken }
+            );
             await this.notificationService.sendTemplatedEmail(
               verificationResult.email,
               `Verify your recovery email for ${this.getAppTitle()}`,
@@ -3294,7 +3348,7 @@ export class AccountsController implements IAccountController {
                   <p>Hello ${userData.given_name || userData.email || userData.username},</p>
                   <p>You've added this email as a recovery method for your ${this.getAppTitle()} account.</p>
                   <p>To verify this email address, please click the link below:</p>
-                  <p><a href="${`${this.configManager.getConfig().deployment.url}${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`}?token=${verificationResult.verificationToken}"
+                  <p><a href="${verificationUrl}"
                         style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">
                       Verify Recovery Email
                   </a></p>
@@ -3547,6 +3601,11 @@ export class AccountsController implements IAccountController {
         });
 
         try {
+          const verificationUrl = buildExternalApplicationUrl(
+            this.configManager.getConfig(),
+            `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`,
+            { token: verificationResult.verificationToken }
+          );
           await this.notificationService.sendTemplatedEmail(
             verificationResult.email,
             `Verify your recovery email for ${this.getAppTitle()}`,
@@ -3557,7 +3616,7 @@ export class AccountsController implements IAccountController {
                 <p>Hello ${userData.given_name || userData.email || userData.username},</p>
                 <p>You've added this email as a recovery method for your ${this.getAppTitle()} account.</p>
                 <p>To verify this email address, please click the link below:</p>
-                <p><a href="${`${this.configManager.getConfig().deployment.url}${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.verify_recovery_email}`}?token=${verificationResult.verificationToken}"
+                <p><a href="${verificationUrl}"
                       style="display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;">
                     Verify Recovery Email
                 </a></p>
@@ -4093,7 +4152,11 @@ export class AccountsController implements IAccountController {
         await this.authService.generateEmailVerificationToken(
           user._id as string
         );
-      const verificationUrl = `${this.configManager.getConfig().deployment.url}${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.verify_email}?token=${verificationToken}`;
+      const verificationUrl = buildExternalApplicationUrl(
+        this.configManager.getConfig(),
+        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.verify_email}`,
+        { token: verificationToken }
+      );
 
       await this.notificationService.sendVerification(
         { email: user.email, username: user.given_name || user.username },

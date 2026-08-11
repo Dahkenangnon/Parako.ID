@@ -26,7 +26,11 @@ import {
   internal,
 } from '../errors.js';
 import { apiSuccess, apiCreated, apiList } from '../response.js';
-import { buildCursorResponse, parsePaginationParams } from '../pagination.js';
+import {
+  buildCursorQuery,
+  buildCursorResponse,
+  parsePaginationParams,
+} from '../pagination.js';
 import type {
   CreateTenantInput,
   UpdateConfigSectionInput,
@@ -91,7 +95,7 @@ export class TenantsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const { limit } = parsePaginationParams(
+      const { limit, cursor, includeCount } = parsePaginationParams(
         req.query as Record<string, unknown>
       );
 
@@ -103,11 +107,28 @@ export class TenantsController {
         filter.status = req.query.status as TenantStatus;
       }
 
-      const tenants = await this.platformAdminService.listTenants(
+      let tenants = await this.platformAdminService.listTenants(
         Object.keys(filter).length > 0 ? filter : undefined
       );
+      tenants = [...tenants].sort((left, right) =>
+        String(left.slug).localeCompare(String(right.slug))
+      );
+      const totalCount = includeCount ? tenants.length : undefined;
 
-      const page = buildCursorResponse(tenants, limit, 'slug');
+      if (cursor) {
+        const cursorQuery = buildCursorQuery(cursor, 'slug');
+        const slugRange = cursorQuery.slug as { $gt: string };
+        tenants = tenants.filter(
+          tenant => String(tenant.slug).localeCompare(slugRange.$gt) > 0
+        );
+      }
+
+      const page = buildCursorResponse(
+        tenants.slice(0, limit + 1),
+        limit,
+        'slug',
+        totalCount
+      );
 
       apiList(res, page);
     } catch (error) {

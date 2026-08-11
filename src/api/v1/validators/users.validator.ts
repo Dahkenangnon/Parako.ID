@@ -9,7 +9,7 @@
 import { z } from 'zod';
 
 const emailSchema = z.string().trim().toLowerCase().email().max(254);
-const usernameSchema = z.string().trim().min(1).max(100);
+const usernameSchema = z.string().trim().min(1).max(50);
 const shortProfileFieldSchema = z.string().trim().max(100);
 const roleSchema = z.string().trim().min(1).max(50);
 

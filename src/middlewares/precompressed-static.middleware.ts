@@ -10,6 +10,7 @@ import {
 } from 'node:path';
 import type { Request, Response, NextFunction } from 'express';
 import { HARDENING } from '../config/hardening-defaults.js';
+import { setStaticAssetCacheHeaders } from './static-cache-policy.js';
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.css': 'text/css; charset=utf-8',
@@ -133,6 +134,7 @@ const sendPrecompressed = (
   contentType: string,
   headOnly: boolean
 ): void => {
+  setStaticAssetCacheHeaders(res, asset.path);
   res.setHeader('Content-Encoding', encoding);
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Length', asset.size);

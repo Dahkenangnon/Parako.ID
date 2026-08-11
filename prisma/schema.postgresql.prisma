@@ -54,6 +54,9 @@ model User {
   reset_password_expires     DateTime?
   email_verification_token   String?
   email_verification_expires DateTime?
+  phone_verification_token   String?
+  phone_verification_code    String?
+  phone_verification_expires DateTime?
   blocked_from               String    @default("[]")
   account_is_anonymized      Boolean   @default(false)
   register_with              String    @default("email")
@@ -83,12 +86,14 @@ model User {
 }
 
 model UserMfa {
-  id               String  @id @default(uuid())
-  user_id          String  @unique
-  enabled          Boolean @default(false)
-  preferred_method String?
-  tenant_id        String  @default("default")
-  user             User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                    String    @id @default(uuid())
+  user_id               String    @unique
+  enabled               Boolean   @default(false)
+  preferred_method      String?
+  webauthn_enabled      Boolean   @default(false)
+  webauthn_verified_at  DateTime?
+  tenant_id             String    @default("default")
+  user                  User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@map("user_mfa")
@@ -108,12 +113,14 @@ model UserMfaTotp {
 }
 
 model UserMfaEmailOtp {
-  id         String    @id @default(uuid())
-  user_id    String    @unique
-  otp_hash   String?
-  expires_at DateTime?
-  tenant_id  String    @default("default")
-  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid())
+  user_id     String    @unique
+  enabled     Boolean   @default(false)
+  verified_at DateTime?
+  otp_hash    String?
+  expires_at  DateTime?
+  tenant_id   String    @default("default")
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([tenant_id])
   @@map("user_mfa_email_otp")
@@ -128,6 +135,8 @@ model UserWebauthnCredential {
   device_type   String?
   backed_up     Boolean  @default(false)
   transports    String   @default("[]")
+  friendly_name String   @default("Passkey")
+  last_used_at  DateTime?
   tenant_id     String   @default("default")
   created_at    DateTime @default(now())
   user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
