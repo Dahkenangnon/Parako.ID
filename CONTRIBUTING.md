@@ -1,217 +1,159 @@
 # Contributing to Parako.ID
 
-## Quick Start
+Thank you for helping improve Parako.ID. Changes should be focused,
+production-ready, covered by behavior-oriented tests, and safe for operators
+who already have local runtime configuration.
 
-### Prerequisites
+## Development setup
 
-- **Node.js** 24+ and **pnpm** 11+
-- **MongoDB** (local or remote)
-- **Redis** (local or remote)\*\*\*\*
+Requirements:
 
-### Local Development Setup
+- Node.js 24 or newer.
+- pnpm 11 or newer.
+- Git.
+
+SQLite is the default development database and requires no database server.
+MongoDB and PostgreSQL are needed only when working on those adapters or the
+full test matrix. Redis is needed for workers, queues, distributed cache and
+pub/sub, or Redis-backed sessions/OIDC storage.
 
 ```bash
-# Clone and setup
 git clone https://github.com/Dahkenangnon/Parako.ID.git
-cd id
-pnpm install
-pnpm parako setup
+cd Parako.ID
+pnpm install --frozen-lockfile
+pnpm setup:dev
 pnpm dev
 ```
 
-## 🛠️ Development Tools
+`pnpm setup:dev` creates the runtime directories, generates fresh local
+secrets in `runtime/.env`, copies `parako.sample.jsonc` to
+`runtime/parako.jsonc`, generates the SQLite Prisma client, and applies
+migrations. It never overwrites an existing environment or JSONC file.
 
-This project uses these development tools for quality assurance:
+The app listens on `http://localhost:9007`. Runtime files are local state and
+must not be committed.
 
-### Code Quality & Formatting
+## Test suites
 
-- **ESLint** - Code linting and style enforcement
-- **Prettier** - Automatic code formatting
-- **Husky** - Git hooks for quality gates
-
-### Testing & Coverage
-
-- **Vitest** - Modern testing framework
-- **V8 Coverage** - Code coverage reporting
-
-### Build & Release
-
-- **Semantic Release** - Automated versioning and releases
-- **Conventional Changelog** - Automated changelog generation
-- **Commitizen** - Interactive commit creation
-- **Commitlint** - Commit message validation
-
-### Automation
-
-- **GitHub Actions** - CI/CD automation
-- **Dependabot** - Automated dependency updates
-
-### GitHub Actions Security Maintenance
-
-All workflow actions under `.github/workflows/` should be pinned to immutable commit SHAs.
-
-- Do not use floating tags alone (for example `@v4` or `@main`) in production workflows.
-- Update action SHAs regularly to the latest stable tag for each action.
-- Keep an inline comment with the corresponding tag for readability.
-
-Example:
-
-```yaml
-uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-```
-
-Suggested update flow:
+Use the narrowest relevant command while developing:
 
 ```bash
-# Resolve latest tags and SHAs
-git ls-remote https://github.com/actions/checkout refs/tags/v6 refs/tags/v6.*
-git ls-remote https://github.com/actions/setup-node refs/tags/v6 refs/tags/v6.*
-
-# Update .github/workflows/*.yml references
-# Then validate files and run CI
+pnpm test:unit
+pnpm test:contract
+pnpm test:integration
+pnpm test:integration:postgresql
+pnpm test:coverage
 ```
 
-Quick checks:
+The default integration suite uses SQLite and ephemeral MongoDB fixtures. The
+first MongoDB-backed run may download a matching `mongod` binary into the
+tool's user cache. PostgreSQL RLS tests are intentionally separate and fail
+when their database is unavailable.
+
+Browser tests use Playwright with Chrome:
 
 ```bash
-# Ensure no floating tag refs remain
-rg "uses:\s*[^\s]+@v[0-9]" .github/workflows
-
-# Optional: ensure no branch refs are used
-rg "uses:\s*[^\s]+@(main|master)$" .github/workflows
+pnpm exec playwright install chrome
+pnpm test:e2e
 ```
 
-## 📝 Commit Standards
-
-We follow [Conventional Commits](https://www.conventionalcommits.org/) for consistent commit messages:
+`pnpm test:e2e` runs the default SQLite/single-tenant browser profile. Select
+another supported cell or feature profile with environment variables:
 
 ```bash
-# Format: type(scope): description
+PARAKO_E2E_CELL=mongodb-multi \
+PARAKO_E2E_PROFILE=webauthn \
+pnpm test:e2e
+```
+
+Supported cells are `sqlite-single`, `mongodb-single`, `mongodb-multi`,
+`postgresql-single`, and `postgresql-multi`. SQLite does not support
+multi-tenancy. The feature profiles are `default`, `notification-policy`,
+`phone-verification`, `security-questions`, `sms-recovery`, `social`,
+`social-policy-max`, `social-policy-restricted`, and `webauthn`.
+
+The complete local matrix requires a PostgreSQL URL whose disposable test role
+can create and drop isolated databases. Never point it at production:
+
+```bash
+export PARAKO_E2E_POSTGRESQL_URL='postgresql://parako:password@127.0.0.1:5432/parako_e2e'
+pnpm test:prerequisites:full
+pnpm test:e2e:matrix
+```
+
+Missing prerequisites are failures, not skipped coverage.
+
+## Quality gates
+
+Run the normal public-repository gate before every pull request:
+
+```bash
+pnpm verify
+```
+
+It checks ESLint, Prettier, production and test TypeScript projects, the strict
+production build, and all Vitest suites. When the change affects storage,
+tenancy, identity flows, or browser-visible behavior, also run:
+
+```bash
+pnpm verify:all
+```
+
+`verify:all` adds prerequisite checks, PostgreSQL RLS integration tests, and
+the full five-cell browser matrix. Report any gate that could not be run and
+why; a focused pass is not a substitute for a required full gate.
+
+Useful individual checks:
+
+```bash
+pnpm lint:check
+pnpm format:check
+pnpm typecheck
+pnpm typecheck:scripts
+pnpm typecheck:test
+pnpm typecheck:e2e
+pnpm build
+```
+
+## Test quality
+
+- Test observable behavior through public or documented interfaces.
+- Keep one clear behavior per test and use descriptive names.
+- Mock external boundaries, not the code under test.
+- Do not commit `.skip`, `.todo`, `.only`, generated coverage ledgers, browser
+  reports, or local backup artifacts.
+- Prefer deterministic fixture state and observable readiness checks over raw
+  sleeps.
+- Add brief comments only when a fixture, cache-busting import, protocol edge,
+  or test-only seam would otherwise be surprising.
+
+## Pull requests and commits
+
+Create feature branches from `dev`; pull requests may target `dev` or `main`
+as appropriate for the maintainer's release plan. Keep changes reviewable and
+preserve unrelated work.
+
+Use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```text
 feat(auth): add WebAuthn support
-fix(ui): resolve login form validation
-docs(readme): update installation guide
-chore(deps): update dependencies
+fix(oidc): preserve the interaction redirect
+test(storage): cover PostgreSQL tenant isolation
+docs: update local setup
 ```
 
-### Available Types
+Pull requests should explain the user-visible or operator-visible outcome,
+the important design decisions, the validation performed, and remaining
+risks. Include screenshots for visual changes.
 
-- `feat`: New features
-- `fix`: Bug fixes
-- `docs`: Documentation changes
-- `style`: Code style changes
-- `refactor`: Code refactoring
-- `test`: Test additions/changes
-- `chore`: Maintenance tasks
-- `ci`: CI/CD changes
+## CI and releases
 
-## 🚀 Automated Release Process
+GitHub Actions run quality checks, storage-adapter integration coverage, and
+the browser matrix on pull requests to `dev` or `main` and pushes to `main`.
+Workflow actions must be pinned to immutable commit SHAs with a readable
+version comment.
 
-### Branch Structure
-
-| Branch       | Purpose                    | Release Type                |
-| ------------ | -------------------------- | --------------------------- |
-| **`main`**   | Production releases        | Stable releases (v1.0.0)    |
-| **`master`** | Production releases        | Stable releases (v1.0.0)    |
-| **`dev`**    | Development & pre-releases | Pre-releases (v1.0.1-dev.0) |
-
-### How Releases Work
-
-Our release process is **fully automated** using Semantic Release:
-
-#### Pre-Releases (Dev Branch)
-
-```bash
-git checkout dev
-git commit -m "feat: add new authentication method"
-git push origin dev
-# → Automatically creates: v1.0.1-dev.0 (pre-release)
-# → Updates CHANGELOG.md
-# → Creates GitHub release
-```
-
-#### Stable Releases (Main/Master Branch)
-
-```bash
-git checkout main
-git merge dev
-git push origin main
-# → Automatically creates: v1.0.1 (stable release)
-# → Updates CHANGELOG.md
-# → Creates GitHub release with artifacts
-```
-
-### Release Triggers
-
-- **Pre-releases**: Any commit to `dev` branch
-- **Stable releases**: Any commit to `main`/`master` branch
-- **Version bumping**: Automatic based on commit types
-- **Changelog**: Auto-generated from commit messages
-- **Artifacts**: Auto-built and attached to releases
-
-### Commit Types for Version Bumping
-
-- `feat:` → Minor version bump (1.0.0 → 1.1.0)
-- `fix:` → Patch version bump (1.0.0 → 1.0.1)
-- `BREAKING CHANGE:` → Major version bump (1.0.0 → 2.0.0)
-
-## 🔄 Pull Request Process
-
-### Create Feature Branch
-
-```bash
-git checkout dev
-git pull origin dev
-git checkout -b feature/your-feature-name
-```
-
-### Before Submitting
-
-- [ ] **Run quality checks**: `pnpm test:run && pnpm lint:check && pnpm format:check`
-- [ ] **Build validation**: `pnpm build:scripts && pnpm validate:build`
-- [ ] **Self-review completed**
-- [ ] **Conventional commit messages**
-- [ ] **PR focused on single feature/fix**
-
-### Quality Gates
-
-Our automated CI/CD pipeline includes:
-
-- ✅ **ESLint** - Code linting and style checks
-- ✅ **Prettier** - Code formatting validation
-- ✅ **Vitest** - Test suite execution
-- ✅ **TypeScript** - Type checking
-- ✅ **Build validation** - Ensures code compiles correctly
-- ✅ **Commitlint** - Commit message format validation
-
-### PR Guidelines
-
-- **Title**: Clear, descriptive (follows conventional commits)
-- **Description**: Explain what and why
-- **Link Issues**: Reference related issues using `closes #123`
-- **Keep it small**: Focused changes are easier to review
-- **Screenshots**: Include UI changes when applicable
-
-### Review Process
-
-1. **Automated CI checks** must pass (ESLint, Prettier, Tests, Build)
-2. **Code review** by maintainer
-3. **Manual testing** for significant changes
-4. **Approval** required before merge
-
-### Development Commands
-
-```bash
-# Quality checks
-pnpm lint:check          # Check linting
-pnpm format:check        # Check formatting
-pnpm test:run           # Run tests
-pnpm test:coverage      # Run tests with coverage
-
-# Formatting
-pnpm format             # Format all code
-pnpm format:src         # Format source code only
-
-# Building
-pnpm build:scripts      # Build scripts
-pnpm validate:build     # Validate build output
-```
+Releases are not created from ordinary branch pushes. Maintainers update the
+version and changelog, create a matching immutable `vX.Y.Z` tag, and let the
+tag workflow build, sign, and publish architecture-specific artifacts. Do not
+create or move release tags as part of a normal contribution.

@@ -125,13 +125,17 @@ For local development:
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd Parako.ID
-pnpm install
-cp .env.example runtime/.env
-pnpm db:push
+pnpm install --frozen-lockfile
+pnpm setup:dev
 pnpm dev
 ```
 
-Open `http://localhost:9007/auth/register`, create the first user, then visit `/admin` to register your first OIDC client.
+`setup:dev` creates local runtime files with fresh secrets and applies the
+SQLite migrations without overwriting existing operator configuration. Open
+`http://localhost:9007/auth/register`, create the first user, then visit
+`/admin` to register your first OIDC client. See the
+[contributor guide](./CONTRIBUTING.md) for the unit, integration, and browser
+test commands.
 
 ## Requirements
 

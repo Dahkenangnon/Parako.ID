@@ -12,14 +12,36 @@ Prerequisites are Node.js 24 or later and pnpm 11 or later.
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
 cd Parako.ID
-pnpm install
-cp .env.example runtime/.env
-pnpm db:push
+pnpm install --frozen-lockfile
+pnpm setup:dev
 pnpm dev
 ```
 
-The development server listens on `http://localhost:9007`. Development may use
-SQLite and local Redis. Do not copy development secrets into production.
+`pnpm setup:dev` creates `runtime/.env` with fresh local secrets, copies the
+sample JSONC configuration, and applies the SQLite migrations. It preserves
+both files when they already exist. The development server listens on
+`http://localhost:9007`; the default app process needs no external database.
+Redis is required when developing worker, queue, distributed cache, pub/sub,
+or Redis-backed session/OIDC behavior. Do not reuse development secrets in
+production.
+
+Before opening a pull request, run the repository quality gate:
+
+```bash
+pnpm verify
+```
+
+The complete adapter and browser matrix additionally needs Chrome and a
+disposable PostgreSQL service whose role may create and drop test databases:
+
+```bash
+pnpm exec playwright install chrome
+export PARAKO_E2E_POSTGRESQL_URL='postgresql://parako:password@127.0.0.1:5432/parako_e2e'
+pnpm verify:all
+```
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for narrower test commands and the
+five supported storage/tenancy cells.
 
 ## Production host
 
