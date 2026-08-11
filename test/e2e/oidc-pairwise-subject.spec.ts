@@ -1,14 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const IDP_ORIGIN = 'http://127.0.0.1:19007';
+import { completeOidcInteraction, IDP_ORIGIN } from './support/browser-oidc.js';
 const USER_EMAIL = 'pairwise-subject-e2e@example.test';
 const USER_PASSWORD = 'Violet!River7';
 
 async function authorize(page: Page, client: 'a' | 'b', origin: string) {
   await page.goto(`${origin}/pairwise/${client}/login`);
 
-  const consent = page.locator('#consent-submit-btn');
-  if (await consent.isVisible()) await consent.click();
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
 
   await expect(page.getByTestId('pairwise-result')).toBeVisible();
   return page.getByTestId('pairwise-subject').textContent();

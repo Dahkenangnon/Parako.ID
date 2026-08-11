@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-const IDP_ORIGIN = 'http://127.0.0.1:19007';
-const RP_ORIGIN = 'http://127.0.0.1:19010';
+import {
+  completeOidcInteraction,
+  IDP_ORIGIN,
+  RP_ORIGIN,
+} from './support/browser-oidc.js';
 const USER_EMAIL = 'jwt-userinfo-e2e@example.test';
 const USER_PASSWORD = 'Violet!River7';
 
@@ -16,8 +19,10 @@ test('returns and verifies signed JWT UserInfo for an opted-in RP', async ({
   await expect(page).toHaveURL(/\/accounts(?:\/|\?|$)/);
 
   await page.goto(`${RP_ORIGIN}/jwt-userinfo/login`);
-  const consent = page.locator('#consent-submit-btn');
-  if (await consent.isVisible()) await consent.click();
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
 
   await expect(page).toHaveURL(
     new RegExp(`^${RP_ORIGIN}/jwt-userinfo/callback\\?`)

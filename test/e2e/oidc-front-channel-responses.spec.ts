@@ -1,26 +1,12 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-const IDP_ORIGIN = 'http://127.0.0.1:19007';
-const RP_ORIGIN = 'http://127.0.0.1:19010';
+import {
+  completeOidcInteraction,
+  IDP_ORIGIN,
+  RP_ORIGIN,
+} from './support/browser-oidc.js';
 const USER_EMAIL = 'front-channel-e2e@example.test';
 const USER_PASSWORD = 'Violet!River7';
-
-async function completeInteraction(page: Page): Promise<void> {
-  const login = page.locator('#login');
-  if (await login.isVisible()) {
-    await login.fill(USER_EMAIL);
-    await page.locator('#password').fill(USER_PASSWORD);
-    await page
-      .locator('#login-form')
-      .getByRole('button', { name: /sign in/i })
-      .click();
-  }
-
-  const consent = page.locator('#consent-submit-btn');
-  if (await consent.isVisible()) {
-    await consent.click();
-  }
-}
 
 test('validates ID-token-only and hybrid front-channel responses end to end', async ({
   page,
@@ -33,13 +19,19 @@ test('validates ID-token-only and hybrid front-channel responses end to end', as
   await expect(page).toHaveURL(/\/accounts(?:\/|\?|$)/);
 
   await page.goto(`${RP_ORIGIN}/implicit/login`);
-  await completeInteraction(page);
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
   await expect(page.getByTestId('implicit-result')).toBeVisible();
   await expect(page.getByTestId('implicit-subject')).not.toBeEmpty();
   await expect(page.getByTestId('implicit-access-token')).toHaveText('absent');
 
   await page.goto(`${RP_ORIGIN}/hybrid/login`);
-  await completeInteraction(page);
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
   await expect(page.getByTestId('hybrid-result')).toBeVisible();
   await expect(page.getByTestId('hybrid-subject')).not.toBeEmpty();
   await expect(page.getByTestId('hybrid-access-token')).toHaveText('present');

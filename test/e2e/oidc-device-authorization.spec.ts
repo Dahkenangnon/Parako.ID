@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-const IDP_ORIGIN = 'http://127.0.0.1:19007';
-const RP_ORIGIN = 'http://127.0.0.1:19010';
+import {
+  completeOidcInteraction,
+  IDP_ORIGIN,
+  RP_ORIGIN,
+} from './support/browser-oidc.js';
 const USER_EMAIL = 'device-e2e@example.test';
 const USER_PASSWORD = 'Cobalt!Forest8';
 
@@ -32,19 +35,10 @@ test('runs the device authorization grant through browser verification', async (
 
   await page.getByRole('button', { name: 'Continue' }).click();
 
-  const login = page.locator('#login');
-  if (await login.isVisible()) {
-    await login.fill(USER_EMAIL);
-    await page.locator('#password').fill(USER_PASSWORD);
-    await page
-      .locator('#login-form')
-      .getByRole('button', { name: /sign in/i })
-      .click();
-  }
-
-  const consent = page.locator('#consent-submit-btn');
-  await expect(consent).toBeVisible();
-  await consent.click();
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
 
   await expect(page.getByText('Authorization Successful!')).toBeVisible();
 

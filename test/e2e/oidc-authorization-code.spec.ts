@@ -1,9 +1,16 @@
 import { expect, test } from '@playwright/test';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 
-const IDP_ORIGIN = 'http://127.0.0.1:19007';
+import {
+  completeOidcInteraction,
+  IDP_ORIGIN,
+  reachOidcConsent,
+  RP_ORIGIN,
+} from './support/browser-oidc.js';
+import { createLoopbackTenantFetch } from './support/loopback-tenant-fetch.js';
 const USER_EMAIL = 'browser-e2e@example.test';
 const USER_PASSWORD = 'Violet!River7';
+const nodeFetch = createLoopbackTenantFetch(IDP_ORIGIN);
 
 test('runs Authorization Code + PKCE and RP-initiated logout end to end', async ({
   page,
@@ -31,22 +38,12 @@ test('runs Authorization Code + PKCE and RP-initiated logout end to end', async 
   await page.getByTestId('rp-login').click();
   await expect(page).toHaveURL(new RegExp(`^${IDP_ORIGIN}/oidc/v1/`));
 
-  const login = page.locator('#login');
-  if (await login.isVisible()) {
-    await login.fill(USER_EMAIL);
-    await page.locator('#password').fill(USER_PASSWORD);
-    await page
-      .locator('#login-form')
-      .getByRole('button', { name: /sign in/i })
-      .click();
-  }
+  await completeOidcInteraction(page, {
+    identifier: USER_EMAIL,
+    password: USER_PASSWORD,
+  });
 
-  const consent = page.locator('#consent-submit-btn');
-  if (await consent.isVisible()) {
-    await consent.click();
-  }
-
-  await expect(page).toHaveURL('http://127.0.0.1:19010/');
+  await expect(page).toHaveURL(`${RP_ORIGIN}/`);
   await expect(page.getByTestId('rp-authenticated')).toBeVisible();
   await expect(page.getByTestId('rp-email')).toHaveText(USER_EMAIL);
   await expect(page.getByTestId('rp-subject')).not.toBeEmpty();
@@ -77,7 +74,7 @@ test('runs Authorization Code + PKCE and RP-initiated logout end to end', async 
   await expect(page).toHaveURL(new RegExp(`^${IDP_ORIGIN}/oidc/v1/`));
   await page.getByRole('button', { name: 'Yes, Sign Out' }).click();
 
-  await expect(page).toHaveURL(/http:\/\/127\.0\.0\.1:19010\/\?state=/);
+  await expect(page).toHaveURL(new RegExp(`^${RP_ORIGIN}/\\?state=`));
   await expect(page.getByTestId('rp-anonymous')).toBeVisible();
 
   await page.getByTestId('rp-login').click();
@@ -89,11 +86,11 @@ test('delivers a signed back-channel logout token for an active RP session', asy
   page,
 }) => {
   const email = 'backchannel-logout-e2e@example.test';
-  await fetch('http://127.0.0.1:19010/backchannel-reset', {
+  await fetch(`${RP_ORIGIN}/backchannel-reset`, {
     method: 'POST',
   });
 
-  const discovery = await fetch(
+  const discovery = await nodeFetch(
     `${IDP_ORIGIN}/oidc/v1/.well-known/openid-configuration`
   ).then(response => response.json());
   expect(discovery.backchannel_logout_supported).toBe(true);
@@ -106,30 +103,30 @@ test('delivers a signed back-channel logout token for an active RP session', asy
   await page.locator('#submit-btn').click();
   await expect(page).toHaveURL(/\/accounts(?:\/|\?|$)/);
 
-  await page.goto('http://127.0.0.1:19010/login?prompt=consent');
-  const consent = page.locator('#consent-submit-btn');
-  if (await consent.isVisible()) {
-    await consent.click();
-  }
+  await page.goto(`${RP_ORIGIN}/login?prompt=consent`);
+  await completeOidcInteraction(page, {
+    identifier: email,
+    password: USER_PASSWORD,
+  });
 
-  await expect(page).toHaveURL('http://127.0.0.1:19010/');
+  await expect(page).toHaveURL(`${RP_ORIGIN}/`);
   await expect(page.getByTestId('rp-id-token')).toHaveText('present');
   await page.getByTestId('rp-logout').click();
   await page.getByRole('button', { name: 'Yes, Sign Out' }).click();
-  await expect(page).toHaveURL(/http:\/\/127\.0\.0\.1:19010\/\?state=/);
+  await expect(page).toHaveURL(new RegExp(`^${RP_ORIGIN}/\\?state=`));
 
   await expect
     .poll(async () =>
-      fetch('http://127.0.0.1:19010/backchannel-status')
+      fetch(`${RP_ORIGIN}/backchannel-status`)
         .then(response => response.json())
         .then(status => status.tokens.length)
     )
     .toBe(1);
 
-  const logoutStatus = await fetch(
-    'http://127.0.0.1:19010/backchannel-status'
-  ).then(response => response.json());
-  const jwks = await fetch(discovery.jwks_uri).then(response =>
+  const logoutStatus = await fetch(`${RP_ORIGIN}/backchannel-status`).then(
+    response => response.json()
+  );
+  const jwks = await nodeFetch(discovery.jwks_uri).then(response =>
     response.json()
   );
   const { payload: logoutClaims } = await jwtVerify(
@@ -159,11 +156,16 @@ test('returns access_denied to the RP when the user rejects consent', async ({
   await page.locator('#submit-btn').click();
   await expect(page).toHaveURL(/\/accounts(?:\/|\?|$)/);
 
-  await page.goto('http://127.0.0.1:19010/login?prompt=consent');
-  await expect(page.locator('#consent-form')).toBeVisible();
+  await page.goto(`${RP_ORIGIN}/login?prompt=consent`);
+  await expect(
+    await reachOidcConsent(page, {
+      identifier: email,
+      password: USER_PASSWORD,
+    })
+  ).toBeVisible();
   await page.getByRole('link', { name: 'Cancel' }).click();
 
-  await expect(page).toHaveURL(/127\.0\.0\.1:19010\/callback\?/);
+  await expect(page).toHaveURL(new RegExp(`${RP_ORIGIN}/callback\\?`));
   await expect(page.getByTestId('rp-authorization-error-code')).toHaveText(
     'access_denied'
   );

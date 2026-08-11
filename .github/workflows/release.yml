@@ -62,7 +62,11 @@ jobs:
         run: pnpm run format:check
 
       - name: Run typecheck
-        run: pnpm run typecheck
+        run: |
+          pnpm run typecheck
+          pnpm run typecheck:scripts
+          pnpm run typecheck:test
+          pnpm run typecheck:e2e
 
       - name: Run tests with coverage
         run: pnpm run test:coverage
@@ -171,11 +175,162 @@ jobs:
           echo "Running tests with STORAGE_ADAPTER=$ADAPTER_NAME"
           pnpm run test:run
 
+      - name: Run PostgreSQL RLS integration tests
+        if: matrix.adapter == 'postgresql'
+        run: pnpm run test:integration:postgresql
+
+  e2e-infrastructure:
+    name: E2E infrastructure matrix
+    runs-on: ubuntu-latest
+    needs: ci
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: parako
+          POSTGRES_PASSWORD: parako
+          POSTGRES_DB: parako_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parako"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # gitleaks:allow -- disposable CI-only PostgreSQL service credentials.
+      PARAKO_E2E_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_e2e
+      PARAKO_E2E_PROFILE: self-starting
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chrome
+        run: pnpm exec playwright install --with-deps chrome
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Run self-starting deployment matrix
+        run: pnpm run test:e2e:cell
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-infrastructure-${{ github.run_id }}
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e-browser-matrix:
+    name: E2E ${{ matrix.cell }} / ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    needs: ci
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        cell:
+          - sqlite-single
+          - mongodb-single
+          - mongodb-multi
+          - postgresql-single
+          - postgresql-multi
+        profile:
+          - default
+          - notification-policy
+          - phone-verification
+          - security-questions
+          - sms-recovery
+          - social
+          - social-policy-max
+          - social-policy-restricted
+          - webauthn
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: parako
+          POSTGRES_PASSWORD: parako
+          POSTGRES_DB: parako_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U parako"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PARAKO_E2E_CELL: ${{ matrix.cell }}
+      PARAKO_E2E_PROFILE: ${{ matrix.profile }}
+      # gitleaks:allow -- disposable CI-only PostgreSQL service credentials.
+      PARAKO_E2E_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_e2e
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chrome
+        run: pnpm exec playwright install --with-deps chrome
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Run browser cell
+        run: pnpm run test:e2e:cell
+
+      - name: Upload E2E failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-${{ matrix.cell }}-${{ matrix.profile }}-${{ github.run_id }}
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Release builds are architecture-specific. Publishing happens only after both
   # artifacts pass the same CI and adapter gates.
   release-build:
     name: Release build (${{ matrix.arch }})
-    needs: [ci, adapter-matrix]
+    needs: [ci, adapter-matrix, e2e-infrastructure, e2e-browser-matrix]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45

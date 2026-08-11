@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from 'jose';
 
+import {
+  createLoopbackTenantFetch,
+  type E2eFetch,
+} from './support/loopback-tenant-fetch.js';
 import { startMongoMultiTenantParakoInstance } from './support/parako-instance.mjs';
 
 const CLIENT_ID = 'parako-multi-tenant-e2e-m2m';
@@ -22,8 +26,12 @@ function client(secret: string) {
   };
 }
 
-async function getClientCredentialsToken(issuer: string, secret: string) {
-  const response = await fetch(`${issuer}/token`, {
+async function getClientCredentialsToken(
+  issuer: string,
+  secret: string,
+  request: E2eFetch = (url, init) => fetch(url, init as RequestInit)
+) {
+  const response = await request(`${issuer}/token`, {
     method: 'POST',
     headers: {
       authorization: `Basic ${Buffer.from(`${CLIENT_ID}:${secret}`).toString('base64')}`,
@@ -83,13 +91,15 @@ test('isolates issuers, clients, signing keys, tokens, and API access between te
     config: { oidc: { token_ttl: { client_credentials: 120 } } },
   });
 
+  const tenantFetch = createLoopbackTenantFetch(instance.origin);
+
   try {
     const acmeIssuer = instance.issuer('acme');
     const globexIssuer = instance.issuer('globex');
     const [acmeDiscovery, globexDiscovery] = await Promise.all(
       [acmeIssuer, globexIssuer].map(issuer =>
-        fetch(`${issuer}/.well-known/openid-configuration`).then(response =>
-          response.json()
+        tenantFetch(`${issuer}/.well-known/openid-configuration`).then(
+          response => response.json()
         )
       )
     );
@@ -103,8 +113,8 @@ test('isolates issuers, clients, signing keys, tokens, and API access between te
     );
 
     const [acmeGrant, globexGrant] = await Promise.all([
-      getClientCredentialsToken(acmeIssuer, acmeSecret),
-      getClientCredentialsToken(globexIssuer, globexSecret),
+      getClientCredentialsToken(acmeIssuer, acmeSecret, tenantFetch),
+      getClientCredentialsToken(globexIssuer, globexSecret, tenantFetch),
     ]);
     expect(acmeGrant.response.status).toBe(200);
     expect(globexGrant.response.status).toBe(200);
@@ -113,14 +123,15 @@ test('isolates issuers, clients, signing keys, tokens, and API access between te
 
     const crossTenantAuthentication = await getClientCredentialsToken(
       acmeIssuer,
-      globexSecret
+      globexSecret,
+      tenantFetch
     );
     expect(crossTenantAuthentication.response.status).toBe(401);
     expect(crossTenantAuthentication.body.error).toBe('invalid_client');
 
     const [acmeJwks, globexJwks] = await Promise.all([
-      fetch(acmeDiscovery.jwks_uri).then(response => response.json()),
-      fetch(globexDiscovery.jwks_uri).then(response => response.json()),
+      tenantFetch(acmeDiscovery.jwks_uri).then(response => response.json()),
+      tenantFetch(globexDiscovery.jwks_uri).then(response => response.json()),
     ]);
     const acmeToken = await jwtVerify(
       acmeGrant.body.access_token,
@@ -149,18 +160,19 @@ test('isolates issuers, clients, signing keys, tokens, and API access between te
       jwtVerify(acmeGrant.body.access_token, createLocalJWKSet(globexJwks))
     ).rejects.toThrow();
 
-    const acmeApiResponse = await fetch(
+    const acmeApiResponse = await tenantFetch(
       `http://acme.parako.localhost:${port}/api/v1/stats/health`,
       { headers: { authorization: `Bearer ${acmeGrant.body.access_token}` } }
     );
     expect(acmeApiResponse.status).toBe(200);
 
-    const crossTenantApiResponse = await fetch(
+    const crossTenantApiResponse = await tenantFetch(
       `http://globex.parako.localhost:${port}/api/v1/stats/health`,
       { headers: { authorization: `Bearer ${acmeGrant.body.access_token}` } }
     );
     expect(crossTenantApiResponse.status).toBe(401);
   } finally {
+    await tenantFetch.close?.();
     await instance.stop();
   }
 });
