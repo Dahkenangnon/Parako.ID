@@ -81,9 +81,22 @@ test('keeps a phone registration anonymous until the delivered code is verified'
     'Invalid or expired verification code.'
   );
 
-  // Resending rotates both the opaque browser token and the delivered code.
-  // The production SMS policy intentionally applies a one-second per-number
-  // cooldown, including in this E2E profile.
+  // A provider failure is visible, does not fabricate a delivered message,
+  // and leaves the browser on a challenge that can be retried safely.
+  const rejectDelivery = await request.post(`${RP_ORIGIN}/sms/reject-next`);
+  expect(rejectDelivery.status()).toBe(204);
+  await page.waitForTimeout(1_100);
+  await page.getByRole('button', { name: 'Resend code' }).click();
+  const deliveryError = page.getByRole('dialog');
+  await expect(deliveryError).toContainText(
+    'We could not send the verification code. Please try again.'
+  );
+  await deliveryError.getByRole('button', { name: 'OK' }).click();
+  expect(await capturedSms(request)).toHaveLength(1);
+
+  // A successful retry rotates both the opaque browser token and delivered
+  // code. The production SMS policy intentionally applies a one-second
+  // per-number cooldown, including in this E2E profile.
   await page.waitForTimeout(1_100);
   await page.getByRole('button', { name: 'Resend code' }).click();
   await expect.poll(async () => (await capturedSms(request)).length).toBe(2);

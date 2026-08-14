@@ -94,5 +94,12 @@ test.describe('public OIDC account selection', () => {
       page.getByText('The selected account is no longer available.')
     ).toBeVisible();
     await expect(page.getByText(user.email)).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+
+    const cancel = page.getByRole('link', { name: 'Cancel' });
+    await expect(cancel).toHaveAttribute('href', '/accounts/');
+    await expect(cancel).not.toHaveAttribute('onclick', /.+/);
+    await cancel.click();
+    await expect(page).toHaveURL(`${IDP_ORIGIN}/accounts/`);
   });
 });

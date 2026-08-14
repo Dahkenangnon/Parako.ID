@@ -88,6 +88,32 @@ for (const viewport of [
   });
 }
 
+test('the public locale selector works under the strict script policy', async ({
+  page,
+}) => {
+  const failures = observeBrowserFailures(page);
+  await page.goto(`${IDP_ORIGIN}/auth/login`);
+
+  const selector = page.getByLabel('Language');
+  await expect(selector).toHaveValue('en');
+  await expect(page.locator('[onchange]')).toHaveCount(0);
+
+  const localeResponse = page.waitForResponse(response =>
+    response.url().endsWith('/auth/update-locale')
+  );
+  await selector.selectOption('fr');
+  expect((await localeResponse).status()).toBe(200);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
+  await expect(page.getByLabel('Language')).toHaveValue('fr');
+
+  expect(failures).toEqual({
+    pageErrors: [],
+    consoleErrors: [],
+    failedRequests: [],
+    failedAssets: [],
+  });
+});
+
 test('root, locale, and not-found routes preserve browser rendering contracts', async ({
   page,
 }) => {

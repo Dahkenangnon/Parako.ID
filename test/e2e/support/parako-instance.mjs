@@ -50,7 +50,7 @@ export function mongoFixtureDocumentId(tenantId, logicalId) {
 
 /** @typedef {{ client_id: string, [key: string]: unknown }} OidcClientFixture */
 /** @typedef {{ oidc?: { path?: string, [key: string]: unknown }, [key: string]: unknown }} ParakoConfigFixture */
-/** @typedef {{ slug: string, display_name: string }} TenantFixture */
+/** @typedef {{ slug: string, display_name: string, domain?: string, issuer_url?: string, status?: 'active' | 'suspended' | 'archived' }} TenantFixture */
 /** @typedef {{ tenantId: string, client: OidcClientFixture }} TenantClientFixture */
 /** @typedef {{ tenantId: string, value: Record<string, unknown> }} TenantOverrideFixture */
 /** @typedef {{ path: string, contents: string | Uint8Array }} UploadFixture */
@@ -232,9 +232,16 @@ export async function seedPostgresqlFixtures(databaseUrl, tenants, clients) {
     for (const tenant of tenants) {
       await database.query(
         `INSERT INTO tenants
-           (id, slug, display_name, status, created_at, updated_at)
-         VALUES ($1, $2, $3, 'active', NOW(), NOW())`,
-        [randomUUID(), tenant.slug, tenant.display_name]
+           (id, slug, display_name, domain, issuer_url, status, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+        [
+          randomUUID(),
+          tenant.slug,
+          tenant.display_name,
+          tenant.domain ?? null,
+          tenant.issuer_url ?? null,
+          tenant.status ?? 'active',
+        ]
       );
     }
     for (const { tenantId, client } of clients) {
@@ -646,7 +653,9 @@ async function startMongoParakoInstance({
         tenants.map(tenant => ({
           slug: tenant.slug,
           display_name: tenant.display_name,
-          status: 'active',
+          ...(tenant.domain ? { domain: tenant.domain } : {}),
+          ...(tenant.issuer_url ? { issuer_url: tenant.issuer_url } : {}),
+          status: tenant.status ?? 'active',
           created_at: now,
           updated_at: now,
         }))

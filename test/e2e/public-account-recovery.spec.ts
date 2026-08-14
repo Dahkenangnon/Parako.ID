@@ -10,6 +10,7 @@ import {
   IDP_ORIGIN,
   type ManagedUserFixture,
 } from './support/management-api.js';
+import { currentSessionId } from './support/browser-session.js';
 
 const RP_ORIGIN = 'http://127.0.0.1:19010';
 
@@ -139,23 +140,6 @@ async function submitRecoveryCode(page: Page, code: string) {
   }
   await expect(page.locator('#code')).toHaveValue(code);
   await page.getByRole('button', { name: 'Verify Code' }).click();
-}
-
-async function currentSessionId(page: Page): Promise<string> {
-  const sessionCookie = (await page.context().cookies(IDP_ORIGIN)).find(
-    cookie => cookie.name === 'application_session'
-  );
-  expect(sessionCookie, 'Parako browser session cookie').toBeDefined();
-
-  const signedValue = decodeURIComponent(sessionCookie!.value);
-  const unsignedValue = signedValue.startsWith('s:')
-    ? signedValue.slice(2)
-    : signedValue;
-  const signatureSeparator = unsignedValue.lastIndexOf('.');
-  expect(signatureSeparator, 'signed session cookie separator').toBeGreaterThan(
-    0
-  );
-  return unsignedValue.slice(0, signatureSeparator);
 }
 
 test('recovers an account once with a generated backup code and rejects replay', async ({

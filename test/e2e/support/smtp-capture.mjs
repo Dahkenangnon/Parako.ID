@@ -27,6 +27,8 @@ export class SmtpCaptureServer {
   /** @type {Set<import('node:net').Socket>} */
   #sockets = new Set();
 
+  #rejectNextMessage = false;
+
   /**
    * @param {{ host?: string; port?: number; username: string; password: string }} options
    */
@@ -37,6 +39,7 @@ export class SmtpCaptureServer {
     this.password = password;
     /** @type {Array<{ mailFrom: string; rcptTo: string[]; source: string }>} */
     this.messages = [];
+    this.successfulAuthentications = 0;
   }
 
   async start() {
@@ -55,6 +58,11 @@ export class SmtpCaptureServer {
 
   clear() {
     this.messages.length = 0;
+    this.#rejectNextMessage = false;
+  }
+
+  rejectNextMessage() {
+    this.#rejectNextMessage = true;
   }
 
   async close() {
@@ -107,13 +115,21 @@ export class SmtpCaptureServer {
 
         if (collectingData) {
           if (line === '.') {
-            this.messages.push({
-              mailFrom,
-              rcptTo: [...rcptTo],
-              source: dataLines.join('\r\n'),
-            });
+            const rejectMessage = this.#rejectNextMessage;
+            this.#rejectNextMessage = false;
+            if (!rejectMessage) {
+              this.messages.push({
+                mailFrom,
+                rcptTo: [...rcptTo],
+                source: dataLines.join('\r\n'),
+              });
+            }
             resetEnvelope();
-            reply('250 2.0.0 Message accepted');
+            reply(
+              rejectMessage
+                ? '550 5.0.0 Message rejected by E2E capture'
+                : '250 2.0.0 Message accepted'
+            );
           } else {
             dataLines.push(line.startsWith('..') ? line.slice(1) : line);
           }
@@ -130,6 +146,7 @@ export class SmtpCaptureServer {
           authenticated =
             authLoginUsername === this.username &&
             decodeBase64(line) === this.password;
+          if (authenticated) this.successfulAuthentications += 1;
           authLoginStep = '';
           reply(
             authenticated
@@ -162,6 +179,7 @@ export class SmtpCaptureServer {
                 decodeBase64(initialResponse).split('\0');
               authenticated =
                 username === this.username && password === this.password;
+              if (authenticated) this.successfulAuthentications += 1;
               reply(
                 authenticated
                   ? '235 2.7.0 Authentication successful'

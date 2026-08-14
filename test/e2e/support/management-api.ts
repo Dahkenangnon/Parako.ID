@@ -17,7 +17,6 @@ export const IDP_ORIGIN =
 export const API_ORIGIN = `${IDP_ORIGIN}/api/v1`;
 export const MANAGEMENT_API_RESOURCE = 'urn:parako:api:v1';
 
-const ISSUER = new URL(`${IDP_ORIGIN}/oidc/v1`);
 const CLIENT_ID = 'parako-browser-e2e-m2m';
 // gitleaks:allow -- deterministic credential for an isolated local E2E client.
 const CLIENT_SECRET = 'parako-browser-e2e-m2m-secret';
@@ -30,20 +29,20 @@ export type ClientCredentialsFixture = {
   scope: string;
 };
 
-export async function issueClientCredentialsToken({
-  clientId,
-  clientSecret,
-  resource,
-  scope,
-}: ClientCredentialsFixture): Promise<string> {
+async function issueClientCredentialsTokenAtOrigin(
+  origin: string,
+  fixture: ClientCredentialsFixture,
+  oidcFetch: CustomFetch
+): Promise<string> {
+  const { clientId, clientSecret, resource, scope } = fixture;
   const configuration = await discovery(
-    ISSUER,
+    new URL(`${origin}/oidc/v1`),
     clientId,
     { client_secret: clientSecret },
     ClientSecretBasic(clientSecret),
     {
       execute: [allowInsecureRequests],
-      [customFetch]: nodeFetch as CustomFetch,
+      [customFetch]: oidcFetch,
     }
   );
   allowInsecureRequests(configuration);
@@ -54,6 +53,19 @@ export async function issueClientCredentialsToken({
   });
   expect(tokens.access_token).toBeTruthy();
   return tokens.access_token!;
+}
+
+export async function issueClientCredentialsToken({
+  clientId,
+  clientSecret,
+  resource,
+  scope,
+}: ClientCredentialsFixture): Promise<string> {
+  return issueClientCredentialsTokenAtOrigin(
+    IDP_ORIGIN,
+    { clientId, clientSecret, resource, scope },
+    nodeFetch as CustomFetch
+  );
 }
 
 export async function issueManagementToken(scope: string): Promise<string> {
@@ -91,44 +103,74 @@ export type ManagedUserFixture = {
   password: string;
 };
 
+type ManagedUserOptions = {
+  accountEnabled?: boolean;
+  origin?: string;
+  role?: string;
+};
+
 /**
- * Provision a normal user through the public Management API. Browser suites
+ * Provision a user through the public Management API. Browser suites
  * use this instead of reaching into a storage adapter, so account scenarios
  * exercise the same supported setup path across deployment cells.
  */
 export async function createManagedUser(
-  prefix = 'browser-user'
+  prefix = 'browser-user',
+  options: ManagedUserOptions = {}
 ): Promise<ManagedUserFixture> {
-  const token = await issueManagementToken('parako:users:write');
+  const origin = options.origin ?? IDP_ORIGIN;
+  const tenantFetch =
+    origin === IDP_ORIGIN ? nodeFetch : createLoopbackTenantFetch(origin);
   const suffix = randomUUID();
   // Keep generated fixtures within the public 50-character username contract.
   // Emails retain the full scenario prefix so captured notifications remain
   // easy to attribute when several browser journeys share one environment.
   const username = `${prefix.slice(0, 17)}-${suffix.replaceAll('-', '')}`;
   const password = 'E2E-Strong!7';
-  const response = await apiRequest('/users', {
-    method: 'POST',
-    token,
-    body: JSON.stringify({
-      email: `${prefix}-${suffix}@example.test`,
-      password,
-      username,
-      given_name: 'Browser',
-      family_name: 'User',
-      name: 'Browser User',
-    }),
-  });
-  expect(response.status).toBe(201);
-  const envelope = await readApiJson<{
-    data: { id?: string; _id?: string; email: string; username: string };
-  }>(response);
-  const id = envelope.data.id ?? envelope.data._id;
-  expect(id).toEqual(expect.any(String));
+  try {
+    const token = await issueClientCredentialsTokenAtOrigin(
+      origin,
+      {
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        resource: MANAGEMENT_API_RESOURCE,
+        scope: 'parako:users:write',
+      },
+      tenantFetch as CustomFetch
+    );
+    const response = await tenantFetch(`${origin}/api/v1/users`, {
+      method: 'POST',
+      body: JSON.stringify({
+        email: `${prefix}-${suffix}@example.test`,
+        password,
+        username,
+        given_name: 'Browser',
+        family_name: 'User',
+        name: 'Browser User',
+        ...(options.role ? { role: options.role } : {}),
+        ...(options.accountEnabled === undefined
+          ? {}
+          : { account_enabled: options.accountEnabled }),
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+    });
+    expect(response.status).toBe(201);
+    const envelope = await readApiJson<{
+      data: { id?: string; _id?: string; email: string; username: string };
+    }>(response);
+    const id = envelope.data.id ?? envelope.data._id;
+    expect(id).toEqual(expect.any(String));
 
-  return {
-    id: id!,
-    email: envelope.data.email,
-    username: envelope.data.username,
-    password,
-  };
+    return {
+      id: id!,
+      email: envelope.data.email,
+      username: envelope.data.username,
+      password,
+    };
+  } finally {
+    if (tenantFetch !== nodeFetch) await tenantFetch.close?.();
+  }
 }

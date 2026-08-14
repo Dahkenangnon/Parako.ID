@@ -1390,6 +1390,11 @@ test.afterAll(async () => {
 });
 
 test.describe('Management API adapter lifecycle and security matrix', () => {
+  // Each case intentionally combines persistence, security, and browser session
+  // lifecycles against one real adapter runtime; individual assertions retain
+  // the shorter timeout from the shared Playwright configuration.
+  test.describe.configure({ timeout: 240_000 });
+
   test('SQLite single tenant', async ({ browser }) => {
     await withRuntime(
       () =>

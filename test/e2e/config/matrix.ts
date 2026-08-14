@@ -1,18 +1,23 @@
 import { validateE2ePostgresqlUrl } from '../support/e2e-prerequisites.ts';
 
 export const SELF_STARTING_SPECS = [
+  'admin-user-configuration-profiles.spec.ts',
   'deployment-matrix-admission.spec.ts',
   'management-api-adapter-matrix.spec.ts',
   'management-api-tenants.spec.ts',
   'oidc-feature-adapter-matrix.spec.ts',
   'password-session-adapter-matrix.spec.ts',
+  'platform-admin-adapter-matrix.spec.ts',
   'public-account-adapter-matrix.spec.ts',
   'public-health.spec.ts',
   'public-login-profiles.spec.ts',
+  'tenant-resolution-adapter-matrix.spec.ts',
   'webauthn-adapter-matrix.spec.ts',
 ] as const;
 
 const FEATURE_PROFILE_SPECS = [
+  'admin-configuration.spec.ts',
+  'ops-infrastructure.spec.ts',
   'account-notification-policy.spec.ts',
   'public-phone-verification.spec.ts',
   'public-security-question-recovery.spec.ts',
@@ -21,6 +26,9 @@ const FEATURE_PROFILE_SPECS = [
   'public-social-policy-max.spec.ts',
   'public-social-policy-restricted.spec.ts',
   'public-webauthn.spec.ts',
+  'admin-data-import.spec.ts',
+  'admin-jwks-scheduler.spec.ts',
+  'worker-graceful-shutdown.spec.ts',
 ] as const;
 
 export const E2E_CELL_IDS = [
@@ -35,6 +43,7 @@ export type E2eCellId = (typeof E2E_CELL_IDS)[number];
 
 export const E2E_PROFILE_IDS = [
   'default',
+  'database-configuration',
   'notification-policy',
   'phone-verification',
   'security-questions',
@@ -42,6 +51,9 @@ export const E2E_PROFILE_IDS = [
   'social',
   'social-policy-max',
   'social-policy-restricted',
+  'background-jobs',
+  'worker-drain',
+  'operations',
   'webauthn',
 ] as const;
 
@@ -129,6 +141,14 @@ export const E2E_PROFILES: Record<E2eProfileId, E2eProfile> = {
     testIgnore: [...SELF_STARTING_SPECS, ...FEATURE_PROFILE_SPECS],
     environment: {},
   },
+  'database-configuration': {
+    id: 'database-configuration',
+    testMatch: ['admin-configuration.spec.ts'],
+    environment: {
+      PARAKO_E2E_DATABASE_CONFIG: 'true',
+      PARAKO_E2E_SIBLING_TENANT_ID: 'browser-e2e-sibling',
+    },
+  },
   'notification-policy': {
     id: 'notification-policy',
     testMatch: ['account-notification-policy.spec.ts'],
@@ -178,6 +198,41 @@ export const E2E_PROFILES: Record<E2eProfileId, E2eProfile> = {
       PARAKO_E2E_SOCIAL_EXISTING_USER_POLICY: 'auto_link',
       PARAKO_E2E_SOCIAL_NO_USER_POLICY: 'require_existing_account',
       PARAKO_E2E_SOCIAL_ALLOW_MULTIPLE: 'false',
+    },
+  },
+  'background-jobs': {
+    id: 'background-jobs',
+    testMatch: ['admin-data-import.spec.ts', 'admin-jwks-scheduler.spec.ts'],
+    environment: {
+      PARAKO_E2E_BACKGROUND_JOBS: 'true',
+      // SHA1 range for the deterministic managed-user fixture password. The
+      // worker receives only the k-anonymous prefix/suffix, never plaintext.
+      PARAKO_E2E_HIBP_PREFIX: 'AD3F7',
+      PARAKO_E2E_HIBP_SUFFIX: 'ECDEA8AC30E95A4A9C7E6AEF792FF784AFA',
+      PARAKO_E2E_HIBP_COUNT: '42',
+    },
+  },
+  'worker-drain': {
+    id: 'worker-drain',
+    testMatch: ['worker-graceful-shutdown.spec.ts'],
+    environment: {
+      PARAKO_E2E_BACKGROUND_JOBS: 'true',
+      PARAKO_E2E_WORKER_DRAIN: 'true',
+      PARAKO_E2E_HIBP_PREFIX: 'AD3F7',
+      PARAKO_E2E_HIBP_SUFFIX: 'ECDEA8AC30E95A4A9C7E6AEF792FF784AFA',
+      PARAKO_E2E_HIBP_COUNT: '42',
+      PARAKO_E2E_DRAIN_HIBP_PREFIX: 'ABCDE',
+      PARAKO_E2E_DRAIN_HIBP_SUFFIX: 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
+      PARAKO_E2E_DRAIN_HIBP_COUNT: '84',
+    },
+  },
+  operations: {
+    id: 'operations',
+    testMatch: ['ops-infrastructure.spec.ts'],
+    environment: {
+      PARAKO_E2E_OPERATIONS: 'true',
+      // gitleaks:allow -- deterministic HMAC key for an isolated local E2E gateway.
+      PARAKO_E2E_HMAC_SECRET: 'parako-browser-e2e-ops-hmac-secret',
     },
   },
   webauthn: {

@@ -18,6 +18,8 @@ const IDENTITY_EXPIRY_COLUMNS = {
   },
 };
 
+const JWKS_ROTATION_DUE_AT = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
+
 /**
  * Test-control persistence for relational E2E deployments. Each operation
  * opens a short-lived connection so the temporary RP never shares Parako's
@@ -26,6 +28,21 @@ const IDENTITY_EXPIRY_COLUMNS = {
 export class SqliteFixtureStore {
   constructor(databasePath) {
     this.databasePath = databasePath;
+  }
+
+  async makeJwksRotationDue() {
+    const database = new Database(this.databasePath);
+    try {
+      return database
+        .prepare(
+          `UPDATE jwks_keys
+              SET created_at = ?
+            WHERE tenant_id = 'default' AND status = 'active'`
+        )
+        .run(JWKS_ROTATION_DUE_AT.toISOString()).changes;
+    } finally {
+      database.close();
+    }
   }
 
   async insertSocialIntegration(email, method, providerSub) {
@@ -170,6 +187,18 @@ export class SqliteFixtureStore {
     }
   }
 
+  async expireApplicationSession(sessionId) {
+    const database = new Database(this.databasePath);
+    try {
+      return (
+        database.prepare('DELETE FROM sessions WHERE sid = ?').run(sessionId)
+          .changes === 1
+      );
+    } finally {
+      database.close();
+    }
+  }
+
   async setAccountEnabled(email, enabled) {
     const database = new Database(this.databasePath);
     try {
@@ -195,6 +224,26 @@ export class SqliteFixtureStore {
       database.close();
     }
   }
+
+  async setActivityStorageAvailability(available) {
+    const database = new Database(this.databasePath);
+    try {
+      const activityTable = available ? 'activities_unavailable' : 'activities';
+      const nextTable = available ? 'activities' : 'activities_unavailable';
+      const exists = database
+        .prepare(
+          `SELECT 1
+             FROM sqlite_master
+            WHERE type = 'table' AND name = ?`
+        )
+        .get(activityTable);
+      if (!exists) return false;
+      database.exec(`ALTER TABLE ${activityTable} RENAME TO ${nextTable}`);
+      return true;
+    } finally {
+      database.close();
+    }
+  }
 }
 
 /** Test-control persistence for a disposable MongoDB E2E database. */
@@ -206,6 +255,16 @@ export class MongoFixtureStore {
 
   userFilter(email) {
     return { email, tenant_id: this.tenantId };
+  }
+
+  async makeJwksRotationDue() {
+    const result = await this.database
+      .collection('jwks_keys')
+      .updateMany(
+        { tenant_id: this.tenantId, status: 'active' },
+        { $set: { created_at: JWKS_ROTATION_DUE_AT } }
+      );
+    return result.modifiedCount;
   }
 
   async insertSocialIntegration(email, method, providerSub) {
@@ -322,6 +381,22 @@ export class MongoFixtureStore {
     return result.modifiedCount === 1;
   }
 
+  async expireApplicationSession(sessionId) {
+    const tenantFilter =
+      this.tenantId === 'default'
+        ? {
+            $or: [
+              { 'session.tenantId': 'default' },
+              { 'session.tenantId': { $exists: false } },
+            ],
+          }
+        : { 'session.tenantId': this.tenantId };
+    const result = await this.database
+      .collection('application_session')
+      .deleteOne({ _id: sessionId, ...tenantFilter });
+    return result.deletedCount === 1;
+  }
+
   async setAccountEnabled(email, enabled) {
     const result = await this.database
       .collection('users')
@@ -338,6 +413,52 @@ export class MongoFixtureStore {
         $set: { blocked_from: blocked ? ['login'] : [] },
       });
     return result.matchedCount === 1;
+  }
+
+  async setActivityStorageAvailability(available) {
+    const collections = await this.database
+      .listCollections({}, { nameOnly: true })
+      .toArray();
+    const names = new Set(collections.map(collection => collection.name));
+    if (available) {
+      if (!names.has('activities_unavailable')) return false;
+      if (names.has('activities')) {
+        await this.database.collection('activities').drop();
+      }
+
+      const restore = () =>
+        this.database.collection('activities_unavailable').rename('activities');
+      try {
+        await restore();
+      } catch (error) {
+        // A queued audit write can recreate the collection between drop and
+        // rename. Discard that disposable shell and restore the fixture once.
+        if (error?.code !== 48) throw error;
+        await this.database.collection('activities').drop();
+        await restore();
+      }
+      return true;
+    }
+
+    if (!names.has('activities')) return false;
+    await this.database
+      .collection('activities')
+      .rename('activities_unavailable');
+
+    // MongoDB treats a missing collection as an empty collection. A temporary
+    // view whose pipeline fails is therefore required to exercise the real
+    // repository failure path while preserving all disposable fixture data.
+    await this.database.createCollection('activities', {
+      viewOn: 'activities_unavailable',
+      pipeline: [
+        {
+          $match: {
+            $expr: { $eq: [{ $divide: [1, 0] }, 0] },
+          },
+        },
+      ],
+    });
+    return true;
   }
 }
 
@@ -367,6 +488,18 @@ export class PostgresqlFixtureStore {
     } finally {
       await database.end();
     }
+  }
+
+  async makeJwksRotationDue() {
+    return this.withDatabase(async database => {
+      const result = await database.query(
+        `UPDATE jwks_keys
+            SET created_at = $1
+          WHERE tenant_id = $2 AND status = 'active'`,
+        [JWKS_ROTATION_DUE_AT, this.tenantId]
+      );
+      return result.rowCount ?? 0;
+    });
   }
 
   async insertSocialIntegration(email, method, providerSub) {
@@ -521,6 +654,32 @@ export class PostgresqlFixtureStore {
         [sessionId, this.tenantId, JSON.stringify(session)]
       );
       return result.rowCount === 1;
+    });
+  }
+
+  async expireApplicationSession(sessionId) {
+    return this.withDatabase(async database => {
+      const result = await database.query(
+        'DELETE FROM sessions WHERE sid = $1 AND tenant_id = $2',
+        [sessionId, this.tenantId]
+      );
+      return result.rowCount === 1;
+    });
+  }
+
+  async setActivityStorageAvailability(available) {
+    return this.withDatabase(async database => {
+      const current = available ? 'activities_unavailable' : 'activities';
+      const next = available ? 'activities' : 'activities_unavailable';
+      const exists = await database.query(
+        `SELECT 1
+           FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = $1`,
+        [current]
+      );
+      if (exists.rowCount !== 1) return false;
+      await database.query(`ALTER TABLE ${current} RENAME TO ${next}`);
+      return true;
     });
   }
 }

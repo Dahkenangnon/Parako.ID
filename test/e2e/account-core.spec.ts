@@ -142,36 +142,46 @@ test.describe('normal-user account core', () => {
     expect(status).toBe(403);
   });
 
-  test('renders every core account page with working assets at desktop and narrow widths', async ({
-    page,
-  }) => {
-    const user = await createManagedUser('account-navigation');
-    const failures = observeBrowserFailures(page);
-    await login(page, user);
-
-    const routes = [
-      '/accounts/',
-      '/accounts/settings/profile',
-      '/accounts/settings/preferences',
-      '/accounts/settings/notifications',
-      '/accounts/settings/security',
-      '/accounts/settings/recovery',
-      '/accounts/settings/social',
-      '/accounts/apps',
-      '/accounts/sessions',
-    ];
-
-    for (const viewport of [
-      { width: 1280, height: 800 },
-      { width: 390, height: 844 },
-    ]) {
+  for (const viewport of [
+    { name: 'desktop', width: 1280, height: 800 },
+    { name: 'narrow', width: 390, height: 844 },
+  ]) {
+    test(`renders every core account page with working assets at ${viewport.name} width`, async ({
+      page,
+    }) => {
+      const user = await createManagedUser(
+        `account-navigation-${viewport.name}`
+      );
+      const failures = observeBrowserFailures(page);
+      await login(page, user);
       await page.setViewportSize(viewport);
-      for (const route of routes) {
+
+      for (const route of [
+        '/accounts/',
+        '/accounts/settings/profile',
+        '/accounts/settings/preferences',
+        '/accounts/settings/notifications',
+        '/accounts/settings/security',
+        '/accounts/settings/recovery',
+        '/accounts/settings/social',
+        '/accounts/apps',
+        '/accounts/sessions',
+      ]) {
         const response = await page.goto(`${IDP_ORIGIN}${route}`);
         expect(response?.status(), route).toBe(200);
         await expectStyledAccountPage(page);
       }
-    }
+
+      expectNoBrowserFailures(failures);
+    });
+  }
+
+  test('canonicalizes account settings and disabled passkey entry points', async ({
+    page,
+  }) => {
+    const user = await createManagedUser('account-canonical-routes');
+    const failures = observeBrowserFailures(page);
+    await login(page, user);
 
     const settings = await page.goto(`${IDP_ORIGIN}/accounts/settings`);
     expect(settings?.status()).toBe(200);
@@ -582,6 +592,39 @@ test.describe('normal-user account core', () => {
     expect(afterRemove.accounts).toEqual([
       expect.objectContaining({ email: firstUser.email, isActive: true }),
     ]);
+    expectNoBrowserFailures(failures);
+  });
+
+  test('recovers the account switcher through its CSP-safe retry control', async ({
+    page,
+  }) => {
+    const user = await createManagedUser('account-switcher-retry');
+    const failures = observeBrowserFailures(page);
+    let requestCount = 0;
+    await page.route('**/accounts/account-switcher-data', async route => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        await route.fulfill({
+          body: JSON.stringify({
+            error: 'Temporary account-switcher failure',
+            success: false,
+          }),
+          contentType: 'application/json',
+          status: 200,
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await login(page, user);
+    await expect(page.locator('[onclick]')).toHaveCount(0);
+    await page.locator('#sidebar-user-btn').click();
+    await expect(page.locator('#accounts-error-sidebar')).toBeVisible();
+    await page.locator('#accounts-retry-sidebar').click();
+    await expect(page.locator('#accounts-list-sidebar')).toBeVisible();
+    expect(requestCount).toBe(2);
+    await page.unroute('**/accounts/account-switcher-data');
     expectNoBrowserFailures(failures);
   });
 

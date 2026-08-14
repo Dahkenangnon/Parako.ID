@@ -9,6 +9,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 import Database from 'better-sqlite3';
+import { Queue } from 'bullmq';
 import express from 'express';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { MongoClient } from 'mongodb';
@@ -39,6 +40,7 @@ import {
   PLATFORM_ONLY_SCOPES,
   SCOPES,
 } from '../../../dist/src/api/v1/scopes.js';
+import { QUEUE_NAMES, QUEUE_PREFIX } from '../../../dist/src/jobs/config.js';
 import { SmtpCaptureServer } from './smtp-capture.mjs';
 import { installFakeGitHubProvider } from './fake-github-provider.mjs';
 import {
@@ -62,6 +64,7 @@ const DEPLOYMENT_ORIGIN = process.env.PARAKO_E2E_DEPLOYMENT_URL ?? IDP_ORIGIN;
 const ISSUER = `${IDP_ORIGIN}/oidc/v1`;
 const RP_ORIGIN = 'http://127.0.0.1:19010';
 const CLIENT_ID = 'parako-browser-e2e-rp';
+const GRANTS_BULK_CLIENT_ID = 'parako-browser-e2e-grants-bulk-rp';
 const M2M_CLIENT_ID = 'parako-browser-e2e-m2m';
 // gitleaks:allow -- deterministic credential for an isolated local E2E client.
 const M2M_CLIENT_SECRET = 'parako-browser-e2e-m2m-secret';
@@ -100,6 +103,10 @@ const SOCIAL_CLIENT_ID = 'parako-browser-e2e-social';
 const SOCIAL_CLIENT_SECRET = 'parako-browser-e2e-social-secret';
 // gitleaks:allow -- deterministic cookie-signing fixture, never used outside E2E.
 const TEST_SECRET = '0123456789abcdef'.repeat(4);
+const BACKGROUND_JOBS_ENABLED =
+  process.env.PARAKO_E2E_BACKGROUND_JOBS === 'true';
+const WORKER_DRAIN_ENABLED = process.env.PARAKO_E2E_WORKER_DRAIN === 'true';
+const OPERATIONS_ENABLED = process.env.PARAKO_E2E_OPERATIONS === 'true';
 const TENANT_MANAGEMENT_API_SCOPES = Object.values(SCOPES)
   .filter(scope => !PLATFORM_ONLY_SCOPES.has(scope))
   .join(' ');
@@ -109,8 +116,17 @@ const logoutStates = new Set();
 const deviceAuthorizations = new Map();
 const backchannelLogoutTokens = [];
 const smsMessages = [];
+let rejectNextSms = false;
 let runtimeRoot;
 let parako;
+let worker;
+let workerDrainGate;
+let workerOutputTail = '';
+let workerShutdownStarted = false;
+let resolveWorkerShutdownStarted;
+const workerShutdownStartedPromise = new Promise(resolve => {
+  resolveWorkerShutdownStarted = resolve;
+});
 let rpServer;
 let smtpCapture;
 let mongoFixture;
@@ -118,6 +134,168 @@ let postgresqlFixture;
 const oidcConfigurations = new Map();
 const oidcFetch = createLoopbackTenantFetch(IDP_ORIGIN);
 let stopping = false;
+
+function resolveE2eRedisConfig() {
+  const host = process.env.PARAKO_E2E_REDIS_HOST ?? '127.0.0.1';
+  const port = Number(process.env.PARAKO_E2E_REDIS_PORT ?? '6379');
+  const database = Number(process.env.PARAKO_E2E_REDIS_DATABASE ?? '15');
+  if (!host.trim()) throw new Error('PARAKO_E2E_REDIS_HOST cannot be empty');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PARAKO_E2E_REDIS_PORT must be an integer from 1 to 65535');
+  }
+  if (!Number.isSafeInteger(database) || database < 0) {
+    throw new Error('PARAKO_E2E_REDIS_DATABASE must be a non-negative integer');
+  }
+  return {
+    host,
+    port,
+    database,
+    password: process.env.PARAKO_E2E_REDIS_PASSWORD || undefined,
+  };
+}
+
+async function resetBackgroundTaskQueue(redisConfig) {
+  const queue = new Queue(QUEUE_NAMES.BACKGROUND_TASKS, {
+    connection: {
+      host: redisConfig.host,
+      port: redisConfig.port,
+      password: redisConfig.password,
+      db: redisConfig.database,
+      maxRetriesPerRequest: null,
+    },
+    prefix: QUEUE_PREFIX,
+  });
+  try {
+    await queue.pause();
+    await queue.obliterate({ force: true });
+  } finally {
+    await queue.close();
+  }
+}
+
+function isChildRunning(child) {
+  return child && child.exitCode === null && child.signalCode === null;
+}
+
+async function fileExists(filePath) {
+  if (!filePath) return false;
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function observeWorkerOutput(chunk) {
+  workerOutputTail = (workerOutputTail + chunk.toString('utf8')).slice(-8192);
+  if (!workerShutdownStarted && workerOutputTail.includes('SIGTERM received')) {
+    workerShutdownStarted = true;
+    resolveWorkerShutdownStarted();
+  }
+}
+
+function waitForWorkerShutdownStart(timeoutMs = 5_000) {
+  if (workerShutdownStarted) return Promise.resolve();
+
+  // This is a failure bound, not a synchronization delay. The test advances
+  // only after the real worker emits its observable shutdown-start log.
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Worker did not acknowledge SIGTERM'));
+    }, timeoutMs);
+    workerShutdownStartedPromise.then(() => {
+      clearTimeout(timeout);
+      resolve();
+    });
+  });
+}
+
+function waitForChildExit(child, timeoutMs) {
+  return new Promise(resolve => {
+    let timeout;
+
+    const cleanup = () => {
+      child.off('exit', onExit);
+      clearTimeout(timeout);
+    };
+    const onExit = (code, signal) => {
+      cleanup();
+      resolve({ exited: true, code, signal });
+    };
+
+    child.once('exit', onExit);
+    timeout = setTimeout(() => {
+      cleanup();
+      resolve({ exited: false, code: null, signal: null });
+    }, timeoutMs);
+  });
+}
+
+async function terminateChild(child) {
+  if (!isChildRunning(child)) {
+    return { forced: false, code: child?.exitCode, signal: child?.signalCode };
+  }
+
+  // Register the exit listener before signaling so a fast, graceful exit
+  // cannot race past the observer and leave teardown waiting indefinitely.
+  const gracefulExit = waitForChildExit(child, 10_000);
+  child.kill('SIGTERM');
+  const result = await gracefulExit;
+  if (result.exited) return { forced: false, ...result };
+
+  const forcedExit = waitForChildExit(child, 10_000);
+  child.kill('SIGKILL');
+  const forcedResult = await forcedExit;
+  if (!forcedResult.exited) {
+    throw new Error(
+      'Child process ' + (child.pid ?? 'unknown') + ' did not exit'
+    );
+  }
+  return { forced: true, ...forcedResult };
+}
+
+async function waitForWorkerReady(child) {
+  await new Promise((resolve, reject) => {
+    let timeout;
+
+    const cleanup = () => {
+      child.off('message', onMessage);
+      child.off('exit', onExit);
+      clearTimeout(timeout);
+    };
+    const fail = error => {
+      cleanup();
+      reject(error);
+    };
+    const onMessage = message => {
+      if (message === 'ready') {
+        cleanup();
+        resolve();
+        return;
+      }
+      fail(new Error('Unexpected worker readiness message: ' + message));
+    };
+    const onExit = (code, signal) => {
+      fail(
+        new Error(
+          'Worker exited before readiness (code=' +
+            code +
+            ', signal=' +
+            signal +
+            ')'
+        )
+      );
+    };
+
+    child.once('message', onMessage);
+    child.once('exit', onExit);
+    timeout = setTimeout(
+      () => fail(new Error('Worker readiness timed out after 60 seconds')),
+      60_000
+    );
+  });
+}
 
 function parseCookies(header = '') {
   return Object.fromEntries(
@@ -164,6 +342,15 @@ function html(value) {
     .replaceAll("'", '&#39;');
 }
 
+function isApplicationSessionId(value) {
+  return (
+    typeof value === 'string' &&
+    value.length >= 16 &&
+    value.length <= 128 &&
+    /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?$/.test(value)
+  );
+}
+
 async function applySqliteMigrations(databasePath) {
   const migrationsRoot = path.join(PROJECT_ROOT, 'prisma/migrations/sqlite');
   const directories = (
@@ -201,6 +388,22 @@ async function applySqliteMigrations(databasePath) {
         require_pkce: true,
         introspection_endpoint_auth_method: 'none',
         revocation_endpoint_auth_method: 'none',
+        active: true,
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        client_id: GRANTS_BULK_CLIENT_ID,
+        client_name: 'Parako Browser E2E Grants Bulk RP',
+        application_type: 'web',
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        redirect_uris: [`${RP_ORIGIN}/callback`],
+        backchannel_logout_uri: `${RP_ORIGIN}/backchannel-logout`,
+        backchannel_logout_session_required: true,
+        scope: 'openid profile email offline_access',
+        require_pkce: true,
         active: true,
         created_at: now,
         updated_at: now,
@@ -382,8 +585,8 @@ function mongoFixtureDocumentId(tenantId, logicalId) {
 
 async function startMongoFixtureDatabase({
   clientFixtures,
-  multiTenancy,
   tenantId,
+  tenants,
 }) {
   const server = await MongoMemoryServer.create({
     instance: { dbName: `parako-browser-e2e-${tenantId}` },
@@ -394,24 +597,29 @@ async function startMongoFixtureDatabase({
   await client.connect();
   const database = client.db(databaseName);
 
-  if (multiTenancy) {
+  if (tenants.length > 0) {
     const now = new Date();
-    await database.collection('tenants').insertOne({
-      slug: tenantId,
-      display_name: 'Parako Browser E2E',
-      status: 'active',
-      created_at: now,
-      updated_at: now,
-    });
+    await database.collection('tenants').insertMany(
+      tenants.map(tenant => ({
+        ...tenant,
+        status: 'active',
+        created_at: now,
+        updated_at: now,
+      }))
+    );
   }
 
+  const clientTenantIds =
+    tenants.length > 0 ? tenants.map(tenant => tenant.slug) : [tenantId];
   await database.collection('Client').insertMany(
-    clientFixtures.map(clientFixture => ({
-      _id: mongoFixtureDocumentId(tenantId, clientFixture.client_id),
-      logical_id: clientFixture.client_id,
-      tenant_id: tenantId,
-      payload: clientFixture,
-    }))
+    clientTenantIds.flatMap(clientTenantId =>
+      clientFixtures.map(clientFixture => ({
+        _id: mongoFixtureDocumentId(clientTenantId, clientFixture.client_id),
+        logical_id: clientFixture.client_id,
+        tenant_id: clientTenantId,
+        payload: clientFixture,
+      }))
+    )
   );
 
   return {
@@ -420,6 +628,32 @@ async function startMongoFixtureDatabase({
     server,
     uri,
   };
+}
+
+async function seedDatabaseConfiguration(runtimeEnvironment) {
+  const seeder = spawn(
+    process.execPath,
+    [path.join(SUPPORT_DIR, 'seed-database-configuration.mjs')],
+    {
+      cwd: runtimeRoot,
+      env: { ...runtimeEnvironment, USE_FILE_CONFIG: 'true' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }
+  );
+  seeder.stdout.pipe(process.stdout);
+  seeder.stderr.pipe(process.stderr);
+
+  const { code, signal } = await new Promise((resolve, reject) => {
+    seeder.once('error', reject);
+    seeder.once('exit', (exitCode, exitSignal) => {
+      resolve({ code: exitCode, signal: exitSignal });
+    });
+  });
+  if (code !== 0) {
+    throw new Error(
+      `Database configuration seed failed (code=${code}, signal=${signal})`
+    );
+  }
 }
 
 async function waitForReady(url, child) {
@@ -519,12 +753,48 @@ async function startRp(fixtureStore, socialEnabled) {
     '/backchannel-logout',
     express.urlencoded({ extended: false }),
     async (req, res) => {
-      if (typeof req.body.logout_token !== 'string') {
+      const logoutToken = req.body.logout_token;
+      if (typeof logoutToken !== 'string') {
         res.status(400).send('Missing logout_token');
         return;
       }
-      backchannelLogoutTokens.push(req.body.logout_token);
-      res.sendStatus(204);
+
+      try {
+        const configuration = await getOidcConfiguration();
+        const jwksUri = configuration.serverMetadata().jwks_uri;
+        if (!jwksUri) throw new Error('Discovery does not advertise jwks_uri');
+
+        const jwks = await oidcFetch(jwksUri).then(response => response.json());
+        const { payload } = await jwtVerify(
+          logoutToken,
+          createLocalJWKSet(jwks),
+          { issuer: ISSUER, audience: CLIENT_ID }
+        );
+        const event =
+          payload.events?.[
+            'http://schemas.openid.net/event/backchannel-logout'
+          ];
+        if (
+          event === null ||
+          typeof event !== 'object' ||
+          Array.isArray(event) ||
+          typeof payload.iat !== 'number' ||
+          typeof payload.jti !== 'string' ||
+          typeof payload.sid !== 'string' ||
+          payload.sid.length === 0 ||
+          payload.nonce !== undefined
+        ) {
+          throw new Error('Invalid back-channel logout claims');
+        }
+
+        for (const [sessionId, localSession] of sessions) {
+          if (localSession.oidcSid === payload.sid) sessions.delete(sessionId);
+        }
+        backchannelLogoutTokens.push(logoutToken);
+        res.sendStatus(204);
+      } catch {
+        res.status(400).send('Invalid logout_token');
+      }
     }
   );
   app.get('/backchannel-status', (_req, res) => {
@@ -537,8 +807,21 @@ async function startRp(fixtureStore, socialEnabled) {
   app.get('/smtp/messages', (_req, res) => {
     res.json({ messages: smtpCapture?.messages ?? [] });
   });
+  app.get('/smtp/status', (_req, res) => {
+    res.json({
+      successfulAuthentications: smtpCapture?.successfulAuthentications ?? 0,
+    });
+  });
   app.post('/smtp/reset', (_req, res) => {
     smtpCapture?.clear();
+    res.sendStatus(204);
+  });
+  app.post('/smtp/reject-next', (_req, res) => {
+    if (!smtpCapture) {
+      res.status(503).json({ error: 'SMTP capture is unavailable' });
+      return;
+    }
+    smtpCapture.rejectNextMessage();
     res.sendStatus(204);
   });
   app.post('/sms/capture', express.json({ limit: '2kb' }), (req, res) => {
@@ -551,6 +834,11 @@ async function startRp(fixtureStore, socialEnabled) {
       res.status(400).json({ error: 'Invalid SMS capture payload' });
       return;
     }
+    if (rejectNextSms) {
+      rejectNextSms = false;
+      res.status(503).json({ error: 'SMS rejected by E2E capture' });
+      return;
+    }
     smsMessages.push({ body, from, to });
     res.status(201).json({ id: `captured-${smsMessages.length}` });
   });
@@ -559,8 +847,80 @@ async function startRp(fixtureStore, socialEnabled) {
   });
   app.post('/sms/reset', (_req, res) => {
     smsMessages.length = 0;
+    rejectNextSms = false;
     res.sendStatus(204);
   });
+  app.post('/sms/reject-next', (_req, res) => {
+    rejectNextSms = true;
+    res.sendStatus(204);
+  });
+  app.get('/test-control/worker-drain/status', async (_req, res) => {
+    if (!WORKER_DRAIN_ENABLED || !workerDrainGate) {
+      res.status(404).json({ error: 'Worker drain control is not enabled' });
+      return;
+    }
+    res.json({
+      enabled: true,
+      started: await fileExists(workerDrainGate.started),
+      released: await fileExists(workerDrainGate.release),
+      shutdownStarted: workerShutdownStarted,
+      running: isChildRunning(worker),
+      exitCode: worker?.exitCode ?? null,
+      signalCode: worker?.signalCode ?? null,
+    });
+  });
+  app.post('/test-control/worker-drain/signal', async (_req, res) => {
+    if (!WORKER_DRAIN_ENABLED || !workerDrainGate) {
+      res.status(404).json({ error: 'Worker drain control is not enabled' });
+      return;
+    }
+    if (!(await fileExists(workerDrainGate.started))) {
+      res.status(409).json({ error: 'No gated worker job is active' });
+      return;
+    }
+    if (!isChildRunning(worker) || !worker.kill('SIGTERM')) {
+      res.status(409).json({ error: 'Worker is not running' });
+      return;
+    }
+    await waitForWorkerShutdownStart();
+    res.sendStatus(202);
+  });
+  app.post('/test-control/worker-drain/release', async (_req, res) => {
+    if (!WORKER_DRAIN_ENABLED || !workerDrainGate) {
+      res.status(404).json({ error: 'Worker drain control is not enabled' });
+      return;
+    }
+    if (!(await fileExists(workerDrainGate.started))) {
+      res.status(409).json({ error: 'No gated worker job is active' });
+      return;
+    }
+    await fs.writeFile(workerDrainGate.release, 'release\n', 'utf8');
+    res.sendStatus(204);
+  });
+  app.post('/test-control/jwks/make-rotation-due', async (_req, res) => {
+    const updated = await fixtureStore.makeJwksRotationDue();
+    if (updated < 1) {
+      res.status(409).json({ error: 'No active tenant JWKS keys were found' });
+      return;
+    }
+    res.json({ updated });
+  });
+  app.post(
+    '/test-control/activity-storage/availability',
+    express.json({ limit: '1kb' }),
+    async (req, res) => {
+      const { available } = req.body ?? {};
+      if (typeof available !== 'boolean') {
+        res.status(400).json({ error: 'Invalid availability fixture' });
+        return;
+      }
+      if (!(await fixtureStore.setActivityStorageAvailability(available))) {
+        res.status(409).json({ error: 'Activity availability did not change' });
+        return;
+      }
+      res.sendStatus(204);
+    }
+  );
   app.post(
     '/test-control/social-integration',
     express.json({ limit: '2kb' }),
@@ -699,12 +1059,7 @@ async function startRp(fixtureStore, socialEnabled) {
     express.json({ limit: '1kb' }),
     async (req, res) => {
       const { sessionId } = req.body ?? {};
-      if (
-        typeof sessionId !== 'string' ||
-        sessionId.length < 16 ||
-        sessionId.length > 128 ||
-        !/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?$/.test(sessionId)
-      ) {
+      if (!isApplicationSessionId(sessionId)) {
         res
           .status(400)
           .json({ error: 'Invalid secondary-email expiry request' });
@@ -723,6 +1078,26 @@ async function startRp(fixtureStore, socialEnabled) {
       res.sendStatus(204);
     }
   );
+  app.post(
+    '/test-control/application-session-expiry',
+    express.json({ limit: '1kb' }),
+    async (req, res) => {
+      const { sessionId } = req.body ?? {};
+      if (!isApplicationSessionId(sessionId)) {
+        res.status(400).json({ error: 'Invalid application-session request' });
+        return;
+      }
+
+      // Removing the persisted entry reproduces what the real stores expose
+      // after idle or absolute expiry. The next browser request must therefore
+      // traverse Parako's normal unauthenticated continuation path.
+      if (!(await fixtureStore.expireApplicationSession(sessionId))) {
+        res.status(404).json({ error: 'Application session not found' });
+        return;
+      }
+      res.sendStatus(204);
+    }
+  );
   app.get('/', (req, res) => {
     const state =
       typeof req.query.state === 'string' ? req.query.state : undefined;
@@ -731,7 +1106,13 @@ async function startRp(fixtureStore, socialEnabled) {
   });
 
   app.get('/login', async (req, res) => {
-    const configuration = await getOidcConfiguration();
+    const requestedClientId =
+      typeof req.query.client_id === 'string' ? req.query.client_id : CLIENT_ID;
+    if (![CLIENT_ID, GRANTS_BULK_CLIENT_ID].includes(requestedClientId)) {
+      res.status(400).send('Unknown RP client');
+      return;
+    }
+    const configuration = await getOidcConfiguration(requestedClientId);
     const session = requireSession(req, res).value;
     const codeVerifier = randomPKCECodeVerifier();
     const state = randomState();
@@ -740,10 +1121,15 @@ async function startRp(fixtureStore, socialEnabled) {
       typeof req.query.prompt === 'string' && RP_PROMPTS.has(req.query.prompt)
         ? req.query.prompt
         : undefined;
-    session.transaction = { codeVerifier, state, nonce };
+    session.transaction = {
+      clientId: requestedClientId,
+      codeVerifier,
+      state,
+      nonce,
+    };
 
     const url = buildAuthorizationUrl(configuration, {
-      client_id: CLIENT_ID,
+      client_id: requestedClientId,
       redirect_uri: `${RP_ORIGIN}/callback`,
       response_type: 'code',
       scope: 'openid profile email offline_access',
@@ -1095,7 +1481,6 @@ async function startRp(fixtureStore, socialEnabled) {
   });
 
   app.get('/callback', async (req, res) => {
-    const configuration = await getOidcConfiguration();
     const session = getSession(req)?.value;
     if (typeof req.query.error === 'string') {
       if (session) delete session.transaction;
@@ -1110,7 +1495,13 @@ async function startRp(fixtureStore, socialEnabled) {
       return;
     }
 
-    const { codeVerifier, state, nonce } = session.transaction;
+    const {
+      clientId = CLIENT_ID,
+      codeVerifier,
+      state,
+      nonce,
+    } = session.transaction;
+    const configuration = await getOidcConfiguration(clientId);
     delete session.transaction;
     const callbackUrl = new URL(req.originalUrl, RP_ORIGIN);
     const tokens = await authorizationCodeGrant(configuration, callbackUrl, {
@@ -1125,6 +1516,12 @@ async function startRp(fixtureStore, socialEnabled) {
       );
     }
     session.idToken = tokens.id_token;
+    if (typeof claims.sid !== 'string' || claims.sid.length === 0) {
+      throw new Error(
+        'ID token did not contain the required session identifier'
+      );
+    }
+    session.oidcSid = claims.sid;
     session.accessToken = tokens.access_token;
     session.refreshToken = tokens.refresh_token;
     session.replayTransaction = { callbackUrl, codeVerifier, state, nonce };
@@ -1269,13 +1666,10 @@ async function stop() {
     rpServer.close();
     await once(rpServer, 'close');
   }
-  if (parako && parako.exitCode === null) {
-    parako.kill('SIGTERM');
-    await Promise.race([
-      once(parako, 'exit'),
-      new Promise(resolve => setTimeout(resolve, 10_000)),
-    ]);
-    if (parako.exitCode === null) parako.kill('SIGKILL');
+  const workerExit = await terminateChild(worker);
+  const parakoExit = await terminateChild(parako);
+  if (BACKGROUND_JOBS_ENABLED) {
+    await resetBackgroundTaskQueue(resolveE2eRedisConfig());
   }
   await smtpCapture?.close();
   if (mongoFixture) {
@@ -1287,10 +1681,25 @@ async function stop() {
   if (runtimeRoot) {
     await fs.rm(runtimeRoot, { recursive: true, force: true });
   }
+
+  const forcedChildren = [
+    ['worker', workerExit],
+    ['web application', parakoExit],
+  ].filter(([, result]) => result.forced);
+  if (forcedChildren.length > 0) {
+    throw new Error(
+      'E2E teardown force-killed: ' +
+        forcedChildren.map(([name]) => name).join(', ')
+    );
+  }
 }
 
 async function main() {
   const storageAdapter = process.env.PARAKO_E2E_STORAGE_ADAPTER ?? 'sqlite';
+  const redisConfig =
+    BACKGROUND_JOBS_ENABLED || OPERATIONS_ENABLED
+      ? resolveE2eRedisConfig()
+      : undefined;
   if (!['sqlite', 'mongodb', 'postgresql'].includes(storageAdapter)) {
     throw new Error(`Unsupported E2E storage adapter: ${storageAdapter}`);
   }
@@ -1298,6 +1707,31 @@ async function main() {
   const tenantId = multiTenancy
     ? (process.env.PARAKO_E2E_TENANT_ID ?? 'browser-e2e')
     : 'default';
+  const siblingTenantId = multiTenancy
+    ? process.env.PARAKO_E2E_SIBLING_TENANT_ID
+    : undefined;
+  if (
+    siblingTenantId &&
+    (siblingTenantId === tenantId ||
+      !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(siblingTenantId))
+  ) {
+    throw new Error(
+      'PARAKO_E2E_SIBLING_TENANT_ID must be a distinct valid tenant slug'
+    );
+  }
+  const tenantFixtures = multiTenancy
+    ? [
+        { slug: tenantId, display_name: 'Parako Browser E2E tenant' },
+        ...(siblingTenantId
+          ? [
+              {
+                slug: siblingTenantId,
+                display_name: 'Parako Browser E2E sibling tenant',
+              },
+            ]
+          : []),
+      ]
+    : [];
   const webauthnEnabled = process.env.PARAKO_E2E_WEBAUTHN === 'true';
   const smsEnabled = process.env.PARAKO_E2E_SMS === 'true';
   const registrationSmsEnabled =
@@ -1318,6 +1752,12 @@ async function main() {
     10
   );
   runtimeRoot = await fs.mkdtemp(path.join(tmpdir(), 'parako-browser-e2e-'));
+  workerDrainGate = WORKER_DRAIN_ENABLED
+    ? {
+        started: path.join(runtimeRoot, 'worker-drain.started'),
+        release: path.join(runtimeRoot, 'worker-drain.release'),
+      }
+    : undefined;
   const databasePath = path.join(runtimeRoot, 'parako-e2e.db');
   const runtimeDirectory = path.join(runtimeRoot, 'runtime');
   await fs.mkdir(runtimeDirectory, { recursive: true });
@@ -1344,8 +1784,8 @@ async function main() {
   if (storageAdapter === 'mongodb') {
     mongoFixture = await startMongoFixtureDatabase({
       clientFixtures,
-      multiTenancy,
       tenantId,
+      tenants: tenantFixtures,
     });
     fixtureStore = mongoFixture.fixtureStore;
     storageEnvironment = {
@@ -1362,12 +1802,16 @@ async function main() {
     }
     postgresqlFixture = await createPostgresqlTestDatabase(administrativeUrl);
     await applyPostgresqlMigrations(postgresqlFixture.databaseUrl);
+    const clientTenantIds =
+      tenantFixtures.length > 0
+        ? tenantFixtures.map(tenant => tenant.slug)
+        : [tenantId];
     await seedPostgresqlFixtures(
       postgresqlFixture.databaseUrl,
-      multiTenancy
-        ? [{ slug: tenantId, display_name: 'Parako Browser E2E tenant' }]
-        : [],
-      clientFixtures.map(client => ({ tenantId, client }))
+      tenantFixtures,
+      clientTenantIds.flatMap(clientTenantId =>
+        clientFixtures.map(client => ({ tenantId: clientTenantId, client }))
+      )
     );
     fixtureStore = new PostgresqlFixtureStore(
       postgresqlFixture.databaseUrl,
@@ -1386,6 +1830,9 @@ async function main() {
       STORAGE_SQLITE_PATH: databasePath,
       OIDC_STORAGE_ADAPTER: 'sqlite',
     };
+  }
+  if (BACKGROUND_JOBS_ENABLED) {
+    await resetBackgroundTaskQueue(redisConfig);
   }
   smtpCapture = new SmtpCaptureServer({
     host: '127.0.0.1',
@@ -1505,6 +1952,50 @@ async function main() {
     'utf8'
   );
 
+  const runtimeEnvironment = {
+    ...process.env,
+    NODE_ENV: 'development',
+    DEPLOYMENT_ENVIRONMENT: 'development',
+    DEPLOYMENT_SERVER_PORT: '19007',
+    DEPLOYMENT_URL: DEPLOYMENT_ORIGIN,
+    ...storageEnvironment,
+    FILE_STORAGE_PROVIDER: 'local',
+    MULTI_TENANCY_ENABLED: String(multiTenancy),
+    MULTI_TENANCY_EXTRACTION_PRIORITY: 'header,subdomain',
+    MULTI_TENANCY_TENANT_HEADER: 'x-tenant-id',
+    USE_FILE_CONFIG:
+      process.env.PARAKO_E2E_DATABASE_CONFIG === 'true' ? 'false' : 'true',
+    ENCRYPTION_KEY: TEST_SECRET,
+    JWT_SECRET: `jwt-${TEST_SECRET}`,
+    COOKIE_SECRET_1: `cookie-one-${TEST_SECRET}`,
+    COOKIE_SECRET_2: `cookie-two-${TEST_SECRET}`,
+    HMAC_SECRET: process.env.PARAKO_E2E_HMAC_SECRET ?? `hmac-${TEST_SECRET}`,
+    ...(redisConfig
+      ? {
+          REDIS_HOST: redisConfig.host,
+          REDIS_PORT: String(redisConfig.port),
+          REDIS_DATABASE: String(redisConfig.database),
+          ...(redisConfig.password
+            ? { REDIS_PASSWORD: redisConfig.password }
+            : {}),
+        }
+      : { REDIS_HOST: '' }),
+    PM2_INSTANCES: '1',
+    PARAKO_ROOT: runtimeRoot,
+    PARAKO_E2E_BACKCHANNEL_CAPTURE_URL: `${RP_ORIGIN}/backchannel-logout`,
+    PARAKO_E2E_SMS_CAPTURE_URL: `${RP_ORIGIN}/sms/capture`,
+    ...(workerDrainGate
+      ? {
+          PARAKO_E2E_WORKER_DRAIN_STARTED_FILE: workerDrainGate.started,
+          PARAKO_E2E_WORKER_DRAIN_RELEASE_FILE: workerDrainGate.release,
+        }
+      : {}),
+  };
+
+  if (process.env.PARAKO_E2E_DATABASE_CONFIG === 'true') {
+    await seedDatabaseConfiguration(runtimeEnvironment);
+  }
+
   parako = spawn(
     process.execPath,
     [
@@ -1516,29 +2007,7 @@ async function main() {
     ],
     {
       cwd: runtimeRoot,
-      env: {
-        ...process.env,
-        NODE_ENV: 'development',
-        DEPLOYMENT_ENVIRONMENT: 'development',
-        DEPLOYMENT_SERVER_PORT: '19007',
-        DEPLOYMENT_URL: DEPLOYMENT_ORIGIN,
-        ...storageEnvironment,
-        FILE_STORAGE_PROVIDER: 'local',
-        MULTI_TENANCY_ENABLED: String(multiTenancy),
-        MULTI_TENANCY_EXTRACTION_PRIORITY: 'header,subdomain',
-        MULTI_TENANCY_TENANT_HEADER: 'x-tenant-id',
-        USE_FILE_CONFIG: 'true',
-        ENCRYPTION_KEY: TEST_SECRET,
-        JWT_SECRET: `jwt-${TEST_SECRET}`,
-        COOKIE_SECRET_1: `cookie-one-${TEST_SECRET}`,
-        COOKIE_SECRET_2: `cookie-two-${TEST_SECRET}`,
-        HMAC_SECRET: `hmac-${TEST_SECRET}`,
-        REDIS_HOST: '',
-        PM2_INSTANCES: '1',
-        PARAKO_ROOT: runtimeRoot,
-        PARAKO_E2E_BACKCHANNEL_CAPTURE_URL: `${RP_ORIGIN}/backchannel-logout`,
-        PARAKO_E2E_SMS_CAPTURE_URL: `${RP_ORIGIN}/sms/capture`,
-      },
+      env: runtimeEnvironment,
       stdio: ['ignore', 'pipe', 'pipe'],
     }
   );
@@ -1546,6 +2015,28 @@ async function main() {
   parako.stderr.pipe(process.stderr);
 
   await waitForReady(`${IDP_ORIGIN}/readyz`, parako);
+
+  if (BACKGROUND_JOBS_ENABLED) {
+    const hibpInterceptor = path.join(SUPPORT_DIR, 'mock-hibp.mjs');
+    worker = spawn(
+      process.execPath,
+      [
+        '--import',
+        hibpInterceptor,
+        path.join(PROJECT_ROOT, 'dist/src/worker.js'),
+      ],
+      {
+        cwd: runtimeRoot,
+        env: runtimeEnvironment,
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      }
+    );
+    worker.stdout.on('data', observeWorkerOutput);
+    worker.stdout.pipe(process.stdout);
+    worker.stderr.pipe(process.stderr);
+    await waitForWorkerReady(worker);
+  }
+
   await startRp(fixtureStore, socialEnabled);
 }
 

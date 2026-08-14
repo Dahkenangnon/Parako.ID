@@ -42,6 +42,13 @@ async function submitLogin(
     .locator('#login-form')
     .getByRole('button', { name: /sign in/i })
     .click();
+
+  // A successful login ends this prompt and may immediately create a consent
+  // interaction. Wait for that state transition so the next loop iteration
+  // cannot observe and resubmit the stale login form during redirect.
+  await expect
+    .poll(async () => (await interactionState(page)) !== 'login')
+    .toBe(true);
 }
 
 /**
@@ -65,6 +72,11 @@ export async function completeOidcInteraction(
       continue;
     }
     await page.locator('#consent-submit-btn').click();
+    // As with login, oidc-provider finishes the current interaction through a
+    // redirect. Do not let the loop click a stale consent form a second time.
+    await expect
+      .poll(async () => (await interactionState(page)) !== 'consent')
+      .toBe(true);
   }
 
   throw new Error(`OIDC interaction did not complete: ${page.url()}`);
