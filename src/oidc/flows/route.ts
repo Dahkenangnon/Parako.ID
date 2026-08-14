@@ -360,6 +360,22 @@ export class OidcRoutesManager implements IOidcRoutesManager {
       }
     );
 
+    // Keep OIDC-specific errors scoped to this router. A handler mounted on
+    // the application would also intercept failures from routes registered
+    // after the OIDC manager (for example, the admin UI).
+    router.use(
+      (err: unknown, req: Request, res: Response, next: NextFunction): void => {
+        Promise.resolve(
+          this.error.handle(
+            err as Parameters<IOIDCErrorHandler['handle']>[0],
+            req,
+            res,
+            next
+          )
+        ).catch(next);
+      }
+    );
+
     return router;
   }
 
@@ -382,11 +398,6 @@ export class OidcRoutesManager implements IOidcRoutesManager {
         next();
       }
     });
-
-    // Error handler middleware for OIDC Provider routes
-    app.use((err: any, req: any, res: any, next: any) =>
-      this.error.handle(err, req, res, next)
-    );
 
     // This runs after ProviderService has already recreated/shutdown providers
     // (ProviderService subscribes in its constructor, which runs before this).

@@ -8,6 +8,7 @@ import type {
 } from '../interfaces/settings.repository.js';
 import { AbstractMongooseRepository } from './base.repository.js';
 import { serializeDocument, serializeDocuments } from '../../utils.js';
+import { ConfigurationVersionConflictError } from '../../../errors/configuration-version-conflict.error.js';
 
 const SETTINGS_SAVE_MAX_ATTEMPTS = 16;
 
@@ -50,7 +51,8 @@ export class MongooseSettingsRepository
   async save(
     key: string,
     value: Partial<ISettings>,
-    meta?: SettingsMeta
+    meta?: SettingsMeta,
+    expectedVersion?: number
   ): Promise<ISettings> {
     const MANAGED = new Set([
       '_id',
@@ -73,11 +75,16 @@ export class MongooseSettingsRepository
     );
 
     for (let attempt = 0; attempt < SETTINGS_SAVE_MAX_ATTEMPTS; attempt += 1) {
+      const activeFilter: Record<string, unknown> = { key, is_active: true };
+      if (expectedVersion !== undefined) {
+        activeFilter['_version'] = expectedVersion;
+      }
+
       // Atomically claim the current active row. A missing row with existing
       // history means another writer currently owns the hand-off interval.
       const previous = await this.settingsModel
         .findOneAndUpdate(
-          { key, is_active: true },
+          activeFilter,
           { $set: { is_active: false } },
           { returnDocument: 'before' }
         )
@@ -90,6 +97,15 @@ export class MongooseSettingsRepository
           .sort({ _version: -1 })
           .lean()
           .exec());
+
+      if (expectedVersion !== undefined && previous === null) {
+        throw new ConfigurationVersionConflictError(
+          expectedVersion,
+          typeof (latest as any)?._version === 'number'
+            ? (latest as any)._version
+            : undefined
+        );
+      }
 
       if (
         previous === null &&

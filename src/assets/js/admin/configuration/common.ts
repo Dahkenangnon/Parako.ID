@@ -2,12 +2,13 @@
  * Admin Configuration Common Module
  *
  * Shared functionality for per-tenant configuration pages:
+ * - Confirm destructive configuration resets without inline event handlers
  * - Reveal/hide encrypted secret fields with CSRF protection
  * - Toggle between revealed and masked states
  * - Shoulder-surfing protection (invisible text when field not focused)
  * - Inactivity auto-remask with toast notification
  *
- * Used by: integrations, notifications, features (any section with encrypted fields)
+ * Used by every per-tenant configuration section.
  */
 (function () {
   'use strict';
@@ -183,6 +184,39 @@
     resetInactivityTimer();
   }
 
+  function setupResetConfirmations(): void {
+    document
+      .querySelectorAll<HTMLFormElement>('form[data-confirm-message]')
+      .forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+          const message = form.getAttribute('data-confirm-message')?.trim();
+          if (message && !window.confirm(message)) {
+            event.preventDefault();
+          }
+        });
+      });
+  }
+
+  function setupSecretControls(): void {
+    document
+      .querySelectorAll<HTMLButtonElement>(
+        'button[data-secret-field-path][data-secret-input-id]'
+      )
+      .forEach(function (button) {
+        const fieldPath = button.getAttribute('data-secret-field-path')?.trim();
+        const inputId = button.getAttribute('data-secret-input-id')?.trim();
+        if (!fieldPath || !inputId) return;
+
+        button.addEventListener('click', function () {
+          if (revealedFields.has(inputId)) {
+            remaskTenantSecret(inputId);
+          } else {
+            revealTenantSecret(fieldPath, inputId);
+          }
+        });
+      });
+  }
+
   /**
    * Reveal a tenant secret field via the admin configuration API.
    *
@@ -248,9 +282,6 @@
           // Change button to "Re-mask"
           button.disabled = false;
           updateButtonContent(button, 'eye-off', 'Re-mask');
-          button.onclick = function () {
-            remaskTenantSecret(inputId);
-          };
 
           resetInactivityTimer();
         } else {
@@ -288,14 +319,12 @@
       'button'
     ) as HTMLButtonElement | null;
     if (button) {
-      const fieldPath = input.getAttribute('data-field-path') || '';
       updateButtonContent(button, 'eye', 'Reveal');
-      button.onclick = function () {
-        revealTenantSecret(fieldPath, inputId);
-      };
     }
   }
 
+  setupResetConfirmations();
+  setupSecretControls();
   setupInactivityMonitoring();
 
   (window as any).revealTenantSecret = revealTenantSecret;

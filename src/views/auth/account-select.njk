@@ -144,12 +144,12 @@
                             <span>Cancel</span>
                         </a>
                     {% else %}
-                        <button type="button" onclick="window.history.back()" class="flex items-center justify-center w-full h-10 text-gray-600 dark:text-muted-foreground font-medium hover:text-gray-900 dark:hover:text-foreground focus:outline-none">
+                        <a href="{{ routes.accountFull.dashboard }}" class="flex items-center justify-center w-full h-10 text-gray-600 dark:text-muted-foreground font-medium hover:text-gray-900 dark:hover:text-foreground focus:outline-none">
                             <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
                             </svg>
                             <span>Cancel</span>
-                        </button>
+                        </a>
                     {% endif %}
                 </div>
 {% endblock %}

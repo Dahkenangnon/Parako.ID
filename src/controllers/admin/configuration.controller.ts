@@ -16,8 +16,10 @@ import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import { deriveTenantIssuerUrl } from '../../multi-tenancy/tenant-issuer.js';
 import { ensureDecrypted } from '../../utils/encryption.js';
 import { getNestedValue } from '../../utils/nested-value.js';
+import { resolveBrandingUrlAsync } from '../../utils/views.js';
 import { TENANT_SENSITIVE_FIELDS } from '../../services/tenant-settings-override.service.js';
 import {
+  convertApplicationFormData,
   convertBrandingFormData,
   convertFeaturesFormData,
   convertIntegrationsFormData,
@@ -225,7 +227,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
     if (section === 'branding') {
       renderData.platformBranding = globalConfig.branding || {};
-      renderData.config = this._resolveBrandingUrls(sectionData);
+      renderData.config = await this._resolveBrandingUrls(sectionData);
     }
 
     if (section === 'security') {
@@ -269,12 +271,16 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     let previousBrandingStorageKey: string | undefined;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the CSRF token; rawSectionData carries the actual config fields.
-      const { _csrf, ...rawSectionData } = req.body;
+      // Transport-only fields remain on req.body for downstream audit/device
+      // processing, but must never become persisted tenant configuration.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard strips transport metadata from the configuration payload.
+      const { _csrf, _deviceInfo, ...rawSectionData } = req.body;
 
       // and merge with existing overrides to preserve logo fields not in form
       let sectionData: Record<string, any>;
-      if (section === 'branding') {
+      if (section === 'application') {
+        sectionData = convertApplicationFormData(rawSectionData);
+      } else if (section === 'branding') {
         sectionData = convertBrandingFormData(rawSectionData);
       } else if (section === 'security') {
         sectionData = convertSecurityFormData(rawSectionData);
@@ -334,7 +340,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         throw error;
       }
 
-      this.configManager.invalidateTenantConfig(tenantId);
+      await this.configManager.invalidateTenantConfig(tenantId, {
+        broadcast: true,
+      });
 
       if (
         uploadedBrandingStorageKey &&
@@ -399,7 +407,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
 
     try {
       await this.overrideService.deleteSection(tenantId, section);
-      this.configManager.invalidateTenantConfig(tenantId);
+      await this.configManager.invalidateTenantConfig(tenantId, {
+        broadcast: true,
+      });
 
       activityLoggerFor(this.activityLoggerDeps, req, {
         defaultActorType: 'admin',
@@ -721,7 +731,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         throw error;
       }
 
-      this.configManager.invalidateTenantConfig(tenantId);
+      await this.configManager.invalidateTenantConfig(tenantId, {
+        broadcast: true,
+      });
 
       if (existingStorageKey && existingStorageKey !== storageKey) {
         await this._deleteFileBestEffort(
@@ -743,7 +755,7 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         },
       });
 
-      const resolvedUrl = this.uploadMiddleware.getFileUrl(storageKey);
+      const resolvedUrl = await this.uploadMiddleware.getFileUrl(storageKey);
       res.json({
         success: true,
         message: `${displayName} uploaded successfully`,
@@ -812,7 +824,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         `Removed ${displayName}`,
         platformConfig
       );
-      this.configManager.invalidateTenantConfig(tenantId);
+      await this.configManager.invalidateTenantConfig(tenantId, {
+        broadcast: true,
+      });
 
       if (existingStorageKey) {
         await this._deleteFileBestEffort(
@@ -890,7 +904,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
       } else {
         await this.overrideService.deleteSection(tenantId, 'branding');
       }
-      this.configManager.invalidateTenantConfig(tenantId);
+      await this.configManager.invalidateTenantConfig(tenantId, {
+        broadcast: true,
+      });
 
       activityLoggerFor(this.activityLoggerDeps, req, {
         defaultActorType: 'admin',
@@ -920,9 +936,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
    * Used when rendering the branding config admin page so <img src="...">
    * tags get proper `/media/file/...` URLs instead of raw storage keys.
    */
-  private _resolveBrandingUrls(
+  private async _resolveBrandingUrls(
     sectionData: Record<string, any>
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
     const imageFields = [
       'logo',
       'logoDark',
@@ -933,8 +949,10 @@ export class AdminConfigurationController implements IAdminConfigurationControll
     const resolved = { ...sectionData };
     for (const field of imageFields) {
       if (resolved[field] && typeof resolved[field] === 'string') {
-        const url = this.uploadMiddleware.getFileUrl(resolved[field]);
-        resolved[field] = typeof url === 'string' ? url : resolved[field];
+        resolved[field] = await resolveBrandingUrlAsync(
+          resolved[field],
+          this.uploadMiddleware.getFileUrl.bind(this.uploadMiddleware)
+        );
       }
     }
     return resolved;

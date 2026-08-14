@@ -18,10 +18,6 @@
 
   interface WindowWithLucide {
     lucide?: LucideApi;
-    loadFromFile: () => void;
-    clearForm: () => void;
-    previewImport: () => Promise<void>;
-    applyConfigImport: () => Promise<void>;
   }
 
   interface DiffChange {
@@ -55,10 +51,14 @@
     private impactContent: HTMLElement | null = null;
     private diffContent: HTMLElement | null = null;
     private applyButton: HTMLButtonElement | null = null;
+    private loadButton: HTMLButtonElement | null = null;
+    private previewButton: HTMLButtonElement | null = null;
+    private clearButton: HTMLButtonElement | null = null;
+    private cancelButton: HTMLButtonElement | null = null;
 
     public initialize(): void {
       this.cacheElements();
-      this.exposeGlobalMethods();
+      this.bindEventListeners();
     }
 
     private cacheElements(): void {
@@ -74,6 +74,24 @@
       this.applyButton = document.getElementById(
         'applyButton'
       ) as HTMLButtonElement | null;
+      this.loadButton = document.querySelector('[data-config-import-load]');
+      this.previewButton = document.querySelector(
+        '[data-config-import-preview]'
+      );
+      this.clearButton = document.querySelector('[data-config-import-clear]');
+      this.cancelButton = document.querySelector('[data-config-import-cancel]');
+    }
+
+    private bindEventListeners(): void {
+      this.loadButton?.addEventListener('click', () => this.loadFromFile());
+      this.previewButton?.addEventListener('click', async () => {
+        await this.previewImport();
+      });
+      this.clearButton?.addEventListener('click', () => this.clearForm());
+      this.cancelButton?.addEventListener('click', () => this.hidePreview());
+      this.applyButton?.addEventListener('click', async () => {
+        await this.applyConfigImport();
+      });
     }
 
     public loadFromFile(): void {
@@ -450,6 +468,12 @@
 
         const modal = document.createElement('div');
         modal.className = 'bg-card border border-border max-w-md w-full';
+        const titleId = 'config-import-confirmation-title';
+        const descriptionId = 'config-import-confirmation-description';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', titleId);
+        modal.setAttribute('aria-describedby', descriptionId);
 
         const header = document.createElement('div');
         header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -463,6 +487,7 @@
 
         const titleElement = document.createElement('h3');
         titleElement.className = 'font-semibold text-lg flex-1 text-foreground';
+        titleElement.setAttribute('id', titleId);
         titleElement.textContent = title;
 
         header.appendChild(iconContainer);
@@ -473,6 +498,7 @@
         const messageElement = document.createElement('p');
         messageElement.className =
           'text-sm text-muted-foreground whitespace-pre-line';
+        messageElement.setAttribute('id', descriptionId);
         messageElement.textContent = message;
         body.appendChild(messageElement);
 
@@ -500,37 +526,43 @@
         modal.appendChild(footer);
         backdrop.appendChild(modal);
 
-        const cleanup = () => {
+        let settled = false;
+        const finish = (confirmed: boolean) => {
+          if (settled) return;
+          settled = true;
+          backdrop.removeEventListener('keydown', handleKeydown);
           backdrop.remove();
+          resolve(confirmed);
+        };
+        const handleKeydown = (event: KeyboardEvent) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            finish(false);
+          }
         };
 
-        cancelButton.addEventListener('click', () => {
-          cleanup();
-          resolve(false);
-        });
-
-        confirmButton.addEventListener('click', () => {
-          cleanup();
-          resolve(true);
-        });
-
-        backdrop.addEventListener('click', e => {
-          if (e.target === backdrop) {
-            cleanup();
-            resolve(false);
-          }
+        cancelButton.addEventListener('click', () => finish(false));
+        confirmButton.addEventListener('click', () => finish(true));
+        backdrop.addEventListener('keydown', handleKeydown);
+        backdrop.addEventListener('click', event => {
+          if (event.target === backdrop) finish(false);
         });
 
         document.body.appendChild(backdrop);
 
         this.refreshIcons();
 
-        confirmButton.focus();
+        cancelButton.focus();
       });
     }
 
     private showNotification(message: string, type: 'success' | 'error'): void {
       const notification = document.createElement('div');
+      notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+      notification.setAttribute(
+        'aria-live',
+        type === 'error' ? 'assertive' : 'polite'
+      );
       notification.className = `fixed top-4 right-4 z-50 max-w-md p-4 border ${
         type === 'success'
           ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-900 dark:text-green-300'
@@ -545,7 +577,7 @@
           <div class="flex-1">
             <p class="text-sm font-medium">${this.escapeHtml(message)}</p>
           </div>
-          <button type="button" class="text-current hover:opacity-70 close-notification">
+          <button type="button" aria-label="Dismiss notification" class="text-current hover:opacity-70 close-notification">
             <i data-lucide="x" class="h-4 w-4"></i>
           </button>
         </div>
@@ -571,14 +603,6 @@
       if (win.lucide && typeof win.lucide.createIcons === 'function') {
         win.lucide.createIcons();
       }
-    }
-
-    private exposeGlobalMethods(): void {
-      const win = window as unknown as WindowWithLucide;
-      win.loadFromFile = this.loadFromFile.bind(this);
-      win.clearForm = this.clearForm.bind(this);
-      win.previewImport = this.previewImport.bind(this);
-      win.applyConfigImport = this.applyConfigImport.bind(this);
     }
   }
 

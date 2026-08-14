@@ -11,6 +11,7 @@ import { TYPES } from '../di/types.js';
 import { UAParser } from 'ua-parser-js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
+import type { IActivityActor } from '../types/activity.js';
 import {
   validateCharsetMask,
   validateWithRegex,
@@ -782,6 +783,7 @@ export class OIDCUtils implements IOIDCUtils {
       given_name: '',
       family_name: '',
     };
+    let activityActor: IActivityActor | undefined;
 
     try {
       const userActivities =
@@ -792,19 +794,49 @@ export class OIDCUtils implements IOIDCUtils {
         );
 
       if (userActivities.length > 0) {
-        const latestActivity = userActivities[0];
+        activityActor = userActivities[0].actor;
         userInfo = {
           username: accountId,
-          email: latestActivity.actor?.email || 'Unknown',
-          full_name: latestActivity.actor?.full_name || 'Unknown User',
-          given_name: latestActivity.actor?.given_name || '',
-          family_name: latestActivity.actor?.family_name || '',
+          email: activityActor?.email || 'Unknown',
+          full_name: activityActor?.full_name || 'Unknown User',
+          given_name: activityActor?.given_name || '',
+          family_name: activityActor?.family_name || '',
         };
       }
     } catch (error) {
       this.logger.error(error as Error, {
         context: `Could not get user info for ${accountId}`,
       });
+    }
+
+    if (
+      accountId &&
+      (!activityActor?.email ||
+        !activityActor.full_name ||
+        !activityActor.given_name ||
+        !activityActor.family_name)
+    ) {
+      try {
+        const user = await this.userService.findByUsername(accountId);
+        if (user) {
+          const currentFullName =
+            user.name?.trim() ||
+            [user.given_name, user.family_name].filter(Boolean).join(' ');
+
+          userInfo = {
+            username: accountId,
+            email: activityActor?.email || user.email || 'Unknown',
+            full_name:
+              activityActor?.full_name || currentFullName || 'Unknown User',
+            given_name: activityActor?.given_name || user.given_name || '',
+            family_name: activityActor?.family_name || user.family_name || '',
+          };
+        }
+      } catch (error) {
+        this.logger.error(error as Error, {
+          context: `Could not get current user info for ${accountId}`,
+        });
+      }
     }
 
     const deviceInfo = this.parseUserAgent(payload.userAgent || '');

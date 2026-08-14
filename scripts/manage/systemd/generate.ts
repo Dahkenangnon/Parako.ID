@@ -149,7 +149,8 @@ export async function promptForConfig(): Promise<SystemdConfig> {
 export function getConfigFromFlags(
   options: Record<string, string>
 ): SystemdConfig | null {
-  const { user, dir, runtimeDir, envFile, nodePath } = options;
+  const { user, dir, runtimeDir, nodePath } = options;
+  const envFile = options.envFile ?? options.environmentFile;
 
   if (!user || !dir || !runtimeDir || !envFile || !nodePath) {
     return null;

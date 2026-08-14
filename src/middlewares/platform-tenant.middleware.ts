@@ -1,13 +1,13 @@
 /**
  * Platform Tenant Route Guard Middleware
  *
- * Restricts the `_platforms` admin portal to users with `platform_admin`
- * or `platform_viewer` roles. Enforces read-only access for viewers
- * (GET only) and annotates requests with the resolved platform role.
+ * Restricts the `_platforms` admin portal to explicit platform roles or
+ * the built-in administrator roles. Viewers remain read-only, while `admin`
+ * and `superadmin` inherit `platform_admin` within this tenant.
  *
  * Security:
  * - Rejects unauthenticated users (401)
- * - Rejects users without platform roles (403)
+ * - Rejects users without platform or built-in administrator roles (403)
  * - Prevents write operations (POST/PUT/DELETE) for viewers (403)
  * - Sets `req.platformRole` for downstream authorization checks
  */
@@ -17,11 +17,12 @@ import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
+import {
+  PLATFORM_ROLES,
+  type PlatformRole,
+} from '../multi-tenancy/platform-roles.js';
 
-/** Valid platform roles in order of privilege (highest first). */
-const PLATFORM_ROLES = ['platform_admin', 'platform_viewer'] as const;
-
-export type PlatformRole = (typeof PLATFORM_ROLES)[number];
+export type { PlatformRole } from '../multi-tenancy/platform-roles.js';
 
 /** HTTP methods that mutate state (blocked for viewers). */
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -55,8 +56,14 @@ export class PlatformTenantMiddleware {
       this.sessionManager.hasRole(req, role)
     );
 
-    // Fallback: admins on _platforms inherit platform_admin
-    if (!resolvedRole && this.sessionManager.hasRole(req, 'admin')) {
+    // Built-in administrators on _platforms inherit platform_admin. Explicit
+    // platform roles remain authoritative so platform_viewer stays read-only.
+    if (
+      !resolvedRole &&
+      ['admin', 'superadmin'].some(role =>
+        this.sessionManager.hasRole(req, role)
+      )
+    ) {
       resolvedRole = 'platform_admin';
     }
 
@@ -80,9 +87,12 @@ export class PlatformTenantMiddleware {
       return;
     }
 
-    // 4. Annotate request with resolved role
+    // 4. Annotate both the request and view locals. Controllers can perform
+    // explicit authorization checks and templates can omit mutation controls
+    // for read-only platform viewers.
     (req as Request & { platformRole?: PlatformRole }).platformRole =
       resolvedRole;
+    res.locals.platformRole = resolvedRole;
 
     next();
   };

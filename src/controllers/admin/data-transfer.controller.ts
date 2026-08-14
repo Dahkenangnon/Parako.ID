@@ -18,6 +18,7 @@ import {
   getEntityConfigFactory,
   type EntityConfigDeps,
 } from '../../services/data-transfer/entities/index.js';
+import type { EntityTransferConfig } from '../../services/data-transfer/types.js';
 import { createBackgroundTaskQueue } from '../../jobs/domains/background-tasks/queue.js';
 import {
   buildQueueRedisOptions,
@@ -27,6 +28,17 @@ import { QUEUE_NAMES, QUEUE_PREFIX } from '../../jobs/config.js';
 
 const REDIS_UNAVAILABLE_MSG =
   'Background jobs require Redis. Configure REDIS_HOST in .env and ensure Redis is running.';
+
+function getExportFieldCapabilities(config: EntityTransferConfig): {
+  hasSecretFields: boolean;
+  hasSensitiveFields: boolean;
+} {
+  const columns = config.exportConfig?.columns ?? [];
+  return {
+    hasSecretFields: columns.some(column => column.group === 'internal'),
+    hasSensitiveFields: columns.some(column => column.group === 'sensitive'),
+  };
+}
 
 @injectable()
 export class AdminDataTransferController implements IAdminDataTransferController {
@@ -63,6 +75,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
         description: config.description,
         hasImport: !!config.importConfig,
         hasExport: !!config.exportConfig,
+        ...getExportFieldCapabilities(config),
         format: config.importConfig?.format ?? config.exportConfig?.format,
       };
     });
@@ -102,6 +115,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
         description: config.description,
         hasImport: !!config.importConfig,
         hasExport: !!config.exportConfig,
+        ...getExportFieldCapabilities(config),
         format: config.importConfig?.format ?? config.exportConfig?.format,
       },
       importColumns,
@@ -386,6 +400,10 @@ export class AdminDataTransferController implements IAdminDataTransferController
       if (cleaned) return;
       cleaned = true;
       clearTimeout(sseTimeout);
+      // Complete the HTTP stream before awaiting Redis shutdown. Otherwise a
+      // browser can handle the terminal event and abort EventSource while the
+      // response is still open, surfacing a spurious failed request.
+      res.end();
       await this.closeResourceSafely(
         queueEvents,
         'data_import_progress_events_close_failed',
@@ -396,7 +414,6 @@ export class AdminDataTransferController implements IAdminDataTransferController
         'data_import_progress_queue_close_failed',
         { jobId }
       );
-      res.end();
     };
 
     // Start the timeout before event listeners can request cleanup, so cleanup
@@ -446,7 +463,10 @@ export class AdminDataTransferController implements IAdminDataTransferController
       }
     );
 
-    req.on('close', cleanup);
+    // The SSE stream belongs to the outgoing response. IncomingMessage close
+    // may fire after the request is consumed while the response is still active,
+    // which would truncate the event stream.
+    res.on('close', cleanup);
   };
 
   /**

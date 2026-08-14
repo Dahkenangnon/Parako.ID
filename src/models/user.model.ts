@@ -12,6 +12,10 @@ import {
   RegisterWithValues,
   AuthProviderValues,
 } from '../types/user.js';
+import {
+  getPersistableRoleValues,
+  isRoleAvailableForTenant,
+} from '../multi-tenancy/platform-roles.js';
 
 export type {
   IUser,
@@ -33,6 +37,7 @@ export const createUserModel = (
   _passwordUtils: IPasswordUtils
 ): UserModel => {
   const config = configManager.getConfig();
+  const configuredRoles = config.security.authentication.roles.available;
 
   // Grouped schema fields according to the IUser interface
   const userSchema = new Schema<IUser, UserModel, IUserMethods>(
@@ -139,13 +144,9 @@ export const createUserModel = (
         trim: true,
       },
       roles: {
-        type: [
-          {
-            type: String,
-            enum: config.security.authentication.roles.available,
-            set: (value: string) => value?.trim(),
-          },
-        ],
+        type: [String],
+        enum: getPersistableRoleValues(configuredRoles),
+        set: (roles: string[]) => roles.map(role => role.trim()),
         default: () => [config.security.authentication.roles.default],
       },
 
@@ -398,6 +399,18 @@ export const createUserModel = (
   );
 
   userSchema.plugin(tenantPlugin);
+
+  userSchema.pre('validate', function () {
+    const unavailableRole = this.roles.find(
+      role => !isRoleAvailableForTenant(role, configuredRoles, this.tenant_id)
+    );
+    if (unavailableRole) {
+      this.invalidate(
+        'roles',
+        `Role '${unavailableRole}' is not available for this tenant`
+      );
+    }
+  });
 
   // All business logic methods have been moved to UserService
 

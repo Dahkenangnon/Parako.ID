@@ -102,17 +102,19 @@ export const limitSchema = z.coerce
 export const sortOrderSchema = z.enum(SORT_ORDER_VALUES);
 
 /**
- * Free-text search field. Trims whitespace, caps the length at 200,
- * and applies `escapeRegExp` so the value is safe to insert into a
- * Mongo `$regex` clause. Idempotent with the controller-layer
- * `escapeRegExp` call inside `extractListingQuery`.
+ * Adapter-neutral free-text search. Repository implementations translate this
+ * literal value into the query language supported by their storage adapter.
  */
-export const searchSchema = z
+export const literalSearchSchema = z
   .string()
   .trim()
   .max(200, 'Search must be 200 characters or fewer')
-  .optional()
-  .transform(value => (value !== undefined ? escapeRegExp(value) : value));
+  .optional();
+
+/** Regex-safe variant for callers that pass search text directly to MongoDB. */
+export const searchSchema = literalSearchSchema.transform(value =>
+  value !== undefined ? escapeRegExp(value) : value
+);
 
 /**
  * Free-text username filter (admin listing screens). Same regex-escape

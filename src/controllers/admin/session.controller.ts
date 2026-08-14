@@ -11,6 +11,8 @@ import type { IAdminSessionsController } from '../../di/interfaces/admin-session
 import type { IActivityService } from '../../di/interfaces/activity-service.interface.js';
 import type { IRedisPubSubService } from '../../di/interfaces/redis-pubsub-service.interface.js';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
+import type { IOIDCBackchannelLogoutService } from '../../di/interfaces/oidc-backchannel-logout-service.interface.js';
+import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import { TYPES } from '../../di/types.js';
 import {
   ADMIN_SESSION_SORT_FIELDS,
@@ -52,7 +54,9 @@ export class AdminSessionsController implements IAdminSessionsController {
     @inject(TYPES.RedisPubSubService)
     private readonly pubsub: IRedisPubSubService,
     @inject(TYPES.ConfigManager)
-    private readonly configManager: IConfigManager
+    private readonly configManager: IConfigManager,
+    @inject(TYPES.OIDCBackchannelLogoutService)
+    private readonly backchannelLogoutService: IOIDCBackchannelLogoutService
   ) {}
 
   private get activityLoggerDeps() {
@@ -129,19 +133,21 @@ export class AdminSessionsController implements IAdminSessionsController {
       filters['payload.exp'] = { $lte: now };
     }
 
-    const totalSessions = await this.oidcAdapter.session.countSessions(filters);
-    const totalPages = Math.ceil(totalSessions / limit);
+    const unfilteredTotalSessions =
+      await this.oidcAdapter.session.countSessions(filters);
     const skip = (page - 1) * limit;
+    const shouldSearchProcessedFields = search.length > 0;
 
     const sessions = await this.oidcAdapter.session.findSessionsWithPagination(
       filters,
       sortBy,
       sortOrder === 'desc' ? -1 : 1,
-      skip,
-      limit
+      shouldSearchProcessedFields ? 0 : skip,
+      shouldSearchProcessedFields ? Math.max(unfilteredTotalSessions, 1) : limit
     );
 
     let filteredSessions: any[] = [];
+    let totalSessions = unfilteredTotalSessions;
     if (sessions && sessions.length > 0) {
       const processedSessions = await Promise.all(
         sessions.map(async session => {
@@ -152,9 +158,9 @@ export class AdminSessionsController implements IAdminSessionsController {
       );
 
       filteredSessions = processedSessions;
-      if (search) {
+      if (shouldSearchProcessedFields) {
         const searchLower = search.toLowerCase();
-        filteredSessions = processedSessions.filter(
+        const matchingSessions = processedSessions.filter(
           session =>
             session.userInfo.username.toLowerCase().includes(searchLower) ||
             session.userInfo.full_name.toLowerCase().includes(searchLower) ||
@@ -162,8 +168,14 @@ export class AdminSessionsController implements IAdminSessionsController {
             session.device.toLowerCase().includes(searchLower) ||
             session.ip.toLowerCase().includes(searchLower)
         );
+        totalSessions = matchingSessions.length;
+        filteredSessions = matchingSessions.slice(skip, skip + limit);
       }
+    } else if (shouldSearchProcessedFields) {
+      totalSessions = 0;
     }
+
+    const totalPages = Math.ceil(totalSessions / limit);
 
     const expressSkip = (expressPage - 1) * expressLimit;
     const [rawExpressSessions, totalExpressSessions] = await Promise.all([
@@ -172,7 +184,9 @@ export class AdminSessionsController implements IAdminSessionsController {
         offset: expressSkip,
         search: search || username || undefined,
       }),
-      this.sessionManager.countAllExpressSessions(),
+      this.sessionManager.countAllExpressSessions(
+        search || username || undefined
+      ),
     ]);
 
     const expressSessions =
@@ -345,6 +359,13 @@ export class AdminSessionsController implements IAdminSessionsController {
       const session = await this.oidcAdapter.session.findSessionById(sessionId);
       const targetUsername = session?.payload?.accountId || 'unknown';
 
+      if (session) {
+        await this.backchannelLogoutService.notifySessionRevocation(
+          session,
+          tenantContext.getTenantId()
+        );
+      }
+
       const revoked = await this.oidcAdapter.session.revokeSession(sessionId);
 
       if (revoked) {
@@ -394,6 +415,10 @@ export class AdminSessionsController implements IAdminSessionsController {
     for (const session of userSessions) {
       const sessionId = session.payload.jti;
       if (sessionId) {
+        await this.backchannelLogoutService.notifySessionRevocation(
+          session,
+          tenantContext.getTenantId()
+        );
         const revoked = await this.oidcAdapter.session.revokeSession(sessionId);
         if (revoked) oidcRevokedCount++;
       }

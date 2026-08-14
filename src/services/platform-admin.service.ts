@@ -24,11 +24,25 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type { IActivityService } from '../di/interfaces/activity-service.interface.js';
 import type { ITenant, TenantStatus } from '../types/tenant.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import { normalizeTenantDomain } from '../multi-tenancy/tenant-domain.js';
 import {
   ConflictError,
   ReservedSlugError,
   NotFoundError,
+  ProtectedTenantError,
 } from '../errors/platform.errors.js';
+
+export const PLATFORM_MASTER_TENANT_SLUG = '_platforms';
+
+export function isProtectedTenantSlug(slug: string): boolean {
+  return slug === PLATFORM_MASTER_TENANT_SLUG;
+}
+
+function assertTenantMutable(slug: string): void {
+  if (isProtectedTenantSlug(slug)) {
+    throw new ProtectedTenantError();
+  }
+}
 
 /**
  * Slugs reserved for system infrastructure.
@@ -41,6 +55,14 @@ const RESERVED_SLUGS = new Set([
   'admin',
   'api',
 ]);
+
+function tenantId(tenant: ITenant): string {
+  const id = tenant.id ?? tenant._id;
+  if (!id) {
+    throw new Error(`Tenant '${tenant.slug}' has no repository identity`);
+  }
+  return id;
+}
 
 export interface IPlatformAdminService {
   listTenants(filter?: { status?: TenantStatus }): Promise<ITenant[]>;
@@ -100,7 +122,13 @@ export class PlatformAdminService implements IPlatformAdminService {
       throw new ConflictError(`Tenant '${data.slug}' already exists`);
     }
 
-    const tenant = await this.tenantRepo.create(data);
+    const domain = data.domain ? normalizeTenantDomain(data.domain) : undefined;
+    if (domain && (await this.tenantRepo.findByDomain(domain))) {
+      throw new ConflictError(`Tenant domain '${domain}' already exists`);
+    }
+
+    const normalizedData = { ...data, ...(domain ? { domain } : {}) };
+    const tenant = await this.tenantRepo.create(normalizedData);
 
     this.logger.info('platform_tenant_created', {
       slug: data.slug,
@@ -158,14 +186,31 @@ export class PlatformAdminService implements IPlatformAdminService {
     slug: string,
     data: Pick<UpdateTenantDto, 'display_name' | 'domain'>
   ): Promise<ITenant> {
+    assertTenantMutable(slug);
     const tenant = await this.tenantRepo.findBySlug(slug);
     if (!tenant) {
       throw new NotFoundError(`Tenant '${slug}' not found`);
     }
 
-    const updated = await this.tenantRepo.update(tenant._id as string, data);
+    const normalizedData = { ...data };
+    if (typeof data.domain === 'string') {
+      normalizedData.domain = normalizeTenantDomain(data.domain);
+      const domainOwner = await this.tenantRepo.findByDomain(
+        normalizedData.domain
+      );
+      if (domainOwner && tenantId(domainOwner) !== tenantId(tenant)) {
+        throw new ConflictError(
+          `Tenant domain '${normalizedData.domain}' already exists`
+        );
+      }
+    }
 
-    this.logger.info('platform_tenant_updated', { slug, ...data });
+    const updated = await this.tenantRepo.update(
+      tenantId(tenant),
+      normalizedData
+    );
+
+    this.logger.info('platform_tenant_updated', { slug, ...normalizedData });
     this.activityService.info(
       'platform_tenant_updated',
       `Updated tenant '${slug}'`,
@@ -173,7 +218,7 @@ export class PlatformAdminService implements IPlatformAdminService {
       {
         target: {
           target_type: 'system',
-          entity_data: { slug, ...data },
+          entity_data: { slug, ...normalizedData },
         },
       }
     );
@@ -185,13 +230,14 @@ export class PlatformAdminService implements IPlatformAdminService {
     slug: string,
     status: TenantStatus
   ): Promise<ITenant> {
+    assertTenantMutable(slug);
     const tenant = await this.tenantRepo.findBySlug(slug);
     if (!tenant) {
       throw new NotFoundError(`Tenant '${slug}' not found`);
     }
 
     const previousStatus = tenant.status;
-    const updated = await this.tenantRepo.update(tenant._id as string, {
+    const updated = await this.tenantRepo.update(tenantId(tenant), {
       status,
     });
 

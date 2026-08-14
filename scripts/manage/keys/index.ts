@@ -38,8 +38,16 @@ export function createBackup(filePath: string): string {
  * Generate JWKS keys
  */
 export async function generateKeys(
-  includeEdDSA: boolean = true
+  includeEdDSA: boolean = true,
+  overwriteExisting: boolean = false
 ): Promise<void> {
+  const outputPath = path.resolve('./runtime/jwks/jwks.json');
+  if (fs.existsSync(outputPath) && !overwriteExisting) {
+    throw new Error(
+      `JWKS file already exists at ${outputPath}. Refusing to overwrite first-boot keys.`
+    );
+  }
+
   const keys: JWK[] = [];
 
   console.log(chalk.cyan('\n🔑 Generating JWKS keys...\n'));
@@ -75,7 +83,6 @@ export async function generateKeys(
 
   const jwks: JWKS = { keys };
 
-  const outputPath = path.resolve('./runtime/jwks/jwks.json');
   const outputDir = path.dirname(outputPath);
 
   if (!fs.existsSync(outputDir)) {
@@ -84,6 +91,7 @@ export async function generateKeys(
 
   fs.writeFileSync(outputPath, JSON.stringify(jwks, null, 2), {
     encoding: 'utf8',
+    flag: overwriteExisting ? 'w' : 'wx',
     mode: 0o600,
   });
   // `mode` only applies when a file is created. Enforce the same permission
@@ -129,5 +137,5 @@ export async function generateKeysInteractive(): Promise<void> {
     createBackup(outputPath);
   }
 
-  await generateKeys(true);
+  await generateKeys(true, true);
 }

@@ -129,14 +129,64 @@ function runPrisma(
     [prismaEntrypoint, ...args, '--config', path.join(root, config)],
     {
       cwd: root,
+      encoding: 'utf8',
       env,
-      stdio: 'inherit',
     }
   );
+  const stdout = redactDatabaseOutput(result.stdout, env);
+  const stderr = redactDatabaseOutput(result.stderr, env);
+  if (stdout) process.stdout.write(stdout);
+  if (stderr) process.stderr.write(stderr);
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`Prisma exited with status ${result.status ?? 'unknown'}.`);
   }
+}
+
+function safelyDecodeUrlComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/** Remove configured database secrets and machine paths from Prisma output. */
+export function redactDatabaseOutput(
+  output: unknown,
+  env: NodeJS.ProcessEnv
+): string {
+  if (typeof output !== 'string' && !Buffer.isBuffer(output)) return '';
+
+  let safeOutput = output.toString();
+  const databaseUrl = env.DATABASE_URL;
+  if (!databaseUrl) return safeOutput;
+
+  const replacements = new Map<string, string>([
+    [databaseUrl, '[database-url]'],
+  ]);
+  if (URL.canParse(databaseUrl)) {
+    const parsed = new URL(databaseUrl);
+    if (parsed.protocol === 'file:') {
+      replacements.set(parsed.pathname, '[database-path]');
+      replacements.set(
+        safelyDecodeUrlComponent(parsed.pathname),
+        '[database-path]'
+      );
+    }
+    if (parsed.password) {
+      replacements.set(parsed.password, '[database-password]');
+      replacements.set(
+        safelyDecodeUrlComponent(parsed.password),
+        '[database-password]'
+      );
+    }
+  }
+
+  for (const [value, replacement] of replacements) {
+    safeOutput = safeOutput.replaceAll(value, replacement);
+  }
+  return safeOutput;
 }
 
 async function withMongo<T>(

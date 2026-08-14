@@ -13,6 +13,10 @@ import type {
   PaginationOptions,
 } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
+import {
+  DEFAULT_TENANT_ID,
+  tenantContext,
+} from '../../../multi-tenancy/tenant-context.js';
 
 const ACTIVITY_INCLUDE = {
   actor: true,
@@ -163,6 +167,7 @@ export class PrismaActivityRepository
   }
 
   async create(data: CreateActivityDto): Promise<IActivity> {
+    const tenantId = tenantContext.getTenantIdSafe() ?? DEFAULT_TENANT_ID;
     const row = await this.prisma.activity.create({
       data: {
         id: crypto.randomUUID(),
@@ -178,6 +183,7 @@ export class PrismaActivityRepository
         actor: data.actor
           ? {
               create: {
+                tenant_id: tenantId,
                 actor_type: data.actor.actor_type,
                 user_id: data.actor.user_id?.toString() ?? null,
                 username: data.actor.username ?? null,
@@ -191,6 +197,7 @@ export class PrismaActivityRepository
         target: data.target
           ? {
               create: {
+                tenant_id: tenantId,
                 target_type: data.target.target_type,
                 user_id: data.target.user_id?.toString() ?? null,
                 username: data.target.username ?? null,
@@ -207,6 +214,7 @@ export class PrismaActivityRepository
         device: data.device_infos
           ? {
               create: {
+                tenant_id: tenantId,
                 fingerprint:
                   data.device_infos.fingerprint ??
                   data.device_infos.device_trust?.fingerprint ??
@@ -344,20 +352,9 @@ export class PrismaActivityRepository
   }
 
   async getDistinctTypes(filter?: ActivityFilter): Promise<string[]> {
-    const where: Record<string, unknown> = {};
-    if (filter?.status) where.status = filter.status;
-    if (filter?.['actor.user_id']) {
-      where.actor = { user_id: String(filter['actor.user_id']) };
-    }
-    if (filter?.['actor.username']) {
-      where.actor = {
-        ...(where.actor as object),
-        username: filter['actor.username'],
-      };
-    }
     const groups = await this.prisma.activity.groupBy({
       by: ['type'],
-      where: where as Prisma.ActivityWhereInput,
+      where: this.buildWhere(filter ?? {}) as Prisma.ActivityWhereInput,
     });
     return groups.map((g: { type: string }) => g.type);
   }
@@ -376,11 +373,24 @@ export class PrismaActivityRepository
 
   private buildWhere(filter: ActivityFilter): Record<string, unknown> {
     const where: Record<string, unknown> = {};
+    const disjunctions: Array<Array<Record<string, unknown>>> = [];
+
     if (filter.search) {
-      where.OR = [
+      disjunctions.push([
         { description: { contains: filter.search } },
         { actor: { username: { contains: filter.search } } },
-      ];
+      ]);
+    }
+    if (filter.related_user_id) {
+      disjunctions.push([
+        { actor: { user_id: filter.related_user_id } },
+        { target: { user_id: filter.related_user_id } },
+      ]);
+    }
+    if (disjunctions.length === 1) {
+      where.OR = disjunctions[0];
+    } else if (disjunctions.length > 1) {
+      where.AND = disjunctions.map(OR => ({ OR }));
     }
     if (filter.type) {
       where.type = Array.isArray(filter.type)

@@ -16,7 +16,7 @@
 
     {% include "partials/admin-security-subtabs.njk" %}
 
-    <form method="POST" action="/admin/settings/security/sessions" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+    <form method="POST" action="/admin/settings/security/sessions" class="space-y-6" data-confirm-critical-change>
         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
 
         <div class="max-w-6xl mx-auto space-y-6">
@@ -67,7 +67,7 @@
                                     <input type="text" id="authentication.session.cookie_name"
                                            name="authentication[session][cookie_name]"
                                            value="{{ config.authentication and config.authentication.session and config.authentication.session.cookie_name or 'application_session' }}"
-                                           pattern="[a-zA-Z0-9_-]+"
+                                           pattern="[a-zA-Z0-9_\-]+"
                                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
                                     <p class="mt-1 text-xs text-muted-foreground">Custom name to obscure session cookie identity</p>
                                 </div>
@@ -305,7 +305,7 @@
                         <i data-lucide="x" class="h-4 w-4 mr-2"></i>
                         Cancel
                     </a>
-                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <button type="button" data-settings-reset class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
                         <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
                         Reset Form
                     </button>

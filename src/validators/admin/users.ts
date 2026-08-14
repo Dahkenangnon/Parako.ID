@@ -15,7 +15,7 @@ import {
   emailSchema,
   limitSchema,
   pageSchema,
-  searchSchema,
+  literalSearchSchema,
   sortOrderSchema,
 } from '../base-schemas.js';
 import { ADMIN_USER_SORT_FIELDS } from '../listing-query.js';
@@ -32,7 +32,7 @@ export const adminUserListQuerySchema = z
   .object({
     page: pageSchema,
     limit: limitSchema,
-    search: searchSchema,
+    search: literalSearchSchema,
     role: z.enum(userRoleFilterValues).optional(),
     status: z.enum(userStatusFilterValues).optional(),
     sortBy: z.enum(ADMIN_USER_SORT_FIELDS).optional(),

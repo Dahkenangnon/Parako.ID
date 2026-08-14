@@ -28,7 +28,10 @@ export type StorageAdapter = 'sqlite' | 'postgresql' | 'mongodb';
 export interface PrismaAdapterBundle {
   readonly kind: 'prisma';
   readonly createClient: (config: BootstrapConfig) => PrismaClient;
-  readonly UserRepository: new (client: PrismaClient) => IUserRepository;
+  readonly UserRepository: new (
+    client: PrismaClient,
+    adapter?: Exclude<StorageAdapter, 'mongodb'>
+  ) => IUserRepository;
   readonly ActivityRepository: new (
     client: PrismaClient
   ) => IActivityRepository;

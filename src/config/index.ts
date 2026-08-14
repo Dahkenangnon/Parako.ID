@@ -14,8 +14,12 @@ import { TYPES } from '../di/types.js';
 import { applyComputedDefaults } from './computed-fields.js';
 import { getDefaultFullConfig } from './constants.js';
 import { mergeConfig, type DeepPartial } from '../utils/config-merge.js';
-import { buildRedisKey } from '../multi-tenancy/redis-key.js';
+import {
+  buildRedisKey,
+  buildRedisKeyForTenant,
+} from '../multi-tenancy/redis-key.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import { ConfigurationVersionConflictError } from '../errors/configuration-version-conflict.error.js';
 
 /**
  * Build the oidc_storage config section entirely from bootstrap env vars.
@@ -85,6 +89,8 @@ export class ConfigManager implements IConfigManager {
   // Redis Pub/Sub for cross-process invalidation
   private pubsub: IRedisPubSubService | null = null;
   private readonly originId = randomUUID();
+  private pubsubPattern: string | null = null;
+  private pubsubHandler: ((msg: Record<string, unknown>) => void) | null = null;
 
   // Section-based caching for lazy loading
   private sectionCache: Map<string, { data: unknown; timestamp: number }> =
@@ -99,7 +105,8 @@ export class ConfigManager implements IConfigManager {
 
   private dbProviderChangeHandler: (
     config: AppConfig | null,
-    error?: Error
+    error?: Error,
+    source?: 'local-update'
   ) => void;
 
   /** Per-tenant RuntimeConfig cache. Entries auto-invalidated on config change. */
@@ -111,6 +118,9 @@ export class ConfigManager implements IConfigManager {
    * tenant await the same Promise — identical pattern to TenantProviderRegistry.locks.
    */
   private readonly tenantConfigLocks = new Map<string, Promise<void>>();
+
+  /** Serializes read-merge-write updates that share the provider cache. */
+  private configUpdateTail: Promise<void> = Promise.resolve();
 
   private readonly settingsService: ISettingsService;
   private readonly tenantOverrideService?: ITenantSettingsOverrideService;
@@ -147,9 +157,10 @@ export class ConfigManager implements IConfigManager {
    */
   private async handleDbProviderChange(
     config: AppConfig | null,
-    error?: Error
+    error?: Error,
+    source?: 'local-update'
   ): Promise<void> {
-    if (!this.isInitialized) {
+    if (!this.isInitialized || source === 'local-update') {
       return;
     }
 
@@ -182,6 +193,10 @@ export class ConfigManager implements IConfigManager {
 
       this.cache = runtimeConfig;
       this.clearSectionCache();
+      // Every tenant config is derived from this global base. A database
+      // change notification must invalidate those derived values even when
+      // Redis Pub/Sub is unavailable or has not delivered its event yet.
+      this.tenantConfigs.clear();
       await this.notifySubscribers(runtimeConfig);
 
       console.info(
@@ -543,11 +558,25 @@ export class ConfigManager implements IConfigManager {
     }
   }
 
+  private async acquireConfigUpdateLock(): Promise<() => void> {
+    const previousUpdate = this.configUpdateTail;
+    let releaseUpdate!: () => void;
+    this.configUpdateTail = new Promise<void>(resolve => {
+      releaseUpdate = resolve;
+    });
+
+    await previousUpdate;
+    return releaseUpdate;
+  }
+
   /**
    * Update configuration (only works with database provider)
    * Applies bootstrap merge after update to ensure bootstrap fields remain from .env
    */
-  async update(partial: Partial<RuntimeConfig>): Promise<RuntimeConfig> {
+  async update(
+    partial: DeepPartial<RuntimeConfig>,
+    expectedVersion?: number
+  ): Promise<RuntimeConfig> {
     if (!this.isInitialized) {
       throw new Error('Configuration not initialized. Call load() first.');
     }
@@ -566,9 +595,13 @@ export class ConfigManager implements IConfigManager {
       throw new Error('Cannot update configuration: Database not available');
     }
 
+    const releaseUpdate = await this.acquireConfigUpdateLock();
     const previousCache = this.cache;
     try {
-      const persistedConfig = await this.dbProvider.updateConfig!(partial);
+      const persistedConfig = await this.dbProvider.updateConfig!(
+        partial,
+        expectedVersion
+      );
 
       const bootstrapConfig = await this.bootstrapProvider.loadConfiguration();
       let runtimeConfig = this.createRuntimeConfig(
@@ -581,10 +614,9 @@ export class ConfigManager implements IConfigManager {
 
       this.cache = runtimeConfig;
       this.clearSectionCache();
-      await this.notifySubscribers(runtimeConfig);
-
       // Global config is the base for ALL tenant merged configs.
       this.tenantConfigs.clear();
+      await this.notifySubscribers(runtimeConfig);
 
       // Channel is tenant-scoped: {prefix}:{tenantId}:config:invalidated
       // (buildRedisKey reads tenant from ALS — correct because config saves
@@ -610,9 +642,14 @@ export class ConfigManager implements IConfigManager {
     } catch (error) {
       // Rollback: restore previous cache so the app continues with last-known-good config
       this.cache = previousCache;
+      if (error instanceof ConfigurationVersionConflictError) {
+        throw error;
+      }
       throw new Error(
         `Failed to update configuration: ${error instanceof Error ? error.message : String(error)}`
       );
+    } finally {
+      releaseUpdate();
     }
   }
 
@@ -880,51 +917,88 @@ export class ConfigManager implements IConfigManager {
   /**
    * Evict a tenant's cached config, forcing reload on next ensureTenantConfig().
    */
-  invalidateTenantConfig(tenantId: string): void {
+  invalidateTenantConfig(
+    tenantId: string,
+    options: { broadcast?: boolean } = {}
+  ): Promise<void> {
     this.tenantConfigs.delete(tenantId);
     this.logger.info('Tenant config cache invalidated', { tenantId });
+
+    if (!options.broadcast || !this.pubsub?.isConnected()) {
+      return Promise.resolve();
+    }
+
+    const prefix = this.cache?.deployment?.redis_prefix || 'parako';
+    return this.pubsub
+      .publish(
+        buildRedisKeyForTenant(prefix, tenantId, 'config', 'invalidated'),
+        {
+          originId: this.originId,
+          timestamp: Date.now(),
+          tenantId,
+        }
+      )
+      .catch((error: unknown) => {
+        this.logger.error(
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            context: 'tenant_config_invalidation_broadcast_failed',
+            tenantId,
+          }
+        );
+      });
   }
 
   /**
    * Wire Redis Pub/Sub for cross-process config invalidation.
    *
    * Uses PSUBSCRIBE with pattern `{prefix}:*:config:invalidated` to catch
-   * invalidation events from ALL tenants. When any tenant's config is saved,
-   * `saveConfig()` publishes to `{prefix}:{tenantId}:config:invalidated`
-   * (tenant from ALS). This pattern subscription ensures every process
-   * reloads regardless of which tenant triggered the change.
+   * invalidation events from all tenants. Global events reload the platform
+   * configuration; tenant events evict only the addressed tenant overlay.
    */
   setPubSub(pubsub: IRedisPubSubService): void {
+    if (this.pubsub && this.pubsubPattern && this.pubsubHandler) {
+      this.pubsub.punsubscribe(this.pubsubPattern, this.pubsubHandler);
+    }
+
     this.pubsub = pubsub;
 
     const prefix = this.cache?.deployment?.redis_prefix || 'parako';
-    pubsub.psubscribe(
-      `${prefix}:*:config:invalidated`,
-      (msg: Record<string, unknown>) => {
-        if (msg.originId === this.originId) return;
+    this.pubsubPattern = `${prefix}:*:config:invalidated`;
+    this.pubsubHandler = (msg: Record<string, unknown>) => {
+      if (msg.originId === this.originId) return;
 
-        const msgTenantId = msg.tenantId as string | undefined;
-        if (!msgTenantId || msgTenantId === '*') {
-          // Global invalidation — clear all tenant caches
-          this.tenantConfigs.clear();
-        } else {
-          this.invalidateTenantConfig(msgTenantId);
-        }
-
+      const msgTenantId = msg.tenantId as string | undefined;
+      if (!msgTenantId || msgTenantId === '*') {
+        // Global invalidation — clear all tenant caches
+        this.tenantConfigs.clear();
         this.reload().catch(err => {
           console.error(
             '[ConfigManager] Cross-process config reload failed',
             err
           );
         });
+        return;
       }
-    );
+
+      // Tenant override documents are independent from the global Settings
+      // document, so a tenant-only event must preserve sibling caches and
+      // must not reload the global configuration.
+      void this.invalidateTenantConfig(msgTenantId);
+    };
+    pubsub.psubscribe(this.pubsubPattern, this.pubsubHandler);
   }
 
   /**
    * Cleanup resources and stop monitoring
    */
   cleanup(): void {
+    if (this.pubsub && this.pubsubPattern && this.pubsubHandler) {
+      this.pubsub.punsubscribe(this.pubsubPattern, this.pubsubHandler);
+    }
+    this.pubsub = null;
+    this.pubsubPattern = null;
+    this.pubsubHandler = null;
     this.dbProvider.unsubscribe(this.dbProviderChangeHandler);
     this.dbProvider.cleanup();
     this.fileProvider.cleanup();

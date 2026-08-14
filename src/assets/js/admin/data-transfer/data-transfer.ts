@@ -79,7 +79,7 @@ interface ImportResult {
   durationMs: number;
 }
 
-(function () {
+export function initAdminDataTransfer(): void {
   'use strict';
 
   const maybeConfig = readEntityConfig();
@@ -151,20 +151,41 @@ interface ImportResult {
     return el;
   }
 
-  tabButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tab = btn.dataset.tab;
-      tabButtons.forEach(b => {
-        const isActive = b.dataset.tab === tab;
-        b.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        b.classList.toggle('border-primary', isActive);
-        b.classList.toggle('text-primary', isActive);
-        b.classList.toggle('border-transparent', !isActive);
-        b.classList.toggle('text-muted-foreground', !isActive);
-      });
+  const tabs = Array.from(tabButtons);
 
-      if (importPanel) importPanel.classList.toggle('hidden', tab !== 'import');
-      if (exportPanel) exportPanel.classList.toggle('hidden', tab !== 'export');
+  function activateTab(activeButton: HTMLButtonElement, focus = false): void {
+    const tab = activeButton.dataset.tab;
+    tabs.forEach(button => {
+      const isActive = button === activeButton;
+      button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      button.tabIndex = isActive ? 0 : -1;
+      button.classList.toggle('border-primary', isActive);
+      button.classList.toggle('text-primary', isActive);
+      button.classList.toggle('border-transparent', !isActive);
+      button.classList.toggle('text-muted-foreground', !isActive);
+    });
+
+    if (importPanel) importPanel.classList.toggle('hidden', tab !== 'import');
+    if (exportPanel) exportPanel.classList.toggle('hidden', tab !== 'export');
+    if (focus) activeButton.focus();
+  }
+
+  tabs.forEach((button, index) => {
+    button.tabIndex = button.getAttribute('aria-selected') === 'true' ? 0 : -1;
+    button.addEventListener('click', () => activateTab(button));
+    button.addEventListener('keydown', event => {
+      let nextIndex: number | null = null;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') {
+        nextIndex = (index - 1 + tabs.length) % tabs.length;
+      }
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      if (nextIndex === null) return;
+
+      event.preventDefault();
+      const nextButton = tabs[nextIndex];
+      if (nextButton) activateTab(nextButton, true);
     });
   });
 
@@ -698,7 +719,10 @@ interface ImportResult {
 
   function updateProgress(percent: number): void {
     const clamped = Math.min(100, Math.max(0, percent));
-    if (progressBar) progressBar.style.width = `${clamped}%`;
+    if (progressBar) {
+      progressBar.style.width = `${clamped}%`;
+      progressBar.setAttribute('aria-valuenow', String(clamped));
+    }
     if (progressPercent) progressPercent.textContent = `${clamped}%`;
     if (progressStatus) {
       progressStatus.textContent =
@@ -840,4 +864,8 @@ interface ImportResult {
       exportForm.submit();
     }
   });
-})();
+}
+
+if (typeof document !== 'undefined') {
+  initAdminDataTransfer();
+}

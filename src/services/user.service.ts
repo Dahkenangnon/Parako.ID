@@ -12,6 +12,8 @@ import type {
 import { TYPES } from '../di/types.js';
 import crypto from 'node:crypto';
 import { encryptValue } from '../utils/encryption.js';
+import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import { isRoleAvailableForTenant } from '../multi-tenancy/platform-roles.js';
 import type {
   BulkWriteResult,
   BulkDeleteResult,
@@ -58,7 +60,10 @@ export class UserService implements IUserService {
 
     const availableRoles =
       this.configManager.getConfig().security.authentication.roles.available;
-    const unavailableRole = roles.find(role => !availableRoles.includes(role));
+    const tenantId = tenantContext.getTenantIdSafe();
+    const unavailableRole = roles.find(
+      role => !isRoleAvailableForTenant(role, availableRoles, tenantId)
+    );
 
     if (unavailableRole) {
       throw new Error(`Role '${unavailableRole}' is not available`);
@@ -1600,14 +1605,46 @@ export class UserService implements IUserService {
     }
   }
 
+  private async inferDuplicateUserField(
+    fields: Set<string>,
+    userData: Partial<IUser>,
+    attemptedUsername: string | undefined
+  ): Promise<void> {
+    if (fields.size > 0) return;
+
+    const candidates: Array<[string, unknown]> = [
+      ['email', userData.email],
+      ['custom_identifier_1', userData.custom_identifier_1],
+      ['custom_identifier_2', userData.custom_identifier_2],
+      ['custom_identifier_3', userData.custom_identifier_3],
+      ['username', attemptedUsername],
+      ['sub', userData.sub],
+    ];
+
+    for (const [field, value] of candidates) {
+      if (typeof value !== 'string' || value.length === 0) continue;
+      try {
+        if ((await this.userRepo.count({ [field]: value })) > 0) {
+          fields.add(field);
+          return;
+        }
+      } catch {
+        this.logger.warn('Unable to identify duplicate user field', { field });
+      }
+    }
+  }
+
   public async createUserWithGeneratedUsername(
     userData: Partial<IUser>
   ): Promise<IUser> {
+    const requestedUsername = userData.username?.trim();
+    let attemptedUsername = requestedUsername;
+
     try {
       const { email } = userData;
-      const requestedUsername = userData.username?.trim();
       const username =
-        requestedUsername || (await this.generateUniqueUsername());
+        attemptedUsername || (await this.generateUniqueUsername());
+      attemptedUsername = username;
       const roles = userData.roles ?? [
         this.configManager.getConfig().security.authentication.roles.default,
       ];
@@ -1637,7 +1674,15 @@ export class UserService implements IUserService {
       const databaseError = error as Error & {
         code?: unknown;
         keyPattern?: Record<string, number>;
-        meta?: { target?: unknown };
+        meta?: {
+          target?: unknown;
+          driverAdapterError?: {
+            cause?: {
+              kind?: unknown;
+              constraint?: unknown;
+            };
+          };
+        };
       };
       if (
         error instanceof Error &&
@@ -1645,6 +1690,32 @@ export class UserService implements IUserService {
       ) {
         const keyPattern = databaseError.keyPattern;
         const prismaTarget = databaseError.meta?.target;
+        const prismaDriverCause = databaseError.meta?.driverAdapterError?.cause;
+        const prismaDriverConstraint =
+          prismaDriverCause?.kind === 'UniqueConstraintViolation'
+            ? prismaDriverCause.constraint
+            : undefined;
+        const prismaDriverFields =
+          prismaDriverConstraint !== null &&
+          typeof prismaDriverConstraint === 'object' &&
+          'fields' in prismaDriverConstraint &&
+          Array.isArray(prismaDriverConstraint.fields)
+            ? prismaDriverConstraint.fields.map(String)
+            : [];
+        const prismaDriverIndex =
+          prismaDriverConstraint !== null &&
+          typeof prismaDriverConstraint === 'object' &&
+          'index' in prismaDriverConstraint &&
+          typeof prismaDriverConstraint.index === 'string'
+            ? prismaDriverConstraint.index
+            : undefined;
+        const prismaIndexedFields = [
+          'email',
+          'username',
+          'custom_identifier_1',
+          'custom_identifier_2',
+          'custom_identifier_3',
+        ].filter(field => prismaDriverIndex?.endsWith(`_${field}_key`));
         const fields = new Set([
           ...Object.keys(keyPattern ?? {}),
           ...(Array.isArray(prismaTarget)
@@ -1652,7 +1723,10 @@ export class UserService implements IUserService {
             : typeof prismaTarget === 'string'
               ? [prismaTarget]
               : []),
+          ...prismaDriverFields,
+          ...prismaIndexedFields,
         ]);
+        await this.inferDuplicateUserField(fields, userData, attemptedUsername);
         let friendly: string;
 
         if (fields.has('email')) {

@@ -14,6 +14,61 @@ type PrismaClientModule = {
 };
 let postgresqlClientModule: PrismaClientModule | undefined;
 
+type SqliteAdapterFactory = Pick<
+  PrismaBetterSqlite3,
+  'adapterName' | 'connect' | 'connectToShadowDb' | 'provider'
+>;
+type SqliteAdapterConnection = Awaited<
+  ReturnType<SqliteAdapterFactory['connect']>
+>;
+
+async function configureSqliteConnection(
+  connect: () => Promise<SqliteAdapterConnection>,
+  isProduction: boolean
+): Promise<SqliteAdapterConnection> {
+  const connection = await connect();
+  const pragmas = [
+    { sql: 'PRAGMA journal_mode = WAL', label: 'journal_mode=WAL' },
+    { sql: 'PRAGMA foreign_keys = ON', label: 'foreign_keys=ON' },
+    {
+      sql: `PRAGMA synchronous = ${isProduction ? 'FULL' : 'NORMAL'}`,
+      label: `synchronous=${isProduction ? 'FULL' : 'NORMAL'}`,
+    },
+    { sql: 'PRAGMA cache_size = -8000', label: 'cache_size=-8000' },
+  ] as const;
+
+  for (const { sql, label } of pragmas) {
+    try {
+      await connection.executeRaw({ sql, args: [], argTypes: [] });
+    } catch (err: unknown) {
+      // The structured logger is not available while the database adapter is
+      // connecting, so ensure configuration failures still reach service logs.
+      console.error(
+        `[SQLite] Failed to set PRAGMA ${label}: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  return connection;
+}
+
+function configureSqliteAdapter(
+  adapter: SqliteAdapterFactory,
+  isProduction: boolean
+): SqliteAdapterFactory {
+  return {
+    adapterName: adapter.adapterName,
+    provider: adapter.provider,
+    connect: () =>
+      configureSqliteConnection(() => adapter.connect(), isProduction),
+    connectToShadowDb: () =>
+      configureSqliteConnection(
+        () => adapter.connectToShadowDb(),
+        isProduction
+      ),
+  };
+}
+
 export function findPostgresqlPrismaClient(
   start: string,
   fallbackStart?: string
@@ -90,48 +145,16 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
       config.storage.sqlite?.path ?? './runtime/data/parako.db'
     );
     mkdirSync(dirname(dbPath), { recursive: true });
-    const sqliteAdapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
-    const client = new PrismaClient({ adapter: sqliteAdapter });
     const isProduction = process.env.NODE_ENV === 'production';
+    const sqliteAdapter = configureSqliteAdapter(
+      new PrismaBetterSqlite3({ url: `file:${dbPath}` }),
+      isProduction
+    );
 
-    // Set SQLite performance/correctness pragmas — log failures instead of
-    // silently swallowing them so misconfigurations surface during startup.
-    const pragmas: Array<
-      [() => ReturnType<typeof client.$executeRaw>, string]
-    > = [
-      [() => client.$executeRaw`PRAGMA journal_mode = WAL`, 'journal_mode=WAL'],
-      [() => client.$executeRaw`PRAGMA foreign_keys = ON`, 'foreign_keys=ON'],
-      [
-        // FULL in production: guarantees durability at slight write cost.
-        // NORMAL in dev: faster writes, acceptable risk for local data.
-        () =>
-          isProduction
-            ? client.$executeRaw`PRAGMA synchronous = FULL`
-            : client.$executeRaw`PRAGMA synchronous = NORMAL`,
-        `synchronous=${isProduction ? 'FULL' : 'NORMAL'}`,
-      ],
-      [() => client.$executeRaw`PRAGMA cache_size = -8000`, 'cache_size=-8000'],
-    ];
-
-    // Await PRAGMAs sequentially so failures are surfaced
-    // during startup rather than silently swallowed.
-    void (async () => {
-      for (const [execute, label] of pragmas) {
-        try {
-          await execute();
-        } catch (err: unknown) {
-          // console.error here (not the structured logger): this runs at
-          // module load before the DI container has bound the logger, so
-          // PRAGMA failures fall back to stderr so they still surface in
-          // PM2/systemd journals.
-          console.error(
-            `[SQLite] Failed to set PRAGMA ${label}: ${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-      }
-    })();
-
-    return client;
+    // Prisma awaits adapter.connect() before issuing queries. Applying the
+    // PRAGMAs inside that lifecycle prevents callers from opening a transaction
+    // between individual PRAGMAs (SQLite rejects synchronous changes there).
+    return new PrismaClient({ adapter: sqliteAdapter });
   }
 
   if (adapter === 'postgresql') {

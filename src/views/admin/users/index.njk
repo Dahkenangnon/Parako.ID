@@ -212,7 +212,7 @@
                     <tr>
                         <!-- User (Sortable) -->
                         <th scope="col" class="px-6 py-3 text-left">
-                            <a href="?sortBy=username&sortOrder={% if filters.sortBy == 'username' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}"
+                            <a href="?limit={{ pagination.limit }}&sortBy=username&sortOrder={% if filters.sortBy == 'username' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}"
                                class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                                 <span>User</span>
                                 {% if filters.sortBy == 'username' %}
@@ -226,7 +226,7 @@
                         </th>
                         <!-- Email (Sortable) -->
                         <th scope="col" class="px-6 py-3 text-left">
-                            <a href="?sortBy=email&sortOrder={% if filters.sortBy == 'email' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}"
+                            <a href="?limit={{ pagination.limit }}&sortBy=email&sortOrder={% if filters.sortBy == 'email' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}"
                                class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                                 <span>Email</span>
                                 {% if filters.sortBy == 'email' %}
@@ -375,17 +375,17 @@
                                 </a>
 
                                 <!-- Action Buttons -->
-                                {% if not user.account_is_anonymized %}
+                                {% if not user.account_is_anonymized and user._id != currentUserId %}
                                     {% if user.account_enabled %}
-                                        <button onclick="toggleUserStatus('{{ user._id }}', 'disable')" class="text-warning hover:text-warning/80" title="Disable User">
+                                        <button type="button" data-user-status-action="disable" data-user-id="{{ user._id }}" class="text-warning hover:text-warning/80" title="Disable User">
                                             <i data-lucide="user-minus" class="h-4 w-4"></i>
                                         </button>
                                     {% else %}
-                                        <button onclick="toggleUserStatus('{{ user._id }}', 'enable')" class="text-primary hover:text-primary/80" title="Enable User">
+                                        <button type="button" data-user-status-action="enable" data-user-id="{{ user._id }}" class="text-primary hover:text-primary/80" title="Enable User">
                                             <i data-lucide="user-plus" class="h-4 w-4"></i>
                                         </button>
                                     {% endif %}
-                                    <button onclick="anonymizeUser('{{ user._id }}', '{{ user.username }}')" class="text-destructive hover:text-destructive/80" title="Anonymize User">
+                                    <button type="button" data-user-anonymize data-user-id="{{ user._id }}" data-username="{{ user.username }}" class="text-destructive hover:text-destructive/80" title="Anonymize User">
                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                     </button>
                                 {% endif %}
@@ -410,61 +410,63 @@
         <!-- Pagination -->
         {% if pagination.totalPages > 1 %}
         <div class="bg-muted/50 px-4 py-3 flex items-center justify-between border-t border-border sm:px-6">
-            <div class="flex-1 flex justify-between sm:hidden">
+            <nav class="flex-1 flex justify-between sm:hidden" aria-label="User pagination">
                 {% if pagination.hasPrevPage %}
-                    <a href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                    <a href="?page={{ pagination.prevPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                       aria-label="Previous page"
                        class="relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                         Previous
                     </a>
                 {% endif %}
                 {% if pagination.hasNextPage %}
-                    <a href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                    <a href="?page={{ pagination.nextPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                       aria-label="Next page"
                        class="ml-3 relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                         Next
                     </a>
                 {% endif %}
-            </div>
+            </nav>
             <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm text-muted-foreground">
                         Showing <span class="font-medium">{{ ((pagination.page - 1) * pagination.limit) + 1 }}</span> to <span class="font-medium">{{ pagination.page * pagination.limit if pagination.page * pagination.limit < pagination.totalResults else pagination.totalResults }}</span> of <span class="font-medium">{{ pagination.totalResults }}</span> results
                     </p>
                 </div>
-                <div>
-                    <nav class="relative z-0 inline-flex -space-x-px">
-                        {% if pagination.hasPrevPage %}
-                            <a href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                               class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
-                                <i data-lucide="chevron-left" class="h-5 w-5"></i>
+                <nav class="relative z-0 inline-flex -space-x-px" aria-label="User pagination">
+                    {% if pagination.hasPrevPage %}
+                        <a href="?page={{ pagination.prevPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                           aria-label="Previous page"
+                           class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
+                            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+                        </a>
+                    {% endif %}
+
+                    {% set startPage = pagination.page - 2 if pagination.page > 2 else 1 %}
+                    {% set endPage = startPage + 4 if startPage + 4 <= pagination.totalPages else pagination.totalPages %}
+                    {% set startPage = endPage - 4 if endPage - 4 > 0 else 1 %}
+
+                    {% for pageNum in range(startPage, endPage + 1) %}
+                        {% if pageNum == pagination.page %}
+                            <span aria-current="page" aria-label="Page {{ pageNum }}" class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm font-medium">
+                                {{ pageNum }}
+                            </span>
+                        {% else %}
+                            <a href="?page={{ pageNum }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                               aria-label="Page {{ pageNum }}"
+                               class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground hover:bg-muted">
+                                {{ pageNum }}
                             </a>
                         {% endif %}
+                    {% endfor %}
 
-                        <!-- Page numbers -->
-                        {% set startPage = pagination.page - 2 if pagination.page > 2 else 1 %}
-                        {% set endPage = startPage + 4 if startPage + 4 <= pagination.totalPages else pagination.totalPages %}
-                        {% set startPage = endPage - 4 if endPage - 4 > 0 else 1 %}
-
-                        {% for pageNum in range(startPage, endPage + 1) %}
-                            {% if pageNum == pagination.page %}
-                                <span class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm font-medium">
-                                    {{ pageNum }}
-                                </span>
-                            {% else %}
-                                <a href="?page={{ pageNum }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                   class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground hover:bg-muted">
-                                    {{ pageNum }}
-                                </a>
-                            {% endif %}
-                        {% endfor %}
-
-                        {% if pagination.hasNextPage %}
-                            <a href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                               class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
-                                <i data-lucide="chevron-right" class="h-5 w-5"></i>
-                            </a>
-                        {% endif %}
-                    </nav>
-                </div>
+                    {% if pagination.hasNextPage %}
+                        <a href="?page={{ pagination.nextPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.role != 'all' %}&role={{ filters.role }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                           aria-label="Next page"
+                           class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
+                            <i data-lucide="chevron-right" class="h-5 w-5"></i>
+                        </a>
+                    {% endif %}
+                </nav>
             </div>
         </div>
         {% endif %}

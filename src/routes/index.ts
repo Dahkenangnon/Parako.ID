@@ -31,6 +31,7 @@ import type { OpsTenantMiddleware } from '../middlewares/ops-tenant.middleware.j
 import type { OpsSocialCallbackService } from '../services/ops-social-callback.service.js';
 import type { ISocialTier1CompletionService } from '../services/social-tier1-completion.service.js';
 import type { PlatformAdminController } from '../controllers/admin/platform.controller.js';
+import type { PlatformTenantMiddleware } from '../middlewares/platform-tenant.middleware.js';
 import { opsRoutes } from './ops.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 
@@ -92,6 +93,9 @@ export class MainRoutesManager implements IMainRoutesManager {
     @inject(TYPES.PlatformAdminController)
     @optional()
     private readonly platformAdminController: PlatformAdminController,
+    @inject(TYPES.PlatformTenantMiddleware)
+    @optional()
+    private readonly platformTenantMiddleware: PlatformTenantMiddleware,
     @inject(TYPES.ApiV1RoutesManager)
     @optional()
     private readonly apiV1Router: Router,
@@ -202,7 +206,12 @@ export class MainRoutesManager implements IMainRoutesManager {
       this.configValidationMiddleware,
       this.sessionManager,
       this.logger,
-      this.platformAdminController ?? undefined
+      config.features.multi_tenancy.enabled
+        ? (this.platformAdminController ?? undefined)
+        : undefined,
+      config.features.multi_tenancy.enabled
+        ? (this.platformTenantMiddleware ?? undefined)
+        : undefined
     );
 
     // _ops infrastructure gateway — intercepts requests when tenant is '_ops'.

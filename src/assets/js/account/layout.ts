@@ -96,6 +96,7 @@
     private accountsLoadingSidebar: HTMLElement | null = null;
     private accountsListSidebar: HTMLElement | null = null;
     private accountsErrorSidebar: HTMLElement | null = null;
+    private accountsRetrySidebar: HTMLElement | null = null;
     private otherAccountsListSidebar: HTMLElement | null = null;
     private accountStatusText: HTMLElement | null = null;
 
@@ -105,6 +106,7 @@
     private accountsLoadingMobile: HTMLElement | null = null;
     private accountsListMobile: HTMLElement | null = null;
     private accountsErrorMobile: HTMLElement | null = null;
+    private accountsRetryMobile: HTMLElement | null = null;
     private otherAccountsListMobile: HTMLElement | null = null;
 
     constructor(config: AccountLayoutConfig) {
@@ -128,8 +130,8 @@
       this.setupMobileThemeLanguage();
       this.setupAccountSwitcher();
       this.setupMobileAccountSwitcher();
+      this.setupAccountSwitcherRetries();
       this.setupKeyboardShortcuts();
-      this.exposeGlobalMethods();
     }
 
     /**
@@ -179,6 +181,9 @@
       this.accountsErrorSidebar = document.getElementById(
         'accounts-error-sidebar'
       );
+      this.accountsRetrySidebar = document.getElementById(
+        'accounts-retry-sidebar'
+      );
       this.otherAccountsListSidebar = document.getElementById(
         'other-accounts-list-sidebar'
       );
@@ -193,6 +198,9 @@
       this.accountsListMobile = document.getElementById('accounts-list-mobile');
       this.accountsErrorMobile = document.getElementById(
         'accounts-error-mobile'
+      );
+      this.accountsRetryMobile = document.getElementById(
+        'accounts-retry-mobile'
       );
       this.otherAccountsListMobile = document.getElementById(
         'other-accounts-list-mobile'
@@ -745,6 +753,15 @@
       }
     }
 
+    private setupAccountSwitcherRetries(): void {
+      this.accountsRetrySidebar?.addEventListener('click', () => {
+        void this.loadSidebarAccountData();
+      });
+      this.accountsRetryMobile?.addEventListener('click', () => {
+        void this.loadMobileAccountData();
+      });
+    }
+
     private async loadMobileAccountData(): Promise<void> {
       if (
         !this.accountsLoadingMobile ||
@@ -917,18 +934,6 @@
       if (typeof (window as any).lucide?.createIcons === 'function') {
         (window as any).lucide.createIcons();
       }
-    }
-
-    /**
-     * Expose reload methods globally for retry buttons in server-rendered templates.
-     * Note: removeAccount is no longer global — it's wired via addEventListener
-     * in createAccountElement() to prevent XSS via inline onclick handlers.
-     */
-    private exposeGlobalMethods(): void {
-      (window as any).loadSidebarAccountData =
-        this.loadSidebarAccountData.bind(this);
-      (window as any).loadMobileAccountData =
-        this.loadMobileAccountData.bind(this);
     }
   }
 

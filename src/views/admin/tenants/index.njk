@@ -9,6 +9,7 @@
                 <h1 class="text-xl sm:text-2xl font-bold text-foreground truncate">Tenant Management</h1>
                 <p class="mt-1 text-sm text-muted-foreground">Manage tenants across the platform</p>
             </div>
+            {% if platformRole != 'platform_viewer' %}
             <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <a href="/admin/tenants/new" class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
                     <i data-lucide="plus" class="h-4 w-4 mr-1 sm:mr-2"></i>
@@ -16,6 +17,7 @@
                     <span class="xs:hidden">New</span>
                 </a>
             </div>
+            {% endif %}
         </div>
     </div>
 
@@ -146,10 +148,12 @@
                                     <i data-lucide="eye" class="h-3.5 w-3.5 mr-1"></i>
                                     View
                                 </a>
+                                {% if platformRole != 'platform_viewer' and tenant.slug != '_platforms' %}
                                 <a href="/admin/tenants/{{ tenant.slug }}/edit" class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium text-foreground border border-border hover:bg-muted" title="Edit">
                                     <i data-lucide="edit" class="h-3.5 w-3.5 mr-1"></i>
                                     Edit
                                 </a>
+                                {% endif %}
                             </div>
                         </td>
                     </tr>

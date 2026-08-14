@@ -88,8 +88,6 @@
       } else {
         this.setupEditFormValidation();
       }
-
-      this.exposeGlobalMethods();
     }
 
     /**
@@ -97,22 +95,24 @@
      */
     private setupPasswordVisibilityToggles(): void {
       document
-        .querySelectorAll<HTMLButtonElement>(
-          '[onclick*="togglePasswordVisibility"]'
-        )
+        .querySelectorAll<HTMLButtonElement>('[data-password-toggle]')
         .forEach(button => {
-          const onclickAttr = button.getAttribute('onclick') || '';
-          const match = onclickAttr.match(
-            /togglePasswordVisibility\(['"]([^'"]+)['"]\)/
-          );
-          if (match) {
-            const inputId = match[1];
-            button.removeAttribute('onclick');
-            button.addEventListener('click', e => {
-              e.preventDefault();
-              this.togglePasswordVisibility(inputId);
-            });
-          }
+          const inputId = button.getAttribute('data-password-toggle');
+          if (!inputId) return;
+
+          button.addEventListener('click', event => {
+            event.preventDefault();
+            this.togglePasswordVisibility(inputId);
+            const input = document.getElementById(
+              inputId
+            ) as HTMLInputElement | null;
+            const isVisible = input?.type === 'text';
+            button.setAttribute(
+              'aria-label',
+              isVisible ? 'Hide password' : 'Show password'
+            );
+            button.setAttribute('aria-pressed', String(isVisible));
+          });
         });
     }
 
@@ -479,21 +479,6 @@
             (this as { scrollHeight: number }).scrollHeight + 'px';
         });
       });
-    }
-
-    /**
-     * Expose methods globally for inline onclick handlers (legacy support)
-     */
-    private exposeGlobalMethods(): void {
-      const win = window as unknown as {
-        togglePasswordVisibility: (inputId: string) => void;
-        generateRandomPassword: () => string;
-        checkPasswordMatch: () => void;
-      };
-
-      win.togglePasswordVisibility = this.togglePasswordVisibility.bind(this);
-      win.generateRandomPassword = this.generateSecurePassword.bind(this);
-      win.checkPasswordMatch = this.checkPasswordMatch.bind(this);
     }
   }
 

@@ -3,6 +3,7 @@ import type { IConfigFileReader } from '../../di/interfaces/config-file-reader.i
 import type { AppConfig } from '../schemas/schema.js';
 import { AppConfigSchema } from '../schemas/schema.js';
 import { AbstractConfigProvider } from './abstract.js';
+import type { DeepPartial } from '../../utils/config-merge.js';
 import { TYPES } from '../../di/types.js';
 import { getDefaultFullConfig } from '../constants.js';
 import { mergeConfig } from '../../utils/config-merge.js';
@@ -89,7 +90,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
   /**
    * Update configuration (not supported for file provider)
    */
-  async updateConfig?(_partial: Partial<AppConfig>): Promise<AppConfig> {
+  async updateConfig?(_partial: DeepPartial<AppConfig>): Promise<AppConfig> {
     throw new Error(
       'File configuration cannot be updated. Use database provider for updates.'
     );

@@ -55,6 +55,9 @@ importers:
 
   .:
     dependencies:
+      '@alpinejs/csp':
+        specifier: ^3.16.0
+        version: 3.16.0
       '@aws-sdk/client-s3':
         specifier: ^3.1086.0
         version: 3.1086.0
@@ -82,9 +85,6 @@ importers:
       '@simplewebauthn/server':
         specifier: ^13.3.2
         version: 13.3.2
-      alpinejs:
-        specifier: ^3.15.12
-        version: 3.15.12
       argon2:
         specifier: ^0.45.1
         version: 0.45.1
@@ -367,6 +367,9 @@ importers:
         version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(@vitest/ui@4.1.10)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0))
 
 packages:
+
+  '@alpinejs/csp@3.16.0':
+    resolution: {integrity: sha512-Kd8TLkV1DnXJQFbUicKoalaYLlY6DmMdWjECRU4vEhbJyls4hQb5M4jKLL9p9hvdoHOuMn3su4IBDAXF2AavNg==}
 
   '@aws-crypto/sha256-browser@5.2.0':
     resolution: {integrity: sha512-AXfN/lGotSQwu6HNcEsIASo7kWXZ5HYWvfOmSNKDsEqC4OashTp8alTmaz+F7TC2L083SFv5RdB+qU3Vs1kZqw==}
@@ -2712,9 +2715,6 @@ packages:
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
-
-  alpinejs@3.15.12:
-    resolution: {integrity: sha512-nJvPAQVNPdZZ0NrExJ/kzQco3ijR8LwvCOadQecllESiqT4NyZ/57sN9V2XyvhlBGAbmlKYgeWZvYdKq99ij/Q==}
 
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
@@ -5765,6 +5765,10 @@ packages:
 
 snapshots:
 
+  '@alpinejs/csp@3.16.0':
+    dependencies:
+      '@vue/reactivity': 3.1.5
+
   '@aws-crypto/sha256-browser@5.2.0':
     dependencies:
       '@aws-crypto/sha256-js': 5.2.0
@@ -8620,10 +8624,6 @@ snapshots:
       fast-uri: 3.1.4
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
-
-  alpinejs@3.15.12:
-    dependencies:
-      '@vue/reactivity': 3.1.5
 
   ansi-regex@5.0.1: {}
 

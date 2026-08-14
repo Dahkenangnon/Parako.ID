@@ -3,6 +3,7 @@ import {
   type BootstrapConfig,
 } from '../../config/types.js';
 import { type AppConfig } from '../../config/schemas/schema.js';
+import type { DeepPartial } from '../../utils/config-merge.js';
 import type { IRedisPubSubService } from './redis-pubsub-service.interface.js';
 
 /**
@@ -80,7 +81,10 @@ export interface IConfigManager {
    * Update configuration (only works with database provider)
    * Note: Bootstrap fields cannot be updated (they come from .env)
    */
-  update(partial: Partial<RuntimeConfig>): Promise<RuntimeConfig>;
+  update(
+    partial: DeepPartial<RuntimeConfig>,
+    expectedVersion?: number
+  ): Promise<RuntimeConfig>;
 
   /**
    * Reload configuration from database
@@ -139,10 +143,13 @@ export interface IConfigManager {
 
   /**
    * Evict a tenant's cached config, forcing reload on next ensureTenantConfig().
-   * Called when a tenant's config is updated (local process) or invalidated
-   * (cross-process via Redis PubSub).
+   * Set broadcast when the current process persisted a tenant override so
+   * other processes evict the same tenant without clearing sibling caches.
    */
-  invalidateTenantConfig(tenantId: string): void;
+  invalidateTenantConfig(
+    tenantId: string,
+    options?: { broadcast?: boolean }
+  ): Promise<void>;
 
   /**
    * Wire Redis Pub/Sub for cross-process config invalidation

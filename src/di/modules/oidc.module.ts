@@ -16,6 +16,7 @@ import { OIDCClientMerger } from '../../oidc/client-merger.js';
 import OIDCConfig from '../../oidc/config.js';
 import { OIDCAdapterBridge } from '../../oidc/adapter/index.js';
 import { ProviderService } from '../../oidc/provider.js';
+import { OIDCBackchannelLogoutService } from '../../oidc/backchannel-logout.service.js';
 import { OIDCListenerService } from '../../oidc/listener.js';
 import { TenantProviderRegistry } from '../../multi-tenancy/tenant-provider-registry.js';
 import type { ITenantProviderRegistry } from '../interfaces/tenant-provider-registry.interface.js';
@@ -34,6 +35,7 @@ import { OIDCWebAuthnMfaHandler } from '../../oidc/flows/handlers/webauthn-mfa.j
 
 import { IOIDCAdapterBridge } from '../interfaces/oidc-adapter-bridge.interface.js';
 import { IProviderService } from '../interfaces/provider-service.interface.js';
+import type { IOIDCBackchannelLogoutService } from '../interfaces/oidc-backchannel-logout-service.interface.js';
 import { IOIDCListenerService } from '../interfaces/oidc-listener-service.interface.js';
 import { IAccount } from '../interfaces/account.interface.js';
 import { IOIDCUtils } from '../interfaces/oidc-utils.interface.js';
@@ -98,6 +100,11 @@ export const oidcModule: ContainerModule = new ContainerModule(
     options
       .bind<IProviderService>(TYPES.ProviderService)
       .to(ProviderService)
+      .inSingletonScope();
+
+    options
+      .bind<IOIDCBackchannelLogoutService>(TYPES.OIDCBackchannelLogoutService)
+      .to(OIDCBackchannelLogoutService)
       .inSingletonScope();
 
     // Tenant Provider Registry — uses @optional() in ProviderService so

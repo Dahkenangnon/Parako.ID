@@ -15,7 +15,7 @@
         </div>
     </div>
 
-    <form method="POST" action="/admin/settings/integrations" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+    <form method="POST" action="/admin/settings/integrations" class="space-y-6" data-integrations-settings>
         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
         
         <div class="max-w-6xl mx-auto space-y-6">
@@ -73,7 +73,7 @@
                                        readonly
                                        data-field-path="integrations.email.smtp_password"
                                        class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                <button type="button" onclick="revealSecret('integrations.email.smtp_password', 'integrations.email.smtp_password')"
+                                <button type="button" data-secret-input-id="integrations.email.smtp_password" data-secret-field-path="integrations.email.smtp_password"
                                         class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                     <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                     Reveal
@@ -109,7 +109,7 @@
                         <div class="flex space-x-2">
                             <input type="email" id="test-email" placeholder="test@example.com"
                                    class="flex-1 px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                            <button type="button" onclick="testEmail(event)"
+                            <button type="button" data-integrations-test-email
                                     class="inline-flex items-center px-4 py-2 border border-blue-600 text-blue-600 text-sm font-medium hover:bg-blue-600 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2">
                                 <i data-lucide="send" class="h-4 w-4 mr-2"></i>
                                 Send Test
@@ -205,7 +205,7 @@
                                        data-field-path="integrations.ipinfo.api_token"
                                        placeholder="Your ipinfo.io API token"
                                        class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                <button type="button" onclick="revealSecret('integrations.ipinfo.api_token', 'integrations.ipinfo.api_token')"
+                                <button type="button" data-secret-input-id="integrations.ipinfo.api_token" data-secret-field-path="integrations.ipinfo.api_token"
                                         class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                     <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                     Reveal
@@ -264,7 +264,7 @@
                                        data-field-path="integrations.ipqualityscore.api_key"
                                        placeholder="Your IPQualityScore API key"
                                        class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                <button type="button" onclick="revealSecret('integrations.ipqualityscore.api_key', 'integrations.ipqualityscore.api_key')"
+                                <button type="button" data-secret-input-id="integrations.ipqualityscore.api_key" data-secret-field-path="integrations.ipqualityscore.api_key"
                                         class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                     <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                     Reveal
@@ -382,7 +382,7 @@
                                                data-field-path="notifications.channels.sms.api_key"
                                                placeholder="SMS provider API key"
                                                class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                        <button type="button" onclick="revealSecret('notifications.channels.sms.api_key', 'notifications.channels.sms.api_key')"
+                                        <button type="button" data-secret-input-id="notifications.channels.sms.api_key" data-secret-field-path="notifications.channels.sms.api_key"
                                                 class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                             <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                             Reveal
@@ -399,7 +399,7 @@
                                                data-field-path="notifications.channels.sms.api_secret"
                                                placeholder="SMS provider API secret"
                                                class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                        <button type="button" onclick="revealSecret('notifications.channels.sms.api_secret', 'notifications.channels.sms.api_secret')"
+                                        <button type="button" data-secret-input-id="notifications.channels.sms.api_secret" data-secret-field-path="notifications.channels.sms.api_secret"
                                                 class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                             <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                             Reveal
@@ -496,7 +496,7 @@
                                        data-field-path="integrations.fingerprintjs.api_key"
                                        placeholder="Your FingerprintJS Pro API key"
                                        class="w-full px-3 py-2 pr-28 bg-muted border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                                <button type="button" onclick="revealSecret('integrations.fingerprintjs.api_key', 'integrations.fingerprintjs.api_key')"
+                                <button type="button" data-secret-input-id="integrations.fingerprintjs.api_key" data-secret-field-path="integrations.fingerprintjs.api_key"
                                         class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90">
                                     <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                     Reveal
@@ -523,7 +523,7 @@
                     <i data-lucide="x" class="h-4 w-4 mr-2"></i>
                     Cancel
                 </a>
-                <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                <button type="button" data-integrations-reset class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
                     <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
                     Reset Form
                 </button>

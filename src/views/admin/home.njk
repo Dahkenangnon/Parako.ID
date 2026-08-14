@@ -22,7 +22,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Add User -->
-            <a href="/admin/users/new" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.user_new }}" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="user-plus" class="h-5 w-5 text-primary"></i>
@@ -32,7 +32,7 @@
               <p class="text-sm text-muted-foreground">Create new account</p>
             </a>
             <!-- New Application -->
-            <a href="/admin/oidc-clients/create" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.oidc_client_create }}" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="plus" class="h-5 w-5 text-primary"></i>
@@ -43,7 +43,7 @@
             </a>
             <!-- Settings / Configuration -->
             {% if isPlatformTenant %}
-            <a href="/admin/settings" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.settings }}" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="settings" class="h-5 w-5 text-primary"></i>
@@ -53,7 +53,7 @@
               <p class="text-sm text-muted-foreground">Configure system</p>
             </a>
             {% else %}
-            <a href="/admin/configuration" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.configuration }}" class="card p-4 hover:border-primary">
               <div class="flex items-center gap-3 mb-2">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="sliders-horizontal" class="h-5 w-5 text-primary"></i>
@@ -86,59 +86,79 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Users Metric -->
-            <a href="/admin/users" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.users }}" class="card p-4 hover:border-primary" data-dashboard-stat="users">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users" class="h-5 w-5 text-primary"></i>
                 </div>
                 <div>
-                  <div class="text-2xl font-bold text-foreground">{{ stats.users.total | default(0) }}</div>
+                  {% if stats.users.available == false %}
+                    <div class="text-2xl font-bold text-muted-foreground" aria-label="User statistics unavailable">&mdash;</div>
+                  {% else %}
+                    <div class="text-2xl font-bold text-foreground">{{ stats.users.total | default(0) }}</div>
+                  {% endif %}
                   <div class="text-sm text-muted-foreground">Users</div>
                 </div>
               </div>
-              <div class="flex items-center gap-3 text-xs text-muted-foreground">
-                <span>{{ stats.users.active | default(0) }} active</span>
-                <span>{{ stats.users.admins | default(0) }} admin</span>
-              </div>
+              {% if stats.users.available == false %}
+                <div class="text-xs text-muted-foreground">Statistics unavailable</div>
+              {% else %}
+                <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>{{ stats.users.active | default(0) }} active</span>
+                  <span>{{ stats.users.admins | default(0) }} admin</span>
+                </div>
+              {% endif %}
             </a>
             <!-- Applications Metric -->
-            <a href="/admin/oidc-clients" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.oidc_clients }}" class="card p-4 hover:border-primary" data-dashboard-stat="oidc">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
                 </div>
                 <div>
-                  <div class="text-2xl font-bold text-foreground">{{ stats.oidc.clients | default(0) }}</div>
+                  {% if stats.oidc.available == false %}
+                    <div class="text-2xl font-bold text-muted-foreground" aria-label="Application statistics unavailable">&mdash;</div>
+                  {% else %}
+                    <div class="text-2xl font-bold text-foreground">{{ stats.oidc.clients | default(0) }}</div>
+                  {% endif %}
                   <div class="text-sm text-muted-foreground">Applications</div>
                 </div>
               </div>
-              <div class="text-xs text-muted-foreground">Connected apps</div>
+              <div class="text-xs text-muted-foreground">{% if stats.oidc.available == false %}Statistics unavailable{% else %}Connected apps{% endif %}</div>
             </a>
             <!-- Active Sessions Metric -->
-            <a href="/admin/sessions" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.sessions }}" class="card p-4 hover:border-primary" data-dashboard-stat="sessions">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="user-check" class="h-5 w-5 text-primary"></i>
                 </div>
                 <div>
-                  <div class="text-2xl font-bold text-foreground">{{ stats.sessions.active | default(0) }}</div>
+                  {% if stats.sessions.available == false %}
+                    <div class="text-2xl font-bold text-muted-foreground" aria-label="Session statistics unavailable">&mdash;</div>
+                  {% else %}
+                    <div class="text-2xl font-bold text-foreground">{{ stats.sessions.active | default(0) }}</div>
+                  {% endif %}
                   <div class="text-sm text-muted-foreground">Online</div>
                 </div>
               </div>
-              <div class="text-xs text-muted-foreground">{{ stats.grants.active | default(0) }} active</div>
+              <div class="text-xs text-muted-foreground">{% if stats.grants.available == false %}Authorization statistics unavailable{% else %}{{ stats.grants.active | default(0) }} active{% endif %}</div>
             </a>
             <!-- Activity Metric -->
-            <a href="/admin/activities" class="card p-4 hover:border-primary">
+            <a href="{{ routes.adminFull.activities }}" class="card p-4 hover:border-primary" data-dashboard-stat="activities">
               <div class="flex items-center gap-3 mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="activity" class="h-5 w-5 text-primary"></i>
                 </div>
                 <div>
-                  <div class="text-2xl font-bold text-foreground">{{ stats.activities.today | default(0) }}</div>
+                  {% if stats.activities.available == false %}
+                    <div class="text-2xl font-bold text-muted-foreground" aria-label="Activity statistics unavailable">&mdash;</div>
+                  {% else %}
+                    <div class="text-2xl font-bold text-foreground">{{ stats.activities.today | default(0) }}</div>
+                  {% endif %}
                   <div class="text-sm text-muted-foreground">Logins Today</div>
                 </div>
               </div>
-              <div class="text-xs text-muted-foreground">Activity log</div>
+              <div class="text-xs text-muted-foreground">{% if stats.activities.available == false %}Statistics unavailable{% else %}Activity log{% endif %}</div>
             </a>
           </div>
         </div>
@@ -152,7 +172,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Users Management -->
-            <a href="/admin/users" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.users }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users" class="h-5 w-5 text-primary"></i>
@@ -161,12 +181,12 @@
               <h3 class="font-semibold text-foreground mb-2">Users</h3>
               <p class="text-sm text-muted-foreground mb-3">Manage accounts & roles</p>
               <div class="text-xs text-muted-foreground">
-                {{ stats.users.total | default(0) }} total ·
-                {{ stats.users.admins | default(0) }} admins
+                {% if stats.users.available == false %}Statistics unavailable{% else %}{{ stats.users.total | default(0) }} total ·
+                {{ stats.users.admins | default(0) }} admins{% endif %}
               </div>
             </a>
             <!-- Applications -->
-            <a href="/admin/oidc-clients" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.oidc_clients }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="app-window" class="h-5 w-5 text-primary"></i>
@@ -175,11 +195,11 @@
               <h3 class="font-semibold text-foreground mb-2">Applications</h3>
               <p class="text-sm text-muted-foreground mb-3">Connected apps</p>
               <div class="text-xs text-muted-foreground">
-                {{ stats.oidc.clients | default(0) }} apps
+                {% if stats.oidc.available == false %}Statistics unavailable{% else %}{{ stats.oidc.clients | default(0) }} apps{% endif %}
               </div>
             </a>
             <!-- Active Sessions -->
-            <a href="/admin/sessions" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.sessions }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="users-round" class="h-5 w-5 text-primary"></i>
@@ -188,11 +208,11 @@
               <h3 class="font-semibold text-foreground mb-2">Sessions</h3>
               <p class="text-sm text-muted-foreground mb-3">Active users</p>
               <div class="text-xs text-muted-foreground">
-                {{ stats.sessions.active | default(0) }} online
+                {% if stats.sessions.available == false %}Statistics unavailable{% else %}{{ stats.sessions.active | default(0) }} online{% endif %}
               </div>
             </a>
             <!-- Permissions -->
-            <a href="/admin/user-grants" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.user_grants }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="shield-check" class="h-5 w-5 text-primary"></i>
@@ -201,7 +221,7 @@
               <h3 class="font-semibold text-foreground mb-2">Authorizations</h3>
               <p class="text-sm text-muted-foreground mb-3">App access control</p>
               <div class="text-xs text-muted-foreground">
-                {{ stats.grants.active | default(0) }} active
+                {% if stats.grants.available == false %}Statistics unavailable{% else %}{{ stats.grants.active | default(0) }} active{% endif %}
               </div>
             </a>
           </div>
@@ -212,7 +232,7 @@
           <div
             class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <!-- Data Management -->
-            <a href="/admin/data-transfer" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.data_transfer }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="database" class="h-5 w-5 text-primary"></i>
@@ -225,7 +245,7 @@
               </div>
             </a>
             <!-- Activity Logs -->
-            <a href="/admin/activities" class="card p-5 hover:border-primary">
+            <a href="{{ routes.adminFull.activities }}" class="card p-5 hover:border-primary">
               <div class="flex items-center justify-between mb-3">
                 <div class="p-2 bg-primary/10">
                   <i data-lucide="file-text" class="h-5 w-5 text-primary"></i>
@@ -234,7 +254,7 @@
               <h3 class="font-semibold text-foreground mb-2">Activity</h3>
               <p class="text-sm text-muted-foreground mb-3">Logs & events</p>
               <div class="text-xs text-muted-foreground">
-                {{ stats.activities.today | default(0) }} today
+                {% if stats.activities.available == false %}Statistics unavailable{% else %}{{ stats.activities.today | default(0) }} today{% endif %}
               </div>
             </a>
           </div>

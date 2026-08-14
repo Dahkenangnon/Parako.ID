@@ -39,7 +39,8 @@ export interface ISettingsRepository extends IBaseRepository<
   save(
     key: string,
     value: Partial<ISettings>,
-    meta?: SettingsMeta
+    meta?: SettingsMeta,
+    expectedVersion?: number
   ): Promise<ISettings>;
 
   /**

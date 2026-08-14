@@ -26,6 +26,8 @@ interface RevealSecretResponse {
   error?: string;
 }
 
+let settingsDialogIdSequence = 0;
+
 /**
  * Admin Settings Manager - Handles secret reveal/mask functionality
  */
@@ -38,6 +40,39 @@ class AdminSettingsManager {
   constructor(debug: boolean = false) {
     this.debug = debug;
     this.setupInactivityMonitoring();
+    this.setupDeclarativeHandlers();
+  }
+
+  /**
+   * Bind critical forms and secret controls through external JavaScript so
+   * they remain operable under the application's strict script policy.
+   */
+  private setupDeclarativeHandlers(): void {
+    document
+      .querySelectorAll<HTMLFormElement>('form[data-confirm-critical-change]')
+      .forEach(form => {
+        form.addEventListener('submit', async event => {
+          await this.confirmCriticalChange(event);
+        });
+      });
+
+    document
+      .querySelectorAll<HTMLButtonElement>(
+        'button[data-secret-input-id][data-secret-field-path]'
+      )
+      .forEach(button => {
+        const fieldId = button.getAttribute('data-secret-input-id')?.trim();
+        const fieldPath = button.getAttribute('data-secret-field-path')?.trim();
+        if (!fieldId || !fieldPath) return;
+
+        button.addEventListener('click', async () => {
+          if (this.revealedFields.has(fieldId)) {
+            this.remaskSecret(fieldId);
+          } else {
+            await this.revealSecret(fieldId, fieldPath);
+          }
+        });
+      });
   }
 
   /**
@@ -267,6 +302,10 @@ class AdminSettingsManager {
     confirmText: string = 'Confirm',
     cancelText: string = 'Cancel'
   ): Promise<boolean> {
+    const dialogId = ++settingsDialogIdSequence;
+    const titleId = `settings-dialog-title-${dialogId}`;
+    const messageId = `settings-dialog-message-${dialogId}`;
+
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className =
@@ -275,6 +314,10 @@ class AdminSettingsManager {
       const modal = document.createElement('div');
       modal.className =
         'bg-background border border-border rounded-lg shadow-lg max-w-md w-full';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', titleId);
+      modal.setAttribute('aria-describedby', messageId);
 
       const header = document.createElement('div');
       header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -287,6 +330,7 @@ class AdminSettingsManager {
       iconContainer.appendChild(icon);
 
       const titleElement = document.createElement('h3');
+      titleElement.setAttribute('id', titleId);
       titleElement.className = 'font-semibold text-lg flex-1';
       titleElement.textContent = title;
 
@@ -296,6 +340,7 @@ class AdminSettingsManager {
       const body = document.createElement('div');
       body.className = 'px-6 pb-4';
       const messageElement = document.createElement('p');
+      messageElement.setAttribute('id', messageId);
       messageElement.className =
         'text-sm text-muted-foreground whitespace-pre-line';
       messageElement.textContent = message;
@@ -325,28 +370,35 @@ class AdminSettingsManager {
       modal.appendChild(footer);
       backdrop.appendChild(modal);
 
-      const cleanup = () => {
+      let settled = false;
+      const finish = (confirmed: boolean) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', handleKeydown);
         backdrop.remove();
+        resolve(confirmed);
+      };
+
+      const handleKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') finish(false);
       };
 
       cancelButton.addEventListener('click', () => {
-        cleanup();
-        resolve(false);
+        finish(false);
       });
 
       confirmButton.addEventListener('click', () => {
-        cleanup();
-        resolve(true);
+        finish(true);
       });
 
       backdrop.addEventListener('click', e => {
         if (e.target === backdrop) {
-          cleanup();
-          resolve(false);
+          finish(false);
         }
       });
 
       document.body.appendChild(backdrop);
+      document.addEventListener('keydown', handleKeydown);
 
       const lucideWindow = window as any;
       if (
@@ -356,7 +408,8 @@ class AdminSettingsManager {
         lucideWindow.lucide.createIcons();
       }
 
-      confirmButton.focus();
+      // Start on the non-destructive action for keyboard and assistive users.
+      cancelButton.focus();
     });
   }
 
@@ -523,10 +576,6 @@ class AdminSettingsManager {
           'Re-mask'
         );
 
-        button.onclick = () => {
-          this.remaskSecret(fieldId);
-        };
-
         this.log('Secret revealed successfully', { fieldPath });
 
         this.resetInactivityTimer();
@@ -600,12 +649,7 @@ class AdminSettingsManager {
     field.classList.add('bg-muted');
     field.classList.remove('bg-background', 'border-orange-400');
 
-    const fieldPath = field.getAttribute('data-field-path');
     this.updateButtonContent(button as HTMLButtonElement, 'eye', 'Reveal');
-
-    button.onclick = () => {
-      this.revealSecret(fieldId, fieldPath || '');
-    };
 
     this.log('Secret re-masked', { fieldId });
   }
@@ -751,20 +795,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const adminSettingsManager = new AdminSettingsManager(debug);
-
-    // Make functions globally accessible for inline event handlers
-    // This allows onclick="revealSecret(...)" and onsubmit="confirmCriticalChange(...)" in templates
-    (window as any).revealSecret = (fieldId: string, fieldPath: string) => {
-      adminSettingsManager.revealSecret(fieldId, fieldPath);
-    };
-
-    (window as any).remaskSecret = (fieldId: string) => {
-      adminSettingsManager.remaskSecret(fieldId);
-    };
-
-    (window as any).confirmCriticalChange = async (event: Event) => {
-      return await adminSettingsManager.confirmCriticalChange(event);
-    };
 
     (window as any).adminSettingsManager = adminSettingsManager;
   }

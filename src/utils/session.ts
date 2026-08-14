@@ -28,6 +28,7 @@ import {
   DEFAULT_TENANT_ID,
   tenantContext,
 } from '../multi-tenancy/tenant-context.js';
+import { escapeRegExp } from '../validators/listing-query.js';
 
 /**
  * Fields that contain sensitive data and should be encrypted at rest
@@ -2026,7 +2027,10 @@ export class SessionManager implements ISessionManager {
           ...mongoSessionTenantFilter(tenantContext.getTenantId()),
         };
         if (search) {
-          query['session.accountId'] = { $regex: search, $options: 'i' };
+          query['session.accountId'] = {
+            $regex: escapeRegExp(search),
+            $options: 'i',
+          };
         }
 
         return await sessionCollection
@@ -2141,7 +2145,7 @@ export class SessionManager implements ISessionManager {
    * Count authenticated Express sessions across all users in the active tenant.
    * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
    */
-  public async countAllExpressSessions(): Promise<number> {
+  public async countAllExpressSessions(search?: string): Promise<number> {
     const storeType = this.resolveStoreType();
 
     try {
@@ -2157,10 +2161,18 @@ export class SessionManager implements ISessionManager {
         const collectionName = this.options.collection || 'application_session';
         const sessionCollection = db.collection(collectionName);
 
-        return await sessionCollection.countDocuments({
+        const query: Record<string, unknown> = {
           'session.isAuthenticated': true,
           ...mongoSessionTenantFilter(tenantContext.getTenantId()),
-        });
+        };
+        if (search) {
+          query['session.accountId'] = {
+            $regex: escapeRegExp(search),
+            $options: 'i',
+          };
+        }
+
+        return await sessionCollection.countDocuments(query);
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
           this.logger.warn(
@@ -2193,7 +2205,11 @@ export class SessionManager implements ISessionManager {
               const data = JSON.parse(raw);
               if (
                 sessionBelongsToTenant(data, tenantId) &&
-                data.isAuthenticated === true
+                data.isAuthenticated === true &&
+                (!search ||
+                  (data.accountId || '')
+                    .toLowerCase()
+                    .includes(search.toLowerCase()))
               ) {
                 count++;
               }
@@ -2220,7 +2236,11 @@ export class SessionManager implements ISessionManager {
             const data = JSON.parse(row.data);
             if (
               sessionBelongsToTenant(data, tenantId) &&
-              data.isAuthenticated === true
+              data.isAuthenticated === true &&
+              (!search ||
+                (data.accountId || '')
+                  .toLowerCase()
+                  .includes(search.toLowerCase()))
             ) {
               count++;
             }

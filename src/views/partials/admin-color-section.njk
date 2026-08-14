@@ -9,7 +9,7 @@
 <div class="flex items-center gap-2" x-data="{ color: '{{ currentValue | default('') }}' }">
     <input type="color"
            :value="color || '{{ placeholder }}'"
-           @input="color = $event.target.value; $refs.textInput.value = $event.target.value"
+           @input="color = $event.target.value"
            class="w-8 h-8 border border-border rounded cursor-pointer bg-transparent">
     <input type="text"
            name="colors[{{ mode }}][{{ name }}]"

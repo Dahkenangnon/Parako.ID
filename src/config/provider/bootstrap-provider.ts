@@ -6,6 +6,7 @@ import {
   BootstrapConfigSchema,
 } from '../schemas/bootstrap-schema.js';
 import { AbstractConfigProvider } from './abstract.js';
+import type { DeepPartial } from '../../utils/config-merge.js';
 import dotenv from 'dotenv';
 
 /**
@@ -293,7 +294,7 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
    * Update configuration (not supported for bootstrap provider)
    */
   async updateConfig?(
-    _partial: Partial<BootstrapConfig>
+    _partial: DeepPartial<BootstrapConfig>
   ): Promise<BootstrapConfig> {
     throw new Error(
       'Configuration updates not supported for bootstrap provider. Use database provider for updates.'

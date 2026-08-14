@@ -104,7 +104,7 @@
     "database": "node dist/scripts/manage/database.js",
     "diagnostics": "node dist/scripts/manage/diagnostics.js",
     "keys": "node dist/scripts/manage/keys.js",
-    "systemd": "node dist/scripts/manage/systemd.js",
+    "systemd": "node -- dist/scripts/manage/systemd.js",
     "postinstall": "prisma generate --config=prisma.config.ts && prisma generate --config=prisma.config.pg.ts",
     "prepare": "husky",
     "release": "node scripts/release.mjs",
@@ -133,6 +133,7 @@
     "parako-id"
   ],
   "dependencies": {
+    "@alpinejs/csp": "^3.16.0",
     "@aws-sdk/client-s3": "^3.1086.0",
     "@aws-sdk/s3-request-presigner": "^3.1086.0",
     "@fast-csv/format": "^5.0.7",
@@ -142,7 +143,6 @@
     "@prisma/client": "^7.9.1",
     "@prisma/client-runtime-utils": "7.9.1",
     "@simplewebauthn/server": "^13.3.2",
-    "alpinejs": "^3.15.12",
     "argon2": "^0.45.1",
     "better-sqlite3": "^13.0.2",
     "bullmq": "^5.80.2",

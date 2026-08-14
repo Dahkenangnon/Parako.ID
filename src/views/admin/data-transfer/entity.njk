@@ -18,12 +18,14 @@
     {% if entity.hasImport and entity.hasExport %}
     <div class="border-b border-border">
       <nav class="flex space-x-6 -mb-px" role="tablist">
-        <button type="button" role="tab" aria-selected="true" data-tab="import"
+        <button type="button" id="import-tab" role="tab" aria-selected="true"
+                aria-controls="import-panel" tabindex="0" data-tab="import"
                 class="tab-btn px-1 py-3 text-sm font-medium border-b-2 border-primary text-primary transition-colors">
           <i data-lucide="upload" class="h-4 w-4 inline mr-1"></i>
           Import
         </button>
-        <button type="button" role="tab" aria-selected="false" data-tab="export"
+        <button type="button" id="export-tab" role="tab" aria-selected="false"
+                aria-controls="export-panel" tabindex="-1" data-tab="export"
                 class="tab-btn px-1 py-3 text-sm font-medium border-b-2 border-transparent text-muted-foreground hover:text-foreground transition-colors">
           <i data-lucide="download" class="h-4 w-4 inline mr-1"></i>
           Export
@@ -34,7 +36,7 @@
 
     <!-- Import Panel -->
     {% if entity.hasImport %}
-    <div id="import-panel" class="space-y-4">
+    <div id="import-panel"{% if entity.hasExport %} role="tabpanel" aria-labelledby="import-tab"{% endif %} class="space-y-4">
       <!-- File Selection -->
       <div class="border border-border bg-card p-5 space-y-4">
         <div class="flex items-center justify-between">
@@ -47,6 +49,7 @@
         </div>
 
         <div>
+          <label for="import-file-input" class="block text-sm font-medium text-foreground mb-1">Import file</label>
           <input type="file" id="import-file-input"
                  accept="{% if entity.format === 'csv' %}.csv{% else %}.json{% endif %}"
                  class="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:border file:border-border file:text-sm file:font-medium file:bg-muted file:text-foreground hover:file:bg-muted/80 file:cursor-pointer">
@@ -100,7 +103,7 @@
         </div>
 
         <!-- Validation Errors -->
-        <div id="validation-errors" class="hidden border border-destructive/20 bg-destructive/5 p-4">
+        <div id="validation-errors" role="alert" class="hidden border border-destructive/20 bg-destructive/5 p-4">
           <h4 class="font-medium text-destructive mb-2">Validation Errors</h4>
           <ul id="error-list" class="text-sm text-destructive space-y-1 max-h-40 overflow-y-auto"></ul>
         </div>
@@ -120,19 +123,21 @@
       </div>
 
       <!-- Progress Area (hidden by default) -->
-      <div id="progress-area" class="hidden border border-border bg-card p-5 space-y-3">
+      <div id="progress-area" role="status" aria-live="polite" class="hidden border border-border bg-card p-5 space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="font-medium text-foreground">Importing...</h3>
           <span id="progress-percent" class="text-sm font-medium text-primary">0%</span>
         </div>
         <div class="w-full bg-muted h-2 overflow-hidden">
-          <div id="progress-bar" class="h-full bg-primary transition-all duration-300 ease-out" style="width: 0%"></div>
+          <div id="progress-bar" role="progressbar" aria-label="Import progress"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+               class="h-full bg-primary transition-all duration-300 ease-out" style="width: 0%"></div>
         </div>
         <p id="progress-status" class="text-sm text-muted-foreground">Preparing import...</p>
       </div>
 
       <!-- Result Summary (hidden by default) -->
-      <div id="result-area" class="hidden space-y-4">
+      <div id="result-area" role="status" aria-live="polite" class="hidden space-y-4">
         <div id="result-summary" class="border border-border bg-card p-5 space-y-3"></div>
 
         <div id="result-errors" class="hidden border border-destructive/20 bg-destructive/5 p-4">
@@ -162,38 +167,43 @@
 
     <!-- Export Panel -->
     {% if entity.hasExport %}
-    <div id="export-panel" class="{% if entity.hasImport %}hidden{% endif %} space-y-4">
+    <div id="export-panel"{% if entity.hasImport %} role="tabpanel" aria-labelledby="export-tab"{% endif %} class="{% if entity.hasImport %}hidden{% endif %} space-y-4">
       <form action="/admin/data-transfer/{{ entity.entityId }}/export" method="get"
             class="border border-border bg-card p-5 space-y-4">
         <h3 class="font-medium text-foreground">Export Options</h3>
 
         <!-- Field Groups -->
+        {% if entity.hasSensitiveFields or entity.hasSecretFields %}
         <div class="space-y-2">
+          {% if entity.hasSensitiveFields %}
           <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="includeSensitive" value="true"
                    class="h-4 w-4 border-border text-primary focus:ring-primary">
             <span class="text-foreground">Include sensitive fields</span>
             <span class="text-muted-foreground">(phone numbers, addresses)</span>
           </label>
+          {% endif %}
+          {% if entity.hasSecretFields %}
           <label class="flex items-center gap-2 text-sm">
             <input type="checkbox" name="includeSecrets" value="true" id="include-secrets-checkbox"
                    class="h-4 w-4 border-border text-primary focus:ring-primary">
             <span class="text-foreground">Include secrets/internal data</span>
-            <span class="text-destructive text-xs">(password hashes, client secrets — audit logged)</span>
+            <span class="text-destructive text-xs">(password hashes, client secrets - audit logged)</span>
           </label>
+          {% endif %}
         </div>
-
+        {% endif %}
         {% if entity.entityId === 'activities' %}
         <!-- Activity-specific filters -->
         <div class="grid gap-3 md:grid-cols-2">
           <div>
-            <label class="block text-sm font-medium text-foreground mb-1">From Date</label>
-            <input type="date" name="dateFrom"
+            <label for="activity-date-from" class="block text-sm font-medium text-foreground mb-1">From Date</label>
+            <input type="date" id="activity-date-from" name="dateFrom"
                    class="w-full px-3 py-1.5 text-sm border border-border bg-background text-foreground">
           </div>
           <div>
-            <label class="block text-sm font-medium text-foreground mb-1">To Date</label>
-            <input type="date" name="dateTo"
+            <label for="activity-date-to" class="block text-sm font-medium text-foreground mb-1">To Date</label>
+            <input type="date" id="activity-date-to" name="dateTo"
                    class="w-full px-3 py-1.5 text-sm border border-border bg-background text-foreground">
           </div>
         </div>

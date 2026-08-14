@@ -17,7 +17,6 @@ import { validateIdentifier } from '../../utils/custom-identifier-validation.js'
 import {
   ADMIN_USER_SORT_FIELDS,
   parsePositiveInt,
-  escapeRegExp,
   extractListingQuery,
 } from '../../validators/listing-query.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
@@ -81,6 +80,10 @@ export class AdminUsersController implements IAdminUsersController {
     return allowedRoles.has('user') ? ['user'] : [];
   }
 
+  private isCurrentUser(req: Request, userId: string): boolean {
+    return this.sessionManager.getActiveUser(req)?.id === userId;
+  }
+
   private logUserActivity(
     req: Request,
     type: string,
@@ -93,6 +96,7 @@ export class AdminUsersController implements IAdminUsersController {
     }).success(type, user, description, {
       target: {
         target_type: 'user',
+        user_id: user._id ?? user.id,
         ...target,
       },
     });
@@ -136,16 +140,8 @@ export class AdminUsersController implements IAdminUsersController {
 
     const filter: any = {};
 
-    // OWASP ReDoS: escape user-controlled input before $regex.
     if (search) {
-      const safeSearch = new RegExp(escapeRegExp(search), 'i');
-      filter.$or = [
-        { username: { $regex: safeSearch } },
-        { email: { $regex: safeSearch } },
-        { name: { $regex: safeSearch } },
-        { given_name: { $regex: safeSearch } },
-        { family_name: { $regex: safeSearch } },
-      ];
+      filter.search = search;
     }
 
     if (role && role !== 'all') {
@@ -204,6 +200,7 @@ export class AdminUsersController implements IAdminUsersController {
           .available,
       ],
       stats,
+      currentUserId: this.sessionManager.getActiveUser(req)?.id,
       customIdentifierFields: this.userService.getCustomIdentifierFields(),
     });
   };
@@ -247,6 +244,7 @@ export class AdminUsersController implements IAdminUsersController {
       title: 'User details',
       user,
       activities: activities.results,
+      currentUserId: this.sessionManager.getActiveUser(req)?.id,
       customIdentifierFields: this.userService.getCustomIdentifierFields(),
     });
   };
@@ -464,6 +462,33 @@ export class AdminUsersController implements IAdminUsersController {
       );
     }
 
+    const normalizedRoles = this.normalizeRoles(userRoles);
+    if (this.isCurrentUser(req, id)) {
+      if (account_enabled !== 'true') {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'You cannot disable your own account',
+          `/admin/users/${id}/edit`
+        );
+      }
+      if (
+        !normalizedRoles.includes('admin') &&
+        !normalizedRoles.includes('superadmin')
+      ) {
+        return flashAndRedirect(
+          { sessionManager: this.sessionManager },
+          req,
+          res,
+          'error',
+          'You cannot remove your own administrator role',
+          `/admin/users/${id}/edit`
+        );
+      }
+    }
+
     if (new_password !== undefined && typeof new_password !== 'string') {
       return flashAndRedirect(
         { sessionManager: this.sessionManager },
@@ -504,7 +529,7 @@ export class AdminUsersController implements IAdminUsersController {
       email,
       given_name,
       family_name,
-      roles: this.normalizeRoles(userRoles),
+      roles: normalizedRoles,
       account_enabled: account_enabled === 'true',
     };
 
@@ -687,6 +712,14 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
+      if (this.isCurrentUser(req, id)) {
+        res.status(403).json({
+          success: false,
+          error: 'You cannot disable your own account',
+        });
+        return;
+      }
+
       if (!user.account_enabled) {
         res.json({ success: false, error: 'User is already disabled' });
         return;
@@ -773,6 +806,14 @@ export class AdminUsersController implements IAdminUsersController {
         return;
       }
 
+      if (this.isCurrentUser(req, id)) {
+        res.status(403).json({
+          success: false,
+          error: 'You cannot anonymize your own account',
+        });
+        return;
+      }
+
       if (user.account_is_anonymized) {
         res.json({ success: false, error: 'User is already anonymized' });
         return;
@@ -846,8 +887,7 @@ export class AdminUsersController implements IAdminUsersController {
         '/admin/users'
       );
     }
-
-    const filter: any = { 'actor.user_id': id };
+    const filter: Record<string, unknown> = { related_user_id: id };
     if (type && type !== 'all') {
       filter.type = type;
     }
@@ -857,10 +897,7 @@ export class AdminUsersController implements IAdminUsersController {
       limit,
       sort: { timestamp: -1 },
     });
-
-    const activityTypes = await this.activityService.getUserActivityTypes(
-      user.username
-    );
+    const activityTypes = await this.activityService.getUserActivityTypes(id);
 
     const processedActivities = activities.results.map((activity: any) => {
       if (activity.device_infos && typeof activity.device_infos === 'object') {
@@ -935,12 +972,12 @@ export class AdminUsersController implements IAdminUsersController {
       }
 
       const trimmed = (rawValue as string).trim();
-      const normalized = field.case_sensitive ? trimmed : trimmed.toLowerCase();
 
-      if (!validateIdentifier(normalized, field)) {
+      if (!validateIdentifier(trimmed, field)) {
         return `Invalid ${field.name || 'identifier'} format`;
       }
 
+      const normalized = field.case_sensitive ? trimmed : trimmed.toLowerCase();
       const isAvailable = await this.userService.isCustomIdentifierAvailable(
         field.slot as 1 | 2 | 3,
         normalized,

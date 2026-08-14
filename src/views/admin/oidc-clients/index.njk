@@ -140,9 +140,9 @@
                                         name="sortBy"
                                         class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
                                             focus:ring-primary/20 focus:border-primary">
-                                        <option value="created_at" {{ 'selected' if filters.sortBy == 'created_at' else '' }}>Sort by Date</option>
-                                        <option value="client_name" {{ 'selected' if filters.sortBy == 'client_name' else '' }}>Sort by Name</option>
-                                        <option value="application_type" {{ 'selected' if filters.sortBy == 'application_type' else '' }}>Sort by Type</option>
+                                        <option value="created_at" {{ 'selected' if sortOptions.sortBy == 'created_at' else '' }}>Sort by Date</option>
+                                        <option value="client_name" {{ 'selected' if sortOptions.sortBy == 'client_name' else '' }}>Sort by Name</option>
+                                        <option value="application_type" {{ 'selected' if sortOptions.sortBy == 'application_type' else '' }}>Sort by Type</option>
                                     </select>
                                     <i
                                         data-lucide="chevron-down"
@@ -186,12 +186,12 @@
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left">
                                         <a
-                                            href="?sortBy=client_name&sortOrder={% if filters.sortBy == 'client_name' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            href="?sortBy=client_name&sortOrder={% if sortOptions.sortBy == 'client_name' and sortOptions.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&limit={{ pagination.itemsPerPage }}"
                                             class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
                                                 hover:text-foreground transition-colors">
                                             <span>Client</span>
-                                            {% if filters.sortBy == 'client_name' %}
-                                                {% if filters.sortOrder == 'asc' %}
+                                            {% if sortOptions.sortBy == 'client_name' %}
+                                                {% if sortOptions.sortOrder == 'asc' %}
                                                     <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
                                                 {% else %}
                                                     <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
@@ -201,12 +201,12 @@
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left">
                                         <a
-                                            href="?sortBy=application_type&sortOrder={% if filters.sortBy == 'application_type' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            href="?sortBy=application_type&sortOrder={% if sortOptions.sortBy == 'application_type' and sortOptions.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&limit={{ pagination.itemsPerPage }}"
                                             class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
                                                 hover:text-foreground transition-colors">
                                             <span>Type</span>
-                                            {% if filters.sortBy == 'application_type' %}
-                                                {% if filters.sortOrder == 'asc' %}
+                                            {% if sortOptions.sortBy == 'application_type' %}
+                                                {% if sortOptions.sortOrder == 'asc' %}
                                                     <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
                                                 {% else %}
                                                     <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
@@ -216,12 +216,12 @@
                                     </th>
                                     <th scope="col" class="px-6 py-3 text-left">
                                         <a
-                                            href="?sortBy=active&sortOrder={% if filters.sortBy == 'active' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                            href="?sortBy=active&sortOrder={% if sortOptions.sortBy == 'active' and sortOptions.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&limit={{ pagination.itemsPerPage }}"
                                             class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide
                                                 hover:text-foreground transition-colors">
                                             <span>Status</span>
-                                            {% if filters.sortBy == 'active' %}
-                                                {% if filters.sortOrder == 'asc' %}
+                                            {% if sortOptions.sortBy == 'active' %}
+                                                {% if sortOptions.sortOrder == 'asc' %}
                                                     <i data-lucide="arrow-up" class="h-3 w-3 text-foreground"></i>
                                                 {% else %}
                                                     <i data-lucide="arrow-down" class="h-3 w-3 text-foreground"></i>
@@ -296,7 +296,7 @@
                                                         method="POST"
                                                         action="/admin/oidc-clients/deactivate/{{ client.client_id }}"
                                                         class="inline"
-                                                        onsubmit="return confirmDeactivateClient(event)">
+                                                        data-oidc-client-confirm="deactivate">
                                                         <input type="hidden" name="_method" value="POST">
                                                         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                                                         <button type="submit" class="text-warning-foreground dark:text-warning hover:text-warning/80" title="Deactivate Client">
@@ -319,7 +319,7 @@
                                                     method="POST"
                                                     action="/admin/oidc-clients/delete/{{ client.client_id }}"
                                                     class="inline"
-                                                    onsubmit="return confirmDeleteClient(event)">
+                                                    data-oidc-client-confirm="delete">
                                                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                                                     <button type="submit" class="text-destructive hover:text-destructive/80" title="Delete Client">
                                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
@@ -346,7 +346,7 @@
                                                     <div class="flex items-center space-x-2">
                                                         {% if pagination.hasPrev %}
                                                             <a
-                                                                href="?page={{ pagination.currentPage - 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                                                href="?page={{ pagination.currentPage - 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&limit={{ pagination.itemsPerPage }}&sortBy={{ sortOptions.sortBy }}&sortOrder={{ sortOptions.sortOrder }}"
                                                                 class="inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground bg-card border border-border
                                                                     hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
                                                                 <i data-lucide="chevron-left" class="h-4 w-4 mr-1"></i>
@@ -358,7 +358,7 @@
                                                         </span>
                                                         {% if pagination.hasNext %}
                                                             <a
-                                                                href="?page={{ pagination.currentPage + 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}"
+                                                                href="?page={{ pagination.currentPage + 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.applicationType %}&application_type={{ filters.applicationType }}{% endif %}{% if filters.status %}&status={{ filters.status }}{% endif %}&limit={{ pagination.itemsPerPage }}&sortBy={{ sortOptions.sortBy }}&sortOrder={{ sortOptions.sortOrder }}"
                                                                 class="inline-flex items-center px-3 py-2 text-sm font-medium text-muted-foreground bg-card border border-border
                                                                     hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2">
                                                                 Next

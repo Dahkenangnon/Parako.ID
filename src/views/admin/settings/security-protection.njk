@@ -16,7 +16,7 @@
 
     {% include "partials/admin-security-subtabs.njk" %}
 
-    <form method="POST" action="/admin/settings/security/protection" class="space-y-6" onsubmit="return confirmCriticalChange(event)">
+    <form method="POST" action="/admin/settings/security/protection" class="space-y-6" data-confirm-critical-change>
         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
 
         <div class="max-w-6xl mx-auto space-y-6">
@@ -44,7 +44,7 @@
                                 <input type="number" id="protection.rate_limiting.requests_per_minute"
                                        name="protection[rate_limiting][requests_per_minute]"
                                        value="{{ config.protection and config.protection.rate_limiting and config.protection.rate_limiting.requests_per_minute or '' }}"
-                                       min="1" max="1000"
+                                       min="1"
                                        class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
                             </div>
                             <div>
@@ -52,7 +52,7 @@
                                 <input type="number" id="protection.rate_limiting.window_minutes"
                                        name="protection[rate_limiting][window_minutes]"
                                        value="{{ config.protection and config.protection.rate_limiting and config.protection.rate_limiting.window_minutes or '' }}"
-                                       min="1" max="60"
+                                       min="1"
                                        class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
                             </div>
                         </div>
@@ -310,7 +310,7 @@
                         <i data-lucide="x" class="h-4 w-4 mr-2"></i>
                         Cancel
                     </a>
-                    <button type="button" onclick="resetForm()" class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
+                    <button type="button" data-settings-reset class="inline-flex items-center justify-center px-4 py-2 border border-border text-foreground text-sm font-medium hover:bg-muted focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2">
                         <i data-lucide="undo" class="h-4 w-4 mr-2"></i>
                         Reset Form
                     </button>

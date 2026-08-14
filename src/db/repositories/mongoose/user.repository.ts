@@ -20,6 +20,30 @@ import { serializeDocument } from '../../utils.js';
 import crypto from 'node:crypto';
 import { computeUserName } from '../user-name.js';
 
+const USER_SEARCH_FIELDS = [
+  'username',
+  'email',
+  'name',
+  'given_name',
+  'family_name',
+] as const;
+
+function normalizeUserFilterToMongoose(
+  filter: UserFilter
+): Record<string, unknown> {
+  const { search, ...query } = filter;
+  if (!search) return query;
+
+  const pattern = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(pattern, 'i');
+  return {
+    ...query,
+    $or: USER_SEARCH_FIELDS.map(field => ({
+      [field]: { $regex: regex },
+    })),
+  };
+}
+
 @injectable()
 export class MongooseUserRepository
   extends AbstractMongooseRepository<IUser, CreateUserDto, UpdateUserDto>
@@ -79,11 +103,11 @@ export class MongooseUserRepository
     filter: UserFilter,
     opts?: PaginationOptions
   ): Promise<PaginatedResult<IUser>> {
-    return this.paginate(filter as Record<string, unknown>, opts);
+    return this.paginate(normalizeUserFilterToMongoose(filter), opts);
   }
 
   async findManyRaw(filter: UserFilter, opts?: QueryOptions): Promise<IUser[]> {
-    return super.findMany(filter as Record<string, unknown>, opts);
+    return super.findMany(normalizeUserFilterToMongoose(filter), opts);
   }
 
   async updateMfa(id: string, mfa: IUserMfaUpdate): Promise<void> {

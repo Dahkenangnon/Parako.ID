@@ -13,6 +13,7 @@ import { createBackgroundTaskQueue } from './jobs/domains/background-tasks/queue
 import {
   createBackgroundTaskWorker,
   registerTaskHandler,
+  type BackgroundJobData,
 } from './jobs/domains/background-tasks/worker.js';
 import { jwksRotationHandler } from './jobs/domains/background-tasks/handlers/jwks-rotation.handler.js';
 import { createDataImportHandler } from './jobs/domains/background-tasks/handlers/data-import.handler.js';
@@ -22,6 +23,8 @@ import type { IUserService } from './di/interfaces/user-service.interface.js';
 import type { IPasswordUtils } from './di/interfaces/password-utils.interface.js';
 import type { IOIDCAdapterBridge } from './di/interfaces/oidc-adapter-bridge.interface.js';
 import type { INotificationService } from './di/interfaces/notification-service.interface.js';
+import type { IEmailService } from './di/interfaces/email-service.interface.js';
+import type { ITenantRepository } from './db/repositories/interfaces/tenant.repository.js';
 import { registerJwksRotationSchedule } from './jobs/schedules/jwks-rotation.schedule.js';
 import {
   checkRedisAvailability,
@@ -48,6 +51,8 @@ const databaseConnectionManager = container.get<IDatabaseConnectionManager>(
 let queueManager: QueueManager | null = null;
 let workerManager: WorkerManager | null = null;
 let redisPublisher: Redis | null = null;
+let emailService: IEmailService | null = null;
+let activityService: IActivityService | null = null;
 let isShuttingDown = false;
 
 async function bootstrap(): Promise<void> {
@@ -100,9 +105,10 @@ async function bootstrap(): Promise<void> {
   const keyStore = container.get<IKeyStore>(TYPES.KeyStore);
   await keyStore.initialize();
 
-  const activityService = container.get<IActivityService>(
+  const resolvedActivityService = container.get<IActivityService>(
     TYPES.ActivityService
   );
+  activityService = resolvedActivityService;
 
   const redisPrefix = config.deployment?.redis_prefix || 'parako';
   redisPublisher = new Redis({
@@ -159,7 +165,7 @@ async function bootstrap(): Promise<void> {
     // Audit trail for background JWKS operations — awaited with fallback
     // to ensure critical security events are never silently lost.
     try {
-      await activityService.info(
+      await resolvedActivityService.info(
         `jwks_${phase}_by_scheduler`,
         `JWKS keys ${phase} by background scheduler`,
         null,
@@ -179,8 +185,13 @@ async function bootstrap(): Promise<void> {
   };
 
   const promotionDelayMs = config.security?.key_store?.promotion_delay_ms ?? 0;
-
-  registerTaskHandler('jwks-rotation', (data, reportProgress) =>
+  const tenantRepository = config.features?.multi_tenancy?.enabled
+    ? container.get<ITenantRepository>(TYPES.TenantRepository)
+    : null;
+  const runJwksRotation = (
+    data: BackgroundJobData,
+    reportProgress: (progress: number) => Promise<void>
+  ) =>
     jwksRotationHandler(
       data,
       reportProgress,
@@ -207,8 +218,24 @@ async function bootstrap(): Promise<void> {
           });
         },
       }
-    )
-  );
+    );
+
+  registerTaskHandler('jwks-rotation', async (data, reportProgress) => {
+    if (data.tenantId || !tenantRepository) {
+      return runJwksRotation(data, reportProgress);
+    }
+
+    const activeTenants = await tenantRepository.findAll({ status: 'active' });
+    const tenants = [];
+    for (const tenant of activeTenants) {
+      const tenantData = { ...data, tenantId: tenant.slug };
+      const result = await tenantContext.run(tenant.slug, () =>
+        runJwksRotation(tenantData, reportProgress)
+      );
+      tenants.push({ tenantId: tenant.slug, result });
+    }
+    return { tenants };
+  });
 
   const dataTransferService = container.get<IDataTransferService>(
     TYPES.DataTransferService
@@ -226,7 +253,7 @@ async function bootstrap(): Promise<void> {
       dataTransferService,
       {
         userService,
-        activityService,
+        activityService: resolvedActivityService,
         oidcAdapterBridge,
         passwordUtils,
         logger,
@@ -234,6 +261,11 @@ async function bootstrap(): Promise<void> {
       logger
     )
   );
+
+  // The standalone worker does not initialize the HTTP application, so it
+  // must initialize its own templated email transport before handlers use it.
+  emailService = container.get<IEmailService>(TYPES.EmailService);
+  emailService.initialize();
 
   // Password breach check handler
   const notificationService = container.get<INotificationService>(
@@ -243,7 +275,7 @@ async function bootstrap(): Promise<void> {
     'password-breach-check',
     createPasswordBreachCheckHandler(
       notificationService,
-      activityService,
+      resolvedActivityService,
       logger
     )
   );
@@ -324,7 +356,28 @@ async function gracefulShutdown(signal: string): Promise<void> {
       );
     }
 
-    // 3. Close Redis publisher
+    // 3. Flush worker-owned audit events after active jobs drain and before
+    // disconnecting their persistence adapter.
+    if (activityService) {
+      await safeShutdownStep(
+        'activity-service',
+        () => activityService!.shutdown(),
+        logger
+      );
+      activityService = null;
+    }
+
+    // 4. Close the worker-owned email transport after active jobs drain.
+    if (emailService) {
+      await safeShutdownStep(
+        'email-service',
+        () => emailService!.closeConnection(),
+        logger
+      );
+      emailService = null;
+    }
+
+    // 5. Close Redis publisher
     if (redisPublisher) {
       await safeShutdownStep(
         'redis-publisher',
@@ -336,14 +389,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
       redisPublisher = null;
     }
 
-    // 4. Disconnect database
+    // 6. Disconnect database
     await safeShutdownStep(
       'database-disconnect',
       () => databaseConnectionManager.disconnect(),
       logger
     );
 
-    // 5. Cleanup config manager
+    // 7. Cleanup config manager
     await safeShutdownStep(
       'config-cleanup',
       async () => {

@@ -1,9 +1,6 @@
 {% extends "layouts/admin-layout.njk" %}
 
 {% block admin_content %}
-<!-- Hidden CSRF Token for JavaScript -->
-<input type="hidden" name="_csrf" value="{{ csrfToken }}">
-
 <div class="w-full">
     <!-- Page Header -->
     <div class="mb-6">
@@ -66,6 +63,7 @@
     <!-- Filters - Advanced Sectioned Design -->
     <div class="bg-card border border-border overflow-hidden mb-6">
         <form method="GET" action="/admin/user-grants">
+            <input type="hidden" name="limit" value="{{ pagination.limit }}">
             <!-- Filter Header -->
             <div class="bg-muted/50 px-4 py-2 border-b border-border">
                 <div class="flex items-center gap-2">
@@ -101,6 +99,7 @@
                             <select
                                 name="clientId"
                                 id="clientId"
+                                aria-label="Client"
                                 class="appearance-none w-full pl-3 pr-9 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             >
                                 <option value="">All Clients</option>
@@ -116,6 +115,7 @@
                             <select
                                 name="username"
                                 id="username"
+                                aria-label="User"
                                 class="appearance-none w-full pl-3 pr-9 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             >
                                 <option value="">All Users</option>
@@ -131,6 +131,7 @@
                             <select
                                 name="sortBy"
                                 id="sortBy"
+                                aria-label="Sort grants by"
                                 class="appearance-none w-full pl-3 pr-9 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             >
                                 <option value="created_at" {% if filters.sortBy == 'created_at' %}selected{% endif %}>Created Date</option>
@@ -146,6 +147,7 @@
                             <select
                                 name="sortOrder"
                                 id="sortOrder"
+                                aria-label="Sort order"
                                 class="appearance-none w-full pl-3 pr-9 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                             >
                                 <option value="desc" {% if filters.sortOrder == 'desc' %}selected{% endif %}>Descending</option>
@@ -177,6 +179,29 @@
         </form>
     </div>
 
+    {% if pagination.totalGrants > 0 and (filters.username or filters.clientId) %}
+    <div class="flex flex-col sm:flex-row sm:justify-end gap-2 mb-6">
+        {% if filters.username %}
+        <form method="post" action="/admin/user-grants/revoke-user/{{ filters.username | urlencode }}" data-grant-revoke data-grant-revoke-message="Revoke every authorization for {{ filters.username }}?">
+            <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+            <button type="submit" class="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                <i data-lucide="shield-x" class="h-4 w-4"></i>
+                Revoke all grants for user {{ filters.username }}
+            </button>
+        </form>
+        {% endif %}
+        {% if filters.clientId %}
+        <form method="post" action="/admin/user-grants/revoke-client/{{ filters.clientId | urlencode }}" data-grant-revoke data-grant-revoke-message="Revoke every authorization for {{ filters.clientId }}?">
+            <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+            <button type="submit" class="inline-flex w-full sm:w-auto items-center justify-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                <i data-lucide="shield-x" class="h-4 w-4"></i>
+                Revoke all grants for client {{ filters.clientId }}
+            </button>
+        </form>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- Grants Table -->
     <div class="w-full bg-card border border-border overflow-hidden">
         <div class="w-full overflow-x-auto">
@@ -185,7 +210,7 @@
                     <tr>
                         <!-- Client (Sortable) -->
                         <th scope="col" class="px-6 py-3 text-left">
-                            <a href="?sortBy=payload.clientId&sortOrder={% if filters.sortBy == 'payload.clientId' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
+                            <a href="?sortBy=payload.clientId&sortOrder={% if filters.sortBy == 'payload.clientId' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
                                class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                                 <span>Client</span>
                                 {% if filters.sortBy == 'payload.clientId' %}
@@ -199,7 +224,7 @@
                         </th>
                         <!-- User (Sortable) -->
                         <th scope="col" class="px-6 py-3 text-left">
-                            <a href="?sortBy=payload.accountId&sortOrder={% if filters.sortBy == 'payload.accountId' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
+                            <a href="?sortBy=payload.accountId&sortOrder={% if filters.sortBy == 'payload.accountId' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
                                class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                                 <span>User</span>
                                 {% if filters.sortBy == 'payload.accountId' %}
@@ -213,7 +238,7 @@
                         </th>
                         <!-- Granted Date (Sortable) -->
                         <th scope="col" class="px-6 py-3 text-left">
-                            <a href="?sortBy=payload.iat&sortOrder={% if filters.sortBy == 'payload.iat' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
+                            <a href="?sortBy=payload.iat&sortOrder={% if filters.sortBy == 'payload.iat' and filters.sortOrder == 'asc' %}desc{% else %}asc{% endif %}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}"
                                class="group inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                                 <span>Granted</span>
                                 {% if filters.sortBy == 'payload.iat' %}
@@ -282,12 +307,15 @@
                         <!-- Actions -->
                         <td class="px-6 py-5 whitespace-nowrap text-right text-sm font-medium">
                             <div class="flex items-center justify-end space-x-2">
-                                <a href="/admin/user-grants/{{ grant.id }}" class="text-primary hover:text-primary/80" title="View Details">
+                                <a href="/admin/user-grants/{{ grant.id }}" class="text-primary hover:text-primary/80" title="View Details" aria-label="View grant for {{ grant.username }} and {{ grant.client.name }}">
                                     <i data-lucide="eye" class="h-4 w-4"></i>
                                 </a>
-                                <button onclick="revokeGrant('{{ grant.id }}')" class="text-destructive hover:text-destructive/80" title="Revoke Authorization">
-                                    <i data-lucide="trash-2" class="h-4 w-4"></i>
-                                </button>
+                                <form method="post" action="/admin/user-grants/{{ grant.id }}/revoke" data-grant-revoke>
+                                    <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+                                    <button type="submit" class="text-destructive hover:text-destructive/80" title="Revoke Authorization" aria-label="Revoke grant for {{ grant.username }} and {{ grant.client.name }}">
+                                        <i data-lucide="trash-2" class="h-4 w-4"></i>
+                                    </button>
+                                </form>
                             </div>
                         </td>
                     </tr>
@@ -311,13 +339,13 @@
         <div class="bg-muted/50 px-4 py-3 flex items-center justify-between border-t border-border sm:px-6">
             <div class="flex-1 flex justify-between sm:hidden">
                 {% if pagination.hasPrev %}
-                    <a href="?page={{ pagination.page - 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                    <a aria-label="Previous grants page" href="?page={{ pagination.page - 1 }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
                        class="relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                         Previous
                     </a>
                 {% endif %}
                 {% if pagination.hasNext %}
-                    <a href="?page={{ pagination.page + 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                    <a aria-label="Next grants page" href="?page={{ pagination.page + 1 }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
                        class="ml-3 relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                         Next
                     </a>
@@ -332,7 +360,7 @@
                 <div>
                     <nav class="relative z-0 inline-flex -space-x-px">
                         {% if pagination.hasPrev %}
-                            <a href="?page={{ pagination.page - 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                            <a aria-label="Previous grants page" href="?page={{ pagination.page - 1 }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
                                class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
                                 <i data-lucide="chevron-left" class="h-5 w-5"></i>
                             </a>
@@ -345,11 +373,11 @@
 
                         {% for pageNum in range(startPage, endPage + 1) %}
                             {% if pageNum == pagination.page %}
-                                <span class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm font-medium">
+                                <span class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm font-medium" aria-current="page" aria-label="Current grants page {{ pageNum }}">
                                     {{ pageNum }}
                                 </span>
                             {% else %}
-                                <a href="?page={{ pageNum }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                                <a aria-label="Go to grants page {{ pageNum }}" href="?page={{ pageNum }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
                                    class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground hover:bg-muted">
                                     {{ pageNum }}
                                 </a>
@@ -357,7 +385,7 @@
                         {% endfor %}
 
                         {% if pagination.hasNext %}
-                            <a href="?page={{ pagination.page + 1 }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
+                            <a aria-label="Next grants page" href="?page={{ pagination.page + 1 }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.clientId %}&clientId={{ filters.clientId }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
                                class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
                                 <i data-lucide="chevron-right" class="h-5 w-5"></i>
                             </a>

@@ -14,7 +14,7 @@ datasource db {
 
 model User {
   id                         String    @id @default(uuid())
-  email                      String?
+  email                      String?   @unique
   username                   String?   @unique
   custom_identifier_1        String?   @unique
   custom_identifier_2        String?   @unique

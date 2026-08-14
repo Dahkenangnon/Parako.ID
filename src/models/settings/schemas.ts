@@ -234,7 +234,7 @@ const brandingFontsSchema = new Schema(
 export const brandingSchema = new Schema(
   {
     companyName: { type: String, required: true },
-    logo: { type: String, required: true },
+    logo: { type: String },
     logoDark: { type: String },
     logoIcon: { type: String },
     logoIconDark: { type: String },

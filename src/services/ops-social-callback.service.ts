@@ -50,12 +50,15 @@ export interface IOpsRedisClient {
   set(
     key: string,
     value: string,
-    mode: string,
+    mode: 'EX',
     ttl: number
-  ): Promise<string | null>;
+  ): Promise<'OK' | null>;
   get(key: string): Promise<string | null>;
   getdel?(key: string): Promise<string | null>;
   del(key: string): Promise<number>;
+  readonly status?: string;
+  quit?(): Promise<'OK'>;
+  disconnect?(reconnect?: boolean): void;
 }
 
 function toSafeSlug(value: string, pattern: RegExp): string | null {

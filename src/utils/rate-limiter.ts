@@ -227,7 +227,7 @@ const normalizeLoginIdentifier = (raw: unknown): string => {
 
 /**
  * Login Rate Limiter
- * Prevents brute force password attacks
+ * Prevents brute force password attacks without penalizing valid sign-ins.
  * Production: 5 attempts per 15 minutes
  * Development: 50 attempts per 15 minutes
  */
@@ -236,6 +236,8 @@ export const loginLimiter = createReconfigurableLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5,
   message: 'Too many login attempts. Please try again later.',
+  skipSuccessfulRequests: true,
+  requestWasSuccessful: loginRequestWasSuccessful,
 });
 
 /**

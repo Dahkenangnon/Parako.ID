@@ -142,6 +142,9 @@ export const TYPES = {
   // OIDC Provider Service
   ProviderService: Symbol.for('ProviderService'),
 
+  // OIDC back-channel notifications for administrative session revocation
+  OIDCBackchannelLogoutService: Symbol.for('OIDCBackchannelLogoutService'),
+
   // Tenant Provider Registry (multi-tenancy: Provider-per-tenant pool)
   TenantProviderRegistry: Symbol.for('TenantProviderRegistry'),
   TenantActivityRedisClient: Symbol.for('TenantActivityRedisClient'),

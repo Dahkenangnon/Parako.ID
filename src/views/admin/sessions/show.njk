@@ -32,10 +32,10 @@
             </div>
             <div class="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                 {% if session.status == 'active' %}
-                <form method="post" action="/admin/sessions/{{ session.id }}/revoke" class="w-full sm:w-auto">
+                <form method="post" action="/admin/sessions/{{ session.id | urlencode }}/revoke" class="w-full sm:w-auto" data-session-revoke>
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                     <input type="hidden" name="sessionType" value="{{ session.sessionType | default('oidc') }}">
-                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 w-full">
+                    <button type="submit" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 w-full" aria-label="Revoke {{ session.sessionType | default('OIDC') }} session for {{ session.userInfo.username }}">
                         <i data-lucide="power-off" class="h-4 w-4 mr-2"></i>
                         Revoke Session
                     </button>

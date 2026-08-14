@@ -19,6 +19,7 @@ import type {
   BulkDeleteResult,
 } from '../di/interfaces/base-service.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
+import { ConfigurationVersionConflictError } from '../errors/configuration-version-conflict.error.js';
 
 type PaginatedServiceResult<T> = {
   results: T[];
@@ -320,7 +321,8 @@ export class SettingsService implements ISettingsService {
   public async saveMainConfiguration(
     config: any,
     modifiedBy?: string,
-    reason?: string
+    reason?: string,
+    expectedVersion?: number
   ): Promise<ISettings> {
     const releaseLock = await this.acquireConfigLock();
 
@@ -334,7 +336,24 @@ export class SettingsService implements ISettingsService {
       );
 
       if (existingSettings) {
-        const currentVersion = existingSettings._version || 0;
+        const currentVersion = existingSettings._version ?? 0;
+        if (
+          expectedVersion !== undefined &&
+          currentVersion !== expectedVersion
+        ) {
+          this.logger.warn('Configuration version conflict detected', {
+            configKey: SettingsService.MAIN_CONFIG_KEY,
+            expectedVersion,
+            latestVersion: currentVersion,
+            attemptedBy: modifiedBy,
+            context: 'optimistic_locking_conflict',
+          });
+          throw new ConfigurationVersionConflictError(
+            expectedVersion,
+            currentVersion
+          );
+        }
+
         const history = await this.settingsRepo.findHistory(
           SettingsService.MAIN_CONFIG_KEY,
           2
@@ -352,10 +371,13 @@ export class SettingsService implements ISettingsService {
             context: 'optimistic_locking_conflict',
           });
 
-          throw new Error(
-            'Configuration was modified by another user. Please refresh the page and try again.'
+          throw new ConfigurationVersionConflictError(
+            currentVersion,
+            latestInactive._version
           );
         }
+      } else if (expectedVersion !== undefined) {
+        throw new ConfigurationVersionConflictError(expectedVersion);
       }
 
       const configToSave = {
@@ -367,16 +389,25 @@ export class SettingsService implements ISettingsService {
           'Main Parako.ID application configuration',
       };
 
-      const result = await this.settingsRepo.save(
-        SettingsService.MAIN_CONFIG_KEY,
-        configToSave,
-        {
-          last_modified_by: modifiedBy,
-          change_reason: reason,
-          tags: existingSettings?.metadata?.tags || ['main', 'configuration'],
-          environment: existingSettings?.metadata?.environment,
-        }
-      );
+      const metadata = {
+        last_modified_by: modifiedBy,
+        change_reason: reason,
+        tags: existingSettings?.metadata?.tags || ['main', 'configuration'],
+        environment: existingSettings?.metadata?.environment,
+      };
+      const result =
+        expectedVersion === undefined
+          ? await this.settingsRepo.save(
+              SettingsService.MAIN_CONFIG_KEY,
+              configToSave,
+              metadata
+            )
+          : await this.settingsRepo.save(
+              SettingsService.MAIN_CONFIG_KEY,
+              configToSave,
+              metadata,
+              expectedVersion
+            );
 
       this.logger.info(
         'Configuration saved as new version (auto-backup created)',
@@ -406,14 +437,20 @@ export class SettingsService implements ISettingsService {
   public async saveMainConfigurationWithTransaction(
     config: any,
     modifiedBy?: string,
-    reason?: string
+    reason?: string,
+    expectedVersion?: number
   ): Promise<ISettings> {
     // Transaction support is handled internally by the repository.
     // Fall back to regular save — the repo.save() method is already atomic.
     this.logger.info(
       'Saving configuration (repo.save() provides atomic versioning).'
     );
-    return this.saveMainConfiguration(config, modifiedBy, reason);
+    return this.saveMainConfiguration(
+      config,
+      modifiedBy,
+      reason,
+      expectedVersion
+    );
   }
 
   public async getConfigurationByKey(key: string): Promise<ISettings | null> {

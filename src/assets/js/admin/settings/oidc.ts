@@ -48,7 +48,7 @@
       const issuer = issuerInput?.value || '';
       const path = pathInput?.value || '';
 
-      if (!issuer || !path) {
+      if (!path || (issuerInput && !issuer)) {
         await this.showError(
           'Validation Error',
           'Issuer URL and OIDC path are required fields.'
@@ -56,11 +56,16 @@
         return false;
       }
 
-      try {
-        new URL(issuer);
-      } catch {
-        await this.showError('Invalid URL', 'Please enter a valid issuer URL.');
-        return false;
+      if (issuerInput) {
+        try {
+          new URL(issuer);
+        } catch {
+          await this.showError(
+            'Invalid URL',
+            'Please enter a valid issuer URL.'
+          );
+          return false;
+        }
       }
 
       return true;

@@ -360,7 +360,7 @@
         <div>
             {% if hasOverride %}
             <form method="POST" action="/admin/configuration/{{ section }}/reset"
-                  onsubmit="return confirm('Are you sure you want to reset all Branding configuration to defaults? This cannot be undone.')">
+                  data-confirm-message="Are you sure you want to reset all Branding configuration to defaults? This cannot be undone.">
                 <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                 <button type="submit"
                         class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
@@ -404,6 +404,7 @@
   }
 }
 </script>
+<script src="{{ asset('js/admin/configuration/common.js') }}"></script>
 <script src="{{ asset('js/admin/settings/common.js') }}"></script>
 <script src="{{ asset('js/admin/settings/branding.js') }}"></script>
 {% endblock %}

@@ -67,6 +67,15 @@ function bootstrapContext() {
     ? findProjectRoot(process.env.PARAKO_ROOT)
     : findProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
   loadRuntimeEnvironment(root);
+  const multiTenancy = process.env.MULTI_TENANCY_ENABLED?.toLowerCase();
+  if (multiTenancy !== undefined && !['true', 'false'].includes(multiTenancy)) {
+    throw new Error('MULTI_TENANCY_ENABLED must be true or false.');
+  }
+  if (multiTenancy === 'true') {
+    throw new Error(
+      'The administrator activation CLI supports only single-tenant deployments. For multi-tenant deployments, configure PARAKO_BOOTSTRAP_ADMIN_EMAIL and PARAKO_BOOTSTRAP_ADMIN_PASSWORD before first startup.'
+    );
+  }
   const resolved = resolveAdapterEnvironment(root);
   const deploymentUrl = process.env.DEPLOYMENT_URL ?? '';
   let parsedUrl: URL;

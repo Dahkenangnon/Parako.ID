@@ -13,8 +13,11 @@ import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device
 import { TYPES } from '../../di/types.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
 import { getDefaultFullConfig } from '../../config/constants.js';
-import { mergeConfig } from '../../utils/config-merge.js';
+import type { RuntimeConfig } from '../../config/types.js';
+import { resolveBrandingUrlAsync } from '../../utils/views.js';
+import { mergeConfig, type DeepPartial } from '../../utils/config-merge.js';
 import {
+  convertApplicationFormData,
   convertBrandingFormData,
   convertDeploymentFormData,
   convertFeaturesFormData,
@@ -30,6 +33,23 @@ import {
   BOOTSTRAP_ONLY_FIELDS,
   getNestedValue,
 } from '../../utils/settings.helper.js';
+import { ConfigurationVersionConflictError } from '../../errors/configuration-version-conflict.error.js';
+
+const CONFIGURATION_CONFLICT_MESSAGE =
+  'Configuration was modified by another administrator. Reload the latest settings, review them, and try again.';
+
+function parseConfigurationVersion(value: unknown): number {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new ConfigurationVersionConflictError();
+  }
+
+  const version = Number(value);
+  if (!Number.isSafeInteger(version)) {
+    throw new ConfigurationVersionConflictError();
+  }
+
+  return version;
+}
 
 function getErrorMessage(error: unknown, fallback = 'Unknown error'): string {
   return error instanceof Error ? error.message : fallback;
@@ -118,6 +138,92 @@ export class AdminSettingsController implements IAdminSettingsController {
         ...(entity_data ? { entity_data } : {}),
       },
     });
+  }
+
+  private async resolveBrandingUrls(
+    branding: RuntimeConfig['branding']
+  ): Promise<RuntimeConfig['branding']> {
+    const resolved = { ...branding } as Record<string, unknown>;
+    const imageFields = [
+      'logo',
+      'logoDark',
+      'logoIcon',
+      'logoIconDark',
+      'favicon',
+    ] as const;
+
+    await Promise.all(
+      imageFields.map(async field => {
+        const value = resolved[field];
+        if (typeof value === 'string') {
+          resolved[field] = await resolveBrandingUrlAsync(
+            value,
+            this.uploadMiddleware.getFileUrl.bind(this.uploadMiddleware)
+          );
+        }
+      })
+    );
+
+    return resolved as RuntimeConfig['branding'];
+  }
+
+  private async deleteBrandingAssetBestEffort(
+    storageKey: string,
+    context: string
+  ): Promise<void> {
+    try {
+      await this.uploadMiddleware.deleteFile(storageKey);
+    } catch (error) {
+      this.logger.error(error as Error, { context, storageKey });
+    }
+  }
+
+  /**
+   * Persist a branding replacement before deleting the previous object. If
+   * persistence fails, only the newly stored object is rolled back.
+   */
+  private async persistBrandingAssetReplacement(
+    branding: DeepPartial<RuntimeConfig['branding']>,
+    previousStorageKey: string | null | undefined,
+    newStorageKey: string,
+    context: string
+  ): Promise<void> {
+    try {
+      await this.configManager.update({ branding });
+    } catch (error) {
+      await this.deleteBrandingAssetBestEffort(
+        newStorageKey,
+        `${context}_rollback_failed`
+      );
+      throw error;
+    }
+
+    if (previousStorageKey && previousStorageKey !== newStorageKey) {
+      await this.deleteBrandingAssetBestEffort(
+        previousStorageKey,
+        `${context}_old_file_cleanup_failed`
+      );
+    }
+  }
+
+  /**
+   * Persist the reference removal before deleting the owned object. Sending
+   * only the changed field prevents a nearby branding request from restoring
+   * sibling values captured from an older configuration snapshot.
+   */
+  private async persistBrandingAssetRemoval(
+    branding: DeepPartial<RuntimeConfig['branding']>,
+    previousStorageKey: string | null | undefined,
+    context: string
+  ): Promise<void> {
+    await this.configManager.update({ branding });
+
+    if (previousStorageKey) {
+      await this.deleteBrandingAssetBestEffort(
+        previousStorageKey,
+        `${context}_old_file_cleanup_failed`
+      );
+    }
   }
 
   /**
@@ -261,18 +367,35 @@ export class AdminSettingsController implements IAdminSettingsController {
       const config = this.configManager.getPlatformConfig();
 
       if (req.method === 'GET') {
+        const activeConfig = await this.settingsService.getMainConfiguration();
         res.render('admin/settings/application', {
           title: 'Application Settings',
           section: 'application',
           config: config.application,
+          configVersion: activeConfig?._version,
         });
       } else if (req.method === 'POST') {
+        // CSRF and device fields belong to request processing and auditing;
+        // they are never part of persisted application configuration.
+        const applicationData = { ...req.body };
+        const expectedVersion = parseConfigurationVersion(
+          applicationData._configVersion
+        );
+        delete applicationData._csrf;
+        delete applicationData._deviceInfo;
+        delete applicationData._configVersion;
+        const convertedApplicationData =
+          convertApplicationFormData(applicationData);
         const existingApplication = config.application || {};
-        const mergedApplication = mergeConfig(existingApplication, req.body);
+        const mergedApplication = mergeConfig(
+          existingApplication,
+          convertedApplicationData
+        );
 
-        await this.configManager.update({
-          application: mergedApplication,
-        });
+        await this.configManager.update(
+          { application: mergedApplication },
+          expectedVersion
+        );
 
         this.audit(
           req,
@@ -280,7 +403,7 @@ export class AdminSettingsController implements IAdminSettingsController {
           'update_config',
           'Updated application configuration',
           {
-            fieldsModified: Object.keys(req.body).length,
+            fieldsModified: Object.keys(convertedApplicationData).length,
           }
         );
 
@@ -309,7 +432,11 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       this.sessionManager
         .flash(req)
-        .error('Failed to update application settings');
+        .error(
+          error instanceof ConfigurationVersionConflictError
+            ? CONFIGURATION_CONFLICT_MESSAGE
+            : 'Failed to update application settings'
+        );
       res.redirect('/admin/settings/application');
     }
   };
@@ -325,23 +452,20 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.render('admin/settings/branding', {
           title: 'Branding Settings',
           section: 'branding',
-          config: config.branding,
+          config: await this.resolveBrandingUrls(config.branding),
         });
       } else if (req.method === 'POST') {
         const file = (req as any).file; // Multer adds this
 
         const convertedData = convertBrandingFormData(req.body);
 
+        let uploadedStorageKey: string | undefined;
         if (file) {
-          const storageKey = await this.uploadMiddleware.storeFile(
+          uploadedStorageKey = await this.uploadMiddleware.storeFile(
             file,
             'logos'
           );
-          convertedData.logo = storageKey;
-
-          if (config.branding?.logo) {
-            await this.uploadMiddleware.deleteFile(config.branding.logo);
-          }
+          convertedData.logo = uploadedStorageKey;
         } else {
           // No file uploaded - remove logo from convertedData to preserve existing
           delete convertedData.logo;
@@ -350,9 +474,18 @@ export class AdminSettingsController implements IAdminSettingsController {
         const existingBranding = config.branding || {};
         const mergedBranding = mergeConfig(existingBranding, convertedData);
 
-        await this.configManager.update({
-          branding: mergedBranding,
-        });
+        if (uploadedStorageKey) {
+          await this.persistBrandingAssetReplacement(
+            mergedBranding,
+            config.branding?.logo,
+            uploadedStorageKey,
+            'logo_upload'
+          );
+        } else {
+          await this.configManager.update({
+            branding: mergedBranding,
+          });
+        }
 
         this.audit(
           req,
@@ -401,16 +534,11 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       const config = this.configManager.getPlatformConfig();
 
-      if (config.branding?.logo) {
-        await this.uploadMiddleware.deleteFile(config.branding.logo);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logo: '',
-        },
-      });
+      await this.persistBrandingAssetRemoval(
+        { logo: '' },
+        config.branding?.logo,
+        'logo_removal'
+      );
 
       this.audit(req, 'success', 'update_config', 'Removed company logo', {
         action: 'remove_logo',
@@ -534,16 +662,12 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       const logoDarkKey = await this.uploadMiddleware.storeFile(file, 'logos');
 
-      if (config.branding?.logoDark) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoDark);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoDark: logoDarkKey,
-        },
-      });
+      await this.persistBrandingAssetReplacement(
+        { logoDark: logoDarkKey },
+        config.branding?.logoDark,
+        logoDarkKey,
+        'logo_dark_upload'
+      );
 
       this.audit(req, 'success', 'update_config', 'Uploaded dark mode logo', {
         action: 'upload_logo_dark',
@@ -553,7 +677,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Dark mode logo uploaded successfully',
-        url: logoDarkKey,
+        url: await this.uploadMiddleware.getFileUrl(logoDarkKey),
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -582,16 +706,11 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       const config = this.configManager.getPlatformConfig();
 
-      if (config.branding?.logoDark) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoDark);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoDark: null,
-        },
-      });
+      await this.persistBrandingAssetRemoval(
+        { logoDark: null },
+        config.branding?.logoDark,
+        'logo_dark_removal'
+      );
 
       this.audit(req, 'success', 'update_config', 'Removed dark mode logo', {
         action: 'remove_logo_dark',
@@ -636,16 +755,12 @@ export class AdminSettingsController implements IAdminSettingsController {
 
       const logoIconKey = await this.uploadMiddleware.storeFile(file, 'logos');
 
-      if (config.branding?.logoIcon) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoIcon);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoIcon: logoIconKey,
-        },
-      });
+      await this.persistBrandingAssetReplacement(
+        { logoIcon: logoIconKey },
+        config.branding?.logoIcon,
+        logoIconKey,
+        'logo_icon_upload'
+      );
 
       this.audit(req, 'success', 'update_config', 'Icon logo uploaded', {
         action: 'upload_logo_icon',
@@ -655,7 +770,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Icon logo uploaded successfully',
-        url: logoIconKey,
+        url: await this.uploadMiddleware.getFileUrl(logoIconKey),
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -678,16 +793,11 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       const config = this.configManager.getPlatformConfig();
 
-      if (config.branding?.logoIcon) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoIcon);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoIcon: null,
-        },
-      });
+      await this.persistBrandingAssetRemoval(
+        { logoIcon: null },
+        config.branding?.logoIcon,
+        'logo_icon_removal'
+      );
 
       this.audit(req, 'success', 'update_config', 'Icon logo removed', {
         action: 'remove_logo_icon',
@@ -729,16 +839,12 @@ export class AdminSettingsController implements IAdminSettingsController {
         'logos'
       );
 
-      if (config.branding?.logoIconDark) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoIconDark);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoIconDark: logoIconDarkKey,
-        },
-      });
+      await this.persistBrandingAssetReplacement(
+        { logoIconDark: logoIconDarkKey },
+        config.branding?.logoIconDark,
+        logoIconDarkKey,
+        'logo_icon_dark_upload'
+      );
 
       this.audit(req, 'success', 'update_config', 'Dark icon logo uploaded', {
         action: 'upload_logo_icon_dark',
@@ -748,7 +854,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Dark icon logo uploaded successfully',
-        url: logoIconDarkKey,
+        url: await this.uploadMiddleware.getFileUrl(logoIconDarkKey),
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -777,16 +883,11 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       const config = this.configManager.getPlatformConfig();
 
-      if (config.branding?.logoIconDark) {
-        await this.uploadMiddleware.deleteFile(config.branding.logoIconDark);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          logoIconDark: null,
-        },
-      });
+      await this.persistBrandingAssetRemoval(
+        { logoIconDark: null },
+        config.branding?.logoIconDark,
+        'logo_icon_dark_removal'
+      );
 
       this.audit(req, 'success', 'update_config', 'Dark icon logo removed', {
         action: 'remove_logo_icon_dark',
@@ -834,16 +935,12 @@ export class AdminSettingsController implements IAdminSettingsController {
         'favicons'
       );
 
-      if (config.branding?.favicon) {
-        await this.uploadMiddleware.deleteFile(config.branding.favicon);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          favicon: faviconKey,
-        },
-      });
+      await this.persistBrandingAssetReplacement(
+        { favicon: faviconKey },
+        config.branding?.favicon,
+        faviconKey,
+        'favicon_upload'
+      );
 
       this.audit(req, 'success', 'update_config', 'Uploaded favicon', {
         action: 'upload_favicon',
@@ -853,7 +950,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Favicon uploaded successfully',
-        url: faviconKey,
+        url: await this.uploadMiddleware.getFileUrl(faviconKey),
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -876,16 +973,11 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       const config = this.configManager.getPlatformConfig();
 
-      if (config.branding?.favicon) {
-        await this.uploadMiddleware.deleteFile(config.branding.favicon);
-      }
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          favicon: null,
-        },
-      });
+      await this.persistBrandingAssetRemoval(
+        { favicon: null },
+        config.branding?.favicon,
+        'favicon_removal'
+      );
 
       this.audit(req, 'success', 'update_config', 'Removed favicon', {
         action: 'remove_favicon',
@@ -1001,12 +1093,17 @@ export class AdminSettingsController implements IAdminSettingsController {
     redirectUrl: string
   ): Promise<void> => {
     const config = this.configManager.getPlatformConfig();
+    // CSRF and device fields describe the request, not persisted security.
+    // Preserve req.body for audit/device processing and sanitize a copy.
+    const securityData = { ...req.body };
+    delete securityData._csrf;
+    delete securityData._deviceInfo;
 
     const submittedCookieSecrets = Object.prototype.hasOwnProperty.call(
-      req.body?.secrets ?? {},
+      securityData.secrets ?? {},
       'cookie_secrets'
     );
-    const convertedData = convertSecurityFormData(req.body);
+    const convertedData = convertSecurityFormData(securityData);
 
     if (convertedData.secrets && !submittedCookieSecrets) {
       delete convertedData.secrets.cookie_secrets;
@@ -1298,7 +1395,11 @@ export class AdminSettingsController implements IAdminSettingsController {
           config: maskedConfig,
         });
       } else if (req.method === 'POST') {
-        const convertedData = convertFeaturesFormData(req.body);
+        // CSRF and device fields are request metadata, not feature settings.
+        const featureData = { ...req.body };
+        delete featureData._csrf;
+        delete featureData._deviceInfo;
+        const convertedData = convertFeaturesFormData(featureData);
 
         // Restore any masked sensitive fields to prevent saving masked values
         const currentConfig = this.configManager.getPlatformConfig();
@@ -1383,14 +1484,18 @@ export class AdminSettingsController implements IAdminSettingsController {
           deploymentUrl: config.deployment.url || '',
         });
       } else if (req.method === 'POST') {
+        const oidcFormData = { ...req.body };
+        delete oidcFormData._csrf;
+        delete oidcFormData._deviceInfo;
+
         this.logger.debug('OIDC form data received', {
           section: 'oidc',
-          hasData: !!req.body,
-          fieldCount: Object.keys(req.body).length,
+          hasData: !!oidcFormData,
+          fieldCount: Object.keys(oidcFormData).length,
           modifiedBy: this.sessionManager.getActiveUser(req)?.email,
         });
 
-        const convertedData = convertOidcFormData(req.body);
+        const convertedData = convertOidcFormData(oidcFormData);
 
         this.logger.debug('OIDC data converted', {
           section: 'oidc',
@@ -1434,7 +1539,7 @@ export class AdminSettingsController implements IAdminSettingsController {
             'update_config',
             'Updated OIDC configuration',
             {
-              fieldsModified: Object.keys(req.body).length,
+              fieldsModified: Object.keys(oidcFormData).length,
             }
           );
 
@@ -1829,25 +1934,25 @@ export class AdminSettingsController implements IAdminSettingsController {
       });
     } catch (error) {
       const duration = Date.now() - startTime;
-      const errorMessage = getErrorMessage(error);
+      const publicErrorMessage = 'Failed to send test email';
 
-      this.logger.error(error as Error, {
+      this.logger.error(publicErrorMessage, {
         context: 'test_email_failed',
         requestedBy,
         recipientEmail: req.body.email,
         ip: requestIp,
         userAgent,
         duration,
-        errorMessage,
+        errorType: error instanceof Error ? error.name : 'UnknownError',
       });
 
       this.audit(req, 'failed', 'test_email', 'Test email failed', {
-        error: errorMessage,
+        error: publicErrorMessage,
       });
 
       res.status(500).json({
         success: false,
-        error: getErrorMessage(error, 'Failed to send test email'),
+        error: publicErrorMessage,
       });
     }
   };
@@ -2048,6 +2153,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       });
 
       res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
       res.setHeader(
         'Content-Disposition',
         `attachment; filename="${filename}"`

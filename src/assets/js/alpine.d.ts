@@ -1,4 +1,4 @@
-declare module 'alpinejs' {
+declare module '@alpinejs/csp' {
   interface AlpineApi {
     start(): void;
     data(name: string, callback: (...args: unknown[]) => unknown): void;

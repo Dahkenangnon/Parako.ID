@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { isRegexSafe } from '../../utils/custom-identifier-validation.js';
+import {
+  CONFIGURABLE_SOCIAL_PROVIDER_IDS,
+  findInvalidSocialProviderCredential,
+} from '../social-providers.js';
 
 /**
  * Coerce string values to boolean for HTML form inputs
@@ -14,9 +18,38 @@ const coerceBooleanSchema = z
     return strVal === 'on' || strVal === 'true' || strVal === '1';
   });
 
+function optionalSocialProviderCredential(
+  providerName: string,
+  credentialName: 'client ID' | 'client secret'
+) {
+  return z
+    .string()
+    .trim()
+    .min(1, `${providerName} ${credentialName} cannot be empty`)
+    .optional();
+}
+
 function isSafeAssetLocation(value: string): boolean {
   if (value.startsWith('/')) {
-    return !value.startsWith('//') && !value.includes('\\');
+    const segments = value.slice(1).split('/');
+    return (
+      !value.startsWith('//') &&
+      !value.includes('\\') &&
+      segments.every(segment => segment && segment !== '.' && segment !== '..')
+    );
+  }
+
+  const storageKeySegments = value.split('/');
+  if (
+    storageKeySegments.length >= 2 &&
+    storageKeySegments.every(
+      segment =>
+        segment !== '.' &&
+        segment !== '..' &&
+        /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segment)
+    )
+  ) {
+    return true;
   }
 
   try {
@@ -26,6 +59,140 @@ function isSafeAssetLocation(value: string): boolean {
     return false;
   }
 }
+
+const applicationTitleSchema = z
+  .string()
+  .trim()
+  .min(1, 'Application title cannot be empty');
+const applicationDescriptionSchema = z
+  .string()
+  .trim()
+  .min(1, 'Application description cannot be empty');
+const localeIdentifierSchema = z
+  .string()
+  .trim()
+  .min(2, 'Locale identifier must be at least 2 characters')
+  .regex(
+    /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)*$/,
+    'Locale identifiers may contain only letters, numbers, hyphens, and underscores'
+  );
+const localeListSchema = z
+  .array(localeIdentifierSchema)
+  .min(1, 'At least one locale must be available')
+  .transform(locales => [...new Set(locales)]);
+
+function requireAvailableDefault(
+  locales: { default?: string; available?: string[] },
+  ctx: z.core.$RefinementCtx
+): void {
+  if (
+    locales.default !== undefined &&
+    locales.available !== undefined &&
+    !locales.available.includes(locales.default)
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['default'],
+      message: 'Default locale must be included in available locales',
+    });
+  }
+}
+
+export const ApplicationConfigSchema = z.object({
+  title: applicationTitleSchema,
+  description: applicationDescriptionSchema,
+  locales: z
+    .object({
+      default: localeIdentifierSchema.default('en'),
+      available: localeListSchema.default([
+        'en',
+        'fr',
+        'es',
+        'pt',
+        'de',
+        'it',
+        'ru',
+        'zh',
+        'ja',
+        'ko',
+      ]),
+    })
+    .superRefine(requireAvailableDefault),
+});
+
+export const ApplicationOverrideSchema = z.object({
+  title: applicationTitleSchema.optional(),
+  description: applicationDescriptionSchema.optional(),
+  locales: z
+    .object({
+      default: localeIdentifierSchema.optional(),
+      available: localeListSchema.optional(),
+    })
+    .superRefine(requireAvailableDefault)
+    .optional(),
+});
+
+const oidcLocaleListSchema = z
+  .array(localeIdentifierSchema)
+  .transform(locales => [...new Set(locales)]);
+const oidcDisplayValuesSchema = z
+  .array(z.enum(['page', 'popup', 'touch', 'wap']))
+  .transform(values => [...new Set(values)]);
+
+function oidcTokenTtlSchema(label: string) {
+  return z
+    .number()
+    .int(`${label} TTL must be a positive integer`)
+    .positive(`${label} TTL must be a positive integer`);
+}
+
+function optionalOidcDiscoveryUrlSchema(label: string) {
+  return z.union([
+    z.literal(''),
+    z
+      .url(`${label} must be a valid URL`)
+      .refine(url => /^https?:\/\//i.test(url), {
+        message: `${label} must use HTTP or HTTPS`,
+      }),
+  ]);
+}
+
+/**
+ * Tenant-editable OIDC metadata. This intentionally models only the tenant
+ * override allowlist so API and browser writes share the same validation
+ * without applying defaults for values the tenant did not override.
+ */
+export const OidcOverrideSchema = z.object({
+  discovery: z
+    .object({
+      claims_locales_supported: oidcLocaleListSchema.optional(),
+      display_values_supported: oidcDisplayValuesSchema.optional(),
+      op_policy_uri: optionalOidcDiscoveryUrlSchema('OP policy URI').optional(),
+      op_tos_uri: optionalOidcDiscoveryUrlSchema(
+        'OP terms of service URI'
+      ).optional(),
+      service_documentation: optionalOidcDiscoveryUrlSchema(
+        'Service documentation URI'
+      ).optional(),
+    })
+    .optional(),
+  token_ttl: z
+    .object({
+      access_token: oidcTokenTtlSchema('Access token').optional(),
+      authorization_code: oidcTokenTtlSchema('Authorization code').optional(),
+      backchannel_auth: oidcTokenTtlSchema(
+        'Backchannel authentication'
+      ).optional(),
+      client_credentials: oidcTokenTtlSchema('Client credentials').optional(),
+      device_code: oidcTokenTtlSchema('Device code').optional(),
+      grant: oidcTokenTtlSchema('Grant').optional(),
+      id_token: oidcTokenTtlSchema('ID token').optional(),
+      interaction: oidcTokenTtlSchema('Interaction').optional(),
+      refresh_token: oidcTokenTtlSchema('Refresh token').optional(),
+      session: oidcTokenTtlSchema('Session').optional(),
+    })
+    .optional(),
+});
 
 /**
  * Parako.ID Configuration Schema - Redesigned
@@ -78,25 +245,7 @@ export const AppConfigSchema = z.object({
   /**
    * Core application identity and metadata
    */
-  application: z.object({
-    title: z.string().min(1, 'Application title cannot be empty'),
-    description: z.string().min(1, 'Application description cannot be empty'),
-
-    /**
-     * Internationalization and localization settings
-     * Supported languages: en, fr, es, pt, de, it, ru, zh, ja, ko
-     */
-    locales: z.object({
-      default: z
-        .string()
-        .min(2, 'Default locale must be at least 2 characters')
-        .default('en'),
-      available: z
-        .array(z.string().min(2, 'Locale code must be at least 2 characters'))
-        .min(1, 'At least one locale must be available')
-        .default(['en', 'fr', 'es', 'pt', 'de', 'it', 'ru', 'zh', 'ja', 'ko']),
-    }),
-  }),
+  application: ApplicationConfigSchema,
 
   // BRANDING - UI/UX Appearance & Theming
   // Visual identity, themes, and social sharing
@@ -111,11 +260,10 @@ export const AppConfigSchema = z.object({
       .default('Your Organization'),
     logo: z
       .string()
-      .min(1, 'Logo path cannot be empty')
       .default('/images/logo-light.png')
       .refine(
-        isSafeAssetLocation,
-        'Logo must be a valid HTTP(S) URL or relative path (/images/logo.png)'
+        value => value === '' || isSafeAssetLocation(value),
+        'Logo must be a storage key, valid HTTP(S) URL, or relative path (/images/logo.png)'
       ),
 
     /**
@@ -2459,120 +2607,148 @@ export const AppConfigSchema = z.object({
     /**
      * Social authentication providers configuration
      */
-    social_providers: z.object({
-      enabled: z.array(z.string()).default([]),
-      available: z
-        .array(z.string())
-        .default(['google', 'github', 'microsoft', 'linkedin', 'facebook']),
+    social_providers: z
+      .object({
+        enabled: z.array(z.enum(CONFIGURABLE_SOCIAL_PROVIDER_IDS)).default([]),
+        available: z
+          .array(z.enum(CONFIGURABLE_SOCIAL_PROVIDER_IDS))
+          .default([...CONFIGURABLE_SOCIAL_PROVIDER_IDS]),
 
-      behavior: z.object({
-        existing_user_no_integration: z
-          .enum(['auto_link', 'require_manual_link'])
-          .default('require_manual_link'),
-        no_user_account: z
-          .enum(['allow_registration', 'require_existing_account'])
-          .default('allow_registration'),
-        missing_contact_info: z
-          .enum(['redirect_to_form', 'reject_login'])
-          .default('redirect_to_form'),
-        require_password_on_registration: z.boolean().default(false),
-        options: z.object({
-          allow_multiple_providers: z.boolean().default(true),
-          auto_verify_email: z.boolean().default(true),
-          show_helpful_errors: z.boolean().default(false),
-          max_providers_per_user: z.number().min(1).max(10).default(5),
+        behavior: z.object({
+          existing_user_no_integration: z
+            .enum(['auto_link', 'require_manual_link'])
+            .default('require_manual_link'),
+          no_user_account: z
+            .enum(['allow_registration', 'require_existing_account'])
+            .default('allow_registration'),
+          missing_contact_info: z
+            .enum(['redirect_to_form', 'reject_login'])
+            .default('redirect_to_form'),
+          require_password_on_registration: z.boolean().default(false),
+          options: z.object({
+            allow_multiple_providers: z.boolean().default(true),
+            auto_verify_email: z.boolean().default(true),
+            show_helpful_errors: z.boolean().default(false),
+            max_providers_per_user: z.number().min(1).max(10).default(5),
+          }),
         }),
+
+        google: z
+          .object({
+            client_id: optionalSocialProviderCredential('Google', 'client ID'),
+            client_secret: optionalSocialProviderCredential(
+              'Google',
+              'client secret'
+            ),
+            discovery_url: z
+              .url('Google discovery URL must be a valid URL')
+              .default(
+                'https://accounts.google.com/.well-known/openid-configuration'
+              ),
+            scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
+          })
+          .optional(),
+
+        github: z
+          .object({
+            client_id: optionalSocialProviderCredential('GitHub', 'client ID'),
+            client_secret: optionalSocialProviderCredential(
+              'GitHub',
+              'client secret'
+            ),
+            authorization_endpoint: z
+              .url('GitHub authorization endpoint must be a valid URL')
+              .default('https://github.com/login/oauth/authorize'),
+            token_endpoint: z
+              .url('GitHub token endpoint must be a valid URL')
+              .default('https://github.com/login/oauth/access_token'),
+            userinfo_endpoint: z
+              .url('GitHub userinfo endpoint must be a valid URL')
+              .default('https://api.github.com/user'),
+            scopes: z.array(z.string()).default(['user:email']),
+          })
+          .optional(),
+
+        microsoft: z
+          .object({
+            client_id: optionalSocialProviderCredential(
+              'Microsoft',
+              'client ID'
+            ),
+            client_secret: optionalSocialProviderCredential(
+              'Microsoft',
+              'client secret'
+            ),
+            discovery_url: z
+              .url('Microsoft discovery URL must be a valid URL')
+              .default(
+                'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration'
+              ),
+            scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
+          })
+          .optional(),
+
+        linkedin: z
+          .object({
+            client_id: optionalSocialProviderCredential(
+              'LinkedIn',
+              'client ID'
+            ),
+            client_secret: optionalSocialProviderCredential(
+              'LinkedIn',
+              'client secret'
+            ),
+            authorization_endpoint: z
+              .url('LinkedIn authorization endpoint must be a valid URL')
+              .default('https://www.linkedin.com/oauth/v2/authorization'),
+            token_endpoint: z
+              .url('LinkedIn token endpoint must be a valid URL')
+              .default('https://www.linkedin.com/oauth/v2/accessToken'),
+            userinfo_endpoint: z
+              .url('LinkedIn userinfo endpoint must be a valid URL')
+              .default('https://api.linkedin.com/v2/userinfo'),
+            scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
+          })
+          .optional(),
+
+        facebook: z
+          .object({
+            client_id: optionalSocialProviderCredential(
+              'Facebook',
+              'client ID'
+            ),
+            client_secret: optionalSocialProviderCredential(
+              'Facebook',
+              'client secret'
+            ),
+            authorization_endpoint: z
+              .url('Facebook authorization endpoint must be a valid URL')
+              .default('https://www.facebook.com/v19.0/dialog/oauth'),
+            token_endpoint: z
+              .url('Facebook token endpoint must be a valid URL')
+              .default('https://graph.facebook.com/v19.0/oauth/access_token'),
+            userinfo_endpoint: z
+              .url('Facebook userinfo endpoint must be a valid URL')
+              .default('https://graph.facebook.com/me'),
+            scopes: z.array(z.string()).default(['email', 'public_profile']),
+          })
+          .optional(),
+      })
+      .superRefine((socialProviders, ctx) => {
+        for (const provider of socialProviders.enabled) {
+          const invalidCredential = findInvalidSocialProviderCredential(
+            provider,
+            socialProviders[provider] ?? {}
+          );
+          if (invalidCredential) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [provider, invalidCredential],
+              message: `Enabled social provider ${provider} requires a usable ${invalidCredential}`,
+            });
+          }
+        }
       }),
-
-      google: z
-        .object({
-          client_id: z
-            .string()
-            .min(1, 'Google client ID cannot be empty')
-            .optional(),
-          client_secret: z
-            .string()
-            .min(1, 'Google client secret cannot be empty')
-            .optional(),
-          discovery_url: z
-            .url('Google discovery URL must be a valid URL')
-            .default(
-              'https://accounts.google.com/.well-known/openid-configuration'
-            ),
-          scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
-        })
-        .optional(),
-
-      github: z
-        .object({
-          client_id: z
-            .string()
-            .min(1, 'GitHub client ID cannot be empty')
-            .optional(),
-          client_secret: z
-            .string()
-            .min(1, 'GitHub client secret cannot be empty')
-            .optional(),
-          authorization_endpoint: z
-            .url('GitHub authorization endpoint must be a valid URL')
-            .default('https://github.com/login/oauth/authorize'),
-          token_endpoint: z
-            .url('GitHub token endpoint must be a valid URL')
-            .default('https://github.com/login/oauth/access_token'),
-          userinfo_endpoint: z
-            .url('GitHub userinfo endpoint must be a valid URL')
-            .default('https://api.github.com/user'),
-          scopes: z.array(z.string()).default(['user:email']),
-        })
-        .optional(),
-
-      microsoft: z
-        .object({
-          client_id: z.string().optional(),
-          client_secret: z.string().optional(),
-          discovery_url: z
-            .url('Microsoft discovery URL must be a valid URL')
-            .default(
-              'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration'
-            ),
-          scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
-        })
-        .optional(),
-
-      linkedin: z
-        .object({
-          client_id: z.string().optional(),
-          client_secret: z.string().optional(),
-          authorization_endpoint: z
-            .url('LinkedIn authorization endpoint must be a valid URL')
-            .default('https://www.linkedin.com/oauth/v2/authorization'),
-          token_endpoint: z
-            .url('LinkedIn token endpoint must be a valid URL')
-            .default('https://www.linkedin.com/oauth/v2/accessToken'),
-          userinfo_endpoint: z
-            .url('LinkedIn userinfo endpoint must be a valid URL')
-            .default('https://api.linkedin.com/v2/userinfo'),
-          scopes: z.array(z.string()).default(['openid', 'profile', 'email']),
-        })
-        .optional(),
-
-      facebook: z
-        .object({
-          client_id: z.string().optional(),
-          client_secret: z.string().optional(),
-          authorization_endpoint: z
-            .url('Facebook authorization endpoint must be a valid URL')
-            .default('https://www.facebook.com/v19.0/dialog/oauth'),
-          token_endpoint: z
-            .url('Facebook token endpoint must be a valid URL')
-            .default('https://graph.facebook.com/v19.0/oauth/access_token'),
-          userinfo_endpoint: z
-            .url('Facebook userinfo endpoint must be a valid URL')
-            .default('https://graph.facebook.com/me'),
-          scopes: z.array(z.string()).default(['email', 'public_profile']),
-        })
-        .optional(),
-    }),
 
     /**
      * Prometheus metrics endpoint configuration.
@@ -2778,56 +2954,19 @@ export const AppConfigSchema = z.object({
      * Token time-to-live configuration
      */
     token_ttl: z.object({
-      access_token: z
-        .number()
-        .int()
-        .positive('Access token TTL must be a positive integer')
-        .default(3600),
-      authorization_code: z
-        .number()
-        .int()
-        .positive('Authorization code TTL must be a positive integer')
-        .default(600),
-      backchannel_auth: z
-        .number()
-        .int()
-        .positive('Backchannel authentication TTL must be a positive integer')
-        .default(600),
-      client_credentials: z
-        .number()
-        .int()
-        .positive('Client credentials TTL must be a positive integer')
-        .default(3600),
-      device_code: z
-        .number()
-        .int()
-        .positive('Device code TTL must be a positive integer')
-        .default(600),
-      grant: z
-        .number()
-        .int()
-        .positive('Grant TTL must be a positive integer')
-        .default(3600),
-      id_token: z
-        .number()
-        .int()
-        .positive('ID token TTL must be a positive integer')
-        .default(3600),
-      interaction: z
-        .number()
-        .int()
-        .positive('Interaction TTL must be a positive integer')
-        .default(600),
-      refresh_token: z
-        .number()
-        .int()
-        .positive('Refresh token TTL must be a positive integer')
-        .default(86400),
-      session: z
-        .number()
-        .int()
-        .positive('Session TTL must be a positive integer')
-        .default(86400),
+      access_token: oidcTokenTtlSchema('Access token').default(3600),
+      authorization_code: oidcTokenTtlSchema('Authorization code').default(600),
+      backchannel_auth: oidcTokenTtlSchema(
+        'Backchannel authentication'
+      ).default(600),
+      client_credentials:
+        oidcTokenTtlSchema('Client credentials').default(3600),
+      device_code: oidcTokenTtlSchema('Device code').default(600),
+      grant: oidcTokenTtlSchema('Grant').default(3600),
+      id_token: oidcTokenTtlSchema('ID token').default(3600),
+      interaction: oidcTokenTtlSchema('Interaction').default(600),
+      refresh_token: oidcTokenTtlSchema('Refresh token').default(86400),
+      session: oidcTokenTtlSchema('Session').default(86400),
     }),
 
     /**
@@ -2835,31 +2974,21 @@ export const AppConfigSchema = z.object({
      */
     discovery: z
       .object({
-        claims_locales_supported: z
-          .array(z.string())
+        claims_locales_supported: oidcLocaleListSchema
           .default(['en', 'fr', 'es', 'pt', 'de', 'it', 'ru', 'zh', 'ja', 'ko'])
           .optional(),
-        display_values_supported: z
-          .array(z.string())
-          .default(['en'])
+        display_values_supported: oidcDisplayValuesSchema
+          .default(['page'])
           .optional(),
-        op_policy_uri: z
-          .union([z.literal(''), z.url('OP policy URI must be a valid URL')])
-          .optional(),
-        op_tos_uri: z
-          .union([
-            z.literal(''),
-            z.url('OP terms of service URI must be a valid URL'),
-          ])
-          .optional(),
-        service_documentation: z
-          .union([
-            z.literal(''),
-            z.url('Service documentation URI must be a valid URL'),
-          ])
-          .optional(),
-        ui_locales_supported: z
-          .array(z.string())
+        op_policy_uri:
+          optionalOidcDiscoveryUrlSchema('OP policy URI').optional(),
+        op_tos_uri: optionalOidcDiscoveryUrlSchema(
+          'OP terms of service URI'
+        ).optional(),
+        service_documentation: optionalOidcDiscoveryUrlSchema(
+          'Service documentation URI'
+        ).optional(),
+        ui_locales_supported: oidcLocaleListSchema
           .default(['en', 'fr', 'es', 'pt', 'de', 'it', 'ru', 'zh', 'ja', 'ko'])
           .optional(),
       })

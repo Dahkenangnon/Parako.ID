@@ -196,6 +196,12 @@
     const dialogId = ++dialogIdSequence;
     const titleId = `dialog-title-${dialogId}`;
     const messageId = `dialog-message-${dialogId}`;
+    const activeElement = document.activeElement;
+    const previouslyFocusedElement =
+      activeElement &&
+      typeof (activeElement as HTMLElement).focus === 'function'
+        ? (activeElement as HTMLElement)
+        : null;
 
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
@@ -281,6 +287,7 @@
       const cleanup = (result: boolean) => {
         document.removeEventListener('keydown', handleKeydown);
         backdrop.remove();
+        previouslyFocusedElement?.focus();
         resolve(result);
       };
 

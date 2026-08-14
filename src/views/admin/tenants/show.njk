@@ -67,12 +67,12 @@
                     </div>
 
                     <!-- Quick Actions -->
+                    {% if platformRole != 'platform_viewer' and tenant.slug != '_platforms' %}
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap gap-2">
                         <a href="/admin/tenants/{{ tenant.slug }}/edit" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
                             <i data-lucide="edit" class="h-4 w-4 mr-2"></i>
                             Edit
                         </a>
-                        {% if tenant.slug != '_platforms' %}
                             {% if tenant.status == 'active' %}
                                 <form method="POST" action="/admin/tenants/{{ tenant.slug }}/status" class="inline">
                                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
@@ -109,8 +109,8 @@
                                     </button>
                                 </form>
                             {% endif %}
-                        {% endif %}
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

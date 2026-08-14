@@ -86,20 +86,18 @@
                 </div>
 
                 <div>
-                    <label for="discovery_ui_locales" class="block text-sm font-medium text-foreground mb-2">UI Locales Supported</label>
-                    <input type="text" id="discovery_ui_locales" name="discovery[ui_locales_supported]"
-                           value="{{ discovery.ui_locales_supported | displayList }}"
-                           placeholder="en, fr, de"
-                           class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                    <p class="mt-1 text-xs text-muted-foreground">Comma-separated list of supported UI locales.
-                        {%- if pfDiscovery.ui_locales_supported %} System default: {{ pfDiscovery.ui_locales_supported | displayList }}{% endif %}</p>
+                    <span class="block text-sm font-medium text-foreground mb-2">UI Locales Supported</span>
+                    <div class="w-full px-3 py-2 bg-muted/50 border border-border text-foreground">
+                        {{ app.locales.available | displayList }}
+                    </div>
+                    <p class="mt-1 text-xs text-muted-foreground">Managed in <a href="/admin/configuration/application" class="text-primary hover:underline">Application Configuration</a> so discovery advertises only locales the UI supports.</p>
                 </div>
 
                 <div>
                     <label for="discovery_display_values" class="block text-sm font-medium text-foreground mb-2">Display Values Supported</label>
                     <input type="text" id="discovery_display_values" name="discovery[display_values_supported]"
                            value="{{ discovery.display_values_supported | displayList }}"
-                           placeholder="page, popup"
+                           placeholder="page, popup, touch, wap"
                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
                     <p class="mt-1 text-xs text-muted-foreground">Comma-separated list (e.g., page, popup, touch, wap).
                         {%- if pfDiscovery.display_values_supported %} System default: {{ pfDiscovery.display_values_supported | displayList }}{% endif %}</p>
@@ -112,7 +110,7 @@
                            placeholder="https://docs.example.com"
                            pattern="https?://.*"
                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                    <p class="mt-1 text-xs text-muted-foreground">URL to your service documentation. Must use HTTPS.
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your service documentation. Must use HTTP or HTTPS.
                         {%- if pfDiscovery.service_documentation %} System default: {{ pfDiscovery.service_documentation }}{% endif %}</p>
                 </div>
 
@@ -123,7 +121,7 @@
                            placeholder="https://example.com/privacy"
                            pattern="https?://.*"
                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                    <p class="mt-1 text-xs text-muted-foreground">URL to your privacy policy. Must use HTTPS.
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your privacy policy. Must use HTTP or HTTPS.
                         {%- if pfDiscovery.op_policy_uri %} System default: {{ pfDiscovery.op_policy_uri }}{% endif %}</p>
                 </div>
 
@@ -134,7 +132,7 @@
                            placeholder="https://example.com/terms"
                            pattern="https?://.*"
                            class="w-full px-3 py-2 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-                    <p class="mt-1 text-xs text-muted-foreground">URL to your terms of service. Must use HTTPS.
+                    <p class="mt-1 text-xs text-muted-foreground">URL to your terms of service. Must use HTTP or HTTPS.
                         {%- if pfDiscovery.op_tos_uri %} System default: {{ pfDiscovery.op_tos_uri }}{% endif %}</p>
                 </div>
             </div>
@@ -254,7 +252,7 @@
         <div>
             {% if hasOverride %}
             <form method="POST" action="/admin/configuration/{{ section }}/reset"
-                  onsubmit="return confirm('Are you sure you want to reset OIDC configuration to defaults? This cannot be undone.')">
+                  data-confirm-message="Are you sure you want to reset OIDC configuration to defaults? This cannot be undone.">
                 <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                 <button type="submit"
                         class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
@@ -282,6 +280,7 @@
 
 {% block scripts %}
 {{ super() }}
+<script src="{{ asset('js/admin/configuration/common.js') }}"></script>
 <script src="{{ asset('js/admin/configuration/validation.js') }}"></script>
 <script src="{{ asset('js/admin/configuration/oidc-ttl.js') }}" defer></script>
 {% endblock %}

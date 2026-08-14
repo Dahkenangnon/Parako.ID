@@ -52,8 +52,15 @@ function indexedStringFilter(value: unknown): unknown {
     return undefined;
   }
 
-  const literal = regexLiteral((value as Record<string, unknown>).$regex);
-  return literal === undefined ? undefined : { contains: literal };
+  const pattern = (value as Record<string, unknown>).$regex;
+  const source = pattern instanceof RegExp ? pattern.source : pattern;
+  const anchoredPrefix = typeof source === 'string' && source.startsWith('^');
+  const literal = regexLiteral(pattern);
+  if (literal === undefined) return undefined;
+
+  return anchoredPrefix
+    ? { startsWith: literal.slice(1) }
+    : { contains: literal };
 }
 
 function indexedSortColumn(sortBy: string): string {

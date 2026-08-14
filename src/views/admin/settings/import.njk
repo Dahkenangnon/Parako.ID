@@ -45,7 +45,7 @@
                     />
                     <button
                         type="button"
-                        onclick="loadFromFile()"
+                        data-config-import-load
                         class="inline-flex items-center justify-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium whitespace-nowrap w-full sm:w-auto"
                     >
                         <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
@@ -81,7 +81,7 @@
             <div class="flex flex-col sm:flex-row gap-3">
                 <button
                     type="button"
-                    onclick="previewImport()"
+                    data-config-import-preview
                     class="inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium w-full sm:w-auto"
                 >
                     <i data-lucide="eye" class="h-4 w-4 mr-2"></i>
@@ -89,7 +89,7 @@
                 </button>
                 <button
                     type="button"
-                    onclick="clearForm()"
+                    data-config-import-clear
                     class="inline-flex items-center justify-center px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium w-full sm:w-auto"
                 >
                     <i data-lucide="x" class="h-4 w-4 mr-2"></i>
@@ -123,7 +123,7 @@
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 justify-end bg-card border border-border p-4">
             <button
                 type="button"
-                onclick="hidePreview()"
+                data-config-import-cancel
                 class="inline-flex items-center justify-center px-4 py-2 bg-muted hover:bg-muted/80 text-foreground text-sm font-medium w-full sm:w-auto"
             >
                 <i data-lucide="x" class="h-4 w-4 mr-2"></i>
@@ -132,7 +132,6 @@
             <button
                 type="button"
                 id="applyButton"
-                onclick="applyConfigImport()"
                 class="inline-flex items-center justify-center px-6 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-medium w-full sm:w-auto"
             >
                 <i data-lucide="check" class="h-4 w-4 mr-2"></i>

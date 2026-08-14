@@ -7,6 +7,16 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { ensureEncrypted } from '../utils/encryption.js';
 import { getNestedValue, setNestedValue } from '../utils/nested-value.js';
+import {
+  findInvalidSocialProviderCredential,
+  isConfigurableSocialProvider,
+} from '../config/social-providers.js';
+import {
+  ApplicationConfigSchema,
+  ApplicationOverrideSchema,
+  OidcOverrideSchema,
+} from '../config/schemas/schema.js';
+import { mergeConfig } from '../utils/config-merge.js';
 
 /**
  * Exhaustive set of dot-paths that tenants may override.
@@ -167,7 +177,6 @@ export const ALLOWED_TENANT_FIELDS = new Set<string>([
   'features.social_providers.facebook.client_secret',
 
   'oidc.discovery.claims_locales_supported',
-  'oidc.discovery.ui_locales_supported',
   'oidc.discovery.display_values_supported',
   'oidc.discovery.service_documentation',
   'oidc.discovery.op_policy_uri',
@@ -409,11 +418,18 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
       );
     }
 
+    const applicationNormalized = this.normalizeApplicationOverride(
+      sanitized,
+      platformConfig ?? null
+    );
+    const normalized = this.normalizeOidcOverride(applicationNormalized);
+    this.validateSocialProviderSelection(normalized, platformConfig ?? null);
+
     // 3. Floor/ceiling constraint enforcement
     // Platform config is passed explicitly by the caller (controller) to avoid
     // a circular DI dependency: ConfigManager → this service → ConfigManager.
     const { result: constrained, violations } = this.enforceConstraints(
-      sanitized,
+      normalized,
       platformConfig ?? null
     );
     if (violations.length > 0) {
@@ -455,6 +471,109 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
         reason: reason ?? 'Tenant configuration update',
       });
     });
+  }
+
+  private normalizeApplicationOverride(
+    overrides: Record<string, any>,
+    platformConfig: Record<string, any> | null
+  ): Record<string, any> {
+    const application = overrides.application;
+    if (application === undefined) return overrides;
+
+    const overrideResult = ApplicationOverrideSchema.safeParse(application);
+    if (!overrideResult.success) {
+      throw new Error(
+        overrideResult.error.issues[0]?.message ??
+          'Invalid application configuration'
+      );
+    }
+
+    const platformApplication = platformConfig?.application;
+    if (platformApplication) {
+      const effectiveResult = ApplicationConfigSchema.safeParse(
+        mergeConfig(platformApplication, overrideResult.data)
+      );
+      if (!effectiveResult.success) {
+        throw new Error(
+          effectiveResult.error.issues[0]?.message ??
+            'Invalid application configuration'
+        );
+      }
+    }
+
+    return {
+      ...overrides,
+      application: overrideResult.data,
+    };
+  }
+
+  private normalizeOidcOverride(
+    overrides: Record<string, any>
+  ): Record<string, any> {
+    const oidc = overrides.oidc;
+    if (oidc === undefined) return overrides;
+
+    const result = OidcOverrideSchema.safeParse(oidc);
+    if (!result.success) {
+      throw new Error(
+        result.error.issues[0]?.message ?? 'Invalid OIDC configuration'
+      );
+    }
+
+    return {
+      ...overrides,
+      oidc: result.data,
+    };
+  }
+
+  private validateSocialProviderSelection(
+    overrides: Record<string, any>,
+    platformConfig: Record<string, any> | null
+  ): void {
+    const enabled = getNestedValue(
+      overrides,
+      'features.social_providers.enabled'
+    );
+    if (enabled === undefined || enabled === null) return;
+    if (!Array.isArray(enabled)) {
+      throw new Error('Social providers must be an array');
+    }
+
+    for (const provider of enabled) {
+      if (!isConfigurableSocialProvider(provider)) {
+        throw new Error(`Unsupported social provider: ${String(provider)}`);
+      }
+
+      const tenantCredentials = getNestedValue(
+        overrides,
+        `features.social_providers.${provider}`
+      ) as Record<string, unknown> | undefined;
+      const hasTenantCredentials =
+        tenantCredentials !== undefined &&
+        (tenantCredentials.client_id !== undefined ||
+          tenantCredentials.client_secret !== undefined);
+      if (hasTenantCredentials) {
+        if (findInvalidSocialProviderCredential(provider, tenantCredentials)) {
+          throw new Error(
+            `Tenant social provider ${provider} requires both client_id and client_secret`
+          );
+        }
+        continue;
+      }
+
+      if (!platformConfig) continue;
+      const platformCredentials = getNestedValue(
+        platformConfig,
+        `features.social_providers.${provider}`
+      ) as Record<string, unknown> | undefined;
+      if (
+        findInvalidSocialProviderCredential(provider, platformCredentials ?? {})
+      ) {
+        throw new Error(
+          `Enabled social provider ${provider} has no usable platform credentials`
+        );
+      }
+    }
   }
 
   async deleteSection(

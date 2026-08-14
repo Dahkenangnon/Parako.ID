@@ -13,6 +13,7 @@ import {
   type SocialLoginResult,
 } from '../di/interfaces/base-social-login.interface.js';
 import { TYPES } from '../di/types.js';
+import { findInvalidSocialProviderCredential } from '../config/social-providers.js';
 import {
   type SocialProvider,
   type ISocialIntegration,
@@ -136,9 +137,8 @@ export class SocialLoginManager implements ISocialLoginManager {
         client_id?: string;
         client_secret?: string;
       };
-      return [providerConfig.client_id, providerConfig.client_secret].every(
-        credential =>
-          typeof credential === 'string' && credential.trim().length > 0
+      return (
+        findInvalidSocialProviderCredential(provider, providerConfig) === null
       );
     } catch (error) {
       this.logger.warn(

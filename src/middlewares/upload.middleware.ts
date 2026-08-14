@@ -330,8 +330,15 @@ export class UploadMiddleware implements IUploadMiddleware {
   async deleteFile(key: string): Promise<void> {
     if (!key) return;
 
-    // Don't try to delete external URLs
-    if (isValidHttpUrl(key)) return;
+    // External URLs and bundled assets are configuration references, not
+    // objects owned by the configured storage provider.
+    if (
+      isValidHttpUrl(key) ||
+      key.startsWith('/images/') ||
+      key.startsWith('/favicon')
+    ) {
+      return;
+    }
 
     // Strip legacy /uploads/ prefix if present
     const storageKey = stripLegacyPrefix(key);

@@ -12,6 +12,7 @@ import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.inter
 import { TYPES } from '../di/types.js';
 import { resolveBrandingUrl } from '../utils/views.js';
 import { getDefaultFullConfig } from '../config/constants.js';
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../config/social-providers.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -871,11 +872,7 @@ export class UIMiddleware implements IUIMiddleware {
       res.locals.socialProviders = {
         enabled: effectiveEnabled,
         available: tenantConfig.features.social_providers.available || [
-          'google',
-          'github',
-          'microsoft',
-          'linkedin',
-          'facebook',
+          ...CONFIGURABLE_SOCIAL_PROVIDER_IDS,
         ],
       };
 

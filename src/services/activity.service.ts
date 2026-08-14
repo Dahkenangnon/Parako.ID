@@ -769,16 +769,16 @@ export class ActivityService implements IActivityService {
     }
   }
 
-  public async getUserActivityTypes(username: string): Promise<string[]> {
+  public async getUserActivityTypes(userId: string): Promise<string[]> {
     try {
       return await this.activityRepo.getDistinctTypes({
-        'actor.username': username,
-      } as any);
+        related_user_id: userId,
+      });
     } catch (error) {
       const err = error as Error;
       this.logger.error(err, {
         context: 'error_getting_user_activity_types',
-        username,
+        userId,
         error: err.message,
       });
       return [];
@@ -817,6 +817,7 @@ export class ActivityService implements IActivityService {
       const uniqueUsers = 0;
 
       return {
+        available: true,
         totalActivities,
         uniqueUsers,
         todayCount,
@@ -829,6 +830,7 @@ export class ActivityService implements IActivityService {
         context: 'error_getting_activity_stats',
       });
       return {
+        available: false,
         totalActivities: 0,
         uniqueUsers: 0,
         todayCount: 0,

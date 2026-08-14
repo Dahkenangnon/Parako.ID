@@ -54,17 +54,17 @@
 
         <!-- Actions -->
         <div class="flex flex-wrap gap-2 pt-2 border-t border-border">
-            <button type="button" onclick="checkHealth()" class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium">
+            <button type="button" data-settings-action="check-health" class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium">
                 <i data-lucide="activity" class="h-4 w-4 mr-2"></i>
                 Health Check
             </button>
             {% if versionHistory and (versionHistory | length) > 1 %}
-            <button type="button" onclick="toggleVersionHistory()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+            <button type="button" data-settings-action="toggle-history" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
                 <i data-lucide="history" class="h-4 w-4 mr-2"></i>
                 <span id="historyToggleText">History</span>
             </button>
             {% endif %}
-            <button type="button" onclick="exportConfig()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+            <button type="button" data-settings-action="export" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
                 <i data-lucide="download" class="h-4 w-4 mr-2"></i>
                 Export
             </button>
@@ -72,7 +72,7 @@
                 <i data-lucide="upload" class="h-4 w-4 mr-2"></i>
                 Import
             </a>
-            <button type="button" onclick="reloadConfig()" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
+            <button type="button" data-settings-action="reload" class="inline-flex items-center px-4 py-2 bg-background hover:border-primary text-foreground text-sm font-medium border border-border">
                 <i data-lucide="refresh-cw" class="h-4 w-4 mr-2"></i>
                 Reload
             </button>
@@ -90,7 +90,7 @@
                     Checking...
                 </span>
             </div>
-            <button type="button" onclick="hideHealthCheck()" class="p-1 text-muted-foreground hover:text-foreground">
+            <button type="button" data-settings-action="hide-health" aria-label="Hide health check" class="p-1 text-muted-foreground hover:text-foreground">
                 <i data-lucide="x" class="h-4 w-4"></i>
             </button>
         </div>
@@ -109,7 +109,7 @@
                 <i data-lucide="history" class="h-4 w-4 text-primary"></i>
                 <h3 class="text-sm font-semibold text-foreground">Version History</h3>
             </div>
-            <button type="button" onclick="toggleVersionHistory()" class="p-1 text-muted-foreground hover:text-foreground">
+            <button type="button" data-settings-action="toggle-history" aria-label="Hide version history" class="p-1 text-muted-foreground hover:text-foreground">
                 <i data-lucide="x" class="h-4 w-4"></i>
             </button>
         </div>
@@ -135,7 +135,7 @@
                     </div>
                     <div class="flex-shrink-0">
                         {% if not version.is_active %}
-                        <button type="button" onclick="confirmRollback('{{ version._id }}', '{{ version.version }}')" class="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium">
+                        <button type="button" data-settings-action="rollback" data-settings-version-id="{{ version._id }}" data-settings-version-number="{{ version.version }}" class="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium">
                             <i data-lucide="rotate-ccw" class="h-3 w-3 mr-1.5"></i>
                             Rollback
                         </button>

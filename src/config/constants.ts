@@ -1,4 +1,5 @@
 import { type AppConfig } from './schemas/schema.js';
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from './social-providers.js';
 import { generateSecureRandomString } from '../utils/misc.js';
 import { FileSystemUtils } from '../utils/filesystem.js';
 const pkgJson = await new FileSystemUtils().getPackageJson();
@@ -611,7 +612,7 @@ function _buildDefaultFullConfig(): AppConfig {
       },
       social_providers: {
         enabled: [],
-        available: ['google', 'github', 'microsoft', 'linkedin', 'facebook'],
+        available: [...CONFIGURABLE_SOCIAL_PROVIDER_IDS],
         behavior: {
           existing_user_no_integration: 'require_manual_link',
           no_user_account: 'allow_registration',
@@ -625,30 +626,22 @@ function _buildDefaultFullConfig(): AppConfig {
           },
         },
         google: {
-          client_id: 'your-google-client-id',
-          client_secret: 'your-google-client-secret',
           discovery_url:
             'https://accounts.google.com/.well-known/openid-configuration',
           scopes: ['openid', 'profile', 'email'],
         },
         github: {
-          client_id: 'your-github-client-id',
-          client_secret: 'your-github-client-secret',
           authorization_endpoint: 'https://github.com/login/oauth/authorize',
           token_endpoint: 'https://github.com/login/oauth/access_token',
           userinfo_endpoint: 'https://api.github.com/user',
           scopes: ['user:email'],
         },
         microsoft: {
-          client_id: 'your-microsoft-client-id',
-          client_secret: 'your-microsoft-client-secret',
           discovery_url:
             'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
           scopes: ['openid', 'profile', 'email'],
         },
         linkedin: {
-          client_id: 'your-linkedin-client-id',
-          client_secret: 'your-linkedin-client-secret',
           authorization_endpoint:
             'https://www.linkedin.com/oauth/v2/authorization',
           token_endpoint: 'https://www.linkedin.com/oauth/v2/accessToken',
@@ -656,8 +649,6 @@ function _buildDefaultFullConfig(): AppConfig {
           scopes: ['openid', 'profile', 'email'],
         },
         facebook: {
-          client_id: 'your-facebook-client-id',
-          client_secret: 'your-facebook-client-secret',
           authorization_endpoint: 'https://www.facebook.com/v19.0/dialog/oauth',
           token_endpoint: 'https://graph.facebook.com/v19.0/oauth/access_token',
           userinfo_endpoint: 'https://graph.facebook.com/me',
@@ -752,18 +743,7 @@ function _buildDefaultFullConfig(): AppConfig {
           'ja',
           'ko',
         ],
-        display_values_supported: [
-          'en',
-          'fr',
-          'es',
-          'pt',
-          'de',
-          'it',
-          'ru',
-          'zh',
-          'ja',
-          'ko',
-        ],
+        display_values_supported: ['page'],
         ui_locales_supported: [
           'en',
           'fr',

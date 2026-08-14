@@ -1,4 +1,5 @@
 import { Container } from 'inversify';
+import { Redis } from 'ioredis';
 
 import { configModule } from './modules/config.module.js';
 import { databaseModule } from './modules/database.module.js';
@@ -26,6 +27,7 @@ import {
   type OptionalDepsHandles,
   type StorageProviderName,
 } from './loaders/optional-deps.js';
+import type { IOpsRedisClient } from '../services/ops-social-callback.service.js';
 
 const resolveStorageAdapter = (
   provider: IConfigProvider<BootstrapConfig>
@@ -40,6 +42,24 @@ const resolveStorageProvider = (
     'local'
   );
   return raw === 's3' ? 's3' : 'local';
+};
+
+const bindOpsRedisClient = (
+  container: Container,
+  redisConfig: BootstrapConfig['redis']
+): void => {
+  if (!redisConfig?.host.trim()) return;
+
+  const client = new Redis({
+    host: redisConfig.host.trim(),
+    port: redisConfig.port,
+    password: redisConfig.password || undefined,
+    db: redisConfig.database,
+    lazyConnect: true,
+    maxRetriesPerRequest: 2,
+  });
+
+  container.bind<IOpsRedisClient>(TYPES.OpsRedisClient).toConstantValue(client);
 };
 
 /**
@@ -59,6 +79,8 @@ export async function buildContainer(): Promise<Container> {
   const provider = container.get<IConfigProvider<BootstrapConfig>>(
     TYPES.BootstrapConfigProvider
   );
+  const bootstrapConfig = await provider.loadConfiguration();
+  bindOpsRedisClient(container, bootstrapConfig.redis);
   const adapter = resolveStorageAdapter(provider);
   const storageProvider = resolveStorageProvider(provider);
   const [bundle, optionalDeps] = await Promise.all([

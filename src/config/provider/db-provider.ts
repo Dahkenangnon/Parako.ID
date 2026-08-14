@@ -12,11 +12,18 @@ import {
   stripBootstrapFields,
 } from '../validation/persistence-validator.js';
 import { applyComputedDefaults } from '../computed-fields.js';
-import { mergeConfig } from '../../utils/config-merge.js';
+import { mergeConfig, type DeepPartial } from '../../utils/config-merge.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
 } from '../../multi-tenancy/tenant-context.js';
+import { ConfigurationVersionConflictError } from '../../errors/configuration-version-conflict.error.js';
+
+type DatabaseConfigChangeSubscriber = (
+  config: AppConfig | null,
+  error?: Error,
+  source?: 'local-update'
+) => void;
 
 /**
  * Database-based configuration provider
@@ -33,8 +40,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * Subscribers receive config updates (or null + error on reload failure)
    * This allows subscribers to handle both success and error cases
    */
-  private subscribers: Set<(config: AppConfig | null, error?: Error) => void> =
-    new Set();
+  private subscribers: Set<DatabaseConfigChangeSubscriber> = new Set();
   private cacheCheckInterval: NodeJS.Timeout | null = null;
   private readonly CACHE_CHECK_INTERVAL = 30000; // 30 seconds
   private changeStream: any = null; // MongoDB change stream
@@ -380,14 +386,14 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * - config: The new configuration, or null if reload failed
    * - error: Error object if reload failed, undefined on success
    */
-  subscribe(fn: (config: AppConfig | null, error?: Error) => void): void {
+  subscribe(fn: DatabaseConfigChangeSubscriber): void {
     this.subscribers.add(fn);
   }
 
   /**
    * Unsubscribe from configuration changes
    */
-  unsubscribe(fn: (config: AppConfig | null, error?: Error) => void): void {
+  unsubscribe(fn: DatabaseConfigChangeSubscriber): void {
     this.subscribers.delete(fn);
   }
 
@@ -396,10 +402,18 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * @param config - The new configuration, or null if reload failed
    * @param error - Error object if reload failed
    */
-  private notifySubscribers(config: AppConfig | null, error?: Error): void {
+  private notifySubscribers(
+    config: AppConfig | null,
+    error?: Error,
+    source?: 'local-update'
+  ): void {
     this.subscribers.forEach(fn => {
       try {
-        fn(config, error);
+        if (source) {
+          fn(config, error, source);
+        } else {
+          fn(config, error);
+        }
       } catch (subscriberError) {
         console.error(
           'Error in config subscriber:',
@@ -480,59 +494,96 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * Update configuration in database
    * Automatically validates, strips bootstrap fields, and encrypts sensitive fields before saving
    */
-  async updateConfig(partial: Partial<AppConfig>): Promise<AppConfig> {
+  async updateConfig(
+    partial: DeepPartial<AppConfig>,
+    expectedVersion?: number
+  ): Promise<AppConfig> {
     try {
-      const currentConfig = await this.loadConfiguration();
+      const maxAttempts = expectedVersion === undefined ? 3 : 1;
 
-      const updatedConfig = mergeConfig(currentConfig, partial);
+      let attempt = 0;
+      while (true) {
+        attempt += 1;
+        const effectiveVersion =
+          expectedVersion ??
+          (await this.settingsService.getMainConfiguration())?._version;
 
-      // Bootstrap fields (deployment.environment, deployment.server.port, storage.adapter + storage.mongodb|sqlite|postgresql.*)
-      // must ONLY come from .env and should NEVER be persisted to database
-      const validation = validateNonBootstrapConfig(updatedConfig);
-      if (!validation.isValid) {
-        console.warn(
-          'Attempted to persist bootstrap fields to database - these will be stripped',
-          {
-            bootstrapFields: validation.bootstrapFieldsFound,
-            message:
-              'Bootstrap fields are infrastructure settings that must be set in .env file only',
-            action: 'Fields will be automatically removed before saving',
+        // A write must merge against persisted state, not a process-local cache
+        // that may be waiting for cross-process invalidation.
+        this.clearCache();
+        const currentConfig = await this.loadConfiguration();
+        const updatedConfig = mergeConfig(currentConfig, partial);
+
+        // Bootstrap fields (deployment.environment, deployment.server.port, storage.adapter + storage.mongodb|sqlite|postgresql.*)
+        // must ONLY come from .env and should NEVER be persisted to database
+        const validation = validateNonBootstrapConfig(updatedConfig);
+        if (!validation.isValid) {
+          console.warn(
+            'Attempted to persist bootstrap fields to database - these will be stripped',
+            {
+              bootstrapFields: validation.bootstrapFieldsFound,
+              message:
+                'Bootstrap fields are infrastructure settings that must be set in .env file only',
+              action: 'Fields will be automatically removed before saving',
+            }
+          );
+        }
+
+        const sanitizedConfig = stripBootstrapFields(updatedConfig);
+
+        // This auto-generates missing secrets and recalculates all derived fields
+        // (OIDC issuer, integration URLs, MFA settings, etc.) from base configuration values
+        // ensuring consistency across the application even when base values change
+        const configWithDefaults = applyComputedDefaults(sanitizedConfig);
+        const validatedConfig = AppConfigSchema.parse(configWithDefaults);
+
+        try {
+          // saveMainConfiguration() encrypts sensitive fields. Passing the
+          // version makes the full-document replacement safe across processes.
+          await this.settingsService.saveMainConfigurationWithTransaction(
+            validatedConfig,
+            undefined,
+            undefined,
+            effectiveVersion
+          );
+        } catch (error) {
+          const shouldRetry =
+            expectedVersion === undefined &&
+            error instanceof ConfigurationVersionConflictError &&
+            attempt < maxAttempts;
+          if (shouldRetry) {
+            console.warn(
+              'Configuration changed during partial update; retrying with the latest version',
+              { attempt, maxAttempts }
+            );
+            continue;
           }
-        );
+          throw error;
+        }
+
+        this.clearCache();
+        const reloadedConfig = await this.loadConfiguration();
+
+        // ConfigManager already applies the value returned by updateConfig().
+        // Mark this provider notification so it is not mistaken for an
+        // independent change-stream or polling event by the same process.
+        this.notifySubscribers(reloadedConfig, undefined, 'local-update');
+
+        console.info('Configuration updated in database', {
+          timestamp: new Date().toISOString(),
+          bootstrapFieldsStripped: validation.bootstrapFieldsFound.length,
+        });
+
+        return reloadedConfig;
       }
-
-      const sanitizedConfig = stripBootstrapFields(updatedConfig);
-
-      // This auto-generates missing secrets and recalculates all derived fields
-      // (OIDC issuer, integration URLs, MFA settings, etc.) from base configuration values
-      // ensuring consistency across the application even when base values change
-      const configWithDefaults = applyComputedDefaults(sanitizedConfig);
-
-      const validatedConfig = AppConfigSchema.parse(configWithDefaults);
-
-      // NOTE: saveMainConfiguration() automatically encrypts sensitive fields
-      // So we do NOT encrypt here to avoid double encryption
-      await this.settingsService.saveMainConfigurationWithTransaction(
-        validatedConfig
-      );
-
-      this.clearCache();
-
-      const reloadedConfig = await this.loadConfiguration();
-
-      this.notifySubscribers(reloadedConfig);
-
-      console.info('Configuration updated in database', {
-        timestamp: new Date().toISOString(),
-        bootstrapFieldsStripped: validation.bootstrapFieldsFound.length,
-      });
-
-      return reloadedConfig;
     } catch (error) {
       console.error(
         'Failed to update configuration:',
         error instanceof Error ? error.message : String(error)
       );
+      if (error instanceof ConfigurationVersionConflictError) {
+        throw error;
+      }
       throw new Error(
         `Failed to update configuration: ${error instanceof Error ? error.message : String(error)}`
       );

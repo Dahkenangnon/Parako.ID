@@ -138,9 +138,17 @@ export const databaseModule: ContainerModule = new ContainerModule(
       .toDynamicValue(context => {
         const bundle = context.get<AdapterBundle>(TYPES.AdapterBundle);
         if (bundle.kind === 'prisma') {
-          return new bundle.UserRepository(
-            context.get<PrismaClient>(TYPES.PrismaClient)
+          const client = context.get<PrismaClient>(TYPES.PrismaClient);
+          const provider = context.get<IConfigProvider<BootstrapConfig>>(
+            TYPES.BootstrapConfigProvider
           );
+          const adapter = getAdapter(provider);
+          if (adapter === 'mongodb') {
+            throw new Error(
+              'A Prisma user repository requires sqlite or postgresql storage'
+            );
+          }
+          return new bundle.UserRepository(client, adapter);
         }
         return new bundle.UserRepository(
           context.get<UserModel>(TYPES.UserModel)

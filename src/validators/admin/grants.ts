@@ -1,14 +1,13 @@
 /**
  * Admin grant-listing query schema for `GET /admin/user-grants`.
  *
- * The `clientId` filter is regex-escaped via `usernameSchema`-style
- * treatment so a crafted value cannot inject metacharacters into a
- * Mongo `$regex` clause downstream.
+ * The `clientId` filter remains literal because repositories apply it as
+ * an exact-match field. Only the free-text search filter is regex-escaped.
  */
 
 import { z } from 'zod';
 
-import { ADMIN_GRANT_SORT_FIELDS, escapeRegExp } from '../listing-query.js';
+import { ADMIN_GRANT_SORT_FIELDS } from '../listing-query.js';
 
 import {
   limitSchema,
@@ -23,7 +22,6 @@ const grantClientIdSchema = z
   .trim()
   .min(1, 'Client id is required')
   .max(100, 'Client id must be 100 characters or fewer')
-  .transform(escapeRegExp)
   .optional();
 
 export const adminGrantListQuerySchema = z

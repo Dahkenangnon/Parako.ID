@@ -1,4 +1,5 @@
 import { IConfigProvider } from '../../di/interfaces/config-provider.interface.js';
+import type { DeepPartial } from '../../utils/config-merge.js';
 
 /**
  * Abstract base class for configuration providers
@@ -59,5 +60,8 @@ export abstract class AbstractConfigProvider<
    * @param partial - Partial configuration to update
    * @returns Promise that resolves to the updated configuration
    */
-  abstract updateConfig?(partial: Partial<T>): Promise<T>;
+  abstract updateConfig?(
+    partial: DeepPartial<T>,
+    expectedVersion?: number
+  ): Promise<T>;
 }

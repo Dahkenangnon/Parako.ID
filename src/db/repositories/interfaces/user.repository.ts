@@ -7,6 +7,7 @@ import type {
 } from './base.repository.js';
 
 export interface UserFilter {
+  search?: string;
   email?: string;
   username?: string;
   roles?: string[];

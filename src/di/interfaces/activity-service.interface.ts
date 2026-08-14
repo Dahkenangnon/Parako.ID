@@ -108,6 +108,7 @@ export interface LastActivityInfoFormatted {
 }
 
 export interface ActivityStats {
+  available: boolean;
   totalActivities: number;
   uniqueUsers: number;
   todayCount: number;
@@ -190,7 +191,7 @@ export interface IActivityService extends IBaseService<IActivity> {
     timeWindow?: number
   ): Promise<IActivity[]>;
 
-  getUserActivityTypes(username: string): Promise<string[]>;
+  getUserActivityTypes(userId: string): Promise<string[]>;
 
   getActivityTypes(): Promise<string[]>;
 

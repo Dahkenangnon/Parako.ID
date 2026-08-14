@@ -67,7 +67,7 @@
                 <label class="text-sm font-medium text-muted-foreground">Client ID</label>
                 <div class="flex items-center gap-2 mt-1">
                     <code class="text-sm text-foreground font-mono break-all flex-1 bg-muted/50 px-3 py-2">{{ client.client_id }}</code>
-                    <button onclick="copyToClipboard('{{ client.client_id }}', this)" class="text-muted-foreground hover:text-foreground shrink-0 p-2" title="Copy Client ID">
+                    <button type="button" data-oidc-copy="{{ client.client_id }}" class="text-muted-foreground hover:text-foreground shrink-0 p-2" title="Copy Client ID">
                         <i data-lucide="copy" class="h-4 w-4"></i>
                     </button>
                 </div>
@@ -164,7 +164,7 @@
                     {% for uri in client.redirect_uris %}
                     <li class="flex items-center gap-2">
                         <code class="text-sm text-foreground font-mono break-all">{{ uri }}</code>
-                        <button onclick="copyToClipboard('{{ uri }}', this)" class="text-muted-foreground hover:text-foreground shrink-0" title="Copy URI">
+                        <button type="button" data-oidc-copy="{{ uri }}" class="text-muted-foreground hover:text-foreground shrink-0" title="Copy URI">
                             <i data-lucide="copy" class="h-3 w-3"></i>
                         </button>
                     </li>
@@ -372,7 +372,7 @@
                     <p class="text-sm font-medium text-foreground">Regenerate Client Secret</p>
                     <p class="text-xs text-muted-foreground">This will invalidate the current secret. All applications using it must be updated.</p>
                 </div>
-                <form method="POST" action="/admin/oidc-clients/regenerate-secret/{{ client.client_id }}" class="inline" onsubmit="return confirmRegenerateSecret(event)">
+                <form method="POST" action="/admin/oidc-clients/regenerate-secret/{{ client.client_id }}" class="inline" data-oidc-client-confirm="regenerate-secret">
                     <input type="hidden" name="_method" value="POST">
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                     <button type="submit" class="inline-flex items-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90 focus:outline-none focus:ring-2 focus:ring-warning focus:ring-offset-2 whitespace-nowrap">
@@ -394,7 +394,7 @@
                     {% endif %}
                 </div>
                 {% if client.active %}
-                <form method="POST" action="/admin/oidc-clients/deactivate/{{ client.client_id }}" class="inline" onsubmit="return confirmDeactivateClient(event)">
+                <form method="POST" action="/admin/oidc-clients/deactivate/{{ client.client_id }}" class="inline" data-oidc-client-confirm="deactivate">
                     <input type="hidden" name="_method" value="POST">
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                     <button type="submit" class="inline-flex items-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90 focus:outline-none focus:ring-2 focus:ring-warning focus:ring-offset-2 whitespace-nowrap">
@@ -420,7 +420,7 @@
                     <p class="text-sm font-medium text-foreground">Delete Client</p>
                     <p class="text-xs text-muted-foreground">Permanently remove this client. This action cannot be undone.</p>
                 </div>
-                <form method="POST" action="/admin/oidc-clients/delete/{{ client.client_id }}" class="inline" onsubmit="return confirmDeleteClient(event)">
+                <form method="POST" action="/admin/oidc-clients/delete/{{ client.client_id }}" class="inline" data-oidc-client-confirm="delete">
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                     <button type="submit" class="inline-flex items-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2 whitespace-nowrap">
                         <i data-lucide="trash-2" class="h-4 w-4 mr-2"></i>

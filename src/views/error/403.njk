@@ -30,9 +30,9 @@
 
                 <!-- Action Buttons -->
                 <div class="space-y-2">
-                    <a href="javascript:history.back()" class="auth-btn w-full h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white text-sm flex items-center justify-center">
+                    <button type="button" data-error-action="back" class="auth-btn w-full h-9 bg-primary text-white font-semibold border-2 border-transparent focus:outline-none focus:border-2 focus:border-gray-900 dark:focus:border-white text-sm flex items-center justify-center">
                         {{ t('common.button.go_back') }}
-                    </a>
+                    </button>
                     <a href="{{ urls.website or '/' }}" class="w-full h-9 bg-gray-100 dark:bg-muted border-2 border-gray-200 dark:border-border text-gray-700 dark:text-foreground font-semibold hover:bg-gray-200 dark:hover:bg-accent focus:outline-none text-sm flex items-center justify-center">
                         {{ t('common.button.go_home') }}
                     </a>
@@ -41,4 +41,5 @@
 
 {% block scripts %}
 {{ super() }}
+<script src="{{ asset('js/error-page.js') }}"></script>
 {% endblock %}

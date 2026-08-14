@@ -58,7 +58,7 @@
                     <input type="text" id="slug" name="slug"
                         value="{{ formData.slug if formData else '' }}"
                         required
-                        pattern="[a-z0-9][a-z0-9_-]{0,62}"
+                        pattern="[a-z0-9][a-z0-9_\-]{0,62}"
                         placeholder="my-tenant"
                         class="w-full px-3 py-2 border border-input bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring">
                     <p class="mt-1 text-xs text-muted-foreground">Lowercase alphanumeric characters, hyphens, or underscores. 1-63 characters. Cannot be changed after creation.</p>

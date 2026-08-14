@@ -26,6 +26,7 @@ import { createBackgroundTaskQueue } from '../jobs/domains/background-tasks/queu
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { PhoneVerificationRequiredError } from '../errors/phone-verification-required.error.js';
 import { PhoneVerificationDeliveryError } from '../errors/phone-verification-delivery.error.js';
+import { isRoleAvailableForTenant } from '../multi-tenancy/platform-roles.js';
 
 interface RegistrationProfile {
   username?: string;
@@ -399,7 +400,13 @@ export class AuthService implements IAuthService {
       this.configManager.getConfig().security.authentication.roles;
     const role = userData.role ?? roleConfig.default;
 
-    if (!roleConfig.available.includes(role)) {
+    if (
+      !isRoleAvailableForTenant(
+        role,
+        roleConfig.available,
+        tenantContext.getTenantIdSafe()
+      )
+    ) {
       throw new Error(`Role '${role}' is not available`);
     }
 

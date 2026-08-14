@@ -61,6 +61,20 @@ export class AdminHomeController implements IAdminHomeController {
    * Get admin dashboard statistics
    */
   async getSystemStats() {
+    const users = await this.getUserStats();
+    const oidc = await this.getOIDCStats();
+    const sessions = await this.getSessionsStats();
+    const grants = await this.getGrantsStats();
+    const activities = await this.getActivityStats();
+
+    return { users, oidc, sessions, grants, activities };
+  }
+
+  /**
+   * Get user statistics without hiding healthy dashboard subsystems when the
+   * user repository is temporarily unavailable.
+   */
+  async getUserStats() {
     try {
       const totalUsers = await this.userService.countDocuments({});
       const activeUsers = await this.userService.countDocuments({
@@ -95,48 +109,35 @@ export class AdminHomeController implements IAdminHomeController {
         created_at: { $gte: lastMonth },
       });
 
-      const oidcStats = await this.getOIDCStats();
-      const sessionsStats = await this.getSessionsStats();
-      const grantsStats = await this.getGrantsStats();
-      const activityStats = await this.getActivityStats();
-
       return {
-        users: {
-          total: totalUsers,
-          active: activeUsers,
-          verified: verifiedUsers,
-          admins: adminUsers,
-          newToday: newUsersToday,
-          newThisWeek: newUsersThisWeek,
-          newThisMonth: newUsersThisMonth,
-          verificationRate:
-            totalUsers > 0 ? Math.round((verifiedUsers / totalUsers) * 100) : 0,
-          activeRate:
-            totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
-        },
-        oidc: oidcStats,
-        sessions: sessionsStats,
-        grants: grantsStats,
-        activities: activityStats,
+        available: true,
+        total: totalUsers,
+        active: activeUsers,
+        verified: verifiedUsers,
+        admins: adminUsers,
+        newToday: newUsersToday,
+        newThisWeek: newUsersThisWeek,
+        newThisMonth: newUsersThisMonth,
+        verificationRate:
+          totalUsers > 0 ? Math.round((verifiedUsers / totalUsers) * 100) : 0,
+        activeRate:
+          totalUsers > 0 ? Math.round((activeUsers / totalUsers) * 100) : 0,
       };
     } catch (error) {
-      this.logger.error(error as Error, { context: 'admin_stats_load_failed' });
+      this.logger.error(error as Error, {
+        context: 'user_statistics_load_failed',
+      });
       return {
-        users: {
-          total: 0,
-          active: 0,
-          verified: 0,
-          admins: 0,
-          newToday: 0,
-          newThisWeek: 0,
-          newThisMonth: 0,
-          verificationRate: 0,
-          activeRate: 0,
-        },
-        oidc: { clients: 0, activeClients: 0, totalClients: 0 },
-        sessions: { total: 0, active: 0, expired: 0 },
-        grants: { total: 0, active: 0, revoked: 0 },
-        activities: { total: 0, today: 0, thisWeek: 0, thisMonth: 0 },
+        available: false,
+        total: 0,
+        active: 0,
+        verified: 0,
+        admins: 0,
+        newToday: 0,
+        newThisWeek: 0,
+        newThisMonth: 0,
+        verificationRate: 0,
+        activeRate: 0,
       };
     }
   }
@@ -149,6 +150,7 @@ export class AdminHomeController implements IAdminHomeController {
       const stats = await this.oidcAdapter.client.getClientStatistics();
       const count = await this.oidcAdapter.client.countClients();
       return {
+        available: true,
         clients: count,
         activeClients: stats.active,
         totalClients: stats.total || 0,
@@ -158,6 +160,7 @@ export class AdminHomeController implements IAdminHomeController {
         context: 'oidc_client_statistics_load_failed',
       });
       return {
+        available: false,
         clients: 0,
         activeClients: 0,
         totalClients: 0,
@@ -173,6 +176,7 @@ export class AdminHomeController implements IAdminHomeController {
       const sessionStats =
         await this.oidcAdapter.session.getSessionStatistics();
       return {
+        available: true,
         total: sessionStats.total,
         active: sessionStats.active,
         expired: sessionStats.expired,
@@ -181,7 +185,7 @@ export class AdminHomeController implements IAdminHomeController {
       this.logger.error(error as Error, {
         context: 'session_statistics_load_failed',
       });
-      return { total: 0, active: 0, expired: 0 };
+      return { available: false, total: 0, active: 0, expired: 0 };
     }
   }
 
@@ -192,6 +196,7 @@ export class AdminHomeController implements IAdminHomeController {
     try {
       const grantStats = await this.oidcAdapter.grant.getGrantStatistics();
       return {
+        available: true,
         total: grantStats.total,
         active: grantStats.total - grantStats.expired,
         revoked: grantStats.expired,
@@ -200,7 +205,7 @@ export class AdminHomeController implements IAdminHomeController {
       this.logger.error(error as Error, {
         context: 'grant_statistics_load_failed',
       });
-      return { total: 0, active: 0, revoked: 0 };
+      return { available: false, total: 0, active: 0, revoked: 0 };
     }
   }
 
@@ -211,6 +216,7 @@ export class AdminHomeController implements IAdminHomeController {
     try {
       const stats = await this.activity.getActivityStats();
       return {
+        available: stats.available,
         total: stats.totalActivities || 0,
         today: stats.todayCount || 0,
         thisWeek: 0,
@@ -220,7 +226,13 @@ export class AdminHomeController implements IAdminHomeController {
       this.logger.error(error as Error, {
         context: 'activity_statistics_load_failed',
       });
-      return { total: 0, today: 0, thisWeek: 0, thisMonth: 0 };
+      return {
+        available: false,
+        total: 0,
+        today: 0,
+        thisWeek: 0,
+        thisMonth: 0,
+      };
     }
   }
 

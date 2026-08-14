@@ -54,7 +54,7 @@
                     <div class="flex items-center gap-2 mt-1">
                         <p class="text-foreground font-mono text-sm break-all">{{ key.kid }}</p>
                         <button type="button"
-                            onclick="copyToClipboard('{{ key.kid }}', this)"
+                            data-jwks-copy="{{ key.kid }}"
                             class="text-muted-foreground hover:text-foreground flex-shrink-0"
                             title="Copy Key ID">
                             <i data-lucide="copy" class="h-3.5 w-3.5"></i>
@@ -139,6 +139,7 @@
                 </h2>
                 <button type="button"
                     id="copy-public-jwk"
+                    data-jwks-copy-target="public-jwk-json"
                     class="inline-flex items-center px-3 py-1.5 bg-secondary text-secondary-foreground text-sm font-medium
                         hover:bg-secondary/80 focus:outline-none focus:ring-2 focus:ring-secondary focus:ring-offset-2"
                     title="Copy Public JWK">

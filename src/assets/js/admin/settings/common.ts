@@ -113,14 +113,28 @@
 
     public initialize(): void {
       this.cacheElements();
+      this.setupFormReset();
       this.setupTextareaAutoResize();
 
       if (this.config.features.hasLogoUpload) {
         this.setupLogoUpload();
         this.setupLogoRemoval();
       }
+    }
 
-      this.exposeGlobalMethods();
+    /**
+     * Bind reset controls without relying on inline handlers, which are
+     * blocked by the application's Content Security Policy.
+     */
+    private setupFormReset(): void {
+      const resetButtons = document.querySelectorAll<HTMLButtonElement>(
+        '[data-settings-reset]'
+      );
+      resetButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+          await this.resetForm();
+        });
+      });
     }
 
     /**
@@ -376,14 +390,6 @@
         });
       });
     }
-
-    /**
-     * Expose methods globally for inline onclick handlers
-     */
-    private exposeGlobalMethods(): void {
-      (window as unknown as { resetForm: () => Promise<void> }).resetForm =
-        this.resetForm.bind(this);
-    }
   }
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -429,7 +435,15 @@
         config.csrfToken = csrfInput?.value || '';
       }
 
-      const hasLogoUpload = document.getElementById('logo-upload') !== null;
+      // Branding pages load a dedicated manager for these controls. Keep this
+      // shared module limited to generic reset/textarea behavior on those pages
+      // so one user action cannot trigger two upload or removal workflows.
+      const hasDedicatedBrandingManager =
+        document.getElementById('___ADMIN_BRANDING_STATE___') !== null;
+      const hasLogoUpload =
+        !hasDedicatedBrandingManager &&
+        (config.features?.hasLogoUpload ??
+          document.getElementById('logo-upload') !== null);
 
       const manager = new AdminSettingsManager({
         ...defaultConfig,
@@ -437,7 +451,7 @@
         features: {
           ...defaultConfig.features,
           ...config.features,
-          hasLogoUpload: config.features?.hasLogoUpload ?? hasLogoUpload,
+          hasLogoUpload,
         },
       });
       manager.initialize();

@@ -10,6 +10,7 @@ import { IAdminJwksController } from '../di/interfaces/admin-jwks-controller.int
 import type { IAdminConfigurationController } from '../di/interfaces/admin-configuration-controller.interface.js';
 import type { IAdminDataTransferController } from '../di/interfaces/admin-data-transfer-controller.interface.js';
 import type { PlatformAdminController } from '../controllers/admin/platform.controller.js';
+import type { PlatformTenantMiddleware } from '../middlewares/platform-tenant.middleware.js';
 import { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import { ISecurityMiddleware } from '../di/interfaces/security-middleware.interface.js';
 import { ILocalsMiddleware } from '../di/interfaces/locals-middleware.interface.js';
@@ -65,7 +66,8 @@ export const adminRoutes = (
   configValidationMiddleware: IConfigValidationMiddleware,
   sessionManager: ISessionManager,
   logger: ILogger,
-  platformAdminController?: PlatformAdminController
+  platformAdminController?: PlatformAdminController,
+  platformTenantMiddleware?: PlatformTenantMiddleware
 ): Router => {
   const router = express.Router();
   const htmlDeps = { sessionManager, logger };
@@ -119,9 +121,67 @@ export const adminRoutes = (
     htmlDeps
   );
 
+  // Platform viewers are intentionally not regular tenant administrators, so
+  // tenant management must be mounted before the global admin guard. The
+  // dedicated guard authenticates platform roles and enforces read-only HTTP
+  // methods for platform_viewer sessions.
+  if (platformAdminController && platformTenantMiddleware) {
+    const platformRouter = express.Router();
+
+    platformRouter.use(securityMiddleware.generateCsrfToken);
+    platformRouter.use(localsMiddleware.setAccountLocals);
+
+    platformRouter.get(
+      '/',
+      localsMiddleware.setActivePage('tenants'),
+      platformAdminController.listTenantsPage
+    );
+    platformRouter.get(
+      '/new',
+      localsMiddleware.setActivePage('tenants'),
+      platformAdminController.createTenantPage
+    );
+    platformRouter.post(
+      '/new',
+      securityMiddleware.validateCsrfToken,
+      platformAdminController.storeTenant
+    );
+    platformRouter.get(
+      '/:slug',
+      localsMiddleware.setActivePage('tenants'),
+      platformAdminController.showTenantPage
+    );
+    platformRouter.get(
+      '/:slug/edit',
+      localsMiddleware.setActivePage('tenants'),
+      platformAdminController.editTenantPage
+    );
+    platformRouter.post(
+      '/:slug/edit',
+      securityMiddleware.validateCsrfToken,
+      platformAdminController.updateTenant
+    );
+    platformRouter.post(
+      '/:slug/status',
+      securityMiddleware.validateCsrfToken,
+      platformAdminController.updateTenantStatus
+    );
+
+    router.use(
+      '/tenants',
+      securityMiddleware.requireAuth,
+      securityMiddleware.requirePlatformTenant,
+      asyncHandler(
+        'admin.platform.authorize',
+        platformTenantMiddleware.handler
+      ),
+      platformRouter
+    );
+  }
+
   /**
    * Admin Routes
-   * All admin routes require admin authentication
+   * All remaining admin routes require tenant admin authentication.
    */
 
   router.use(securityMiddleware.requireAdmin);
@@ -431,52 +491,6 @@ export const adminRoutes = (
     '/data-transfer/:entityId/export',
     adminDataTransferController.exportData
   );
-
-  // Tenant Management (platform-only, HTML views)
-  if (platformAdminController) {
-    router.get(
-      '/tenants',
-      securityMiddleware.requirePlatformTenant,
-      localsMiddleware.setActivePage('tenants'),
-      platformAdminController.listTenantsPage
-    );
-    router.get(
-      '/tenants/new',
-      securityMiddleware.requirePlatformTenant,
-      localsMiddleware.setActivePage('tenants'),
-      platformAdminController.createTenantPage
-    );
-    router.post(
-      '/tenants/new',
-      securityMiddleware.requirePlatformTenant,
-      securityMiddleware.validateCsrfToken,
-      platformAdminController.storeTenant
-    );
-    router.get(
-      '/tenants/:slug',
-      securityMiddleware.requirePlatformTenant,
-      localsMiddleware.setActivePage('tenants'),
-      platformAdminController.showTenantPage
-    );
-    router.get(
-      '/tenants/:slug/edit',
-      securityMiddleware.requirePlatformTenant,
-      localsMiddleware.setActivePage('tenants'),
-      platformAdminController.editTenantPage
-    );
-    router.post(
-      '/tenants/:slug/edit',
-      securityMiddleware.requirePlatformTenant,
-      securityMiddleware.validateCsrfToken,
-      platformAdminController.updateTenant
-    );
-    router.post(
-      '/tenants/:slug/status',
-      securityMiddleware.requirePlatformTenant,
-      securityMiddleware.validateCsrfToken,
-      platformAdminController.updateTenantStatus
-    );
-  }
 
   // Settings Management Routes (platform-only)
   router.use('/settings', securityMiddleware.requirePlatformTenant);

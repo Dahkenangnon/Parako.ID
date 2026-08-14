@@ -8,6 +8,15 @@ import type {
 } from '../interfaces/base.repository.js';
 import { serializeDocument, serializeDocuments } from '../../utils.js';
 
+function isMalformedDocumentIdError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === 'CastError' &&
+    'path' in error &&
+    error.path === '_id'
+  );
+}
+
 export abstract class AbstractMongooseRepository<
   T extends IBaseModel,
   TCreate,
@@ -16,8 +25,13 @@ export abstract class AbstractMongooseRepository<
   constructor(protected readonly model: TypedModel<any, any>) {}
 
   async findById(id: string): Promise<T | null> {
-    const doc = await this.model.findById(id).lean().exec();
-    return serializeDocument(doc) as T | null;
+    try {
+      const doc = await this.model.findById(id).lean().exec();
+      return serializeDocument(doc) as T | null;
+    } catch (error) {
+      if (isMalformedDocumentIdError(error)) return null;
+      throw error;
+    }
   }
 
   async findOne(filter: Record<string, unknown>): Promise<T | null> {

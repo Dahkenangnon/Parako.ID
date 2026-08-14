@@ -95,8 +95,9 @@ export interface ISessionSecurity {
   }): Promise<any[]>;
 
   /**
-   * Count all authenticated Express sessions across all users
-   * @returns Total number of authenticated Express sessions
+   * Count authenticated Express sessions across all users
+   * @param search - Optional literal, case-insensitive account ID substring
+   * @returns Number of authenticated sessions matching the active tenant and search
    */
-  countAllExpressSessions(): Promise<number>;
+  countAllExpressSessions(search?: string): Promise<number>;
 }

@@ -34,7 +34,8 @@ export interface ISettingsService extends IBaseService<ISettings> {
   saveMainConfiguration(
     config: Partial<AppConfig>,
     modifiedBy?: string,
-    reason?: string
+    reason?: string,
+    expectedVersion?: number
   ): Promise<ISettings>;
 
   /**

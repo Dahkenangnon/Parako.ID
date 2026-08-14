@@ -12,6 +12,7 @@ import { IActivityService } from './di/interfaces/activity-service.interface.js'
 import { ISettingsService } from './di/interfaces/settings-service.interface.js';
 import type { IRedisPubSubService } from './di/interfaces/redis-pubsub-service.interface.js';
 import type { IOIDCAdapterBridge } from './di/interfaces/oidc-adapter-bridge.interface.js';
+import type { IOpsRedisClient } from './services/ops-social-callback.service.js';
 import { BootstrapConfig } from './config/schemas/bootstrap-schema.js';
 import { AppConfig } from './config/schemas/schema.js';
 import {
@@ -509,6 +510,29 @@ async function bootstrap(): Promise<void> {
         );
 
         await server.stop();
+
+        await safeShutdownStep(
+          'ops-redis',
+          async () => {
+            if (!container.isBound(TYPES.OpsRedisClient)) return;
+
+            const opsRedis = container.get<IOpsRedisClient>(
+              TYPES.OpsRedisClient
+            );
+            if (opsRedis.status === 'wait' || opsRedis.status === 'end') {
+              opsRedis.disconnect?.();
+              return;
+            }
+
+            if (opsRedis.quit) {
+              await opsRedis.quit();
+            } else {
+              opsRedis.disconnect?.();
+            }
+          },
+          logger
+        );
+
         clearTimeout(shutdownTimeout);
 
         await safeShutdownStep(

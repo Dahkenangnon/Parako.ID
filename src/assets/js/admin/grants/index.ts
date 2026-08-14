@@ -1,231 +1,113 @@
 /**
- * Admin Grants Manager
+ * Declarative controls for administrator grant revocation.
  *
- * Handles admin grant management functionality:
- * - Grant revocation with confirmation dialog
- * - AJAX-based grant revocation
+ * Templates own mutation routes and CSRF values. This module adds localized
+ * confirmation without inline handlers and preserves native form submission
+ * when the shared dialog service is unavailable.
  */
-(function () {
-  'use strict';
 
-  if (typeof document === 'undefined') return;
+interface GrantsConfig {
+  translations: TranslationStrings;
+}
 
-  // Type Definitions
+interface TranslationStrings {
+  revokeTitle: string;
+  revokeMessage: string;
+  revokeConfirm: string;
+  revokeCancel: string;
+}
 
-  interface GrantsConfig {
-    csrfToken: string;
-    routes: {
-      revokeGrant: string;
-    };
-    translations: TranslationStrings;
-  }
+type GrantsConfigInput = {
+  translations?: Partial<TranslationStrings>;
+};
 
-  interface TranslationStrings {
-    revokeTitle: string;
-    revokeMessage: string;
-    revokeConfirm: string;
-    revokeCancel: string;
-    successTitle: string;
-    successMessage: string;
-    errorTitle: string;
-    errorMessage: string;
-    unknownError: string;
-  }
+const DEFAULT_CONFIG: GrantsConfig = {
+  translations: {
+    revokeTitle: 'Revoke Authorization',
+    revokeMessage:
+      'Are you sure you want to revoke this authorization? This action cannot be undone.',
+    revokeConfirm: 'Revoke',
+    revokeCancel: 'Cancel',
+  },
+};
 
-  // Grants Manager Class
+export class AdminGrantsManager {
+  private readonly config: GrantsConfig;
 
-  class AdminGrantsManager {
-    private config: GrantsConfig;
-    private translations: TranslationStrings;
-
-    private readonly defaultTranslations: TranslationStrings = {
-      revokeTitle: 'Revoke Authorization',
-      revokeMessage:
-        'Are you sure you want to revoke this authorization? This action cannot be undone.',
-      revokeConfirm: 'Revoke',
-      revokeCancel: 'Cancel',
-      successTitle: 'Success',
-      successMessage: 'Authorization revoked successfully',
-      errorTitle: 'Error',
-      errorMessage: 'Failed to revoke authorization',
-      unknownError: 'Unknown error',
-    };
-
-    constructor(config: GrantsConfig) {
-      this.config = config;
-      this.translations = {
-        ...this.defaultTranslations,
-        ...config.translations,
-      };
-    }
-
-    public initialize(): void {
-      this.exposeGlobalMethods();
-      this.setupFormConfirmation();
-    }
-
-    /**
-     * Expose global methods for inline onclick handlers
-     */
-    private exposeGlobalMethods(): void {
-      if (typeof window === 'undefined') return;
-
-      (window as any).revokeGrant = this.revokeGrant.bind(this);
-    }
-
-    /**
-     * Setup form confirmation for revoke forms (show.njk pattern)
-     */
-    private setupFormConfirmation(): void {
-      const revokeForm = document.getElementById(
-        'revoke-grant-form'
-      ) as HTMLFormElement | null;
-
-      if (revokeForm) {
-        revokeForm.addEventListener('submit', async e => {
-          e.preventDefault();
-
-          const confirmed = await (window as any).dialog.showConfirm(
-            this.translations.revokeTitle,
-            this.translations.revokeMessage,
-            {
-              variant: 'danger',
-              confirmText: this.translations.revokeConfirm,
-              cancelText: this.translations.revokeCancel,
-            }
-          );
-
-          if (confirmed) {
-            revokeForm.submit();
-          }
-        });
-      }
-    }
-
-    /**
-     * Revoke a grant via AJAX (index.njk pattern)
-     */
-    public async revokeGrant(grantId: string): Promise<void> {
-      const confirmed = await (window as any).dialog.showConfirm(
-        this.translations.revokeTitle,
-        this.translations.revokeMessage,
-        {
-          variant: 'danger',
-          confirmText: this.translations.revokeConfirm,
-          cancelText: this.translations.revokeCancel,
-        }
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      try {
-        const csrfToken = this.getCsrfToken();
-        const revokeRoute =
-          this.config.routes.revokeGrant || '/admin/user-grants/{id}/revoke';
-        const revokeUrl = revokeRoute.replace(
-          '{id}',
-          encodeURIComponent(grantId)
-        );
-        const response = await fetch(revokeUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'CSRF-Token': csrfToken,
-          },
-        });
-
-        const result = await response.json();
-
-        if (result.success) {
-          await (window as any).dialog.showAlert(
-            this.translations.successTitle,
-            this.translations.successMessage,
-            {
-              variant: 'success',
-            }
-          );
-          window.location.reload();
-        } else {
-          await (window as any).dialog.showAlert(
-            this.translations.errorTitle,
-            `${this.translations.errorMessage}: ${result.error || this.translations.unknownError}`,
-            { variant: 'error' }
-          );
-        }
-      } catch (error) {
-        console.error('Error revoking authorization:', error);
-        await (window as any).dialog.showAlert(
-          this.translations.errorTitle,
-          `${this.translations.errorMessage}. Please try again.`,
-          { variant: 'error' }
-        );
-      }
-    }
-
-    /**
-     * Get CSRF token from hidden input or meta tag
-     */
-    private getCsrfToken(): string {
-      const csrfInput = document.querySelector<HTMLInputElement>(
-        'input[name="_csrf"]'
-      );
-      if (csrfInput?.value) {
-        return csrfInput.value;
-      }
-
-      const csrfMeta = document.querySelector(
-        'meta[name="csrf-token"]'
-      ) as HTMLElement | null;
-      if (csrfMeta) {
-        const metaToken = csrfMeta.getAttribute('content');
-        if (metaToken) {
-          return metaToken;
-        }
-      }
-
-      return this.config.csrfToken || '';
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const stateElement = document.getElementById('___ADMIN_GRANTS_STATE___');
-
-    // Default config if state element not found
-    const defaultConfig: GrantsConfig = {
-      csrfToken: '',
-      routes: {
-        revokeGrant: '/admin/user-grants/{id}/revoke',
-      },
+  public constructor(config: GrantsConfigInput = {}) {
+    this.config = {
       translations: {
-        revokeTitle: 'Revoke Authorization',
-        revokeMessage:
-          'Are you sure you want to revoke this authorization? This action cannot be undone.',
-        revokeConfirm: 'Revoke',
-        revokeCancel: 'Cancel',
-        successTitle: 'Success',
-        successMessage: 'Authorization revoked successfully',
-        errorTitle: 'Error',
-        errorMessage: 'Failed to revoke authorization',
-        unknownError: 'Unknown error',
+        ...DEFAULT_CONFIG.translations,
+        ...config.translations,
       },
     };
-
-    try {
-      const config = stateElement
-        ? JSON.parse(stateElement.textContent || '{}')
-        : defaultConfig;
-      const manager = new AdminGrantsManager({ ...defaultConfig, ...config });
-      manager.initialize();
-    } catch (error) {
-      console.error('[AdminGrantsManager] Initialization failed:', error);
-      const manager = new AdminGrantsManager(defaultConfig);
-      manager.initialize();
-    }
-  });
-
-  if (typeof window !== 'undefined') {
-    (window as any).AdminGrantsManager = AdminGrantsManager;
   }
-})();
+
+  public initialize(): void {
+    const revokeForms = document.querySelectorAll<HTMLFormElement>(
+      '[data-grant-revoke]'
+    );
+
+    revokeForms.forEach(form => {
+      form.addEventListener('submit', async event => {
+        const showConfirm = (
+          window as typeof window & {
+            dialog?: {
+              showConfirm?: (
+                title: string,
+                message: string,
+                options: Record<string, string>
+              ) => Promise<boolean>;
+            };
+          }
+        ).dialog?.showConfirm;
+
+        if (!showConfirm) return;
+
+        event.preventDefault();
+        const message =
+          form.dataset.grantRevokeMessage ||
+          this.config.translations.revokeMessage;
+        const confirmed = await showConfirm(
+          this.config.translations.revokeTitle,
+          message,
+          {
+            variant: 'danger',
+            confirmText: this.config.translations.revokeConfirm,
+            cancelText: this.config.translations.revokeCancel,
+          }
+        );
+
+        if (confirmed) form.submit();
+      });
+    });
+  }
+}
+
+function readConfig(): GrantsConfigInput {
+  const stateElement = document.getElementById('___ADMIN_GRANTS_STATE___');
+  if (!stateElement?.textContent?.trim()) return {};
+
+  try {
+    return JSON.parse(stateElement.textContent) as GrantsConfigInput;
+  } catch (error) {
+    console.error('[AdminGrantsManager] Initialization failed:', error);
+    return {};
+  }
+}
+
+function bootstrap(): void {
+  new AdminGrantsManager(readConfig()).initialize();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+  } else {
+    bootstrap();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  Object.assign(window, { AdminGrantsManager });
+}

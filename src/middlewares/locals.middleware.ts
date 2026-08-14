@@ -13,6 +13,7 @@ import {
   resolveBrandingUrl,
 } from '../utils/views.js';
 import { WEB_SAFE_FONTS } from '../config/constants.js';
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../config/social-providers.js';
 
 const CANONICAL_PATH_BASE = 'https://parako.local';
 
@@ -105,11 +106,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       res.locals.socialProviders = {
         enabled: this.socialLoginManager.getAvailableProviders(),
         available: config.features.social_providers.available || [
-          'google',
-          'github',
-          'microsoft',
-          'linkedin',
-          'facebook',
+          ...CONFIGURABLE_SOCIAL_PROVIDER_IDS,
         ],
       };
 
@@ -219,7 +216,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
 
       res.locals.socialProviders = {
         enabled: [],
-        available: ['google', 'github', 'microsoft', 'linkedin', 'facebook'],
+        available: [...CONFIGURABLE_SOCIAL_PROVIDER_IDS],
       };
 
       res.locals.authentication = {
@@ -351,6 +348,22 @@ export class LocalsMiddleware implements ILocalsMiddleware {
           settings_recovery: '/accounts/settings/recovery',
           settings_social: '/accounts/settings/social',
         },
+        adminFull: {
+          dashboard: '/admin',
+          users: '/admin/users',
+          user_new: '/admin/users/new',
+          oidc_clients: '/admin/oidc-clients',
+          oidc_client_create: '/admin/oidc-clients/create',
+          jwks: '/admin/jwks',
+          sessions: '/admin/sessions',
+          user_grants: '/admin/user-grants',
+          activities: '/admin/activities',
+          data_transfer: '/admin/data-transfer',
+          settings: '/admin/settings',
+          configuration: '/admin/configuration',
+          tenants: '/admin/tenants',
+          logout: '/auth/logout',
+        },
         oidc: {
           authorization: '/oidc/auth',
           userinfo: '/oidc/me',
@@ -426,6 +439,23 @@ export class LocalsMiddleware implements ILocalsMiddleware {
         settings_social: `${localePrefix}${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_social}`,
       };
 
+      const adminRoutes = {
+        dashboard: `${localePrefix}/admin`,
+        users: `${localePrefix}/admin/users`,
+        user_new: `${localePrefix}/admin/users/new`,
+        oidc_clients: `${localePrefix}/admin/oidc-clients`,
+        oidc_client_create: `${localePrefix}/admin/oidc-clients/create`,
+        jwks: `${localePrefix}/admin/jwks`,
+        sessions: `${localePrefix}/admin/sessions`,
+        user_grants: `${localePrefix}/admin/user-grants`,
+        activities: `${localePrefix}/admin/activities`,
+        data_transfer: `${localePrefix}/admin/data-transfer`,
+        settings: `${localePrefix}/admin/settings`,
+        configuration: `${localePrefix}/admin/configuration`,
+        tenants: `${localePrefix}/admin/tenants`,
+        logout: `${localePrefix}${config.deployment.routes.auth}${config.deployment.routes.auth_routes.logout}`,
+      };
+
       res.locals.routes = {
         // App-level routes (with locale prefix for Express routes, without for OIDC/API)
         app: {
@@ -472,6 +502,9 @@ export class LocalsMiddleware implements ILocalsMiddleware {
 
         // Account routes with full paths and locale prefix
         accountFull: accountRoutes,
+
+        // Admin routes with full paths and locale prefix
+        adminFull: adminRoutes,
 
         // OIDC routes (NO locale prefix - use ui_locales parameter per OIDC spec)
         oidc: {

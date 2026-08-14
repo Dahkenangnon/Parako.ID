@@ -17,6 +17,13 @@ export class ReservedSlugError extends Error {
   }
 }
 
+export class ProtectedTenantError extends Error {
+  constructor(message = 'The platform master tenant cannot be modified') {
+    super(message);
+    this.name = 'ProtectedTenantError';
+  }
+}
+
 export class NotFoundError extends Error {
   constructor(message: string) {
     super(message);

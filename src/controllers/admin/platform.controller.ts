@@ -9,20 +9,32 @@ import { injectable, inject } from 'inversify';
 import type { Request, Response } from 'express';
 import { TYPES } from '../../di/types.js';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
-import type { IPlatformAdminService } from '../../services/platform-admin.service.js';
+import {
+  isProtectedTenantSlug,
+  type IPlatformAdminService,
+} from '../../services/platform-admin.service.js';
 import { TenantStatusValues, type TenantStatus } from '../../types/tenant.js';
 import {
   ConflictError,
   ReservedSlugError,
   NotFoundError,
+  ProtectedTenantError,
 } from '../../errors/platform.errors.js';
 import { parsePositiveInt } from '../../validators/listing-query.js';
+import { InvalidTenantDomainError } from '../../multi-tenancy/tenant-domain.js';
 
 /** Slug format: lowercase alphanumeric, hyphens, underscores, 1-63 chars. */
 const TENANT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
 
 /** Maximum page size for paginated queries. */
 const MAX_PAGE_LIMIT = 100;
+
+function renderProtectedTenantError(res: Response): void {
+  res.status(403).render('error/403', {
+    title: 'Access Denied',
+    errorDetails: 'The platform master tenant cannot be modified',
+  });
+}
 
 @injectable()
 export class PlatformAdminController {
@@ -193,7 +205,8 @@ export class PlatformAdminController {
     } catch (error) {
       if (
         error instanceof ConflictError ||
-        error instanceof ReservedSlugError
+        error instanceof ReservedSlugError ||
+        error instanceof InvalidTenantDomainError
       ) {
         res.render('admin/tenants/create', {
           title: 'New Tenant',
@@ -224,6 +237,10 @@ export class PlatformAdminController {
   ): Promise<void> => {
     try {
       const { slug } = req.params;
+      if (isProtectedTenantSlug(slug)) {
+        renderProtectedTenantError(res);
+        return;
+      }
       const tenant = await this.platformService.getTenantBySlug(slug);
 
       if (!tenant) {
@@ -262,14 +279,23 @@ export class PlatformAdminController {
       await this.platformService.updateTenant(slug, data);
       res.redirect(`/admin/tenants/${slug}`);
     } catch (error) {
+      if (error instanceof ProtectedTenantError) {
+        renderProtectedTenantError(res);
+        return;
+      }
       if (error instanceof NotFoundError) {
         res.status(404).render('error', { message: 'Tenant not found' });
         return;
       }
 
-      this.logger.error(error as Error, {
-        context: 'platform_update_tenant',
-      });
+      const isInputError =
+        error instanceof ConflictError ||
+        error instanceof InvalidTenantDomainError;
+      if (!isInputError) {
+        this.logger.error(error as Error, {
+          context: 'platform_update_tenant',
+        });
+      }
 
       let tenant;
       try {
@@ -287,7 +313,9 @@ export class PlatformAdminController {
       res.render('admin/tenants/edit', {
         title: `Edit Tenant: ${req.params.slug}`,
         tenant,
-        error: 'Failed to update tenant',
+        error: isInputError
+          ? (error as Error).message
+          : 'Failed to update tenant',
       });
     }
   };
@@ -316,6 +344,10 @@ export class PlatformAdminController {
 
       res.redirect(`/admin/tenants/${slug}`);
     } catch (error) {
+      if (error instanceof ProtectedTenantError) {
+        renderProtectedTenantError(res);
+        return;
+      }
       if (error instanceof NotFoundError) {
         res.status(404).render('error', { message: 'Tenant not found' });
         return;

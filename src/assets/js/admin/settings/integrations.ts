@@ -17,30 +17,76 @@
     createIcons: () => void;
   }
 
-  interface WindowWithLucide {
-    lucide?: LucideApi;
-    resetForm: () => Promise<void>;
-    testEmail: (event: Event) => Promise<void>;
+  interface AdminSettingsManagerBoundary {
+    confirmCriticalChange: (event: Event) => Promise<boolean>;
   }
+
+  interface WindowWithLucide {
+    adminSettingsManager?: AdminSettingsManagerBoundary;
+    lucide?: LucideApi;
+  }
+
+  let dialogIdSequence = 0;
 
   class IntegrationsSettingsManager {
     private form: HTMLFormElement | null = null;
+    private submissionPending = false;
 
     public initialize(): void {
-      this.form = document.querySelector('form');
-      this.setupFormValidation();
-      this.exposeGlobalMethods();
+      this.form = document.querySelector('form[data-integrations-settings]');
+      this.setupDeclarativeHandlers();
     }
 
-    private setupFormValidation(): void {
-      if (!this.form) return;
-
-      this.form.addEventListener('submit', async e => {
-        const isValid = await this.validateForm();
-        if (!isValid) {
-          e.preventDefault();
-        }
+    private setupDeclarativeHandlers(): void {
+      this.form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        await this.handleSubmit(event);
       });
+
+      document
+        .querySelector<HTMLButtonElement>('button[data-integrations-reset]')
+        ?.addEventListener('click', async () => {
+          await this.resetForm();
+        });
+
+      document
+        .querySelector<HTMLButtonElement>(
+          'button[data-integrations-test-email]'
+        )
+        ?.addEventListener('click', async event => {
+          await this.testEmail(event);
+        });
+    }
+
+    private async handleSubmit(event: Event): Promise<void> {
+      if (this.submissionPending) return;
+      this.submissionPending = true;
+
+      try {
+        if (!(await this.validateForm())) return;
+
+        const manager = (window as unknown as WindowWithLucide)
+          .adminSettingsManager;
+        if (!manager?.confirmCriticalChange) {
+          this.showNotification(
+            'Unable to Save',
+            'The configuration confirmation service is unavailable. Reload the page and try again.',
+            'error'
+          );
+          return;
+        }
+
+        await manager.confirmCriticalChange(event);
+      } catch (error) {
+        console.error('Failed to confirm integrations settings change', error);
+        this.showNotification(
+          'Unable to Save',
+          'The configuration change could not be confirmed. Please try again.',
+          'error'
+        );
+      } finally {
+        this.submissionPending = false;
+      }
     }
 
     private async validateForm(): Promise<boolean> {
@@ -226,12 +272,19 @@
       cancelText: string
     ): Promise<boolean> {
       return new Promise(resolve => {
+        const dialogId = ++dialogIdSequence;
+        const titleId = `integrations-dialog-title-${dialogId}`;
+        const messageId = `integrations-dialog-message-${dialogId}`;
         const backdrop = document.createElement('div');
         backdrop.className =
           'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
 
         const modal = document.createElement('div');
         modal.className = 'bg-background border border-border max-w-md w-full';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', titleId);
+        modal.setAttribute('aria-describedby', messageId);
 
         const header = document.createElement('div');
         header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -244,6 +297,7 @@
         iconContainer.appendChild(icon);
 
         const titleElement = document.createElement('h3');
+        titleElement.setAttribute('id', titleId);
         titleElement.className = 'font-semibold text-lg flex-1';
         titleElement.textContent = title;
 
@@ -253,6 +307,7 @@
         const body = document.createElement('div');
         body.className = 'px-6 pb-4';
         const messageElement = document.createElement('p');
+        messageElement.setAttribute('id', messageId);
         messageElement.className =
           'text-sm text-muted-foreground whitespace-pre-line';
         messageElement.textContent = message;
@@ -282,32 +337,32 @@
         modal.appendChild(footer);
         backdrop.appendChild(modal);
 
-        const cleanup = () => {
+        let settled = false;
+        const finish = (result: boolean) => {
+          if (settled) return;
+          settled = true;
           backdrop.remove();
           document.removeEventListener('keydown', handleEscape);
+          resolve(result);
         };
 
         cancelButton.addEventListener('click', () => {
-          cleanup();
-          resolve(false);
+          finish(false);
         });
 
         confirmButton.addEventListener('click', () => {
-          cleanup();
-          resolve(true);
+          finish(true);
         });
 
         backdrop.addEventListener('click', e => {
           if (e.target === backdrop) {
-            cleanup();
-            resolve(false);
+            finish(false);
           }
         });
 
         const handleEscape = (e: KeyboardEvent) => {
           if (e.key === 'Escape') {
-            cleanup();
-            resolve(false);
+            finish(false);
           }
         };
 
@@ -317,7 +372,7 @@
 
         this.refreshIcons();
 
-        confirmButton.focus();
+        cancelButton.focus();
       });
     }
 
@@ -327,6 +382,14 @@
       type: 'info' | 'success' | 'error' = 'info'
     ): void {
       const notificationDiv = document.createElement('div');
+      notificationDiv.setAttribute(
+        'role',
+        type === 'error' ? 'alert' : 'status'
+      );
+      notificationDiv.setAttribute(
+        'aria-live',
+        type === 'error' ? 'assertive' : 'polite'
+      );
       let bgColor = 'bg-blue-500';
       let iconName = 'info';
 
@@ -366,6 +429,8 @@
       messageElement.textContent = message;
 
       const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.setAttribute('aria-label', `Dismiss ${title} notification`);
       closeButton.className = 'text-white/80 hover:text-white';
       const closeIcon = document.createElement('i');
       closeIcon.setAttribute('data-lucide', 'x');
@@ -394,12 +459,6 @@
       if (win.lucide && typeof win.lucide.createIcons === 'function') {
         win.lucide.createIcons();
       }
-    }
-
-    private exposeGlobalMethods(): void {
-      const win = window as unknown as WindowWithLucide;
-      win.resetForm = this.resetForm.bind(this);
-      win.testEmail = this.testEmail.bind(this);
     }
   }
 

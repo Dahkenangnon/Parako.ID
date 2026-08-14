@@ -39,7 +39,7 @@ const MIN_ROTATION_INTERVAL_MS = 60_000; // 1 minute
 @injectable()
 export class DBKeyStore implements IKeyStore {
   private derivedKey: Buffer | null = null;
-  private lastRotationAt: Date | null = null;
+  private readonly lastRotationAtByTenant = new Map<string, Date>();
   private readonly repository: IJwksKeyRepository;
 
   constructor(
@@ -117,7 +117,7 @@ export class DBKeyStore implements IKeyStore {
 
   async rotate(tenantId?: string): Promise<void> {
     const tenant = tenantId ?? DEFAULT_TENANT;
-    this.guardRapidRotation();
+    this.guardRapidRotation(tenant);
     this.ensureDerivedKey();
 
     // IMPORTANT: Generate new keys FIRST, then demote old ones.
@@ -130,7 +130,7 @@ export class DBKeyStore implements IKeyStore {
     // Move old active → expiring
     await this.repository.markPromotedActiveExpiring(tenant, new Date());
 
-    this.lastRotationAt = new Date();
+    this.lastRotationAtByTenant.set(tenant, new Date());
     this.logger.info('Key rotation phase 1 completed (keys unpromoted)', {
       tenantId: tenant,
     });
@@ -281,10 +281,11 @@ export class DBKeyStore implements IKeyStore {
    * concurrent worker restarts). Throws if the last rotation was less than
    * `MIN_ROTATION_INTERVAL_MS` ago.
    */
-  private guardRapidRotation(): void {
+  private guardRapidRotation(tenantId: string): void {
+    const lastRotationAt = this.lastRotationAtByTenant.get(tenantId);
     if (
-      this.lastRotationAt &&
-      Date.now() - this.lastRotationAt.getTime() < MIN_ROTATION_INTERVAL_MS
+      lastRotationAt &&
+      Date.now() - lastRotationAt.getTime() < MIN_ROTATION_INTERVAL_MS
     ) {
       throw new Error(
         'Key rotation rate-limited — wait at least 1 minute between rotations'

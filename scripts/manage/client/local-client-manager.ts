@@ -8,7 +8,6 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { parse, type ParseError } from 'jsonc-parser';
 import { OidcClient, ClientRegistryConfig } from './local-types.js';
-import { log } from '../shared/utils.js';
 import rootDir from '../shared/file.js';
 
 /**
@@ -93,25 +92,23 @@ export function loadClientRegistryConfig(): ClientRegistryConfig {
     if (!rawConfig || typeof rawConfig !== 'object') {
       throw new Error('Invalid configuration format');
     }
+    if (!Array.isArray(rawConfig.clients)) {
+      throw new Error('Invalid configuration format: clients must be an array');
+    }
 
     const config: ClientRegistryConfig = {
       version: rawConfig.version || '1.0.0',
       created_at: rawConfig.created_at || Date.now(),
       updated_at: rawConfig.updated_at || Date.now(),
-      clients: Array.isArray(rawConfig.clients) ? rawConfig.clients : [],
+      clients: rawConfig.clients,
     };
 
     return config;
   } catch (error) {
-    log.error(
-      `Failed to load client configuration: ${error instanceof Error ? error.message : String(error)}`
+    throw new Error(
+      `Failed to load client configuration: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
-    return {
-      version: '1.0.0',
-      created_at: Date.now(),
-      updated_at: Date.now(),
-      clients: [],
-    };
   }
 }
 

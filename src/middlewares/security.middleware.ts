@@ -8,6 +8,14 @@ import type { ISecurityMiddleware } from '../di/interfaces/security-middleware.i
 import { TYPES } from '../di/types.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 
+function safeLocalRoute(candidate: unknown, fallback: string): string {
+  return typeof candidate === 'string' &&
+    candidate.startsWith('/') &&
+    !candidate.startsWith('//')
+    ? candidate
+    : fallback;
+}
+
 @injectable()
 export class SecurityMiddleware implements ISecurityMiddleware {
   constructor(
@@ -38,7 +46,10 @@ export class SecurityMiddleware implements ISecurityMiddleware {
         }
       );
       return res.redirect(
-        `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}?continue=${encodeURIComponent(returnUrl)}`
+        `${safeLocalRoute(
+          res.locals.routes?.authFull?.login,
+          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
+        )}?continue=${encodeURIComponent(returnUrl)}`
       );
     }
     next();
@@ -66,7 +77,10 @@ export class SecurityMiddleware implements ISecurityMiddleware {
           }
         );
         return res.redirect(
-          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}?continue=${encodeURIComponent(returnUrl)}`
+          `${safeLocalRoute(
+            res.locals.routes?.authFull?.login,
+            `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
+          )}?continue=${encodeURIComponent(returnUrl)}`
         );
       }
 
@@ -106,7 +120,10 @@ export class SecurityMiddleware implements ISecurityMiddleware {
         }
       );
       return res.redirect(
-        `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}?continue=${encodeURIComponent(returnUrl)}`
+        `${safeLocalRoute(
+          res.locals.routes?.authFull?.login,
+          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
+        )}?continue=${encodeURIComponent(returnUrl)}`
       );
     }
 
@@ -167,7 +184,10 @@ export class SecurityMiddleware implements ISecurityMiddleware {
         });
 
         return res.redirect(
-          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}?continue=${returnUrl}`
+          `${safeLocalRoute(
+            res.locals.routes?.authFull?.login,
+            `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
+          )}?continue=${returnUrl}`
         );
       }
 

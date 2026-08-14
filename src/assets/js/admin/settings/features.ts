@@ -10,11 +10,21 @@
 
   if (typeof document === 'undefined') return;
 
+  const providerIds = [
+    'google',
+    'github',
+    'microsoft',
+    'linkedin',
+    'facebook',
+  ] as const;
+
+  interface ProviderControl {
+    checkbox: HTMLInputElement | null;
+    panel: HTMLElement | null;
+  }
+
   class FeaturesSettingsManager {
-    private googleCheckbox: HTMLInputElement | null = null;
-    private githubCheckbox: HTMLInputElement | null = null;
-    private googleConfig: HTMLElement | null = null;
-    private githubConfig: HTMLElement | null = null;
+    private providerControls: ProviderControl[] = [];
 
     public initialize(): void {
       this.cacheElements();
@@ -23,35 +33,27 @@
     }
 
     private cacheElements(): void {
-      this.googleCheckbox = document.getElementById(
-        'social_google'
-      ) as HTMLInputElement | null;
-      this.githubCheckbox = document.getElementById(
-        'social_github'
-      ) as HTMLInputElement | null;
-      this.googleConfig = document.getElementById('google-config');
-      this.githubConfig = document.getElementById('github-config');
+      this.providerControls = providerIds.map(providerId => ({
+        checkbox: document.getElementById(
+          `social_${providerId}`
+        ) as HTMLInputElement | null,
+        panel: document.getElementById(`${providerId}-config`),
+      }));
     }
 
     private setupProviderToggles(): void {
-      this.googleCheckbox?.addEventListener('change', () =>
-        this.updateProviderVisibility()
-      );
-      this.githubCheckbox?.addEventListener('change', () =>
-        this.updateProviderVisibility()
-      );
+      for (const control of this.providerControls) {
+        control.checkbox?.addEventListener('change', () =>
+          this.updateProviderVisibility()
+        );
+      }
     }
 
     private updateProviderVisibility(): void {
-      if (this.googleConfig) {
-        this.googleConfig.style.display = this.googleCheckbox?.checked
-          ? 'block'
-          : 'none';
-      }
-      if (this.githubConfig) {
-        this.githubConfig.style.display = this.githubCheckbox?.checked
-          ? 'block'
-          : 'none';
+      for (const { checkbox, panel } of this.providerControls) {
+        if (panel) {
+          panel.style.display = checkbox?.checked ? 'block' : 'none';
+        }
       }
     }
   }

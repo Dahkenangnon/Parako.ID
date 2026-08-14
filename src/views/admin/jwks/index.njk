@@ -9,7 +9,7 @@
                     <p class="mt-1 text-sm text-muted-foreground">View and manage JSON Web Key Sets used for token signing</p>
                 </div>
                 <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                    <form method="post" action="/admin/jwks/rotate" class="inline" onsubmit="return confirmRotateKeys(event)">
+                    <form method="post" action="/admin/jwks/rotate" class="inline" data-jwks-confirm="rotate">
                         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                         <button type="submit"
                             class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-primary text-primary-foreground text-sm
@@ -33,7 +33,7 @@
                         Your keys have exceeded the configured rotation interval. It is recommended to rotate them now.
                     </p>
                 </div>
-                <form method="post" action="/admin/jwks/rotate" class="flex-shrink-0" onsubmit="return confirmRotateKeys(event)">
+                <form method="post" action="/admin/jwks/rotate" class="flex-shrink-0" data-jwks-confirm="rotate">
                     <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                     <button type="submit"
                         class="inline-flex items-center px-3 py-1.5 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90">
@@ -182,7 +182,7 @@
                                     <div class="flex items-center gap-2">
                                         <span class="text-sm font-mono text-foreground truncate max-w-[180px]" title="{{ key.kid }}">{{ key.kid }}</span>
                                         <button type="button"
-                                            onclick="copyToClipboard('{{ key.kid }}', this)"
+                                            data-jwks-copy="{{ key.kid }}"
                                             class="text-muted-foreground hover:text-foreground flex-shrink-0"
                                             title="Copy Key ID">
                                             <i data-lucide="copy" class="h-3.5 w-3.5"></i>
@@ -267,7 +267,7 @@
                             that are no longer needed for token verification.
                         </p>
                     </div>
-                    <form method="post" action="/admin/jwks/retire-expired" class="flex-shrink-0" onsubmit="return confirmRetireExpired(event)">
+                    <form method="post" action="/admin/jwks/retire-expired" class="flex-shrink-0" data-jwks-confirm="retire-expired">
                         <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                         <button type="submit"
                             class="inline-flex items-center px-4 py-2 bg-secondary text-secondary-foreground text-sm font-medium

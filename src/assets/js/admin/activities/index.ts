@@ -1,208 +1,219 @@
 /**
- * Admin Activities Manager
+ * Declarative controls for the administrator activity listing.
  *
- * Handles admin activities management functionality:
- * - Clear old activities modal
- * - Form submission for clearing activities
+ * Templates provide data attributes and an accessible dialog; this module owns
+ * focus, validation, CSRF propagation, and the destructive form submission so
+ * the page remains compatible with the strict Content Security Policy.
  */
-(function () {
-  'use strict';
 
-  if (typeof document === 'undefined') return;
+interface ActivitiesConfig {
+  csrfToken: string;
+  routes: {
+    clearOld: string;
+  };
+  translations: TranslationStrings;
+}
 
-  // Type Definitions
+interface TranslationStrings {
+  invalidDays: string;
+}
 
-  interface ActivitiesConfig {
-    csrfToken: string;
-    routes: {
-      clearOld: string;
-    };
-    translations: TranslationStrings;
-  }
+type ActivitiesConfigInput = Partial<
+  Omit<ActivitiesConfig, 'routes' | 'translations'>
+> & {
+  routes?: Partial<ActivitiesConfig['routes']>;
+  translations?: Partial<TranslationStrings>;
+};
 
-  interface TranslationStrings {
-    invalidDays: string;
-  }
+const MAX_RETENTION_DAYS = 36_500;
 
-  // Activities Manager Class
+const DEFAULT_CONFIG: ActivitiesConfig = {
+  csrfToken: '',
+  routes: {
+    clearOld: '/admin/activities/clear-old',
+  },
+  translations: {
+    invalidDays: `Enter a whole number between 1 and ${MAX_RETENTION_DAYS}`,
+  },
+};
 
-  class AdminActivitiesManager {
-    private config: ActivitiesConfig;
-    private translations: TranslationStrings;
-    private modal: HTMLElement | null = null;
-    private daysInput: HTMLInputElement | null = null;
+export class AdminActivitiesManager {
+  private readonly config: ActivitiesConfig;
+  private cancelButton: HTMLButtonElement | null = null;
+  private confirmButton: HTMLButtonElement | null = null;
+  private daysInput: HTMLInputElement | null = null;
+  private errorElement: HTMLElement | null = null;
+  private lastFocusedElement: HTMLElement | null = null;
+  private modal: HTMLElement | null = null;
+  private trigger: HTMLButtonElement | null = null;
 
-    private readonly defaultTranslations: TranslationStrings = {
-      invalidDays: 'Please enter a valid number of days',
-    };
-
-    constructor(config: ActivitiesConfig) {
-      this.config = config;
-      this.translations = {
-        ...this.defaultTranslations,
-        ...config.translations,
-      };
-    }
-
-    public initialize(): void {
-      this.cacheElements();
-      this.setupEventListeners();
-      this.exposeGlobalMethods();
-    }
-
-    /**
-     * Cache DOM elements
-     */
-    private cacheElements(): void {
-      this.modal = document.getElementById('clearOldModal');
-      this.daysInput = document.getElementById(
-        'days'
-      ) as HTMLInputElement | null;
-    }
-
-    /**
-     * Setup event listeners
-     */
-    private setupEventListeners(): void {
-      document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') {
-          this.hideModal();
-        }
-      });
-
-      if (this.modal) {
-        this.modal.addEventListener('click', event => {
-          if (event.target === this.modal) {
-            this.hideModal();
-          }
-        });
-      }
-    }
-
-    /**
-     * Expose global methods for inline onclick handlers
-     */
-    private exposeGlobalMethods(): void {
-      if (typeof window === 'undefined') return;
-
-      (window as any).showClearOldModal = this.showModal.bind(this);
-      (window as any).hideClearOldModal = this.hideModal.bind(this);
-      (window as any).clearOldActivities = this.clearOldActivities.bind(this);
-    }
-
-    /**
-     * Show the clear old activities modal
-     */
-    public showModal(): void {
-      if (this.modal) {
-        this.modal.classList.remove('hidden');
-      }
-    }
-
-    /**
-     * Hide the clear old activities modal
-     */
-    public hideModal(): void {
-      if (this.modal) {
-        this.modal.classList.add('hidden');
-      }
-    }
-
-    /**
-     * Submit the clear old activities form
-     */
-    public clearOldActivities(): void {
-      if (!this.daysInput) {
-        return;
-      }
-
-      const daysValue = this.daysInput.value.trim();
-      const days = Number(daysValue);
-
-      if (!daysValue || !Number.isSafeInteger(days) || days < 1) {
-        alert(this.translations.invalidDays);
-        return;
-      }
-
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action =
-        this.config.routes.clearOld || '/admin/activities/clear-old';
-
-      const daysInputHidden = document.createElement('input');
-      daysInputHidden.type = 'hidden';
-      daysInputHidden.name = 'days';
-      daysInputHidden.value = days.toString();
-
-      const csrfInput = document.createElement('input');
-      csrfInput.type = 'hidden';
-      csrfInput.name = '_csrf';
-      csrfInput.value = this.getCsrfToken();
-
-      form.appendChild(daysInputHidden);
-      form.appendChild(csrfInput);
-      document.body.appendChild(form);
-      form.submit();
-    }
-
-    /**
-     * Get CSRF token from hidden input or meta tag
-     */
-    private getCsrfToken(): string {
-      const csrfInput = document.querySelector<HTMLInputElement>(
-        'input[name="_csrf"]'
-      );
-      if (csrfInput?.value) {
-        return csrfInput.value;
-      }
-
-      const csrfMeta = document.querySelector(
-        'meta[name="csrf-token"]'
-      ) as HTMLElement | null;
-      if (csrfMeta) {
-        const metaToken = csrfMeta.getAttribute('content');
-        if (metaToken) {
-          return metaToken;
-        }
-      }
-
-      return this.config.csrfToken || '';
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const stateElement = document.getElementById(
-      '___ADMIN_ACTIVITIES_STATE___'
-    );
-
-    // Default config if state element not found
-    const defaultConfig: ActivitiesConfig = {
-      csrfToken: '',
+  public constructor(config: ActivitiesConfigInput = {}) {
+    this.config = {
+      csrfToken: config.csrfToken ?? DEFAULT_CONFIG.csrfToken,
       routes: {
-        clearOld: '/admin/activities/clear-old',
+        ...DEFAULT_CONFIG.routes,
+        ...config.routes,
       },
       translations: {
-        invalidDays: 'Please enter a valid number of days',
+        ...DEFAULT_CONFIG.translations,
+        ...config.translations,
       },
     };
-
-    try {
-      const config = stateElement
-        ? JSON.parse(stateElement.textContent || '{}')
-        : defaultConfig;
-      const manager = new AdminActivitiesManager({
-        ...defaultConfig,
-        ...config,
-      });
-      manager.initialize();
-    } catch (error) {
-      console.error('[AdminActivitiesManager] Initialization failed:', error);
-      const manager = new AdminActivitiesManager(defaultConfig);
-      manager.initialize();
-    }
-  });
-
-  if (typeof window !== 'undefined') {
-    (window as any).AdminActivitiesManager = AdminActivitiesManager;
   }
-})();
+
+  public initialize(): void {
+    this.modal = document.getElementById('clearOldModal');
+    this.daysInput = document.getElementById('days') as HTMLInputElement | null;
+    this.errorElement = document.getElementById('clearOldError');
+    this.trigger = document.querySelector<HTMLButtonElement>(
+      '[data-activities-clear-old]'
+    );
+    this.cancelButton = document.querySelector<HTMLButtonElement>(
+      '[data-activities-clear-cancel]'
+    );
+    this.confirmButton = document.querySelector<HTMLButtonElement>(
+      '[data-activities-clear-confirm]'
+    );
+
+    this.trigger?.addEventListener('click', () => this.showModal());
+    this.cancelButton?.addEventListener('click', () => this.hideModal());
+    this.confirmButton?.addEventListener('click', () =>
+      this.clearOldActivities()
+    );
+    this.daysInput?.addEventListener('input', () =>
+      this.clearValidationError()
+    );
+
+    this.modal?.addEventListener('click', event => {
+      if (event.target === this.modal) this.hideModal();
+    });
+
+    document.addEventListener('keydown', event => {
+      if (
+        event.key === 'Escape' &&
+        this.modal &&
+        !this.modal.classList.contains('hidden')
+      ) {
+        this.hideModal();
+      }
+    });
+  }
+  public showModal(): void {
+    if (!this.modal) return;
+
+    const activeElement = document.activeElement;
+    this.lastFocusedElement =
+      activeElement &&
+      typeof (activeElement as HTMLElement).focus === 'function'
+        ? (activeElement as HTMLElement)
+        : this.trigger;
+    this.clearValidationError();
+    this.modal.classList.remove('hidden');
+    this.modal.setAttribute('aria-hidden', 'false');
+    this.daysInput?.focus();
+    this.daysInput?.select();
+  }
+
+  public hideModal(): void {
+    if (!this.modal) return;
+
+    this.modal.classList.add('hidden');
+    this.modal.setAttribute('aria-hidden', 'true');
+    this.clearValidationError();
+    this.lastFocusedElement?.focus();
+    this.lastFocusedElement = null;
+  }
+
+  public clearOldActivities(): void {
+    if (!this.daysInput) return;
+
+    const value = this.daysInput.value.trim();
+    const days = Number(value);
+    if (
+      !value ||
+      !Number.isSafeInteger(days) ||
+      days < 1 ||
+      days > MAX_RETENTION_DAYS
+    ) {
+      this.showValidationError();
+      return;
+    }
+
+    this.clearValidationError();
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = this.config.routes.clearOld || DEFAULT_CONFIG.routes.clearOld;
+
+    const daysInput = document.createElement('input');
+    daysInput.type = 'hidden';
+    daysInput.name = 'days';
+    daysInput.value = String(days);
+    form.appendChild(daysInput);
+
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = '_csrf';
+    csrfInput.value = this.getCsrfToken();
+    form.appendChild(csrfInput);
+
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  private showValidationError(): void {
+    this.daysInput?.setAttribute('aria-invalid', 'true');
+    if (this.errorElement) {
+      this.errorElement.textContent = this.config.translations.invalidDays;
+      this.errorElement.classList.remove('hidden');
+    }
+    this.daysInput?.focus();
+  }
+
+  private clearValidationError(): void {
+    this.daysInput?.removeAttribute('aria-invalid');
+    if (this.errorElement) {
+      this.errorElement.classList.add('hidden');
+    }
+  }
+
+  private getCsrfToken(): string {
+    const input = document.querySelector<HTMLInputElement>(
+      'input[name="_csrf"]'
+    );
+    if (input?.value) return input.value;
+
+    const metaToken = document
+      .querySelector<HTMLElement>('meta[name="csrf-token"]')
+      ?.getAttribute('content');
+    return metaToken || this.config.csrfToken;
+  }
+}
+
+function readConfig(): ActivitiesConfigInput {
+  const stateElement = document.getElementById('___ADMIN_ACTIVITIES_STATE___');
+  if (!stateElement?.textContent?.trim()) return {};
+
+  try {
+    return JSON.parse(stateElement.textContent) as ActivitiesConfigInput;
+  } catch (error) {
+    console.error('[AdminActivitiesManager] Initialization failed:', error);
+    return {};
+  }
+}
+
+function bootstrap(): void {
+  new AdminActivitiesManager(readConfig()).initialize();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+  } else {
+    bootstrap();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  Object.assign(window, { AdminActivitiesManager });
+}

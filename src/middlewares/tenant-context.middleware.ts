@@ -8,6 +8,7 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { ITenantContextMiddleware } from '../di/interfaces/tenant-context-middleware.interface.js';
 import type { ITenantRepository } from '../db/repositories/interfaces/tenant.repository.js';
+import type { ITenant } from '../types/tenant.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -73,7 +74,8 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
       }
 
       const environment = config.deployment.environment;
-      let tenantId = this.extractTenantId(req, mtConfig);
+      const extracted = await this.extractTenant(req, mtConfig);
+      let tenantId = extracted.tenantId;
 
       // When cookies are scoped to the base domain (e.g. .parako.test),
       // a session from acme.parako.test is sent to beta.parako.test too.
@@ -174,7 +176,10 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
 
       // Error messages intentionally do NOT reflect the raw input to prevent
       // reflected XSS if the JSON response is rendered in a browser context.
-      const tenant = await this.tenantRepo.findBySlug(tenantId);
+      const tenant =
+        extracted.tenant?.slug === tenantId
+          ? extracted.tenant
+          : await this.tenantRepo.findBySlug(tenantId);
       if (!tenant) {
         res.status(404).json({ error: 'Tenant not found' });
         return;
@@ -213,28 +218,40 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
    * Walk the configured extraction priority list and return the first
    * tenant slug found, or DEFAULT_TENANT_ID if none matched.
    */
-  private extractTenantId(
+  private async extractTenant(
     req: Request,
     config: {
       extraction_priority: string[];
       tenant_header: string;
     }
-  ): string {
+  ): Promise<{ tenantId: string; tenant?: ITenant }> {
     for (const source of config.extraction_priority) {
       switch (source) {
         case 'header': {
           const headerTenant = req.headers[config.tenant_header] as
             string | undefined;
-          if (headerTenant) return headerTenant;
+          if (headerTenant) return { tenantId: headerTenant };
           break;
         }
         case 'subdomain': {
+          // A custom domain is an exact hostname mapping, not a tenant slug.
+          // Resolve it before interpreting the first label as a subdomain so
+          // `login.customer.example` cannot be captured by a tenant named
+          // `login`. The configured source priority still applies: a tenant
+          // header placed before `subdomain` wins without a domain lookup.
+          const hostname = req.hostname.toLowerCase().replace(/\.$/, '');
+          if (!isIpHostname(hostname)) {
+            const domainTenant = await this.tenantRepo.findByDomain(hostname);
+            if (domainTenant) {
+              return { tenantId: domainTenant.slug, tenant: domainTenant };
+            }
+          }
           const subdomain = this.extractSubdomain(req);
-          if (subdomain) return subdomain;
+          if (subdomain) return { tenantId: subdomain };
           break;
         }
       }
     }
-    return DEFAULT_TENANT_ID;
+    return { tenantId: DEFAULT_TENANT_ID };
   }
 }

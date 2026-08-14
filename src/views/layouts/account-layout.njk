@@ -116,7 +116,7 @@
                     <div id="accounts-error-sidebar" class="hidden p-4 text-center">
                         <i data-lucide="alert-circle" class="h-6 w-6 text-destructive mx-auto mb-2"></i>
                         <p class="text-xs text-muted-foreground">{{ t('account-layout.sidebar.account_switcher.failed_to_load') }}</p>
-                        <button onclick="loadSidebarAccountData()" class="text-xs text-primary mt-1">{{ t('account-layout.sidebar.account_switcher.retry') }}</button>
+                        <button type="button" id="accounts-retry-sidebar" class="text-xs text-primary mt-1">{{ t('account-layout.sidebar.account_switcher.retry') }}</button>
                     </div>
 
                 </div>
@@ -227,7 +227,7 @@
         <div id="accounts-error-mobile" class="hidden p-4 text-center">
             <i data-lucide="alert-circle" class="h-6 w-6 text-destructive mx-auto mb-2"></i>
             <p class="text-xs text-muted-foreground">{{ t('account-layout.sidebar.account_switcher.failed_to_load') }}</p>
-            <button onclick="loadMobileAccountData()" class="text-xs text-primary mt-1">{{ t('account-layout.sidebar.account_switcher.retry') }}</button>
+            <button type="button" id="accounts-retry-mobile" class="text-xs text-primary mt-1">{{ t('account-layout.sidebar.account_switcher.retry') }}</button>
         </div>
     </div>
 

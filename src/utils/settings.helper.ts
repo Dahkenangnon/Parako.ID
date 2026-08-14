@@ -5,6 +5,7 @@
  */
 
 import { WEB_SAFE_FONTS } from '../config/constants.js';
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../config/social-providers.js';
 import { BOOTSTRAP_ONLY_FIELDS } from '../config/types.js';
 import { isIP } from 'node:net';
 
@@ -331,13 +332,51 @@ export function convertBooleanFields(data: any, booleanFields: string[]): any {
     if (Array.isArray(value)) {
       // Hidden+checkbox pattern: ["", "on"] (checked) or [""] (unchecked)
       setNestedValue(converted, fieldPath, value.includes('on'));
-    } else if (value === 'on') {
+    } else if (value === 'on' || value === 'true') {
       setNestedValue(converted, fieldPath, true);
-    } else if (value === '') {
-      // Empty string from hidden input = unchecked checkbox on THIS page
+    } else if (value === '' || value === 'false') {
+      // Empty or explicit false input = unchecked checkbox on THIS page.
       setNestedValue(converted, fieldPath, false);
     }
     // undefined = field not on this page → leave absent → mergeConfig skips it
+  }
+
+  return converted;
+}
+
+/**
+ * Normalize application form values from Express' nested form parser.
+ * The hidden-plus-checkbox pattern contributes an empty locale sentinel;
+ * remove it before server-side schema validation and persistence.
+ */
+export function convertApplicationFormData(data: any): any {
+  const converted = { ...data };
+
+  for (const field of ['title', 'description'] as const) {
+    if (typeof converted[field] === 'string') {
+      converted[field] = converted[field].trim();
+    }
+  }
+
+  if (converted.locales && typeof converted.locales === 'object') {
+    const locales = { ...converted.locales };
+    if (typeof locales.default === 'string') {
+      locales.default = locales.default.trim();
+    }
+    if (locales.available !== undefined) {
+      const values: unknown[] = Array.isArray(locales.available)
+        ? locales.available
+        : [locales.available];
+      locales.available = [
+        ...new Set(
+          values
+            .filter((value): value is string => typeof value === 'string')
+            .map(value => value.trim())
+            .filter(Boolean)
+        ),
+      ];
+    }
+    converted.locales = locales;
   }
 
   return converted;
@@ -643,6 +682,22 @@ export function convertFeaturesFormData(data: any): any {
     converted.oidc.scopes = [];
   }
 
+  if (converted.oidc && 'subject_types' in converted.oidc) {
+    const subjectTypes = converted.oidc.subject_types;
+    if (typeof subjectTypes === 'string') {
+      converted.oidc.subject_types = subjectTypes ? [subjectTypes] : [];
+    } else if (Array.isArray(subjectTypes)) {
+      converted.oidc.subject_types = [
+        ...new Set(
+          subjectTypes.filter(
+            (subjectType: unknown): subjectType is string =>
+              typeof subjectType === 'string' && subjectType.length > 0
+          )
+        ),
+      ];
+    }
+  }
+
   if (
     converted.oidc &&
     converted.oidc.extra_client_metadata &&
@@ -659,6 +714,35 @@ export function convertFeaturesFormData(data: any): any {
       converted.social_providers.enabled = enabled.filter(
         (v: string) => v !== '' && v !== undefined
       );
+    }
+  }
+
+  if (converted.social_providers) {
+    for (const provider of CONFIGURABLE_SOCIAL_PROVIDER_IDS) {
+      const providerConfig = converted.social_providers[provider];
+      if (
+        !providerConfig ||
+        typeof providerConfig !== 'object' ||
+        Array.isArray(providerConfig)
+      ) {
+        continue;
+      }
+
+      for (const credential of ['client_id', 'client_secret'] as const) {
+        const value = providerConfig[credential];
+        if (typeof value !== 'string') continue;
+
+        const normalized = value.trim();
+        if (normalized) {
+          providerConfig[credential] = normalized;
+        } else {
+          delete providerConfig[credential];
+        }
+      }
+
+      if (Object.keys(providerConfig).length === 0) {
+        delete converted.social_providers[provider];
+      }
     }
   }
 
@@ -778,12 +862,14 @@ export function convertOidcFormData(data: any): any {
     ];
 
     for (const field of algorithmFields) {
-      if (
-        converted.oidc.jwa[field] &&
-        !Array.isArray(converted.oidc.jwa[field])
-      ) {
-        converted.oidc.jwa[field] = [converted.oidc.jwa[field]];
-      } else if (!converted.oidc.jwa[field]) {
+      const submittedAlgorithms = converted.oidc.jwa[field];
+      if (Array.isArray(submittedAlgorithms)) {
+        converted.oidc.jwa[field] = submittedAlgorithms.filter(
+          algorithm => algorithm !== ''
+        );
+      } else if (submittedAlgorithms) {
+        converted.oidc.jwa[field] = [submittedAlgorithms];
+      } else {
         // If no checkboxes were selected, ensure it's an empty array
         converted.oidc.jwa[field] = [];
       }
@@ -1160,13 +1246,6 @@ export function convertSecurityFormData(data: any): any {
         10
       );
     }
-
-    if (dm.enable_impossible_travel !== undefined) {
-      dm.enable_impossible_travel =
-        dm.enable_impossible_travel === 'true' ||
-        dm.enable_impossible_travel === true ||
-        dm.enable_impossible_travel === 'on';
-    }
   }
 
   if (
@@ -1425,8 +1504,21 @@ export function convertSecurityFormData(data: any): any {
     }
   }
 
+  if (converted.authentication?.multi_factor?.totp) {
+    const totp = converted.authentication.multi_factor.totp;
+    if (typeof totp.issuer_name === 'string') {
+      totp.issuer_name = totp.issuer_name.trim();
+    }
+  }
+
   if (converted.authentication?.multi_factor?.webauthn) {
     const webauthn = converted.authentication.multi_factor.webauthn;
+    if (typeof webauthn.rp_name === 'string') {
+      webauthn.rp_name = webauthn.rp_name.trim();
+    }
+    if (typeof webauthn.rp_id === 'string') {
+      webauthn.rp_id = webauthn.rp_id.trim();
+    }
     if (webauthn.timeout !== undefined) {
       webauthn.timeout = parseInt(webauthn.timeout, 10);
     }
@@ -1446,6 +1538,7 @@ export function convertSecurityFormData(data: any): any {
 
   const booleanFields = [
     'protection.rate_limiting.enabled',
+    'protection.device_matching.enable_impossible_travel',
     'authentication.multi_factor.enabled',
     'authentication.multi_factor.totp.enabled',
     'authentication.multi_factor.email.enabled',

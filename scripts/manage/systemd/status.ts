@@ -9,6 +9,7 @@ export async function showStatus(
   assertServiceName(serviceName);
   const workerServiceName = `${serviceName}-worker`;
   const services = [serviceName, workerServiceName];
+  const failures: string[] = [];
 
   for (const service of services) {
     log.title(service);
@@ -20,5 +21,16 @@ export async function showStatus(
       log.warning(`Service ${service} may not be installed or running`);
       console.log(result.stderr);
     }
+    if (!result.success) {
+      failures.push(
+        `${service}: ${result.stderr || `exit code ${result.code}`}`
+      );
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Failed to query systemd service status: ${failures.join('; ')}`
+    );
   }
 }

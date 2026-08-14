@@ -46,7 +46,7 @@ const HELP_PROFILE = {
     },
     {
       command:
-        'pnpm systemd generate --user parako --dir /opt/parako --env-file /opt/parako/.env --node-path /usr/bin/node --memory-app 2G --memory-worker 512M',
+        'pnpm systemd generate --user parako --dir /opt/parako --environment-file /opt/parako/.env --node-path /usr/bin/node --memory-app 2G --memory-worker 512M',
       description: 'Non-interactive generation with custom memory caps',
     },
     {
@@ -134,7 +134,7 @@ export function setupCommands(program: Command): void {
     .option('-u, --user <user>', 'Service user')
     .option('-d, --dir <directory>', 'Working directory')
     .option('--runtime-dir <directory>', 'Mutable runtime directory')
-    .option('-e, --env-file <path>', 'Environment file path')
+    .option('-e, --environment-file <path>', 'Environment file path')
     .option('-n, --node-path <path>', 'Node.js binary path')
     .option('--name <name>', 'Service name (default: parako-id)')
     .option(
@@ -164,15 +164,19 @@ export function setupCommands(program: Command): void {
         }
         const appPath = path.join(outDir, `${serviceName}.service`);
         const workerPath = path.join(outDir, `${workerServiceName}.service`);
-        for (const [target, contents] of [
+        const targets = [
           [appPath, unitFiles.app],
           [workerPath, unitFiles.worker],
-        ] as const) {
-          if (fs.existsSync(target) && !options.force) {
-            const message = `Refusing to overwrite ${target} — pass --force to overwrite.`;
+        ] as const;
+        if (!options.force) {
+          const conflict = targets.find(([target]) => fs.existsSync(target));
+          if (conflict) {
+            const message = `Refusing to overwrite ${conflict[0]} - pass --force to overwrite.`;
             log.error(message);
             throw new Error(message);
           }
+        }
+        for (const [target, contents] of targets) {
           fs.writeFileSync(target, contents, 'utf-8');
           log.success(`Wrote ${target}`);
         }
@@ -201,7 +205,7 @@ export function setupCommands(program: Command): void {
     .option('-u, --user <user>', 'Service user')
     .option('-d, --dir <directory>', 'Working directory')
     .option('--runtime-dir <directory>', 'Mutable runtime directory')
-    .option('-e, --env-file <path>', 'Environment file path')
+    .option('-e, --environment-file <path>', 'Environment file path')
     .option('-n, --node-path <path>', 'Node.js binary path')
     .option('--name <name>', 'Service name (default: parako-id)')
     .option(

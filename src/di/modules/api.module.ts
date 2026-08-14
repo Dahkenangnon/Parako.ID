@@ -156,6 +156,7 @@ export const apiModule: ContainerModule = new ContainerModule(
         const tenantsController = new TenantsController({
           platformAdminService: platformAdminService as any,
           tenantSettingsOverrideService,
+          configManager,
           logger,
         });
 

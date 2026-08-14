@@ -17,6 +17,7 @@ import type { ISocialLoginManager } from '../../../di/interfaces/social-login-ma
 import type { IUploadMiddleware } from '../../../di/interfaces/upload-middleware.interface.js';
 import type { KoaContextWithOIDC } from 'oidc-provider';
 import { configureNunjucks, resolveBrandingUrl } from '../../../utils/views.js';
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../../../config/social-providers.js';
 
 /**
  * Koa Middleware Service
@@ -311,11 +312,7 @@ export class KoaMiddleware implements IKoaMiddleware {
               tenantEnabled.includes(p)
             ),
             available: config.features.social_providers.available || [
-              'google',
-              'github',
-              'microsoft',
-              'linkedin',
-              'facebook',
+              ...CONFIGURABLE_SOCIAL_PROVIDER_IDS,
             ],
           };
         })(),
@@ -499,7 +496,7 @@ export class KoaMiddleware implements IKoaMiddleware {
 
         socialProviders: {
           enabled: [],
-          available: ['google', 'github', 'microsoft', 'linkedin', 'facebook'],
+          available: [...CONFIGURABLE_SOCIAL_PROVIDER_IDS],
         },
 
         authentication: {

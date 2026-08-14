@@ -33,6 +33,7 @@
         {% set pMfa = pAuth.multi_factor if pAuth.multi_factor else {} %}
         {% set pTotp = pMfa.totp if pMfa.totp else {} %}
         {% set pEmailMfa = pMfa.email if pMfa.email else {} %}
+        {% set pSms = pMfa.sms if pMfa.sms else {} %}
         {% set pWebauthn = pMfa.webauthn if pMfa.webauthn else {} %}
         {% set pSignup = pAuth.signup if pAuth.signup else {} %}
         {% set pRecovery = pAuth.recovery if pAuth.recovery else {} %}
@@ -65,22 +66,37 @@
             <div class="space-y-4">
                 <div class="flex items-center space-x-2">
                     <input type="hidden" name="authentication[multi_factor][enabled]" value="">
+                    {% if pMfa.enabled %}
+                    <input type="hidden" name="authentication[multi_factor][enabled]" value="on">
+                    <input type="checkbox" id="mfa_enabled" checked disabled
+                           class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    {% else %}
                     <input type="checkbox" id="mfa_enabled" name="authentication[multi_factor][enabled]"
                            value="on"
                            {% if mfa.enabled %}checked{% endif %}
                            class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    {% endif %}
                     <label for="mfa_enabled" class="text-sm font-medium text-foreground">Enable Multi-Factor Authentication</label>
                 </div>
+                {% if pMfa.enabled %}
+                <p class="text-xs text-muted-foreground">Required by the platform and cannot be disabled.</p>
+                {% endif %}
 
                 {# ── TOTP ── #}
                 <div class="ml-6 space-y-3">
                     {% set totp = mfa.totp if mfa.totp else {} %}
                     <div class="flex items-center space-x-2">
                         <input type="hidden" name="authentication[multi_factor][totp][enabled]" value="">
+                        {% if pTotp.enabled %}
+                        <input type="hidden" name="authentication[multi_factor][totp][enabled]" value="on">
+                        <input type="checkbox" id="mfa_totp" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
                         <input type="checkbox" id="mfa_totp" name="authentication[multi_factor][totp][enabled]"
                                value="on"
                                {% if totp.enabled %}checked{% endif %}
                                class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
                         <label for="mfa_totp" class="text-sm text-foreground">TOTP (Authenticator App)</label>
                     </div>
                     <div class="ml-6">
@@ -98,10 +114,16 @@
                     {% set emailMfa = mfa.email if mfa.email else {} %}
                     <div class="flex items-center space-x-2">
                         <input type="hidden" name="authentication[multi_factor][email][enabled]" value="">
+                        {% if pEmailMfa.enabled %}
+                        <input type="hidden" name="authentication[multi_factor][email][enabled]" value="on">
+                        <input type="checkbox" id="mfa_email" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
                         <input type="checkbox" id="mfa_email" name="authentication[multi_factor][email][enabled]"
                                value="on"
                                {% if emailMfa.enabled %}checked{% endif %}
                                class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
                         <label for="mfa_email" class="text-sm text-foreground">Email OTP</label>
                     </div>
                     <div class="ml-6">
@@ -121,10 +143,16 @@
                     {% set smsMfa = mfa.sms if mfa.sms else {} %}
                     <div class="flex items-center space-x-2">
                         <input type="hidden" name="authentication[multi_factor][sms][enabled]" value="">
+                        {% if pSms.enabled %}
+                        <input type="hidden" name="authentication[multi_factor][sms][enabled]" value="on">
+                        <input type="checkbox" id="mfa_sms" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
                         <input type="checkbox" id="mfa_sms" name="authentication[multi_factor][sms][enabled]"
                                value="on"
                                {% if smsMfa.enabled %}checked{% endif %}
                                class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
                         <label for="mfa_sms" class="text-sm text-foreground">SMS OTP</label>
                     </div>
                 </div>
@@ -134,10 +162,16 @@
                     {% set webauthnMfa = mfa.webauthn if mfa.webauthn else {} %}
                     <div class="flex items-center space-x-2">
                         <input type="hidden" name="authentication[multi_factor][webauthn][enabled]" value="">
+                        {% if pWebauthn.enabled %}
+                        <input type="hidden" name="authentication[multi_factor][webauthn][enabled]" value="on">
+                        <input type="checkbox" id="mfa_webauthn" checked disabled
+                               class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% else %}
                         <input type="checkbox" id="mfa_webauthn" name="authentication[multi_factor][webauthn][enabled]"
                                value="on"
                                {% if webauthnMfa.enabled %}checked{% endif %}
                                class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                        {% endif %}
                         <label for="mfa_webauthn" class="text-sm text-foreground">WebAuthn / Passkeys</label>
                     </div>
                     <div class="ml-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1102,7 +1136,7 @@
         <div>
             {% if hasOverride %}
             <form method="POST" action="/admin/configuration/{{ section }}/reset"
-                  onsubmit="return confirm('Are you sure you want to reset Security configuration to defaults? This cannot be undone.')">
+                  data-confirm-message="Are you sure you want to reset Security configuration to defaults? This cannot be undone.">
                 <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                 <button type="submit"
                         class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">
@@ -1130,6 +1164,7 @@
 
 {% block scripts %}
 {{ super() }}
+<script src="{{ asset('js/admin/configuration/common.js') }}"></script>
 <script src="{{ asset('js/admin/configuration/validation.js') }}"></script>
 <script src="{{ asset('js/admin/configuration/security.js') }}"></script>
 {% endblock %}

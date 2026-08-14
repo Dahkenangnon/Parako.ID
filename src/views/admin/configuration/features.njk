@@ -45,6 +45,7 @@
                 Select which providers your users can use to sign in. Unselected providers will not appear on the login page.
             </p>
 
+            <input type="hidden" name="social_providers[enabled][]" value="">
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {% for provider in availableProviders %}
                 <label class="flex items-center gap-3 p-4 border border-border hover:border-primary/50 cursor-pointer transition-colors">
@@ -240,7 +241,8 @@
                                    class="w-full px-3 py-2 pr-20 bg-background border border-border text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
                             {% if providerCreds.client_secret %}
                             <button type="button"
-                                    onclick="revealTenantSecret('features.social_providers.{{ provider.id }}.client_secret', '{{ provider.id }}_client_secret')"
+                                    data-secret-field-path="features.social_providers.{{ provider.id }}.client_secret"
+                                    data-secret-input-id="{{ provider.id }}_client_secret"
                                     class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90">
                                 <i data-lucide="eye" class="h-3 w-3 inline mr-1"></i>
                                 Reveal
@@ -260,7 +262,7 @@
         <div>
             {% if hasOverride %}
             <form method="POST" action="/admin/configuration/{{ section }}/reset"
-                  onsubmit="return confirm('Are you sure you want to reset Features configuration to defaults? This cannot be undone.')">
+                  data-confirm-message="Are you sure you want to reset Features configuration to defaults? This cannot be undone.">
                 <input type="hidden" name="_csrf" value="{{ csrfToken }}">
                 <button type="submit"
                         class="inline-flex items-center justify-center px-4 py-2 border border-destructive text-destructive text-sm font-medium hover:bg-destructive/10">

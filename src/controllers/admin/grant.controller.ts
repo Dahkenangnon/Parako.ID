@@ -20,6 +20,75 @@ function firstQueryString(value: unknown): string {
   return typeof candidate === 'string' ? candidate : '';
 }
 
+type GrantClientDetails = {
+  developer: string;
+  id: string;
+  logo: string | null;
+  name: string;
+  redirectUris: string[];
+  uri: string;
+};
+
+function firstClientString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function normalizeGrantClient(
+  rawClient: unknown,
+  fallbackId: string
+): GrantClientDetails {
+  const client =
+    rawClient && typeof rawClient === 'object'
+      ? (rawClient as Record<string, unknown>)
+      : {};
+  const id = firstClientString(fallbackId, client.clientId, client.client_id);
+  const uri = firstClientString(client.clientUri, client.client_uri);
+  let developer = 'Unknown Developer';
+  if (uri) {
+    try {
+      developer = new URL(uri).hostname || developer;
+    } catch {
+      // Persisted client metadata may predate current URI validation.
+    }
+  }
+  const redirectUris = [client.redirectUris, client.redirect_uris].find(value =>
+    Array.isArray(value)
+  );
+
+  return {
+    id: id || 'Unknown',
+    name:
+      firstClientString(
+        client.clientName,
+        client.client_name,
+        client.clientId,
+        client.client_id
+      ) || 'Unknown Application',
+    developer,
+    logo: firstClientString(client.logoUri, client.logo_uri) || null,
+    uri,
+    redirectUris: Array.isArray(redirectUris)
+      ? redirectUris.filter(
+          (value): value is string => typeof value === 'string'
+        )
+      : [],
+  };
+}
+
+function grantClientSummary(
+  rawClient: unknown,
+  fallbackId: string
+): Pick<GrantClientDetails, 'developer' | 'id' | 'logo' | 'name'> {
+  const { id, name, developer, logo } = normalizeGrantClient(
+    rawClient,
+    fallbackId
+  );
+  return { id, name, developer, logo };
+}
+
 @injectable()
 export class AdminUserGrantsController implements IAdminUserGrantsController {
   constructor(
@@ -32,6 +101,32 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     @inject(TYPES.ClientDeviceInfoManager)
     private readonly clientDeviceInfoManager: IClientDeviceInfoManager
   ) {}
+
+  private acceptsHtml(req: Request): boolean {
+    const accept = req.headers.accept;
+    return (
+      typeof accept === 'string' &&
+      accept.toLowerCase().includes('text/html') &&
+      typeof req.accepts === 'function' &&
+      req.accepts(['html', 'json']) === 'html'
+    );
+  }
+
+  private redirectWithFlash(
+    req: Request,
+    res: Response,
+    level: 'error' | 'info' | 'success',
+    message: string
+  ): boolean {
+    if (!this.acceptsHtml(req)) return false;
+
+    const flash = this.sessionManager.flash(req);
+    if (level === 'success') flash.success(message);
+    else if (level === 'info') flash.info(message);
+    else flash.error(message);
+    res.redirect('/admin/user-grants');
+    return true;
+  }
 
   private get activityLoggerDeps() {
     return {
@@ -94,30 +189,13 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       grants.map(async (grant: any) => {
         const payload = grant.payload as any;
 
-        let clientInfo = {
-          id: payload.clientId || 'Unknown',
-          name: 'Unknown Application',
-          developer: 'Unknown Developer',
-          logo: '/images/clav.png',
-        };
+        let clientInfo = grantClientSummary(undefined, payload.clientId || '');
 
         try {
           if (payload.clientId) {
             const client = await this.oidcAdapter.client.find(payload.clientId);
             if (client) {
-              clientInfo = {
-                id: payload.clientId,
-                name:
-                  (client as any).clientName ||
-                  (client as any).clientId ||
-                  'Unknown Application',
-                developer:
-                  (client as any).clientUri &&
-                  typeof (client as any).clientUri === 'string'
-                    ? new URL((client as any).clientUri).hostname
-                    : 'Unknown Developer',
-                logo: (client as any).logoUri || '/images/clav.png',
-              };
+              clientInfo = grantClientSummary(client, payload.clientId);
             }
           }
         } catch (error) {
@@ -169,7 +247,7 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
           if (client) {
             return {
               id: clientId,
-              name: (client as any).clientName || clientId,
+              name: normalizeGrantClient(client, clientId).name,
             };
           }
 
@@ -225,39 +303,22 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     const grant = await this.oidcAdapter.grant.findGrantById(id);
 
     if (!grant) {
-      throw new GuardError('Grant not found', { status: 404 });
+      throw new GuardError('Grant not found', {
+        status: 404,
+        redirectTo: '/admin/user-grants',
+        flashMessage: 'Grant not found',
+      });
     }
 
     const payload = grant.payload as any;
 
-    let clientInfo = {
-      id: payload.clientId || 'Unknown',
-      name: 'Unknown Application',
-      developer: 'Unknown Developer',
-      logo: '/images/clav.png',
-      uri: '',
-      redirectUris: [] as string[],
-    };
+    let clientInfo = normalizeGrantClient(undefined, payload.clientId || '');
 
     try {
       if (payload.clientId) {
         const client = await this.oidcAdapter.client.find(payload.clientId);
         if (client) {
-          clientInfo = {
-            id: payload.clientId,
-            name:
-              (client as any).clientName ||
-              (client as any).clientId ||
-              'Unknown Application',
-            developer:
-              (client as any).clientUri &&
-              typeof (client as any).clientUri === 'string'
-                ? new URL((client as any).clientUri).hostname
-                : 'Unknown Developer',
-            logo: (client as any).logoUri || '/images/clav.png',
-            uri: (client as any).clientUri || '',
-            redirectUris: (client as any).redirectUris || [],
-          };
+          clientInfo = normalizeGrantClient(client, payload.clientId);
         }
       }
     } catch (error) {
@@ -310,6 +371,9 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       const grant = await this.oidcAdapter.grant.findGrantById(id);
 
       if (!grant) {
+        if (this.redirectWithFlash(req, res, 'error', 'Grant not found')) {
+          return;
+        }
         res.status(404).json({
           success: false,
           error: 'Grant not found',
@@ -320,6 +384,16 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
       const payload = grant.payload as any;
       const grantId = payload.jti as string;
       if (!grantId) {
+        if (
+          this.redirectWithFlash(
+            req,
+            res,
+            'error',
+            'Grant has no valid identifier'
+          )
+        ) {
+          return;
+        }
         res.status(400).json({
           success: false,
           error: 'Grant has no valid identifier',
@@ -329,6 +403,16 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
 
       const grantToRevoke = await this.oidcAdapter.grant.find(grantId);
       if (!grantToRevoke) {
+        if (
+          this.redirectWithFlash(
+            req,
+            res,
+            'error',
+            'Grant not found in OIDC provider'
+          )
+        ) {
+          return;
+        }
         res.status(404).json({
           success: false,
           error: 'Grant not found in OIDC provider',
@@ -361,12 +445,25 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         `Admin ${adminUser?.username ?? 'unknown'} revoked grant ${grantId} for user ${payload.accountId} and client ${payload.clientId}`
       );
 
+      if (
+        this.redirectWithFlash(
+          req,
+          res,
+          'success',
+          'Grant revoked successfully'
+        )
+      ) {
+        return;
+      }
       res.json({
         success: true,
         message: 'Grant revoked successfully',
       });
     } catch (error) {
       this.logger.error(error as Error, { context: 'grant_revocation_failed' });
+      if (this.redirectWithFlash(req, res, 'error', 'Failed to revoke grant')) {
+        return;
+      }
       res.status(500).json({
         success: false,
         error: 'Failed to revoke grant',
@@ -389,6 +486,16 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         await this.oidcAdapter.grant.findGrantsByAccountId(username);
 
       if (!userGrants || userGrants.length === 0) {
+        if (
+          this.redirectWithFlash(
+            req,
+            res,
+            'info',
+            'No grants found for this user'
+          )
+        ) {
+          return;
+        }
         res.json({
           success: true,
           message: 'No grants found for this user',
@@ -445,15 +552,27 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         );
       }
 
+      const message = `Successfully revoked ${revokedCount} grant(s)`;
+      if (this.redirectWithFlash(req, res, 'success', message)) return;
       res.json({
         success: true,
-        message: `Successfully revoked ${revokedCount} grant(s)`,
+        message,
         revokedCount,
       });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'user_grants_revocation_failed',
       });
+      if (
+        this.redirectWithFlash(
+          req,
+          res,
+          'error',
+          'Failed to revoke user grants'
+        )
+      ) {
+        return;
+      }
       res.status(500).json({
         success: false,
         error: 'Failed to revoke user grants',
@@ -476,6 +595,16 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         await this.oidcAdapter.grant.findGrantsByClientId(clientId);
 
       if (!clientGrants || clientGrants.length === 0) {
+        if (
+          this.redirectWithFlash(
+            req,
+            res,
+            'info',
+            'No grants found for this client'
+          )
+        ) {
+          return;
+        }
         res.json({
           success: true,
           message: 'No grants found for this client',
@@ -533,15 +662,27 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
         );
       }
 
+      const message = `Successfully revoked ${revokedCount} grant(s)`;
+      if (this.redirectWithFlash(req, res, 'success', message)) return;
       res.json({
         success: true,
-        message: `Successfully revoked ${revokedCount} grant(s)`,
+        message,
         revokedCount,
       });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'client_grants_revocation_failed',
       });
+      if (
+        this.redirectWithFlash(
+          req,
+          res,
+          'error',
+          'Failed to revoke client grants'
+        )
+      ) {
+        return;
+      }
       res.status(500).json({
         success: false,
         error: 'Failed to revoke client grants',

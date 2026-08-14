@@ -3,7 +3,7 @@
  *
  * Handles deployment settings page functionality:
  * - Form reset with confirmation (via common.ts)
- * - URL and allowed origins validation
+ * - Allowed origins and trust-proxy validation
  */
 (function () {
   'use strict';
@@ -18,29 +18,34 @@
     ) => Promise<void>;
   }
 
+  interface ValidationError {
+    message: string;
+    title: string;
+  }
+
   class DeploymentSettingsManager {
     private form: HTMLFormElement | null = null;
 
     public initialize(): void {
-      this.form = document.querySelector('form');
+      this.form = document.querySelector('#deployment-form');
       this.setupFormValidation();
     }
 
     private setupFormValidation(): void {
       if (!this.form) return;
 
-      this.form.addEventListener('submit', async e => {
-        const isValid = await this.validateForm();
-        if (!isValid) {
-          e.preventDefault();
-        }
+      this.form.addEventListener('submit', e => {
+        const validationError = this.validateForm();
+        if (!validationError) return;
+
+        // Native form submission does not wait for an async event handler.
+        // Cancel synchronously, then let the dialog resolve independently.
+        e.preventDefault();
+        void this.showError(validationError.title, validationError.message);
       });
     }
 
-    private async validateForm(): Promise<boolean> {
-      const urlInput = document.getElementById(
-        'url'
-      ) as HTMLInputElement | null;
+    private validateForm(): ValidationError | null {
       const originsInput = document.getElementById(
         'server.allowed_origins'
       ) as HTMLInputElement | null;
@@ -51,56 +56,44 @@
         'server.trust_proxy_hops'
       ) as HTMLInputElement | null;
 
-      const url = urlInput?.value || '';
       const allowedOrigins = originsInput?.value || '';
       const devAllowedOrigins = devOriginsInput?.value || '';
 
-      if (!url || !allowedOrigins) {
-        await this.showError(
-          'Validation Error',
-          'URL and Allowed Origins are required fields.'
-        );
-        return false;
-      }
-
-      try {
-        new URL(url);
-      } catch {
-        await this.showError('Invalid URL', 'Please enter a valid URL.');
-        return false;
+      if (!allowedOrigins) {
+        return {
+          title: 'Validation Error',
+          message: 'Allowed Origins are required.',
+        };
       }
 
       const invalidOrigin = this.findFirstInvalidOrigin(allowedOrigins);
       if (invalidOrigin) {
-        await this.showError(
-          'Invalid Allowed Origin',
-          `"${invalidOrigin}" is not a valid origin URL.`
-        );
-        return false;
+        return {
+          title: 'Invalid Allowed Origin',
+          message: `"${invalidOrigin}" is not a valid origin URL.`,
+        };
       }
 
       if (devAllowedOrigins) {
         const invalidDev = this.findFirstInvalidOrigin(devAllowedOrigins);
         if (invalidDev) {
-          await this.showError(
-            'Invalid Dev Allowed Origin',
-            `"${invalidDev}" is not a valid origin URL.`
-          );
-          return false;
+          return {
+            title: 'Invalid Dev Allowed Origin',
+            message: `"${invalidDev}" is not a valid origin URL.`,
+          };
         }
       }
 
       const hopsValue = trustHopsInput?.value.trim() || '';
       const hops = Number(hopsValue);
       if (!hopsValue || !Number.isInteger(hops) || hops < 0 || hops > 10) {
-        await this.showError(
-          'Invalid Trust Proxy Hops',
-          'Trust proxy hops must be an integer between 0 and 10.'
-        );
-        return false;
+        return {
+          title: 'Invalid Trust Proxy Hops',
+          message: 'Trust proxy hops must be an integer between 0 and 10.',
+        };
       }
 
-      return true;
+      return null;
     }
 
     private findFirstInvalidOrigin(commaSeparated: string): string | null {

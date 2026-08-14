@@ -8,6 +8,8 @@ import type {
 export interface ActivityFilter {
   /** Adapter-neutral text search across description and actor username. */
   search?: string;
+  /** Match activities where this user is either the actor or the target. */
+  related_user_id?: string;
   type?: string | string[];
   status?: 'success' | 'failed' | 'warning' | 'info';
   'actor.user_id'?: string;

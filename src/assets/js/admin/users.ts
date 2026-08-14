@@ -22,6 +22,7 @@ interface UserActionResponse {
   error?: string;
 }
 
+let confirmDialogSequence = 0;
 /**
  * Admin Users Manager - Handles user action confirmation and execution
  */
@@ -69,6 +70,10 @@ class AdminUsersManager {
     cancelText: string = 'Cancel',
     isDanger: boolean = true
   ): Promise<boolean> {
+    const dialogId = ++confirmDialogSequence;
+    const titleId = `admin-user-confirm-title-${dialogId}`;
+    const messageId = `admin-user-confirm-message-${dialogId}`;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     return new Promise(resolve => {
       const backdrop = document.createElement('div');
       backdrop.className =
@@ -77,6 +82,10 @@ class AdminUsersManager {
       const modal = document.createElement('div');
       modal.className =
         'bg-background border border-border rounded-lg shadow-lg max-w-md w-full';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', titleId);
+      modal.setAttribute('aria-describedby', messageId);
 
       const header = document.createElement('div');
       header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -91,6 +100,7 @@ class AdminUsersManager {
       iconContainer.appendChild(icon);
 
       const titleElement = document.createElement('h3');
+      titleElement.setAttribute('id', titleId);
       titleElement.className = 'font-semibold text-lg flex-1';
       titleElement.textContent = title;
 
@@ -100,6 +110,7 @@ class AdminUsersManager {
       const body = document.createElement('div');
       body.className = 'px-6 pb-4';
       const messageElement = document.createElement('p');
+      messageElement.setAttribute('id', messageId);
       messageElement.className =
         'text-sm text-muted-foreground whitespace-pre-line';
       messageElement.textContent = message;
@@ -134,6 +145,7 @@ class AdminUsersManager {
       const cleanup = () => {
         backdrop.remove();
         document.removeEventListener('keydown', handleEscape);
+        previouslyFocused?.focus();
       };
 
       cancelButton.addEventListener('click', () => {
@@ -211,6 +223,8 @@ class AdminUsersManager {
     messageElement.textContent = message;
 
     const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.setAttribute('aria-label', 'Dismiss notification');
     closeButton.className = 'text-white/80 hover:text-white';
     const closeIcon = document.createElement('i');
     closeIcon.setAttribute('data-lucide', 'x');
@@ -429,17 +443,43 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const adminUsersManager = new AdminUsersManager(debug);
 
-    // Make functions globally accessible for inline event handlers
-    (window as any).toggleUserStatus = (
+    const toggleUserStatus = (
       userId: string,
       action: 'enable' | 'disable'
-    ) => {
-      adminUsersManager.toggleUserStatus(userId, action);
+    ): void => {
+      void adminUsersManager.toggleUserStatus(userId, action);
+    };
+    const anonymizeUser = (userId: string, username: string): void => {
+      void adminUsersManager.anonymizeUser(userId, username);
     };
 
-    (window as any).anonymizeUser = (userId: string, username: string) => {
-      adminUsersManager.anonymizeUser(userId, username);
-    };
+    // Keep the public helpers for integrations while templates use CSP-safe
+    // data attributes instead of blocked inline event handlers.
+    (window as any).toggleUserStatus = toggleUserStatus;
+    (window as any).anonymizeUser = anonymizeUser;
+
+    document
+      .querySelectorAll<HTMLButtonElement>('[data-user-status-action]')
+      .forEach(button => {
+        button.addEventListener('click', () => {
+          const { userId, userStatusAction } = button.dataset;
+          if (
+            userId &&
+            (userStatusAction === 'enable' || userStatusAction === 'disable')
+          ) {
+            toggleUserStatus(userId, userStatusAction);
+          }
+        });
+      });
+
+    document
+      .querySelectorAll<HTMLButtonElement>('[data-user-anonymize]')
+      .forEach(button => {
+        button.addEventListener('click', () => {
+          const { userId, username } = button.dataset;
+          if (userId && username) anonymizeUser(userId, username);
+        });
+      });
 
     (window as any).adminUsersManager = adminUsersManager;
   }

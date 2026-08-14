@@ -31,6 +31,7 @@ import {
   extractBaseDomain,
 } from '../integration/social-tier-utils.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
+import { findInvalidSocialProviderCredential } from '../config/social-providers.js';
 
 export interface ISocialTier1CompletionService {
   complete(
@@ -132,10 +133,14 @@ export class SocialTier1CompletionService implements ISocialTier1CompletionServi
         ? providerConfig.client_secret.trim()
         : '';
 
-    if (!clientId || !clientSecret) {
+    const invalidCredential = findInvalidSocialProviderCredential(
+      provider,
+      providerConfig
+    );
+    if (invalidCredential) {
       this.logger.warn('tier1_completion_credentials_missing', {
         provider,
-        missingField: !clientId ? 'client_id' : 'client_secret',
+        missingField: invalidCredential,
       });
       return { success: false, error: 'Social login is not available' };
     }

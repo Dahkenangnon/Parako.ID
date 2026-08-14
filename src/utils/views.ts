@@ -113,6 +113,8 @@ const isLogicalAssetPath = (src: string): boolean => {
  * URLs and already-rooted paths pass through unchanged. Defaults set
  * `loading="lazy"` and `decoding="async"` so out-of-viewport images do not
  * block first paint; pass `loading: 'eager'` for above-the-fold imagery.
+ * Empty sources produce no markup, avoiding broken images and accidental
+ * requests for the current document.
  *
  * The helper currently emits a single `<img>`. When the storage layer
  * starts surfacing variant URLs, this is the call site where `<picture>`
@@ -120,6 +122,8 @@ const isLogicalAssetPath = (src: string): boolean => {
  * do not need to change again.
  */
 export function renderImage(src: string, options: ImageOptions = {}): string {
+  if (!src) return '';
+
   const normalizedSrc = isLogicalAssetPath(src) ? resolveAssetPath(src) : src;
   const alt = options.alt ?? '';
   const loading = options.loading ?? 'lazy';
@@ -799,19 +803,23 @@ function addCustomFilters(env: nunjucks.Environment): void {
  * @param getFileUrl - Callback that resolves a storage key to a signed/public URL
  * @returns The resolved URL string
  */
+function passThroughBrandingUrl(
+  urlOrKey: string | undefined | null
+): string | undefined {
+  if (!urlOrKey) return '';
+  if (isValidHttpUrl(urlOrKey)) return urlOrKey;
+  if (urlOrKey.startsWith('/images/') || urlOrKey.startsWith('/favicon')) {
+    return urlOrKey;
+  }
+  return undefined;
+}
+
 export function resolveBrandingUrl(
   urlOrKey: string | undefined | null,
   getFileUrl: (key: string) => string | Promise<string>
 ): string {
-  if (!urlOrKey) return '';
-
-  // External URLs pass through
-  if (isValidHttpUrl(urlOrKey)) return urlOrKey;
-
-  // Default static assets (served by express.static) pass through
-  if (urlOrKey.startsWith('/images/') || urlOrKey.startsWith('/favicon')) {
-    return urlOrKey;
-  }
+  const passThrough = passThroughBrandingUrl(urlOrKey);
+  if (passThrough !== undefined) return passThrough;
 
   // Anything else is either an old absolute `/uploads/...` path written
   // before the storage-provider abstraction, or a new storage key (the
@@ -819,8 +827,23 @@ export function resolveBrandingUrl(
   // injected getFileUrl helper, which returns a string for local storage
   // and a Promise for S3-style providers — Nunjucks filters are sync,
   // so we fall through to the raw key when the resolver is async.
-  const resolved = getFileUrl(urlOrKey);
-  return typeof resolved === 'string' ? resolved : urlOrKey;
+  const resolved = getFileUrl(urlOrKey!);
+  return typeof resolved === 'string' ? resolved : urlOrKey!;
+}
+
+/**
+ * Async counterpart used by controllers before rendering. Unlike Nunjucks
+ * filters, controller rendering can await object-storage URL signing.
+ */
+export async function resolveBrandingUrlAsync(
+  urlOrKey: string | undefined | null,
+  getFileUrl: (key: string) => string | Promise<string>
+): Promise<string> {
+  const passThrough = passThroughBrandingUrl(urlOrKey);
+  if (passThrough !== undefined) return passThrough;
+
+  const resolved = await getFileUrl(urlOrKey!);
+  return typeof resolved === 'string' ? resolved : urlOrKey!;
 }
 
 export default {

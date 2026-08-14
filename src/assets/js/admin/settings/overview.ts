@@ -62,7 +62,7 @@
 
     private readonly checkDescriptions: Record<string, string> = {
       configLoaded: 'Configuration loaded',
-      databaseConnectivity: 'MongoDB connection',
+      databaseConnectivity: 'Database connection',
       smtpConnectivity: 'Email service',
       oidcStorageConnectivity: 'Token storage',
       oidcIssuerReachable: 'Discovery endpoint',
@@ -70,7 +70,49 @@
 
     public initialize(): void {
       this.cacheElements();
+      this.bindActions();
       this.exposeGlobalMethods();
+    }
+
+    private bindActions(): void {
+      document.addEventListener('click', event => {
+        const target = event.target as {
+          closest?: (selector: string) => Element | null;
+        } | null;
+        const actionElement = target?.closest?.(
+          '[data-settings-action]'
+        ) as HTMLElement | null;
+        const action = actionElement?.dataset.settingsAction;
+        if (!action) return;
+
+        event.preventDefault();
+
+        switch (action) {
+          case 'check-health':
+            void this.checkHealth();
+            break;
+          case 'toggle-history':
+            this.toggleVersionHistory();
+            break;
+          case 'export':
+            void this.exportConfig();
+            break;
+          case 'reload':
+            void this.reloadConfig();
+            break;
+          case 'hide-health':
+            this.hideHealthCheck();
+            break;
+          case 'rollback': {
+            const versionId = actionElement.dataset.settingsVersionId;
+            const versionNumber = actionElement.dataset.settingsVersionNumber;
+            if (versionId && versionNumber) {
+              void this.confirmRollback(versionId, versionNumber);
+            }
+            break;
+          }
+        }
+      });
     }
 
     private cacheElements(): void {
@@ -324,6 +366,8 @@
       confirmText = 'Confirm',
       cancelText = 'Cancel'
     ): Promise<boolean> {
+      const previouslyFocused = document.activeElement as HTMLElement | null;
+
       return new Promise(resolve => {
         const backdrop = document.createElement('div');
         backdrop.className =
@@ -331,17 +375,23 @@
 
         const modal = document.createElement('div');
         modal.className = 'bg-card border border-border max-w-md w-full';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'settings-confirm-title');
+        modal.setAttribute('aria-describedby', 'settings-confirm-description');
 
         const header = document.createElement('div');
         header.className =
           'flex items-center justify-between p-4 border-b border-border';
 
         const headerTitle = document.createElement('h3');
+        headerTitle.setAttribute('id', 'settings-confirm-title');
         headerTitle.className = 'text-lg font-semibold text-foreground';
         headerTitle.textContent = title;
 
         const closeButton = document.createElement('button');
         closeButton.type = 'button';
+        closeButton.setAttribute('aria-label', 'Close');
         closeButton.className = 'text-muted-foreground hover:text-foreground';
         closeButton.innerHTML = '<i data-lucide="x" class="h-5 w-5"></i>';
         closeButton.onclick = () => cleanup(false);
@@ -350,6 +400,7 @@
         header.appendChild(closeButton);
 
         const body = document.createElement('div');
+        body.setAttribute('id', 'settings-confirm-description');
         body.className = 'p-4 text-sm text-muted-foreground';
         body.textContent = message;
 
@@ -383,7 +434,7 @@
 
         this.refreshIcons();
 
-        confirmButton.focus();
+        cancelButton.focus();
 
         const handleEscape = (e: KeyboardEvent) => {
           if (e.key === 'Escape') {
@@ -395,6 +446,7 @@
         const cleanup = (confirmed: boolean) => {
           document.removeEventListener('keydown', handleEscape);
           document.body.removeChild(backdrop);
+          previouslyFocused?.focus();
           resolve(confirmed);
         };
       });

@@ -13,6 +13,7 @@
 import type { Request, Response, NextFunction } from 'express';
 
 import type { ITenantSettingsOverrideService } from '../../../di/interfaces/tenant-settings-override-service.interface.js';
+import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
 import type { ITenantSettingsOverride } from '../../../types/tenant-settings-override.js';
 import { ConflictError as PlatformConflictError } from '../../../errors/platform.errors.js';
 import {
@@ -46,9 +47,7 @@ const UNIQUE_CONSTRAINT_CODES = new Set<unknown>([
 
 function isTenantConflict(error: unknown): boolean {
   const code = (error as { code?: unknown } | null)?.code;
-  return (
-    error instanceof PlatformConflictError || UNIQUE_CONSTRAINT_CODES.has(code)
-  );
+  return UNIQUE_CONSTRAINT_CODES.has(code);
 }
 
 /** Service and logger dependencies required by {@link TenantsController}. */
@@ -66,6 +65,7 @@ export interface TenantsControllerDeps {
     ITenantSettingsOverrideService,
     'loadOverrides' | 'saveOverrides'
   >;
+  configManager: Pick<IConfigManager, 'getPlatformConfig'>;
   logger: {
     error(error: Error, context?: Record<string, unknown>): void;
     info(message: string, context?: Record<string, unknown>): void;
@@ -75,11 +75,13 @@ export interface TenantsControllerDeps {
 export class TenantsController {
   private readonly platformAdminService: TenantsControllerDeps['platformAdminService'];
   private readonly tenantSettingsOverrideService: TenantsControllerDeps['tenantSettingsOverrideService'];
+  private readonly configManager: TenantsControllerDeps['configManager'];
   private readonly logger: TenantsControllerDeps['logger'];
 
   constructor(deps: TenantsControllerDeps) {
     this.platformAdminService = deps.platformAdminService;
     this.tenantSettingsOverrideService = deps.tenantSettingsOverrideService;
+    this.configManager = deps.configManager;
     this.logger = deps.logger;
   }
 
@@ -143,7 +145,7 @@ export class TenantsController {
    *
    * Validates the request body against `createTenantSchema`, delegates to
    * the platform admin service, and returns the created tenant with 201.
-   * Duplicate slug errors are converted to a 409 Conflict response.
+   * Duplicate slug and domain errors are converted to a 409 Conflict response.
    */
   create = async (
     req: Request,
@@ -157,6 +159,9 @@ export class TenantsController {
       try {
         tenant = await this.platformAdminService.createTenant(body);
       } catch (err: unknown) {
+        if (err instanceof PlatformConflictError) {
+          throw conflict(err.message);
+        }
         if (isTenantConflict(err)) {
           throw conflict(`Tenant with slug '${body.slug}' already exists`);
         }
@@ -276,7 +281,10 @@ export class TenantsController {
 
       const updated = await this.tenantSettingsOverrideService.saveOverrides(
         tenantId,
-        { [section]: data } as Partial<ITenantSettingsOverride>
+        { [section]: data } as Partial<ITenantSettingsOverride>,
+        req.apiAuth?.client_id ?? 'management-api',
+        `Updated ${section} configuration via Management API`,
+        this.configManager.getPlatformConfig() as unknown as Record<string, any>
       );
 
       this.logger.info('Tenant config updated', {

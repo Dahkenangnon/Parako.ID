@@ -8,6 +8,7 @@ import type {
 } from '../interfaces/settings.repository.js';
 import type { QueryOptions } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
+import { ConfigurationVersionConflictError } from '../../../errors/configuration-version-conflict.error.js';
 
 interface SettingsRow {
   id: string;
@@ -206,19 +207,33 @@ export class PrismaSettingsRepository
   async save(
     key: string,
     value: Partial<ISettings>,
-    meta?: SettingsMeta
+    meta?: SettingsMeta,
+    expectedVersion?: number
   ): Promise<ISettings> {
     const content = settingsContent(value as Record<string, unknown>);
 
     for (let attempt = 0; attempt < SETTINGS_SAVE_MAX_ATTEMPTS; attempt += 1) {
       const deactivated = await this.prisma.settings.updateMany({
-        where: { key, is_active: true },
+        where: {
+          key,
+          is_active: true,
+          ...(expectedVersion === undefined
+            ? {}
+            : { int_version: expectedVersion }),
+        },
         data: { is_active: false },
       });
       const latest = await this.prisma.settings.findFirst({
         where: { key },
         orderBy: { int_version: 'desc' },
       });
+
+      if (expectedVersion !== undefined && deactivated.count === 0) {
+        throw new ConfigurationVersionConflictError(
+          expectedVersion,
+          latest?.int_version
+        );
+      }
 
       // Another writer owns the interval between deactivation and insertion.
       // Let it publish its revision, then claim that active row on a retry.

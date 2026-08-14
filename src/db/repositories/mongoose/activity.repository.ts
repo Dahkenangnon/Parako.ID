@@ -92,26 +92,35 @@ export class MongooseActivityRepository
   }
 
   async getDistinctTypes(filter?: ActivityFilter): Promise<string[]> {
-    const mongoFilter: Record<string, unknown> = {};
-    if (filter?.status) mongoFilter.status = filter.status;
-    if ((filter as any)?.['actor.username'])
-      mongoFilter['actor.username'] = (filter as any)['actor.username'];
-    if (filter?.['actor.user_id'])
-      mongoFilter['actor.user_id'] = filter['actor.user_id'];
-    return this.model.distinct('type', mongoFilter);
+    return this.model.distinct('type', this.toMongoFilter(filter ?? {}));
   }
 
   private toMongoFilter(filter: ActivityFilter): Record<string, unknown> {
-    const { search, ...mongoFilter } = filter;
-    if (!search) return mongoFilter;
+    const { search, related_user_id: relatedUserId, ...filterFields } = filter;
+    const mongoFilter: Record<string, unknown> = { ...filterFields };
+    const disjunctions: Array<Array<Record<string, unknown>>> = [];
 
-    const safeSearch = new RegExp(escapeRegExp(search), 'i');
-    return {
-      ...mongoFilter,
-      $or: [
+    if (search) {
+      const safeSearch = new RegExp(escapeRegExp(search), 'i');
+      disjunctions.push([
         { description: { $regex: safeSearch } },
         { 'actor.username': { $regex: safeSearch } },
-      ],
-    };
+      ]);
+    }
+
+    if (relatedUserId) {
+      disjunctions.push([
+        { 'actor.user_id': relatedUserId },
+        { 'target.user_id': relatedUserId },
+      ]);
+    }
+
+    if (disjunctions.length === 1) {
+      mongoFilter.$or = disjunctions[0];
+    } else if (disjunctions.length > 1) {
+      mongoFilter.$and = disjunctions.map($or => ({ $or }));
+    }
+
+    return mongoFilter;
   }
 }

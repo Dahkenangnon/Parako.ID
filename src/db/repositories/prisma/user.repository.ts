@@ -30,11 +30,35 @@ import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
  * JSON-string element searches instead of Prisma's list operators, which are
  * invalid for a scalar string column.
  */
+type PrismaStorageAdapter = 'sqlite' | 'postgresql';
+
+const USER_SEARCH_FIELDS = [
+  'username',
+  'email',
+  'name',
+  'given_name',
+  'family_name',
+] as const;
+
 function normalizeUserFilterToPrisma(
-  filter: Record<string, unknown>
+  filter: Record<string, unknown>,
+  adapter: PrismaStorageAdapter
 ): Record<string, unknown> {
-  const normalized = normalizeToPrisma(filter);
-  const rolesFilter = filter.roles;
+  const { search, ...query } = filter;
+  const normalized = normalizeToPrisma(query);
+  const conditions: Array<Record<string, unknown>> = [];
+
+  if (typeof search === 'string' && search.length > 0) {
+    const textFilter =
+      adapter === 'postgresql'
+        ? { contains: search, mode: 'insensitive' }
+        : { contains: search };
+    conditions.push({
+      OR: USER_SEARCH_FIELDS.map(field => ({ [field]: textFilter })),
+    });
+  }
+
+  const rolesFilter = query.roles;
   const requestedRoles = Array.isArray(rolesFilter)
     ? rolesFilter
     : rolesFilter !== null &&
@@ -43,20 +67,25 @@ function normalizeUserFilterToPrisma(
       ? ((rolesFilter as Record<string, unknown>).$in as unknown[])
       : undefined;
 
-  if (!requestedRoles) return normalized;
-
-  delete normalized.roles;
-  const roleMembership = {
-    OR: requestedRoles
-      .filter((role): role is string => typeof role === 'string')
-      .map(role => ({ roles: { contains: JSON.stringify(role) } })),
-  };
-
-  if (normalized.OR !== undefined) {
-    return { AND: [normalized, roleMembership] };
+  if (requestedRoles) {
+    delete normalized.roles;
+    conditions.push({
+      OR: requestedRoles
+        .filter((role): role is string => typeof role === 'string')
+        .map(role => ({ roles: { contains: JSON.stringify(role) } })),
+    });
   }
 
-  return { ...normalized, ...roleMembership };
+  if (conditions.length === 0) return normalized;
+  if (conditions.length === 1 && normalized.OR === undefined) {
+    return { ...normalized, ...conditions[0] };
+  }
+
+  const parts =
+    Object.keys(normalized).length > 0
+      ? [normalized, ...conditions]
+      : conditions;
+  return parts.length === 1 ? parts[0] : { AND: parts };
 }
 
 const USER_INCLUDE = {
@@ -274,7 +303,10 @@ export class PrismaUserRepository
   extends AbstractPrismaRepository
   implements IUserRepository
 {
-  constructor(prisma: PrismaClient) {
+  constructor(
+    prisma: PrismaClient,
+    private readonly storageAdapter: PrismaStorageAdapter = 'sqlite'
+  ) {
     super(prisma);
   }
 
@@ -316,7 +348,10 @@ export class PrismaUserRepository
           this.prisma.user.findMany({ ...args, include: USER_INCLUDE }),
         count: args => this.prisma.user.count(args as Prisma.UserCountArgs),
       },
-      normalizeUserFilterToPrisma(filter as Record<string, unknown>),
+      normalizeUserFilterToPrisma(
+        filter as Record<string, unknown>,
+        this.storageAdapter
+      ),
       opts,
       row => toIUser(row as UserFull)
     );
@@ -324,6 +359,7 @@ export class PrismaUserRepository
 
   async create(data: CreateUserDto): Promise<IUser> {
     const id = crypto.randomUUID();
+    const tenantId = tenantContext.getTenantId();
     const row = await this.prisma.user.create({
       data: {
         id,
@@ -383,6 +419,7 @@ export class PrismaUserRepository
         mfa: data.mfa
           ? {
               create: {
+                tenant_id: tenantId,
                 enabled: data.mfa.enabled,
                 preferred_method: data.mfa.preferred_method ?? null,
                 webauthn_enabled: data.mfa.methods?.webauthn?.enabled ?? false,
@@ -394,6 +431,7 @@ export class PrismaUserRepository
         mfa_totp: data.mfa?.methods?.totp
           ? {
               create: {
+                tenant_id: tenantId,
                 enabled: data.mfa.methods.totp.enabled,
                 secret: data.mfa.methods.totp.secret ?? null,
                 verified_at: data.mfa.methods.totp.verified_at ?? null,
@@ -404,6 +442,7 @@ export class PrismaUserRepository
           data.mfa?.methods?.email || data.mfa?.email_otp
             ? {
                 create: {
+                  tenant_id: tenantId,
                   enabled: data.mfa.methods?.email?.enabled ?? false,
                   verified_at: data.mfa.methods?.email?.verified_at ?? null,
                   otp_hash: data.mfa.email_otp?.hash ?? null,
@@ -414,6 +453,7 @@ export class PrismaUserRepository
         webauthn_credentials: data.mfa?.methods?.webauthn?.credentials?.length
           ? {
               create: data.mfa.methods.webauthn.credentials.map(c => ({
+                tenant_id: tenantId,
                 credential_id: c.credential_id,
                 public_key: c.credential_public_key,
                 counter: c.counter,
@@ -429,7 +469,7 @@ export class PrismaUserRepository
         recovery: data.recovery
           ? {
               create: {
-                tenant_id: tenantContext.getTenantId(),
+                tenant_id: tenantId,
                 enabled: data.recovery.enabled,
                 methods: JSON.stringify(data.recovery.methods),
                 secondary_email: data.recovery.secondary_email?.email ?? null,
@@ -462,6 +502,7 @@ export class PrismaUserRepository
         backup_codes: data.recovery?.backup_codes?.codes?.length
           ? {
               create: data.recovery.backup_codes.codes.map(code => ({
+                tenant_id: tenantId,
                 code_hash: code,
                 used: false,
               })),
@@ -470,6 +511,7 @@ export class PrismaUserRepository
         security_questions: data.recovery?.security_questions?.questions?.length
           ? {
               create: data.recovery.security_questions.questions.map(q => ({
+                tenant_id: tenantId,
                 question_key: q.question_key,
                 answer_hash: q.answer_hash,
               })),
@@ -478,6 +520,7 @@ export class PrismaUserRepository
         notification_prefs: data.notification_preferences
           ? {
               create: {
+                tenant_id: tenantId,
                 preferred_channel:
                   data.notification_preferences.preferred_channel,
                 security_alerts: data.notification_preferences.security_alerts,
@@ -494,6 +537,7 @@ export class PrismaUserRepository
   }
 
   async update(id: string, data: UpdateUserDto): Promise<IUser> {
+    const tenantId = tenantContext.getTenantId();
     const updateData: Prisma.UserUpdateInput = {};
     if (data.email !== undefined) updateData.email = data.email ?? null;
     if (data.username !== undefined)
@@ -602,7 +646,7 @@ export class PrismaUserRepository
       };
       updateData.mfa = {
         upsert: {
-          create: mfaRow,
+          create: { ...mfaRow, tenant_id: tenantId },
           update: mfaRow,
         },
       };
@@ -616,7 +660,7 @@ export class PrismaUserRepository
         };
         updateData.mfa_totp = {
           upsert: {
-            create: totpRow,
+            create: { ...totpRow, tenant_id: tenantId },
             update: totpRow,
           },
         };
@@ -632,7 +676,7 @@ export class PrismaUserRepository
         };
         updateData.mfa_email_otp = {
           upsert: {
-            create: emailRow,
+            create: { ...emailRow, tenant_id: tenantId },
             update: emailRow,
           },
         };
@@ -644,6 +688,7 @@ export class PrismaUserRepository
           ...(webauthn.credentials?.length
             ? {
                 create: webauthn.credentials.map(credential => ({
+                  tenant_id: tenantId,
                   credential_id: credential.credential_id,
                   public_key: credential.credential_public_key,
                   counter: credential.counter,
@@ -669,7 +714,7 @@ export class PrismaUserRepository
       };
       updateData.notification_prefs = {
         upsert: {
-          create: preferences,
+          create: { ...preferences, tenant_id: tenantId },
           update: preferences,
         },
       };
@@ -701,7 +746,7 @@ export class PrismaUserRepository
         upsert: {
           create: {
             ...recoveryRow,
-            tenant_id: tenantContext.getTenantId(),
+            tenant_id: tenantId,
           },
           update: recoveryRow,
         },
@@ -711,6 +756,7 @@ export class PrismaUserRepository
         ...(recovery.backup_codes?.codes.length
           ? {
               create: recovery.backup_codes.codes.map(code => ({
+                tenant_id: tenantId,
                 code_hash: code,
                 used: false,
               })),
@@ -722,6 +768,7 @@ export class PrismaUserRepository
         ...(recovery.security_questions?.questions.length
           ? {
               create: recovery.security_questions.questions.map(question => ({
+                tenant_id: tenantId,
                 question_key: question.question_key,
                 answer_hash: question.answer_hash,
               })),
@@ -745,7 +792,10 @@ export class PrismaUserRepository
   async count(filter?: Record<string, unknown>): Promise<number> {
     return this.prisma.user.count({
       where: filter
-        ? (normalizeUserFilterToPrisma(filter) as Prisma.UserWhereInput)
+        ? (normalizeUserFilterToPrisma(
+            filter,
+            this.storageAdapter
+          ) as Prisma.UserWhereInput)
         : undefined,
     });
   }
@@ -1004,16 +1054,16 @@ export class PrismaUserRepository
     opts?: QueryOptions
   ): Promise<IUser[]> {
     const rows = await this.prisma.user.findMany({
-      where: normalizeUserFilterToPrisma(filter) as Prisma.UserWhereInput,
+      where: normalizeUserFilterToPrisma(
+        filter,
+        this.storageAdapter
+      ) as Prisma.UserWhereInput,
       take: opts?.limit,
       skip: opts?.skip,
       orderBy: opts?.sort
-        ? Object.fromEntries(
-            Object.entries(opts.sort).map(([k, v]) => [
-              k,
-              v === 1 || v === 'asc' ? 'asc' : 'desc',
-            ])
-          )
+        ? Object.entries(opts.sort).map(([field, direction]) => ({
+            [field]: direction === 1 || direction === 'asc' ? 'asc' : 'desc',
+          }))
         : undefined,
       include: USER_INCLUDE,
     });

@@ -20,7 +20,11 @@ import type {
   ProviderConfigurator,
 } from '../di/interfaces/tenant-provider-registry.interface.js';
 import { updateProviderJWKS } from '../oidc/provider-keystore-updater.js';
-import { DEFAULT_TENANT_ID, SYSTEM_TENANTS } from './tenant-context.js';
+import {
+  DEFAULT_TENANT_ID,
+  SYSTEM_TENANTS,
+  tenantContext,
+} from './tenant-context.js';
 import { buildRedisKeyForTenant } from './redis-key.js';
 
 /**
@@ -205,22 +209,24 @@ export class TenantProviderRegistry implements ITenantProviderRegistry {
    * No-op if tenant has no cached provider.
    */
   async reloadProviderJWKS(tenantId: string): Promise<void> {
-    const entry = this.pool.get(tenantId);
-    if (!entry) return;
+    return tenantContext.run(tenantId, async () => {
+      const entry = this.pool.get(tenantId);
+      if (!entry) return;
 
-    try {
-      const jwks = await this.keyStore.getJWKS(tenantId);
-      updateProviderJWKS(entry.provider, jwks);
-      this.logger.info('tenant_provider_jwks_reloaded', {
-        tenantId,
-        keyCount: jwks.keys.length,
-      });
-    } catch (error) {
-      this.logger.error('tenant_provider_jwks_reload_failed', {
-        tenantId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+      try {
+        const jwks = await this.keyStore.getJWKS(tenantId);
+        updateProviderJWKS(entry.provider, jwks);
+        this.logger.info('tenant_provider_jwks_reloaded', {
+          tenantId,
+          keyCount: jwks.keys.length,
+        });
+      } catch (error) {
+        this.logger.error('tenant_provider_jwks_reload_failed', {
+          tenantId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
   }
 
   private async createProvider(tenantId: string): Promise<Provider> {

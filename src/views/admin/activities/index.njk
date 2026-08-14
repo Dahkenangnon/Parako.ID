@@ -19,9 +19,10 @@
                         <span class="xs:hidden">Export</span>
                     </a>
                     <button
-                        onclick="showClearOldModal()"
-                        class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground text-sm
-                            font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2">
+                        type="button"
+                        data-activities-clear-old
+                        aria-label="Clear old activities"
+                        class="inline-flex items-center justify-center px-3 sm:px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 focus:outline-none focus:ring-2 focus:ring-destructive focus:ring-offset-2">
                         <i data-lucide="trash-2" class="h-4 w-4 mr-1 sm:mr-2"></i>
                         <span class="hidden xs:inline">Clear Old</span>
                         <span class="xs:hidden">Clear</span>
@@ -112,56 +113,57 @@
                             <label class="block text-xs font-medium text-muted-foreground mb-2">Filter & Sort</label>
                             <div class="grid grid-cols-2 lg:grid-cols-3 gap-3">
                                 <div class="relative">
+                                    <label for="activity-type" class="sr-only">Activity type</label>
                                     <select
+                                        id="activity-type"
                                         name="type"
-                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
-                                            focus:ring-primary/20 focus:border-primary">
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
                                         {% for type in activityTypes %}
                                             <option value="{{ type }}" {% if filters.type == type %} selected {% endif %}>{{ type | title }}</option>
                                         {% endfor %}
                                     </select>
-                                    <i
-                                        data-lucide="chevron-down"
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                    <i data-lucide="chevron-down" class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
                                 </div>
                                 <div class="relative">
+                                    <label for="activity-status" class="sr-only">Activity status</label>
                                     <select
+                                        id="activity-status"
                                         name="status"
-                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
-                                            focus:ring-primary/20 focus:border-primary">
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
                                         {% for status in statuses %}
                                             <option value="{{ status }}" {% if filters.status == status %} selected {% endif %}>{{ status | title }}</option>
                                         {% endfor %}
                                     </select>
-                                    <i
-                                        data-lucide="chevron-down"
-                                        class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                    <i data-lucide="chevron-down" class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
                                 </div>
                                 <div class="relative">
-                                    <input type="text" name="username" placeholder="Username..." value="{{ filters.username }}" class="w-full px-3 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"></div>
-                                    <div class="relative">
-                                        <input type="date" name="dateFrom" value="{{ filters.dateFrom }}" placeholder="From date..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                                            <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
-                                        </div>
-                                        <div class="relative">
-                                            <input type="date" name="dateTo" value="{{ filters.dateTo }}" placeholder="To date..." class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                                                <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
-                                            </div>
-                                            <div class="relative">
-                                                <select
-                                                    name="sortBy"
-                                                    class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2
-                                                        focus:ring-primary/20 focus:border-primary">
-                                                    <option value="timestamp" {% if filters.sortBy == 'timestamp' %} selected {% endif %}>Timestamp</option>
-                                                    <option value="type" {% if filters.sortBy == 'type' %} selected {% endif %}>Type</option>
-                                                    <option value="username" {% if filters.sortBy == 'username' %} selected {% endif %}>Username</option>
-                                                    <option value="status" {% if filters.sortBy == 'status' %} selected {% endif %}>Status</option>
-                                                </select>
-                                                <i
-                                                    data-lucide="chevron-down"
-                                                    class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
-                                            </div>
-                                        </div>
+                                    <label for="activity-username" class="sr-only">Username</label>
+                                    <input id="activity-username" type="text" name="username" placeholder="Username..." value="{{ filters.username }}" class="w-full px-3 py-2 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                </div>
+                                <div class="relative">
+                                    <label for="activity-date-from" class="sr-only">From date</label>
+                                    <input id="activity-date-from" type="date" name="dateFrom" value="{{ filters.dateFrom }}" class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                    <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <label for="activity-date-to" class="sr-only">To date</label>
+                                    <input id="activity-date-to" type="date" name="dateTo" value="{{ filters.dateTo }}" class="w-full pl-10 pr-3 py-2 text-sm border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                    <i data-lucide="calendar" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground pointer-events-none"></i>
+                                </div>
+                                <div class="relative">
+                                    <label for="activity-sort" class="sr-only">Sort activities by</label>
+                                    <select
+                                        id="activity-sort"
+                                        name="sortBy"
+                                        class="appearance-none w-full px-3 py-2 pr-8 text-sm border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                                        <option value="timestamp" {% if filters.sortBy == 'timestamp' %} selected {% endif %}>Timestamp</option>
+                                        <option value="type" {% if filters.sortBy == 'type' %} selected {% endif %}>Type</option>
+                                        <option value="username" {% if filters.sortBy == 'username' %} selected {% endif %}>Username</option>
+                                        <option value="status" {% if filters.sortBy == 'status' %} selected {% endif %}>Status</option>
+                                    </select>
+                                    <i data-lucide="chevron-down" class="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
+                                </div>
+                            </div>
                                     </div>
                                 </div>
                                 <!-- Action Footer -->
@@ -327,79 +329,83 @@
                                         <div class="flex-1 flex justify-between sm:hidden">
                                             {% if pagination.hasPrevPage %}
                                                 <a
-                                                    href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                                    class="relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card
-                                                        hover:bg-muted">
+                                                    aria-label="Previous page"
+                                                    href="?page={{ pagination.prevPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type | urlencode }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status | urlencode }}{% endif %}{% if filters.username %}&username={{ filters.username | urlencode }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom | urlencode }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo | urlencode }}{% endif %}&sortBy={{ filters.sortBy | urlencode }}&sortOrder={{ filters.sortOrder | urlencode }}"
+                                                    class="relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                                                     Previous
                                                 </a>
                                             {% endif %}
                                             {% if pagination.hasNextPage %}
                                                 <a
-                                                    href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                                    class="ml-3 relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card
-                                                        hover:bg-muted">
+                                                    aria-label="Next page"
+                                                    href="?page={{ pagination.nextPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type | urlencode }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status | urlencode }}{% endif %}{% if filters.username %}&username={{ filters.username | urlencode }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom | urlencode }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo | urlencode }}{% endif %}&sortBy={{ filters.sortBy | urlencode }}&sortOrder={{ filters.sortOrder | urlencode }}"
+                                                    class="ml-3 relative inline-flex items-center px-4 py-2 border border-border text-sm font-medium text-foreground bg-card hover:bg-muted">
                                                     Next
                                                 </a>
                                             {% endif %}
                                         </div>
                                         <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                                            <div>
-                                                <p class="text-sm text-muted-foreground">
-                                                    Showing
-                                                    <span class="font-medium">{{ ((pagination.page - 1) * pagination.limit) + 1 }}</span>
-                                                    to
-                                                    <span class="font-medium">{{ pagination.page * pagination.limit if pagination.page * pagination.limit < pagination.totalResults else pagination.totalResults }}</span>
-                                                    of
-                                                    <span class="font-medium">{{ pagination.totalResults }}</span>
-                                                    results
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <nav class="relative z-0 inline-flex -space-x-px">
-                                                    {% if pagination.hasPrevPage %}
+                                            <p class="text-sm text-muted-foreground">
+                                                Showing
+                                                <span class="font-medium">{{ ((pagination.page - 1) * pagination.limit) + 1 }}</span>
+                                                to
+                                                <span class="font-medium">{{ pagination.page * pagination.limit if pagination.page * pagination.limit < pagination.totalResults else pagination.totalResults }}</span>
+                                                of
+                                                <span class="font-medium">{{ pagination.totalResults }}</span>
+                                                results
+                                            </p>
+                                            <nav class="relative z-0 inline-flex -space-x-px" aria-label="Activity pagination">
+                                                {% if pagination.hasPrevPage %}
+                                                    <a
+                                                        aria-label="Previous page"
+                                                        href="?page={{ pagination.prevPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type | urlencode }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status | urlencode }}{% endif %}{% if filters.username %}&username={{ filters.username | urlencode }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom | urlencode }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo | urlencode }}{% endif %}&sortBy={{ filters.sortBy | urlencode }}&sortOrder={{ filters.sortOrder | urlencode }}"
+                                                        class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
+                                                        <i data-lucide="chevron-left" class="h-5 w-5"></i>
+                                                    </a>
+                                                {% endif %}
+                                                {% set startPage = pagination.page - 2 if pagination.page > 2 else 1 %}
+                                                {% set endPage = startPage + 4 if startPage + 4 <= pagination.totalPages else pagination.totalPages %}
+                                                {% set startPage = endPage - 4 if endPage - 4 > 0 else 1 %}
+                                                {% for pageNum in range(startPage, endPage + 1) %}
+                                                    {% if pageNum == pagination.page %}
+                                                        <span
+                                                            aria-current="page"
+                                                            aria-label="Page {{ pageNum }}"
+                                                            class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm font-medium">
+                                                            {{ pageNum }}
+                                                        </span>
+                                                    {% else %}
                                                         <a
-                                                            href="?page={{ pagination.prevPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                                            class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground
-                                                                hover:bg-muted">
-                                                            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+                                                            aria-label="Page {{ pageNum }}"
+                                                            href="?page={{ pageNum }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type | urlencode }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status | urlencode }}{% endif %}{% if filters.username %}&username={{ filters.username | urlencode }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom | urlencode }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo | urlencode }}{% endif %}&sortBy={{ filters.sortBy | urlencode }}&sortOrder={{ filters.sortOrder | urlencode }}"
+                                                            class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground hover:bg-muted">
+                                                            {{ pageNum }}
                                                         </a>
                                                     {% endif %}
-                                                    <!-- Page numbers -->
-                                                    {% set startPage = pagination.page - 2 if pagination.page > 2 else 1 %}
-                                                    {% set endPage = startPage + 4 if startPage + 4 <= pagination.totalPages else pagination.totalPages %}
-                                                    {% set startPage = endPage - 4 if endPage - 4 > 0 else 1 %}
-                                                    {% for pageNum in range(startPage, endPage + 1) %}
-                                                        {% if pageNum == pagination.page %}
-                                                            <span class="relative inline-flex items-center px-4 py-2 border border-border bg-primary text-primary-foreground text-sm
-                                                                    font-medium">
-                                                                {{ pageNum }}
-                                                            </span>
-                                                        {% else %}
-                                                            <a
-                                                                href="?page={{ pageNum }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                                                class="relative inline-flex items-center px-4 py-2 border border-border bg-card text-sm font-medium text-foreground
-                                                                    hover:bg-muted">
-                                                                {{ pageNum }}
-                                                            </a>
-                                                        {% endif %}
-                                                    {% endfor %}
-                                                    {% if pagination.hasNextPage %}
-                                                        <a
-                                                            href="?page={{ pagination.nextPage }}{% if filters.search %}&search={{ filters.search }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status }}{% endif %}{% if filters.username %}&username={{ filters.username }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo }}{% endif %}&sortBy={{ filters.sortBy }}&sortOrder={{ filters.sortOrder }}"
-                                                            class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground
-                                                                hover:bg-muted">
-                                                            <i data-lucide="chevron-right" class="h-5 w-5"></i>
-                                                        </a>
-                                                    {% endif %}
-                                                </nav>
-                                            </div>
+                                                {% endfor %}
+                                                {% if pagination.hasNextPage %}
+                                                    <a
+                                                        aria-label="Next page"
+                                                        href="?page={{ pagination.nextPage }}&limit={{ pagination.limit }}{% if filters.search %}&search={{ filters.search | urlencode }}{% endif %}{% if filters.type != 'all' %}&type={{ filters.type | urlencode }}{% endif %}{% if filters.status != 'all' %}&status={{ filters.status | urlencode }}{% endif %}{% if filters.username %}&username={{ filters.username | urlencode }}{% endif %}{% if filters.dateFrom %}&dateFrom={{ filters.dateFrom | urlencode }}{% endif %}{% if filters.dateTo %}&dateTo={{ filters.dateTo | urlencode }}{% endif %}&sortBy={{ filters.sortBy | urlencode }}&sortOrder={{ filters.sortOrder | urlencode }}"
+                                                        class="relative inline-flex items-center px-2 py-2 border border-border bg-card text-sm font-medium text-muted-foreground hover:bg-muted">
+                                                        <i data-lucide="chevron-right" class="h-5 w-5"></i>
+                                                    </a>
+                                                {% endif %}
+                                            </nav>
                                         </div>
                                     </div>
                                 {% endif %}
                             </div>
                         </div>
                         <!-- Clear Old Activities Modal -->
-                        <div id="clearOldModal" class="fixed inset-0 bg-background/80 z-50 hidden">
+                        <div
+                            id="clearOldModal"
+                            class="fixed inset-0 bg-background/80 z-50 hidden"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-hidden="true"
+                            aria-labelledby="clear-old-title"
+                            aria-describedby="clear-old-description">
                             <div class="flex items-center justify-center min-h-screen p-4">
                                 <div class="bg-card border border-border max-w-md w-full p-6">
                                     <div class="flex items-center mb-4">
@@ -407,39 +413,43 @@
                                             <i data-lucide="alert-triangle" class="h-6 w-6 text-orange-600 dark:text-orange-400"></i>
                                         </div>
                                         <div class="ml-3">
-                                            <h3 class="text-lg font-medium text-foreground">Clear Old Activities</h3>
+                                            <h3 id="clear-old-title" class="text-lg font-medium text-foreground">Clear Old Activities</h3>
                                         </div>
                                     </div>
-                                    <div class="mb-4">
-                                        <p class="text-sm text-muted-foreground">This will permanently delete activities older than the specified number of
-                                            days. This action cannot be undone.</p>
-                                        <div class="mt-3">
-                                            <label for="days" class="block text-sm font-medium text-foreground mb-2">Delete activities older than (days)</label>
-                                            <input
-                                                type="number"
-                                                id="days"
-                                                name="days"
-                                                min="1"
-                                                max="365"
-                                                value="90"
-                                                class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2
-                                                    focus:ring-primary focus:border-transparent"></div>
-                                        </div>
-                                        <div class="flex justify-end space-x-3">
-                                            <button
-                                                onclick="hideClearOldModal()"
-                                                class="px-4 py-2 text-sm font-medium text-muted-foreground border border-border hover:bg-muted">
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onclick="clearOldActivities()"
-                                                class="px-4 py-2 text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                Clear Activities
-                                            </button>
-                                        </div>
+                                    <p id="clear-old-description" class="text-sm text-muted-foreground">
+                                        This will permanently delete activities older than the specified number of days. This action cannot be undone.
+                                    </p>
+                                    <div class="mt-3">
+                                        <label for="days" class="block text-sm font-medium text-foreground mb-2">Delete activities older than (days)</label>
+                                        <input
+                                            type="number"
+                                            id="days"
+                                            name="days"
+                                            min="1"
+                                            max="36500"
+                                            value="90"
+                                            aria-describedby="clear-old-description clearOldError"
+                                            class="w-full px-3 py-2 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                                        <p id="clearOldError" role="alert" class="hidden mt-2 text-sm text-destructive"></p>
+                                    </div>
+                                    <div class="flex justify-end space-x-3 mt-4">
+                                        <button
+                                            type="button"
+                                            data-activities-clear-cancel
+                                            class="px-4 py-2 text-sm font-medium text-muted-foreground border border-border hover:bg-muted">
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            data-activities-clear-confirm
+                                            class="px-4 py-2 text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                            Clear Activities
+                                        </button>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
                         {% endblock %}
 {% block scripts %}
 {{ super() }}

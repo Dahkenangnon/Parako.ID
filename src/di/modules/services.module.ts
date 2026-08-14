@@ -292,7 +292,7 @@ export const servicesModule: ContainerModule = new ContainerModule(
       .to(OpsSocialCallbackService)
       .inSingletonScope();
 
-    // Social Tier 1 completion - Singleton (holds lazy Redis connection)
+    // Social Tier 1 completion - Singleton (uses the shared optional Redis client)
     options
       .bind<ISocialTier1CompletionService>(TYPES.SocialTier1CompletionService)
       .to(SocialTier1CompletionService)

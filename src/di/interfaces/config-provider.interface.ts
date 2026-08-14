@@ -1,3 +1,5 @@
+import type { DeepPartial } from '../../utils/config-merge.js';
+
 /**
  * Interface for configuration providers
  * Defines the contract that all configuration providers must implement
@@ -54,5 +56,5 @@ export interface IConfigProvider<T = any> {
    * @param partial - Partial configuration to update
    * @returns Promise that resolves to the updated configuration
    */
-  updateConfig?(partial: Partial<T>): Promise<T>;
+  updateConfig?(partial: DeepPartial<T>, expectedVersion?: number): Promise<T>;
 }

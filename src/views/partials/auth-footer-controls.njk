@@ -5,15 +5,15 @@
 </div>
 {% endif %}
 
-{% if availableLocales and availableLocales.length > 1 %}
+{% set authAvailableLocales = app.locales.available if app and app.locales and app.locales.available else [] %}
+{% if authAvailableLocales.length > 1 %}
 <div class="mt-3 flex justify-center">
-    <label for="locale-switcher" class="sr-only">{{ t('common.language', 'Language') }}</label>
+    <label for="language-selector" class="sr-only">{{ t('common.language', 'Language') }}</label>
     <select
-        id="locale-switcher"
+        id="language-selector"
         class="w-auto border-0 bg-transparent px-2 py-1 text-[11px] font-medium text-muted-foreground shadow-none hover:text-foreground focus:ring-0"
-        onchange="if(this.value) window.location.assign('?locale=' + encodeURIComponent(this.value))"
     >
-        {% for loc in availableLocales %}
+        {% for loc in authAvailableLocales %}
         <option value="{{ loc }}" {% if loc == userLocale %}selected{% endif %}>{{ loc | upper }}</option>
         {% endfor %}
     </select>

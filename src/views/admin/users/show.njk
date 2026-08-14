@@ -87,21 +87,23 @@
                             <i data-lucide="activity" class="h-4 w-4 mr-2"></i>
                             View Activities
                         </a>
+                        {% if user._id != currentUserId %}
                         {% if user.account_enabled %}
-                            <button onclick="toggleUserStatus('{{ user._id }}', 'disable')" class="inline-flex items-center justify-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90">
+                            <button type="button" data-user-status-action="disable" data-user-id="{{ user._id }}" class="inline-flex items-center justify-center px-4 py-2 bg-warning text-warning-foreground text-sm font-medium hover:bg-warning/90">
                                 <i data-lucide="user-minus" class="h-4 w-4 mr-2"></i>
                                 Disable
                             </button>
                         {% else %}
-                            <button onclick="toggleUserStatus('{{ user._id }}', 'enable')" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
+                            <button type="button" data-user-status-action="enable" data-user-id="{{ user._id }}" class="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">
                                 <i data-lucide="user-plus" class="h-4 w-4 mr-2"></i>
                                 Enable
                             </button>
                         {% endif %}
-                        <button onclick="anonymizeUser('{{ user._id }}', '{{ user.username }}')" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90">
+                        <button type="button" data-user-anonymize data-user-id="{{ user._id }}" data-username="{{ user.username }}" class="inline-flex items-center justify-center px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90">
                             <i data-lucide="user-x" class="h-4 w-4 mr-2"></i>
                             Anonymize
                         </button>
+                        {% endif %}
                     </div>
                     {% endif %}
                 </div>

@@ -66,7 +66,7 @@ export async function addClientInteractive(): Promise<void> {
 
     const { clientType } = await inquirer.prompt([
       {
-        type: 'list',
+        type: 'select',
         name: 'clientType',
         message: 'What type of client are you creating?',
         choices: typeChoices,
@@ -352,6 +352,6 @@ export async function addClientInteractive(): Promise<void> {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to add client: ${message}`);
+    throw new Error(`Failed to add client: ${message}`, { cause: error });
   }
 }

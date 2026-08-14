@@ -17,6 +17,40 @@
  * Admin OIDC Clients Manager - Handles client action confirmation and execution
  */
 class AdminOidcClientsManager {
+  private dialogSequence = 0;
+
+  /** Attach CSP-safe handlers to server-rendered client actions. */
+  public initialize(): void {
+    document
+      .querySelectorAll<HTMLFormElement>('[data-oidc-client-confirm]')
+      .forEach(form => {
+        form.addEventListener('submit', event => {
+          switch (form.dataset.oidcClientConfirm) {
+            case 'deactivate':
+              void this.confirmDeactivateClient(event);
+              break;
+            case 'delete':
+              void this.confirmDeleteClient(event);
+              break;
+            case 'regenerate-secret':
+              void this.confirmRegenerateSecret(event);
+              break;
+          }
+        });
+      });
+
+    document
+      .querySelectorAll<HTMLElement>('[data-oidc-copy]')
+      .forEach(trigger => {
+        trigger.addEventListener('click', () => {
+          const value = trigger.dataset.oidcCopy;
+          if (value !== undefined) {
+            void this.copyToClipboard(value, trigger);
+          }
+        });
+      });
+  }
+
   /**
    * Create a custom confirmation dialog
    * Matches the style from admin settings
@@ -36,6 +70,8 @@ class AdminOidcClientsManager {
     isDanger: boolean
   ): Promise<boolean> {
     return new Promise(resolve => {
+      const previouslyFocused = document.activeElement as HTMLElement | null;
+      const dialogId = `oidc-client-confirm-${++this.dialogSequence}`;
       const backdrop = document.createElement('div');
       backdrop.className =
         'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
@@ -43,6 +79,10 @@ class AdminOidcClientsManager {
       const modal = document.createElement('div');
       modal.className =
         'bg-background border border-border rounded-lg shadow-lg max-w-md w-full';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', `${dialogId}-title`);
+      modal.setAttribute('aria-describedby', `${dialogId}-description`);
 
       const header = document.createElement('div');
       header.className = 'flex items-start gap-3 p-6 pb-4';
@@ -59,6 +99,7 @@ class AdminOidcClientsManager {
       const titleElement = document.createElement('h3');
       titleElement.className = 'font-semibold text-lg flex-1';
       titleElement.textContent = title;
+      titleElement.id = `${dialogId}-title`;
 
       header.appendChild(iconContainer);
       header.appendChild(titleElement);
@@ -69,6 +110,7 @@ class AdminOidcClientsManager {
       messageElement.className =
         'text-sm text-muted-foreground whitespace-pre-line';
       messageElement.textContent = message;
+      messageElement.id = `${dialogId}-description`;
       body.appendChild(messageElement);
 
       const footer = document.createElement('div');
@@ -100,6 +142,12 @@ class AdminOidcClientsManager {
       const cleanup = () => {
         backdrop.remove();
         document.removeEventListener('keydown', handleEscape);
+        if (
+          previouslyFocused &&
+          typeof previouslyFocused.focus === 'function'
+        ) {
+          previouslyFocused.focus();
+        }
       };
 
       cancelButton.addEventListener('click', () => {
@@ -211,6 +259,7 @@ class AdminOidcClientsManager {
    * @param event - Form submit event
    */
   public async confirmDeactivateClient(event: Event): Promise<boolean> {
+    const form = (event.currentTarget ?? event.target) as HTMLFormElement;
     event.preventDefault();
 
     const confirmed = await this.showConfirmDialog(
@@ -222,7 +271,6 @@ class AdminOidcClientsManager {
     );
 
     if (confirmed) {
-      const form = event.target as HTMLFormElement;
       form.submit();
     }
 
@@ -234,6 +282,7 @@ class AdminOidcClientsManager {
    * @param event - Form submit event
    */
   public async confirmDeleteClient(event: Event): Promise<boolean> {
+    const form = (event.currentTarget ?? event.target) as HTMLFormElement;
     event.preventDefault();
 
     const confirmed = await this.showConfirmDialog(
@@ -245,7 +294,6 @@ class AdminOidcClientsManager {
     );
 
     if (confirmed) {
-      const form = event.target as HTMLFormElement;
       form.submit();
     }
 
@@ -257,6 +305,7 @@ class AdminOidcClientsManager {
    * @param event - Form submit event
    */
   public async confirmRegenerateSecret(event: Event): Promise<boolean> {
+    const form = (event.currentTarget ?? event.target) as HTMLFormElement;
     event.preventDefault();
 
     const confirmed = await this.showConfirmDialog(
@@ -268,7 +317,6 @@ class AdminOidcClientsManager {
     );
 
     if (confirmed) {
-      const form = event.target as HTMLFormElement;
       form.submit();
     }
 
@@ -339,24 +387,9 @@ if (typeof document !== 'undefined') {
 
     if (isAdminOidcClients) {
       const adminOidcClientsManager = new AdminOidcClientsManager();
+      adminOidcClientsManager.initialize();
 
-      // Make functions globally accessible for inline event handlers
-      (window as any).confirmDeactivateClient = (event: Event) => {
-        return adminOidcClientsManager.confirmDeactivateClient(event);
-      };
-
-      (window as any).confirmDeleteClient = (event: Event) => {
-        return adminOidcClientsManager.confirmDeleteClient(event);
-      };
-
-      (window as any).confirmRegenerateSecret = (event: Event) => {
-        return adminOidcClientsManager.confirmRegenerateSecret(event);
-      };
-
-      (window as any).copyToClipboard = (text: string, el?: HTMLElement) => {
-        return adminOidcClientsManager.copyToClipboard(text, el);
-      };
-
+      // The detail-form module reuses the manager's secret-copy feedback.
       (window as any).adminOidcClientsManager = adminOidcClientsManager;
     }
   });
