@@ -528,9 +528,7 @@ describe('image rendering', () => {
     expect(renderImage('/uploads/avatar.png')).toBe(
       '<img src="/uploads/avatar.png" alt="" loading="lazy" decoding="async">'
     );
-    expect(renderImage('')).toBe(
-      '<img src="" alt="" loading="lazy" decoding="async">'
-    );
+    expect(renderImage('')).toBe('');
   });
 });
 
@@ -578,6 +576,15 @@ describe('picture URL validation', () => {
     expect(
       resolveBrandingUrl('tenant/async.svg', async key => `/media/${key}`)
     ).toBe('tenant/async.svg');
+
+    const { resolveBrandingUrlAsync } =
+      await import('../../../src/utils/views.js');
+    await expect(
+      resolveBrandingUrlAsync('tenant/async.svg', async key => `/media/${key}`)
+    ).resolves.toBe('/media/tenant/async.svg');
+    await expect(
+      resolveBrandingUrlAsync('/images/logo.svg', async () => 'unexpected')
+    ).resolves.toBe('/images/logo.svg');
   });
 });
 

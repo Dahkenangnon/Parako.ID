@@ -6,7 +6,6 @@ const dependencies = vi.hoisted(() => ({
   displayClient: vi.fn(),
   findClientById: vi.fn(),
   log: {
-    error: vi.fn(),
     info: vi.fn(),
     subtitle: vi.fn(),
     success: vi.fn(),
@@ -329,18 +328,17 @@ describe('interactive OIDC client creation', () => {
   });
 
   it.each([new Error('TTY required'), 'TTY required'])(
-    'reports non-interactive invocation failures instead of hanging',
+    'propagates non-interactive invocation failures instead of hanging',
     async failure => {
       dependencies.assertInteractiveTty.mockImplementation(() => {
         throw failure;
       });
 
-      await expect(addClientInteractive()).resolves.toBeUndefined();
-
-      expect(dependencies.prompt).not.toHaveBeenCalled();
-      expect(dependencies.log.error).toHaveBeenCalledWith(
+      await expect(addClientInteractive()).rejects.toThrow(
         'Failed to add client: TTY required'
       );
+
+      expect(dependencies.prompt).not.toHaveBeenCalled();
     }
   );
 });

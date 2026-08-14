@@ -140,21 +140,20 @@ describe('admin users form manager', () => {
     await vi.waitFor(() => expect(showAlert).toHaveBeenCalledOnce());
   });
 
-  it('wires legacy password toggles and refreshes icons when available', async () => {
-    const { browserWindow, createIcons, elements, queryResults, runReady } =
-      setupDom();
+  it('wires CSP-safe password toggles and refreshes icons when available', async () => {
+    const { createIcons, elements, queryResults, runReady } = setupDom();
     const password = setField(elements, 'password', '', 'password');
     const icon = new ElementFixture();
     elements.set('password_icon', icon);
     const button = new ElementFixture();
-    button.setAttribute('onclick', "togglePasswordVisibility('password')");
-    const malformedButton = new ElementFixture();
-    malformedButton.setAttribute('onclick', 'otherHandler()');
-    const buttonWithoutAttribute = new ElementFixture();
-    queryResults.set('[onclick*="togglePasswordVisibility"]', [
+    button.setAttribute('data-password-toggle', 'password');
+    const missingTargetButton = new ElementFixture();
+    missingTargetButton.setAttribute('data-password-toggle', 'missing');
+    const buttonWithoutTarget = new ElementFixture();
+    queryResults.set('[data-password-toggle]', [
       button,
-      malformedButton,
-      buttonWithoutAttribute,
+      missingTargetButton,
+      buttonWithoutTarget,
     ]);
     await import('../../../src/assets/js/admin/users/form.js');
     runReady();
@@ -162,58 +161,48 @@ describe('admin users form manager', () => {
     const click = { preventDefault: vi.fn() };
     button.trigger('click', click);
     expect(click.preventDefault).toHaveBeenCalledOnce();
-    expect(button.getAttribute('onclick')).toBeNull();
     expect(password.type).toBe('text');
     expect(icon.attributes.get('data-lucide')).toBe('eye-off');
 
-    (browserWindow.togglePasswordVisibility as (inputId: string) => void)(
-      'password'
-    );
+    button.trigger('click', { preventDefault: vi.fn() });
     expect(password.type).toBe('password');
     expect(icon.attributes.get('data-lucide')).toBe('eye');
     expect(createIcons).toHaveBeenCalledTimes(2);
 
     expect(() =>
-      (browserWindow.togglePasswordVisibility as (inputId: string) => void)(
-        'missing'
-      )
+      missingTargetButton.trigger('click', { preventDefault: vi.fn() })
     ).not.toThrow();
+    expect(buttonWithoutTarget.listeners.get('click')).toBeUndefined();
 
     elements.delete('password_icon');
     expect(() =>
-      (browserWindow.togglePasswordVisibility as (inputId: string) => void)(
-        'password'
-      )
-    ).not.toThrow();
-    expect(() =>
-      (browserWindow.togglePasswordVisibility as (inputId: string) => void)(
-        'password'
-      )
+      button.trigger('click', { preventDefault: vi.fn() })
     ).not.toThrow();
   });
 
   it('changes icon attributes safely without a callable Lucide runtime', async () => {
-    const { browserWindow, elements, runReady } = setupDom({
+    const { browserWindow, elements, queryResults, runReady } = setupDom({
       withLucide: false,
     });
     (browserWindow as { lucide?: unknown }).lucide = {};
     setField(elements, 'password', '', 'password');
     const icon = new ElementFixture();
+    const button = new ElementFixture();
+    button.setAttribute('data-password-toggle', 'password');
     elements.set('password_icon', icon);
+    queryResults.set('[data-password-toggle]', [button]);
     await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     expect(() =>
-      (browserWindow.togglePasswordVisibility as (inputId: string) => void)(
-        'password'
-      )
+      button.trigger('click', { preventDefault: vi.fn() })
     ).not.toThrow();
     expect(icon.attributes.get('data-lucide')).toBe('eye-off');
   });
 
   it('generates, reveals, hides, and clears a secure password', async () => {
     vi.useFakeTimers();
-    const { browserWindow, elements, runReady } = setupDom({
+    const { elements, runReady } = setupDom({
       withLucide: false,
     });
     const checkbox = setField(elements, 'generatePassword', '');
@@ -234,12 +223,6 @@ describe('admin users form manager', () => {
     expect(confirm.readOnly).toBe(true);
     expect(password.type).toBe('text');
     expect(matchText.textContent).toContain('Passwords match');
-    expect(browserWindow.generateRandomPassword as () => string).toBeTypeOf(
-      'function'
-    );
-    expect(
-      (browserWindow.generateRandomPassword as () => string)()
-    ).toHaveLength(12);
 
     vi.advanceTimersByTime(3000);
     expect(password.type).toBe('password');
@@ -255,7 +238,7 @@ describe('admin users form manager', () => {
   });
 
   it('updates password-match feedback for empty, matching, and mismatched values', async () => {
-    const { browserWindow, elements, runReady } = setupDom();
+    const { elements, runReady } = setupDom();
     const password = setField(elements, 'password', 'Strong1!', 'password');
     const confirm = setField(elements, 'confirm_password', '', 'password');
     const indicator = new ElementFixture();
@@ -274,14 +257,12 @@ describe('admin users form manager', () => {
     expect(matchText.className).toContain('text-red-600');
 
     confirm.value = password.value;
-    (browserWindow.checkPasswordMatch as () => void)();
+    confirm.trigger('input');
     expect(matchText.textContent).toContain('Passwords match');
     expect(matchText.className).toContain('text-green-600');
 
     elements.delete('password_match_text');
-    expect(() =>
-      (browserWindow.checkPasswordMatch as () => void)()
-    ).not.toThrow();
+    expect(() => confirm.trigger('input')).not.toThrow();
   });
 
   it('validates every create-form rule and submits only valid data', async () => {
@@ -431,7 +412,7 @@ describe('admin users form manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { browserWindow, runReady } = setupDom({ stateText: '{invalid' });
+    const { runReady } = setupDom({ stateText: '{invalid' });
     await import('../../../src/assets/js/admin/users/form.js');
 
     runReady();
@@ -440,7 +421,6 @@ describe('admin users form manager', () => {
       '[AdminUsersFormManager] Initialization failed:',
       expect.any(SyntaxError)
     );
-    expect(browserWindow).toHaveProperty('generateRandomPassword');
   });
 
   it('tolerates incomplete generation and form markup', async () => {
@@ -472,10 +452,17 @@ describe('admin users form manager', () => {
   });
 
   it('uses default configuration when embedded state is empty', async () => {
-    const { browserWindow, runReady } = setupDom({ stateText: '' });
+    const { createForm, runReady, showAlert } = setupDom({ stateText: '' });
     await import('../../../src/assets/js/admin/users/form.js');
 
-    expect(runReady).not.toThrow();
-    expect(browserWindow).toHaveProperty('checkPasswordMatch');
+    runReady();
+    createForm.trigger('submit', { preventDefault: vi.fn() });
+    await vi.waitFor(() =>
+      expect(showAlert).toHaveBeenCalledWith(
+        'Validation Error',
+        'Please fill in all required fields',
+        { variant: 'error' }
+      )
+    );
   });
 });

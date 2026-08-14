@@ -14,7 +14,6 @@ function setupDom(
     dialog?: { showAlert?: ReturnType<typeof vi.fn> };
     form?: FormFixture | null;
     trustProxyHops?: string | null;
-    url?: string | null;
   } = {}
 ) {
   let ready: (() => void) | undefined;
@@ -34,7 +33,6 @@ function setupDom(
         } as FormFixture)
       : options.form;
   const values: Record<string, string | null> = {
-    url: options.url === undefined ? 'https://parako.test' : options.url,
     'server.allowed_origins':
       options.allowedOrigins === undefined
         ? 'https://rp.test'
@@ -45,18 +43,27 @@ function setupDom(
       options.trustProxyHops === undefined ? '1' : options.trustProxyHops,
   };
   vi.stubGlobal('window', { dialog: options.dialog });
+  const getElementById = vi.fn((id: string) => {
+    const value = values[id];
+    return value === null || value === undefined ? null : { value };
+  });
+  const querySelector = vi.fn(() => form);
   vi.stubGlobal('document', {
     addEventListener: vi.fn((_name: string, listener: () => void) => {
       ready = listener;
     }),
-    getElementById: vi.fn((id: string) => {
-      const value = values[id];
-      return value === null ? null : { value };
-    }),
-    querySelector: vi.fn(() => form),
+    getElementById,
+    querySelector,
   });
   return {
+    getElementById,
+    querySelector,
     runReady: () => ready?.(),
+    dispatchSubmit: () => {
+      const event = { preventDefault: vi.fn() };
+      const completion = form?.submit?.(event);
+      return { completion, event };
+    },
     submit: async () => {
       const event = { preventDefault: vi.fn() };
       await form?.submit?.(event);
@@ -87,8 +94,6 @@ describe('admin deployment settings', () => {
   });
 
   it.each([
-    ['both inputs are absent', { url: null, allowedOrigins: null }],
-    ['the URL is blank', { url: '' }],
     ['allowed origins are absent', { allowedOrigins: null }],
     ['allowed origins are blank', { allowedOrigins: '' }],
   ])('rejects submission when %s', async (_case, options) => {
@@ -105,22 +110,43 @@ describe('admin deployment settings', () => {
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showAlert).toHaveBeenCalledWith(
       'Validation Error',
-      'URL and Allowed Origins are required fields.',
+      'Allowed Origins are required.',
       { variant: 'error' }
     );
   });
 
-  it('rejects an invalid deployment URL using alert when no dialog exists', async () => {
-    const alert = vi.fn();
-    vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ url: 'not a URL' });
+  it('does not validate the read-only application URL as a form field', async () => {
+    const { getElementById, querySelector, runReady, submit } = setupDom();
     await import('../../../src/assets/js/admin/settings/deployment.js');
     runReady();
 
     const event = await submit();
 
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(getElementById).not.toHaveBeenCalledWith('url');
+    expect(querySelector).toHaveBeenCalledWith('#deployment-form');
+  });
+
+  it('cancels an invalid native submission before awaiting its dialog', async () => {
+    let resolveAlert: (() => void) | undefined;
+    const showAlert = vi.fn(
+      () =>
+        new Promise<void>(resolve => {
+          resolveAlert = resolve;
+        })
+    );
+    const { dispatchSubmit, runReady } = setupDom({
+      allowedOrigins: 'not an origin',
+      dialog: { showAlert },
+    });
+    await import('../../../src/assets/js/admin/settings/deployment.js');
+    runReady();
+
+    const { completion, event } = dispatchSubmit();
+
     expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(alert).toHaveBeenCalledWith('Please enter a valid URL.');
+    resolveAlert?.();
+    await completion;
   });
 
   it('reports the first invalid allowed origin', async () => {

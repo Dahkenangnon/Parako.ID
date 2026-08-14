@@ -665,6 +665,42 @@ describe('Prisma user repository', () => {
     expect(count).toHaveBeenCalledWith({ where });
   });
 
+  it.each([
+    ['sqlite', undefined],
+    ['postgresql', 'insensitive'],
+  ] as const)(
+    'translates adapter-neutral user search for %s',
+    async (adapter, mode) => {
+      const findMany = vi.fn().mockResolvedValue([]);
+      const count = vi.fn().mockResolvedValue(0);
+      const repository = new PrismaUserRepository(
+        prismaUserClient({ findMany, count }) as never,
+        adapter
+      );
+
+      await repository.findMany(
+        { search: 'Ada.*', account_enabled: true },
+        { page: 1, limit: 20 }
+      );
+
+      const textFilter = mode
+        ? { contains: 'Ada.*', mode }
+        : { contains: 'Ada.*' };
+      const where = {
+        account_enabled: true,
+        OR: [
+          { username: textFilter },
+          { email: textFilter },
+          { name: textFilter },
+          { given_name: textFilter },
+          { family_name: textFilter },
+        ],
+      };
+      expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+      expect(count).toHaveBeenCalledWith({ where });
+    }
+  );
+
   it('creates a minimal user with repository defaults', async () => {
     const create = vi.fn().mockResolvedValue(prismaUserRow());
     const repository = new PrismaUserRepository(
@@ -834,6 +870,7 @@ describe('Prisma user repository', () => {
         blocked_from: '["1.2.3.4"]',
         mfa: {
           create: {
+            tenant_id: 'default',
             enabled: true,
             preferred_method: 'webauthn',
             webauthn_enabled: true,
@@ -841,10 +878,16 @@ describe('Prisma user repository', () => {
           },
         },
         mfa_totp: {
-          create: { enabled: true, secret: 'secret', verified_at: now },
+          create: {
+            tenant_id: 'default',
+            enabled: true,
+            secret: 'secret',
+            verified_at: now,
+          },
         },
         mfa_email_otp: {
           create: {
+            tenant_id: 'default',
             enabled: false,
             verified_at: null,
             otp_hash: 'otp',
@@ -854,6 +897,7 @@ describe('Prisma user repository', () => {
         webauthn_credentials: {
           create: [
             {
+              tenant_id: 'default',
               credential_id: 'credential',
               public_key: 'public-key',
               counter: 2,
@@ -877,13 +921,20 @@ describe('Prisma user repository', () => {
           }),
         },
         backup_codes: {
-          create: [{ code_hash: 'backup', used: false }],
+          create: [{ tenant_id: 'default', code_hash: 'backup', used: false }],
         },
         security_questions: {
-          create: [{ question_key: 'pet', answer_hash: 'answer' }],
+          create: [
+            {
+              tenant_id: 'default',
+              question_key: 'pet',
+              answer_hash: 'answer',
+            },
+          ],
         },
         notification_prefs: {
           create: {
+            tenant_id: 'default',
             preferred_channel: 'sms',
             security_alerts: true,
             new_session_alerts: false,
@@ -936,6 +987,7 @@ describe('Prisma user repository', () => {
       data: expect.objectContaining({
         mfa: {
           create: {
+            tenant_id: 'default',
             enabled: false,
             preferred_method: null,
             webauthn_enabled: true,
@@ -943,11 +995,17 @@ describe('Prisma user repository', () => {
           },
         },
         mfa_totp: {
-          create: { enabled: false, secret: null, verified_at: null },
+          create: {
+            tenant_id: 'default',
+            enabled: false,
+            secret: null,
+            verified_at: null,
+          },
         },
         webauthn_credentials: {
           create: [
             {
+              tenant_id: 'default',
               credential_id: 'credential',
               public_key: 'public-key',
               counter: 0,
@@ -1007,6 +1065,7 @@ describe('Prisma user repository', () => {
         data: expect.objectContaining({
           mfa: {
             create: {
+              tenant_id: 'default',
               enabled: true,
               preferred_method: null,
               webauthn_enabled: false,
@@ -1015,6 +1074,7 @@ describe('Prisma user repository', () => {
           },
           mfa_email_otp: {
             create: {
+              tenant_id: 'default',
               enabled: true,
               verified_at: null,
               otp_hash: null,
@@ -1100,23 +1160,84 @@ describe('Prisma user repository', () => {
     });
   });
 
-  it('assigns the active tenant to nested recovery rows', async () => {
+  it('assigns the active tenant to every nested relation row', async () => {
     const create = vi.fn().mockResolvedValue(prismaUserRow());
     const update = vi.fn().mockResolvedValue(prismaUserRow());
     const repository = new PrismaUserRepository(
       prismaUserClient({ create, update }) as never
     );
-    const recovery = { enabled: false, methods: [] };
+    const verifiedAt = new Date('2026-08-01T00:00:00.000Z');
+    const relationData = {
+      mfa: {
+        enabled: true,
+        methods: {
+          totp: { enabled: true, verified_at: verifiedAt },
+          email: { enabled: true, verified_at: verifiedAt },
+          webauthn: {
+            enabled: true,
+            credentials: [
+              {
+                credential_id: 'credential-1',
+                credential_public_key: 'public-key',
+                counter: 0,
+                backed_up: false,
+                created_at: verifiedAt,
+              },
+            ],
+          },
+        },
+      },
+      recovery: {
+        enabled: true,
+        methods: ['backup_codes', 'security_questions'],
+        backup_codes: { codes: ['backup-code'] },
+        security_questions: {
+          questions: [
+            {
+              question_key: 'first-school',
+              answer_hash: 'answer-hash',
+            },
+          ],
+        },
+      },
+      notification_preferences: {
+        preferred_channel: 'email' as const,
+        security_alerts: false,
+        new_session_alerts: true,
+        marketing: true,
+      },
+    };
 
     await tenantContext.run('tenant-a', async () => {
-      await repository.create({ recovery } as never);
-      await repository.update('user-1', { recovery } as never);
+      await repository.create(relationData as never);
+      await repository.update('user-1', relationData as never);
     });
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          mfa: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          mfa_totp: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          mfa_email_otp: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          webauthn_credentials: {
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
           recovery: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          backup_codes: {
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
+          security_questions: {
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
+          notification_prefs: {
             create: expect.objectContaining({ tenant_id: 'tenant-a' }),
           },
         }),
@@ -1125,7 +1246,39 @@ describe('Prisma user repository', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          mfa: {
+            upsert: expect.objectContaining({
+              create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+            }),
+          },
+          mfa_totp: {
+            upsert: expect.objectContaining({
+              create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+            }),
+          },
+          mfa_email_otp: {
+            upsert: expect.objectContaining({
+              create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+            }),
+          },
+          webauthn_credentials: {
+            deleteMany: {},
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
           recovery: {
+            upsert: expect.objectContaining({
+              create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+            }),
+          },
+          backup_codes: {
+            deleteMany: {},
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
+          security_questions: {
+            deleteMany: {},
+            create: [expect.objectContaining({ tenant_id: 'tenant-a' })],
+          },
+          notification_prefs: {
             upsert: expect.objectContaining({
               create: expect.objectContaining({ tenant_id: 'tenant-a' }),
             }),
@@ -1165,7 +1318,7 @@ describe('Prisma user repository', () => {
       data: {
         notification_prefs: {
           upsert: {
-            create: preferences,
+            create: { ...preferences, tenant_id: 'default' },
             update: preferences,
           },
         },
@@ -1216,6 +1369,7 @@ describe('Prisma user repository', () => {
         mfa: {
           upsert: {
             create: {
+              tenant_id: 'default',
               enabled: true,
               preferred_method: 'webauthn',
               webauthn_enabled: true,
@@ -1231,13 +1385,19 @@ describe('Prisma user repository', () => {
         },
         mfa_totp: {
           upsert: {
-            create: { enabled: false, secret: null, verified_at: null },
+            create: {
+              tenant_id: 'default',
+              enabled: false,
+              secret: null,
+              verified_at: null,
+            },
             update: { enabled: false, secret: null, verified_at: null },
           },
         },
         mfa_email_otp: {
           upsert: {
             create: {
+              tenant_id: 'default',
               enabled: true,
               verified_at: verifiedAt,
               otp_hash: null,
@@ -1255,6 +1415,7 @@ describe('Prisma user repository', () => {
           deleteMany: {},
           create: [
             {
+              tenant_id: 'default',
               credential_id: 'credential-1',
               public_key: 'public-key',
               counter: 7,
@@ -1307,6 +1468,7 @@ describe('Prisma user repository', () => {
           mfa: {
             upsert: {
               create: {
+                tenant_id: 'default',
                 enabled: false,
                 preferred_method: null,
                 webauthn_enabled: false,
@@ -1323,6 +1485,7 @@ describe('Prisma user repository', () => {
           mfa_email_otp: {
             upsert: {
               create: {
+                tenant_id: 'default',
                 enabled: false,
                 verified_at: null,
                 otp_hash: 'pending-hash',
@@ -1340,6 +1503,7 @@ describe('Prisma user repository', () => {
             deleteMany: {},
             create: [
               {
+                tenant_id: 'default',
                 credential_id: 'credential-1',
                 public_key: 'public-key',
                 counter: 0,
@@ -1373,6 +1537,7 @@ describe('Prisma user repository', () => {
         mfa: {
           upsert: {
             create: {
+              tenant_id: 'default',
               enabled: false,
               preferred_method: null,
               webauthn_enabled: false,
@@ -1473,14 +1638,18 @@ describe('Prisma user repository', () => {
         backup_codes: {
           deleteMany: {},
           create: [
-            { code_hash: 'hash-1', used: false },
-            { code_hash: 'hash-2', used: false },
+            { tenant_id: 'default', code_hash: 'hash-1', used: false },
+            { tenant_id: 'default', code_hash: 'hash-2', used: false },
           ],
         },
         security_questions: {
           deleteMany: {},
           create: [
-            { question_key: 'first-school', answer_hash: 'answer-hash' },
+            {
+              tenant_id: 'default',
+              question_key: 'first-school',
+              answer_hash: 'answer-hash',
+            },
           ],
         },
       },
@@ -2021,12 +2190,12 @@ describe('Prisma user repository', () => {
       expect.objectContaining({
         take: 3,
         skip: 1,
-        orderBy: { username: 'asc', email: 'asc' },
+        orderBy: [{ username: 'asc' }, { email: 'asc' }],
       })
     );
     expect(findMany).toHaveBeenNthCalledWith(
       3,
-      expect.objectContaining({ orderBy: { created_at: 'desc' } })
+      expect.objectContaining({ orderBy: [{ created_at: 'desc' }] })
     );
   });
 
@@ -2185,6 +2354,32 @@ describe('Mongoose user repository', () => {
       { account_enabled: true },
       { page: 2, limit: 5, sortBy: 'username:asc' }
     );
+  });
+
+  it('translates adapter-neutral user search into an escaped MongoDB query', async () => {
+    const paginate = vi.fn().mockResolvedValue({
+      results: [],
+      totalResults: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    });
+    const repository = new MongooseUserRepository({ paginate } as never);
+
+    await repository.findMany({ search: 'Ada.*', account_enabled: true });
+
+    const [filter] = paginate.mock.calls[0] as [Record<string, unknown>];
+    expect(filter.account_enabled).toBe(true);
+    expect(filter).not.toHaveProperty('search');
+    const clauses = filter.$or as Array<Record<string, { $regex: RegExp }>>;
+    expect(clauses).toHaveLength(5);
+    for (const clause of clauses) {
+      const regex = Object.values(clause)[0].$regex;
+      expect(regex.source).toBe('Ada\\.\\*');
+      expect(regex.flags).toContain('i');
+    }
   });
 
   it('runs raw Mongoose user queries with sort, skip, and limit options', async () => {

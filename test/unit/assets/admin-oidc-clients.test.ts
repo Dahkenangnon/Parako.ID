@@ -1,7 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type DomEvent = { key?: string; target?: unknown };
+type DomEvent = {
+  currentTarget?: unknown;
+  key?: string;
+  preventDefault?: () => void;
+  target?: unknown;
+};
 type DomListener = (event: DomEvent) => void;
+
+type AdminOidcClientsManagerFixture = {
+  confirmDeactivateClient: (event: DomEvent) => Promise<boolean>;
+  confirmDeleteClient: (event: DomEvent) => Promise<boolean>;
+  confirmRegenerateSecret: (event: DomEvent) => Promise<boolean>;
+  copyToClipboard: (
+    text: string,
+    triggerElement?: ElementFixture
+  ) => Promise<void>;
+};
+
+function getManager(
+  browserWindow: Record<string, unknown>
+): AdminOidcClientsManagerFixture {
+  const manager = browserWindow.adminOidcClientsManager as
+    AdminOidcClientsManagerFixture | undefined;
+  if (!manager) throw new Error('OIDC client manager was not initialized');
+  return manager;
+}
 
 class ElementFixture {
   public readonly attributes = new Map<string, string>();
@@ -9,6 +33,7 @@ class ElementFixture {
   public readonly classList = { add: vi.fn(), remove: vi.fn() };
   public className = '';
   public closestButton: ElementFixture | null = null;
+  public readonly dataset: Record<string, string> = {};
   public readonly focus = vi.fn();
   public innerHTML = '';
   public parentNode: ElementFixture | null = null;
@@ -58,6 +83,9 @@ class ElementFixture {
 function setupDom(
   options: {
     clipboardError?: Error;
+    activeElement?: ElementFixture | null;
+    confirmationForms?: ElementFixture[];
+    copyTriggers?: ElementFixture[];
     pathname?: string;
     withLucide?: boolean;
   } = {}
@@ -78,6 +106,7 @@ function setupDom(
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('navigator', { clipboard: { writeText } });
   vi.stubGlobal('document', {
+    activeElement: options.activeElement ?? null,
     addEventListener: vi.fn((name: string, listener: DomListener) => {
       const listeners = documentListeners.get(name) ?? new Set<DomListener>();
       listeners.add(listener);
@@ -88,6 +117,15 @@ function setupDom(
       const element = new ElementFixture(tagName);
       created.push(element);
       return element;
+    }),
+    querySelectorAll: vi.fn((selector: string) => {
+      if (selector === '[data-oidc-client-confirm]') {
+        return options.confirmationForms ?? [];
+      }
+      if (selector === '[data-oidc-copy]') {
+        return options.copyTriggers ?? [];
+      }
+      return [];
     }),
     removeEventListener: vi.fn((name: string, listener: DomListener) => {
       documentListeners.get(name)?.delete(listener);
@@ -125,6 +163,65 @@ describe('admin OIDC clients manager', () => {
     ).resolves.toBeDefined();
   });
 
+  it('opens an accessible confirmation dialog without inline handlers', async () => {
+    const form = new ElementFixture('form');
+    form.dataset.oidcClientConfirm = 'deactivate';
+    const submitButton = new ElementFixture('button');
+    const { body, created, dispatchDocument, runReady } = setupDom({
+      activeElement: submitButton,
+      confirmationForms: [form],
+    });
+    await import('../../../src/assets/js/admin/oidc-clients.js');
+    runReady();
+    const event = {
+      currentTarget: form,
+      preventDefault: vi.fn(),
+      target: form,
+    };
+
+    form.trigger('submit', event);
+
+    const dialog = created.find(
+      element => element.attributes.get('role') === 'dialog'
+    );
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(dialog?.attributes.get('aria-modal')).toBe('true');
+    expect(dialog?.attributes.get('aria-labelledby')).toBeTruthy();
+    expect(dialog?.attributes.get('aria-describedby')).toBeTruthy();
+    const confirm = created.find(
+      element =>
+        element.tagName === 'button' &&
+        element.textContent === 'Yes, Deactivate'
+    );
+    expect(confirm?.focus).toHaveBeenCalledOnce();
+
+    dispatchDocument('keydown', { key: 'Escape' });
+    await Promise.resolve();
+
+    expect(body.children).toHaveLength(0);
+    expect(submitButton.focus).toHaveBeenCalledOnce();
+    expect(form.submit).not.toHaveBeenCalled();
+  });
+
+  it('copies visible client data without inline handlers', async () => {
+    vi.useFakeTimers();
+    const copyButton = new ElementFixture('button');
+    copyButton.dataset.oidcCopy = 'client-id';
+    copyButton.closestButton = copyButton;
+    const { runReady, writeText } = setupDom({ copyTriggers: [copyButton] });
+    await import('../../../src/assets/js/admin/oidc-clients.js');
+    runReady();
+
+    copyButton.trigger('click', {
+      currentTarget: copyButton,
+      target: copyButton,
+    });
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith('client-id');
+    vi.runAllTimers();
+  });
+
   it('does not expose handlers on a sibling path with the same prefix', async () => {
     const { browserWindow, runReady } = setupDom({
       pathname: '/admin/oidc-clients-preview',
@@ -146,11 +243,7 @@ describe('admin OIDC clients manager', () => {
     const form = new ElementFixture('form');
     const event = { preventDefault: vi.fn(), target: form };
 
-    const result = (
-      browserWindow.confirmDeactivateClient as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
+    const result = getManager(browserWindow).confirmDeactivateClient(event);
     const cancel = created.find(
       element =>
         element.tagName === 'button' && element.textContent === 'Cancel'
@@ -176,9 +269,7 @@ describe('admin OIDC clients manager', () => {
     ] as const) {
       const form = new ElementFixture('form');
       const event = { preventDefault: vi.fn(), target: form };
-      const result = (
-        browserWindow[handlerName] as (value: typeof event) => Promise<boolean>
-      )(event);
+      const result = getManager(browserWindow)[handlerName](event);
       const confirm = created.find(
         element =>
           element.tagName === 'button' && element.textContent === confirmText
@@ -208,33 +299,23 @@ describe('admin OIDC clients manager', () => {
     const form = new ElementFixture('form');
     const event = { preventDefault: vi.fn(), target: form };
 
-    const escapeResult = (
-      browserWindow.confirmRegenerateSecret as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
+    const escapeResult =
+      getManager(browserWindow).confirmRegenerateSecret(event);
     dispatchDocument('keydown', { key: 'Enter' });
     expect(body.children).toHaveLength(1);
     dispatchDocument('keydown', { key: 'Escape' });
     await expect(escapeResult).resolves.toBe(false);
     expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
 
-    const backdropResult = (
-      browserWindow.confirmRegenerateSecret as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
+    const backdropResult =
+      getManager(browserWindow).confirmRegenerateSecret(event);
     const backdrop = body.children[0];
     backdrop.trigger('click', { target: backdrop.children[0] });
     expect(body.children).toHaveLength(1);
     backdrop.trigger('click', { target: backdrop });
     await expect(backdropResult).resolves.toBe(false);
 
-    const deleteResult = (
-      browserWindow.confirmDeleteClient as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
+    const deleteResult = getManager(browserWindow).confirmDeleteClient(event);
     const cancel = body.children[0].children[0].children[2].children[0];
     cancel.trigger('click');
     await expect(deleteResult).resolves.toBe(false);
@@ -252,12 +333,7 @@ describe('admin OIDC clients manager', () => {
     const trigger = new ElementFixture('span');
     trigger.closestButton = button;
 
-    await (
-      browserWindow.copyToClipboard as (
-        text: string,
-        element?: ElementFixture
-      ) => Promise<void>
-    )('client-secret', trigger);
+    await getManager(browserWindow).copyToClipboard('client-secret', trigger);
 
     expect(writeText).toHaveBeenCalledWith('client-secret');
     expect(button.innerHTML).toContain('data-lucide="check"');
@@ -293,12 +369,7 @@ describe('admin OIDC clients manager', () => {
     const trigger = new ElementFixture('span');
     trigger.closestButton = button;
 
-    await (
-      browserWindow.copyToClipboard as (
-        text: string,
-        element: ElementFixture
-      ) => Promise<void>
-    )('client-id', trigger);
+    await getManager(browserWindow).copyToClipboard('client-id', trigger);
     expect(body.children).toHaveLength(1);
 
     vi.advanceTimersByTime(2000);
@@ -308,7 +379,7 @@ describe('admin OIDC clients manager', () => {
     vi.advanceTimersByTime(3000);
     expect(body.children).toHaveLength(0);
 
-    await (browserWindow.copyToClipboard as (text: string) => Promise<void>)(
+    await getManager(browserWindow).copyToClipboard(
       'client-id-without-trigger'
     );
     expect(body.children).toHaveLength(1);
@@ -326,9 +397,7 @@ describe('admin OIDC clients manager', () => {
     await import('../../../src/assets/js/admin/oidc-clients.js');
     runReady();
 
-    await (browserWindow.copyToClipboard as (text: string) => Promise<void>)(
-      'client-id'
-    );
+    await getManager(browserWindow).copyToClipboard('client-id');
 
     expect(errorSpy).toHaveBeenCalledWith('Could not copy text: ', error);
     expect(created.some(element => element.textContent === 'Copy Failed')).toBe(

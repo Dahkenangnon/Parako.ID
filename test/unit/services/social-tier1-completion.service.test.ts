@@ -229,6 +229,20 @@ describe('SocialTier1CompletionService', () => {
     [{ client_id: undefined, client_secret: 'secret' }, 'client_id'],
     [{ client_id: 'client', client_secret: '   ' }, 'client_secret'],
     [{ client_id: 'client', client_secret: undefined }, 'client_secret'],
+    [
+      {
+        client_id: 'your-google-client-id',
+        client_secret: 'platform-secret',
+      },
+      'client_id',
+    ],
+    [
+      {
+        client_id: 'platform-client',
+        client_secret: 'your-google-client-secret',
+      },
+      'client_secret',
+    ],
   ])(
     'fails before token exchange when platform credentials are incomplete: %s',
     async (credentials, missingField) => {

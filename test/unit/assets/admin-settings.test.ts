@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 interface DomEvent {
+  key?: string;
   preventDefault?: ReturnType<typeof vi.fn>;
   target?: ElementFixture;
 }
 
-type DomListener = (event: DomEvent) => unknown;
+type DomListener = (event?: DomEvent) => unknown;
 
 class ClassListFixture {
   private readonly values = new Set<string>();
@@ -32,7 +33,6 @@ class ElementFixture {
   public disabled = false;
   public readonly focus = vi.fn();
   public readonly listeners = new Map<string, DomListener[]>();
-  public onclick: (() => unknown) | null = null;
   public parentElement: ElementFixture | null = null;
   public readonly queryResults = new Map<string, ElementFixture>();
   public readonly remove = vi.fn(() => {
@@ -76,8 +76,11 @@ class ElementFixture {
     this.attributes.set(name, value);
   }
 
-  public trigger(name: string, event: DomEvent = { target: this }): void {
-    this.listeners.get(name)?.forEach(listener => listener.call(this, event));
+  public trigger(name: string, event: DomEvent = { target: this }): unknown[] {
+    return (
+      this.listeners.get(name)?.map(listener => listener.call(this, event)) ??
+      []
+    );
   }
 }
 
@@ -119,8 +122,10 @@ function setupDom(options: DomOptions | string = {}) {
   let ready: (() => void) | undefined;
   const normalized =
     typeof options === 'string' ? { pathname: options } : options;
-  const documentListeners = new Map<string, (() => void)[]>();
+  const criticalForms: ElementFixture[] = [];
+  const documentListeners = new Map<string, DomListener[]>();
   const elements = new Map<string, ElementFixture>();
+  const secretButtons: ElementFixture[] = [];
   const body = new ElementFixture();
   const documentElement = new ElementFixture();
   if (normalized.environment)
@@ -139,7 +144,7 @@ function setupDom(options: DomOptions | string = {}) {
   vi.useFakeTimers();
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((name: string, listener: () => void) => {
+    addEventListener: vi.fn((name: string, listener: DomListener) => {
       if (name === 'DOMContentLoaded') {
         ready = listener;
         return;
@@ -147,6 +152,13 @@ function setupDom(options: DomOptions | string = {}) {
       const listeners = documentListeners.get(name) ?? [];
       listeners.push(listener);
       documentListeners.set(name, listeners);
+    }),
+    removeEventListener: vi.fn((name: string, listener: DomListener) => {
+      const listeners = documentListeners.get(name) ?? [];
+      documentListeners.set(
+        name,
+        listeners.filter(candidate => candidate !== listener)
+      );
     }),
     body,
     createElement: vi.fn(() => new ElementFixture()),
@@ -162,14 +174,25 @@ function setupDom(options: DomOptions | string = {}) {
         ? (elements.get('_csrf') ?? null)
         : null
     ),
+    querySelectorAll: vi.fn((selector: string) => {
+      if (selector === 'form[data-confirm-critical-change]') {
+        return criticalForms;
+      }
+      if (selector === 'button[data-secret-input-id][data-secret-field-path]') {
+        return secretButtons;
+      }
+      return [];
+    }),
   });
   return {
     body,
     browserWindow,
     createIcons,
+    criticalForms,
     documentListeners,
     elements,
     runReady: () => ready?.(),
+    secretButtons,
   };
 }
 
@@ -421,6 +444,33 @@ describe('admin settings manager', () => {
     await expect(result).resolves.toBe(false);
   });
 
+  it('exposes confirmation semantics and cancels safely with Escape', async () => {
+    const dom = setupDom();
+    const manager = await loadManager(dom);
+    const result = manager.showConfirmDialog('Warning', 'Proceed?');
+    const backdrop = dom.body.children.at(-1)!;
+    const modal = backdrop.children[0]!;
+    const title = modal.children[0]!.children[1]!;
+    const message = modal.children[1]!.children[0]!;
+    const cancel = modal.children[2]!.children[0]!;
+
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+    expect(modal.getAttribute('aria-labelledby')).toBe(
+      title.getAttribute('id')
+    );
+    expect(modal.getAttribute('aria-describedby')).toBe(
+      message.getAttribute('id')
+    );
+    expect(cancel.focus).toHaveBeenCalledOnce();
+
+    dom.documentListeners.get('keydown')?.[0]?.({ key: 'Escape' });
+
+    await expect(result).resolves.toBe(false);
+    expect(backdrop.remove).toHaveBeenCalledOnce();
+    expect(dom.documentListeners.get('keydown')).toHaveLength(0);
+  });
+
   it('renders dismissible error messages and removes them after five seconds', async () => {
     const dom = setupDom({ lucide: 'callable' });
     const manager = await loadManager(dom);
@@ -537,7 +587,7 @@ describe('admin settings manager', () => {
       expect(manager.revealedFields.has('jwt')).toBe(true);
       expect(button.disabled).toBe(false);
 
-      button.onclick?.();
+      manager.remaskSecret('jwt');
       expect(field.value).toBe('********');
       expect(field.getAttribute('readonly')).toBe('readonly');
       expect(manager.revealedFields.has('jwt')).toBe(false);
@@ -652,18 +702,26 @@ describe('admin settings manager', () => {
     );
   });
 
-  it('restores reveal behavior when a secret has no saved masked value', async () => {
+  it('toggles declarative secret controls without replacing click handlers', async () => {
     const dom = setupDom();
+    const { button } = addFieldWithButton(dom, 'jwt');
+    button.setAttribute('data-secret-input-id', 'jwt');
+    button.setAttribute('data-secret-field-path', 'security.jwt');
+    dom.secretButtons.push(button);
     const manager = await loadManager(dom);
-    const { button, field } = addFieldWithButton(dom, 'jwt');
     const reveal = vi.spyOn(manager, 'revealSecret').mockResolvedValue();
+    const remask = vi
+      .spyOn(manager, 'remaskSecret')
+      .mockImplementation(() => {});
 
-    manager.remaskSecret('jwt');
-    button.onclick?.();
+    await Promise.all(button.trigger('click'));
+    expect(reveal).toHaveBeenCalledWith('jwt', 'security.jwt');
+    expect(remask).not.toHaveBeenCalled();
 
-    expect(field.value).toBe('');
-    expect(field.getAttribute('readonly')).toBe('readonly');
-    expect(reveal).toHaveBeenCalledWith('jwt', '');
+    manager.revealedFields.add('jwt');
+    await Promise.all(button.trigger('click'));
+    expect(remask).toHaveBeenCalledWith('jwt');
+    expect(button.listeners.get('click')).toHaveLength(1);
   });
 
   it.each([
@@ -747,29 +805,21 @@ describe('admin settings manager', () => {
     }
   );
 
-  it('exposes global handlers that delegate to the initialized manager', async () => {
+  it('binds critical forms without exposing inline-handler globals', async () => {
     const dom = setupDom();
+    const form = new ElementFixture();
+    dom.criticalForms.push(form);
     const manager = await loadManager(dom);
-    const reveal = vi.spyOn(manager, 'revealSecret').mockResolvedValue();
-    const remask = vi
-      .spyOn(manager, 'remaskSecret')
-      .mockImplementation(() => {});
     const confirm = vi
       .spyOn(manager, 'confirmCriticalChange')
       .mockResolvedValue(true);
-    const globals = dom.browserWindow as {
-      confirmCriticalChange(event: DomEvent): Promise<boolean>;
-      remaskSecret(fieldId: string): void;
-      revealSecret(fieldId: string, fieldPath: string): void;
-    };
-    const event = { preventDefault: vi.fn(), target: new ElementFixture() };
+    const event = { preventDefault: vi.fn(), target: form };
 
-    globals.revealSecret('jwt', 'security.jwt');
-    globals.remaskSecret('jwt');
-    await expect(globals.confirmCriticalChange(event)).resolves.toBe(true);
+    await Promise.all(form.trigger('submit', event));
 
-    expect(reveal).toHaveBeenCalledWith('jwt', 'security.jwt');
-    expect(remask).toHaveBeenCalledWith('jwt');
     expect(confirm).toHaveBeenCalledWith(event);
+    expect(dom.browserWindow).not.toHaveProperty('revealSecret');
+    expect(dom.browserWindow).not.toHaveProperty('remaskSecret');
+    expect(dom.browserWindow).not.toHaveProperty('confirmCriticalChange');
   });
 });

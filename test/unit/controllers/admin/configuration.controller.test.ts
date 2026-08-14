@@ -494,6 +494,34 @@ describe('AdminConfigurationController', () => {
       );
     });
 
+    it('awaits storage URL resolution before rendering branding previews', async () => {
+      const mocks = makeMocks();
+      (
+        mocks.overrideService.loadOverrides as ReturnType<typeof vi.fn>
+      ).mockResolvedValue({
+        branding: { logo: 'test-tenant/logos/current.png' },
+      });
+      (
+        mocks.uploadMiddleware.getFileUrl as ReturnType<typeof vi.fn>
+      ).mockResolvedValue(
+        'https://objects.example.test/current.png?signature=test'
+      );
+      const { controller } = makeController(mocks);
+      const req = makeReq({ params: { section: 'branding' } });
+      const res = makeRes();
+
+      await controller.section(req, res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/configuration/branding',
+        expect.objectContaining({
+          config: {
+            logo: 'https://objects.example.test/current.png?signature=test',
+          },
+        })
+      );
+    });
+
     it('shows empty config when no overrides exist (not global config)', async () => {
       const { controller } = makeController();
       const req = makeReq({ params: { section: 'application' } });
@@ -759,7 +787,8 @@ describe('AdminConfigurationController', () => {
         expect.any(Object)
       );
       expect(configManager.invalidateTenantConfig).toHaveBeenCalledWith(
-        'test-tenant'
+        'test-tenant',
+        { broadcast: true }
       );
       expect(flashManager.success).toHaveBeenCalledWith(
         expect.stringContaining('Application')
@@ -767,6 +796,30 @@ describe('AdminConfigurationController', () => {
       expect(res.redirect).toHaveBeenCalledWith(
         '/admin/configuration/application'
       );
+    });
+
+    it('does not persist client telemetry as application configuration', async () => {
+      const { controller, overrideService } = makeController();
+      const req = makeReq({
+        params: { section: 'application' },
+        body: {
+          _csrf: 'token',
+          _deviceInfo: '{"visitor_id":"browser-fixture"}',
+          title: 'New Title',
+        },
+      });
+      const res = makeRes();
+
+      await controller.updateSection(req, res);
+
+      expect(overrideService.saveOverrides).toHaveBeenCalledWith(
+        'test-tenant',
+        { application: { title: 'New Title' } },
+        'admin@test.com',
+        'Updated application configuration',
+        expect.any(Object)
+      );
+      expect(req.body._deviceInfo).toBe('{"visitor_id":"browser-fixture"}');
     });
 
     it('redirects on invalid section', async () => {
@@ -1038,7 +1091,8 @@ describe('AdminConfigurationController', () => {
         'security'
       );
       expect(configManager.invalidateTenantConfig).toHaveBeenCalledWith(
-        'test-tenant'
+        'test-tenant',
+        { broadcast: true }
       );
       expect(flashManager.success).toHaveBeenCalledWith(
         expect.stringContaining('Security')

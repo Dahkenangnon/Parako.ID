@@ -51,6 +51,8 @@ vi.mock('../../../src/multi-tenancy/redis-key.js', () => ({
   buildRedisKey: mocks.buildRedisKey,
 }));
 
+// Limiter budgets and Redis binding are fixed at module evaluation, so each
+// environment partition must reload the module after changing NODE_ENV.
 async function loadRateLimiter(environment: 'development' | 'production') {
   process.env.NODE_ENV = environment;
   vi.resetModules();

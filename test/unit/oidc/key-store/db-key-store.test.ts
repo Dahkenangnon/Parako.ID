@@ -456,6 +456,21 @@ describe('DBKeyStore', () => {
     await expect(store.rotate()).rejects.toThrow('rate-limited');
   });
 
+  it('allows different tenants to rotate within the same minute', async () => {
+    const model = createMockJwksKeyModel();
+    const store = new DBKeyStore(
+      createMockLogger(),
+      createMockConfigManager(),
+      model
+    );
+    await store.initialize('tenant-a');
+    await store.initialize('tenant-b');
+
+    await store.rotate('tenant-a');
+
+    await expect(store.rotate('tenant-b')).resolves.toBeUndefined();
+  });
+
   it('should lazily derive encryption key when getJWKS is called before initialize', async () => {
     const model = createMockJwksKeyModel();
     const store = new DBKeyStore(

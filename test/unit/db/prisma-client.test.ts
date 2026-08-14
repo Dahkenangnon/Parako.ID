@@ -11,6 +11,13 @@ const mocks = vi.hoisted(() => {
     $extends: vi.fn(),
     $queryRaw: vi.fn(),
   };
+  const sqliteDriver = { executeRaw: vi.fn() };
+  const sqliteAdapterFactory = {
+    adapterName: '@prisma/adapter-better-sqlite3',
+    connect: vi.fn(async () => sqliteDriver),
+    connectToShadowDb: vi.fn(async () => sqliteDriver),
+    provider: 'sqlite',
+  };
 
   return {
     createRequire: vi.fn(),
@@ -24,16 +31,18 @@ const mocks = vi.hoisted(() => {
     mkdirSync: vi.fn(),
     moduleLoader: vi.fn(),
     prismaBetterSqlite3: vi.fn(function () {
-      return { kind: 'sqlite-adapter' };
+      return sqliteAdapterFactory;
     }),
-    prismaClient: vi.fn(function () {
+    prismaClient: vi.fn(function (_options?: { adapter?: unknown }) {
       return sqliteClient;
     }),
     prismaPg: vi.fn(function () {
       return { kind: 'postgresql-adapter' };
     }),
+    sqliteAdapterFactory,
     sqliteClient,
     sqliteDefineExtension: vi.fn(),
+    sqliteDriver,
   };
 });
 
@@ -68,6 +77,12 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+const getConfiguredSqliteAdapter = () =>
+  mocks.prismaClient.mock.calls.at(-1)?.[0]?.adapter as {
+    connect: () => Promise<typeof mocks.sqliteDriver>;
+    connectToShadowDb: () => Promise<typeof mocks.sqliteDriver>;
+  };
+
 describe.sequential('createPrismaClient', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -81,7 +96,16 @@ describe.sequential('createPrismaClient', () => {
       PrismaClient: mocks.generatedPrismaClient,
       Prisma: { defineExtension: mocks.generatedDefineExtension },
     });
-    mocks.sqliteClient.$executeRaw.mockReset().mockResolvedValue(undefined);
+    mocks.sqliteDriver.executeRaw.mockReset().mockResolvedValue(0);
+    mocks.sqliteAdapterFactory.connect
+      .mockReset()
+      .mockResolvedValue(mocks.sqliteDriver);
+    mocks.sqliteAdapterFactory.connectToShadowDb
+      .mockReset()
+      .mockResolvedValue(mocks.sqliteDriver);
+    mocks.prismaBetterSqlite3.mockReset().mockImplementation(function () {
+      return mocks.sqliteAdapterFactory;
+    });
     mocks.generatedClient.$extends.mockReset();
   });
 
@@ -94,24 +118,61 @@ describe.sequential('createPrismaClient', () => {
 
   it('starts SQLite PRAGMAs sequentially', async () => {
     const pending = [deferred(), deferred(), deferred(), deferred()];
-    mocks.sqliteClient.$executeRaw.mockImplementation(
+    mocks.sqliteDriver.executeRaw.mockImplementation(
       () =>
-        pending[mocks.sqliteClient.$executeRaw.mock.calls.length - 1]!.promise
+        pending[mocks.sqliteDriver.executeRaw.mock.calls.length - 1]!.promise
     );
     const { createPrismaClient } = await import('../../../src/db/prisma.js');
 
     createPrismaClient({
       storage: { adapter: 'sqlite', sqlite: { path: './data/test.db' } },
     } as never);
+    const connecting = getConfiguredSqliteAdapter().connect();
 
-    expect(mocks.sqliteClient.$executeRaw).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(1);
+    });
     pending[0]!.resolve(undefined);
     await vi.waitFor(() => {
-      expect(mocks.sqliteClient.$executeRaw).toHaveBeenCalledTimes(2);
+      expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(2);
     });
     pending[1]!.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(3);
+    });
     pending[2]!.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(4);
+    });
     pending[3]!.resolve(undefined);
+    await expect(connecting).resolves.toBe(mocks.sqliteDriver);
+  });
+
+  it('configures SQLite before returning the connected adapter to Prisma', async () => {
+    const driver = { executeRaw: vi.fn().mockResolvedValue(0) };
+    const adapterFactory = {
+      adapterName: '@prisma/adapter-better-sqlite3',
+      connect: vi.fn().mockResolvedValue(driver),
+      connectToShadowDb: vi.fn().mockResolvedValue(driver),
+      provider: 'sqlite',
+    };
+    mocks.prismaBetterSqlite3.mockImplementationOnce(function () {
+      return adapterFactory;
+    });
+    const { createPrismaClient } = await import('../../../src/db/prisma.js');
+
+    createPrismaClient({ storage: { adapter: 'sqlite' } } as never);
+    const configuredFactory = mocks.prismaClient.mock.calls.at(-1)?.[0]
+      ?.adapter as typeof adapterFactory;
+    const connectedDriver = await configuredFactory.connect();
+
+    expect(connectedDriver).toBe(driver);
+    expect(driver.executeRaw.mock.calls.map(([query]) => query.sql)).toEqual([
+      'PRAGMA journal_mode = WAL',
+      'PRAGMA foreign_keys = ON',
+      'PRAGMA synchronous = NORMAL',
+      'PRAGMA cache_size = -8000',
+    ]);
   });
 
   it('constructs SQLite with the default rooted path and development PRAGMAs', async () => {
@@ -129,13 +190,16 @@ describe.sequential('createPrismaClient', () => {
       url: 'file:/srv/parako/runtime/data/parako.db',
     });
     expect(mocks.prismaClient).toHaveBeenCalledWith({
-      adapter: { kind: 'sqlite-adapter' },
+      adapter: expect.objectContaining({
+        adapterName: '@prisma/adapter-better-sqlite3',
+        connect: expect.any(Function),
+        connectToShadowDb: expect.any(Function),
+        provider: 'sqlite',
+      }),
     });
-    await vi.waitFor(() => {
-      expect(mocks.sqliteClient.$executeRaw).toHaveBeenCalledTimes(4);
-    });
+    await getConfiguredSqliteAdapter().connect();
     expect(
-      mocks.sqliteClient.$executeRaw.mock.calls.map(([strings]) => strings[0])
+      mocks.sqliteDriver.executeRaw.mock.calls.map(([query]) => query.sql)
     ).toEqual([
       'PRAGMA journal_mode = WAL',
       'PRAGMA foreign_keys = ON',
@@ -152,28 +216,36 @@ describe.sequential('createPrismaClient', () => {
       storage: { adapter: 'sqlite', sqlite: { path: 'file:./data/live.db' } },
     } as never);
 
-    await vi.waitFor(() => {
-      expect(mocks.sqliteClient.$executeRaw).toHaveBeenCalledTimes(4);
-    });
+    await getConfiguredSqliteAdapter().connect();
     expect(
-      mocks.sqliteClient.$executeRaw.mock.calls.map(([strings]) => strings[0])
+      mocks.sqliteDriver.executeRaw.mock.calls.map(([query]) => query.sql)
     ).toContain('PRAGMA synchronous = FULL');
+  });
+
+  it('configures SQLite shadow connections through the same lifecycle', async () => {
+    const { createPrismaClient } = await import('../../../src/db/prisma.js');
+
+    createPrismaClient({ storage: { adapter: 'sqlite' } } as never);
+    const driver = await getConfiguredSqliteAdapter().connectToShadowDb();
+
+    expect(mocks.sqliteAdapterFactory.connectToShadowDb).toHaveBeenCalledOnce();
+    expect(driver).toBe(mocks.sqliteDriver);
+    expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(4);
   });
 
   it('reports SQLite PRAGMA failures and continues the queue', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mocks.sqliteClient.$executeRaw
+    mocks.sqliteDriver.executeRaw
       .mockRejectedValueOnce(new Error('read only'))
       .mockRejectedValueOnce('not supported')
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(0);
     const { createPrismaClient } = await import('../../../src/db/prisma.js');
 
     createPrismaClient({ storage: { adapter: 'sqlite' } } as never);
+    await getConfiguredSqliteAdapter().connect();
 
-    await vi.waitFor(() => {
-      expect(mocks.sqliteClient.$executeRaw).toHaveBeenCalledTimes(4);
-      expect(error).toHaveBeenCalledTimes(2);
-    });
+    expect(mocks.sqliteDriver.executeRaw).toHaveBeenCalledTimes(4);
+    expect(error).toHaveBeenCalledTimes(2);
     expect(error).toHaveBeenNthCalledWith(
       1,
       '[SQLite] Failed to set PRAGMA journal_mode=WAL: read only'

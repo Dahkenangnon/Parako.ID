@@ -60,38 +60,23 @@ describe('local OIDC client registry', () => {
 
   it.each([
     ['null', 'Invalid configuration format'],
-    ['{"version":"2.0.0","clients":{}}', null],
+    ['{"version":"2.0.0","clients":{}}', 'clients must be an array'],
     ['{"clients":[}', 'Invalid JSONC configuration'],
-  ])('falls back safely for invalid configuration %#', (content, message) => {
+  ])('fails closed for invalid configuration %#', (content, message) => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     vi.spyOn(fs, 'readFileSync').mockReturnValue(content);
-    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    const config = loadClientRegistryConfig();
-
-    if (message) {
-      expect(consoleLog.mock.calls.flat().join('\n')).toContain(message);
-      expect(config.clients).toEqual([]);
-    } else {
-      expect(config).toEqual({
-        version: '2.0.0',
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        clients: [],
-      });
-    }
+    expect(() => loadClientRegistryConfig()).toThrow(message);
   });
 
-  it('formats non-Error read failures safely', () => {
+  it('normalizes non-Error read failures without exposing file contents', () => {
     vi.spyOn(fs, 'existsSync').mockReturnValue(true);
     vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
       throw 'permission denied';
     });
-    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    expect(loadClientRegistryConfig().clients).toEqual([]);
-    expect(consoleLog.mock.calls.flat().join('\n')).toContain(
-      'permission denied'
+    expect(() => loadClientRegistryConfig()).toThrow(
+      'Failed to load client configuration: permission denied'
     );
   });
 

@@ -11,8 +11,10 @@ import { PlatformAdminController } from '../../../../src/controllers/admin/platf
 import {
   ConflictError,
   NotFoundError,
+  ProtectedTenantError,
   ReservedSlugError,
 } from '../../../../src/errors/platform.errors.js';
+import { InvalidTenantDomainError } from '../../../../src/multi-tenancy/tenant-domain.js';
 
 function tenant(overrides: Record<string, unknown> = {}) {
   return {
@@ -318,6 +320,23 @@ describe('PlatformAdminController', () => {
   });
 
   describe('editTenantPage()', () => {
+    it('denies the protected platform master edit form', async () => {
+      const { controller, platformService } = makeController();
+      const res = makeRes();
+
+      await controller.editTenantPage(
+        makeReq({ params: { slug: '_platforms' } }),
+        res
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.render).toHaveBeenCalledWith('error/403', {
+        title: 'Access Denied',
+        errorDetails: 'The platform master tenant cannot be modified',
+      });
+      expect(platformService.getTenantBySlug).not.toHaveBeenCalled();
+    });
+
     it('renders the tenant edit form', async () => {
       const { controller } = makeController();
       const res = makeRes();
@@ -373,6 +392,28 @@ describe('PlatformAdminController', () => {
   });
 
   describe('updateTenant()', () => {
+    it('renders 403 when the service protects the platform master tenant', async () => {
+      const mocks = makeMocks();
+      mocks.platformService.updateTenant.mockRejectedValue(
+        new ProtectedTenantError()
+      );
+      const { controller } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.updateTenant(
+        makeReq({ params: { slug: '_platforms' } }),
+        res
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.render).toHaveBeenCalledWith('error/403', {
+        title: 'Access Denied',
+        errorDetails: 'The platform master tenant cannot be modified',
+      });
+      expect(mocks.logger.error).not.toHaveBeenCalled();
+      expect(mocks.platformService.getTenantBySlug).not.toHaveBeenCalled();
+    });
+
     it('does not erase the display name when the submitted value is whitespace', async () => {
       const { controller, platformService } = makeController();
       const res = makeRes();
@@ -454,6 +495,31 @@ describe('PlatformAdminController', () => {
       });
     });
 
+    it.each([
+      new ConflictError('Tenant domain already exists'),
+      new InvalidTenantDomainError(),
+    ])(
+      'renders an actionable domain update error without logging',
+      async failure => {
+        const mocks = makeMocks();
+        mocks.platformService.updateTenant.mockRejectedValue(failure);
+        const { controller } = makeController(mocks);
+        const res = makeRes();
+
+        await controller.updateTenant(
+          makeReq({ params: { slug: 'acme' } }),
+          res
+        );
+
+        expect(mocks.logger.error).not.toHaveBeenCalled();
+        expect(res.render).toHaveBeenCalledWith('admin/tenants/edit', {
+          title: 'Edit Tenant: acme',
+          tenant: expect.objectContaining({ slug: 'acme' }),
+          error: failure.message,
+        });
+      }
+    );
+
     it('renders a stable error when rebuilding the failed form also fails', async () => {
       const updateFailure = new Error('write failed');
       const reloadFailure = new Error('read failed');
@@ -478,6 +544,30 @@ describe('PlatformAdminController', () => {
   });
 
   describe('updateTenantStatus()', () => {
+    it('renders 403 when the service protects the platform master status', async () => {
+      const mocks = makeMocks();
+      mocks.platformService.updateTenantStatus.mockRejectedValue(
+        new ProtectedTenantError()
+      );
+      const { controller } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.updateTenantStatus(
+        makeReq({
+          params: { slug: '_platforms' },
+          body: { status: 'suspended' },
+        }),
+        res
+      );
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.render).toHaveBeenCalledWith('error/403', {
+        title: 'Access Denied',
+        errorDetails: 'The platform master tenant cannot be modified',
+      });
+      expect(mocks.logger.error).not.toHaveBeenCalled();
+    });
+
     it.each([undefined, 'unknown', ['active']])(
       'redirects without mutation for invalid status %j',
       async status => {

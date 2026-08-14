@@ -23,12 +23,15 @@ function createMockDeps(
       loadOverrides: vi.fn().mockResolvedValue({}),
       saveOverrides: vi.fn().mockResolvedValue({}),
     },
+    configManager: {
+      getPlatformConfig: vi.fn().mockReturnValue({ source: 'platform' }),
+    },
     logger: {
       error: vi.fn(),
       info: vi.fn(),
     },
     ...overrides,
-  };
+  } as TenantsControllerDeps;
 }
 
 function createMockRequest(overrides: Partial<Request> = {}): Request {
@@ -298,7 +301,9 @@ describe('api/v1/controllers/TenantsController', () => {
 
     it('converts the platform domain conflict to 409', async () => {
       vi.mocked(deps.platformAdminService.createTenant).mockRejectedValue(
-        new PlatformConflictError('Tenant already exists')
+        new PlatformConflictError(
+          "Tenant domain 'login.example.test' already exists"
+        )
       );
 
       const req = createMockRequest({
@@ -312,6 +317,9 @@ describe('api/v1/controllers/TenantsController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(409);
+      expect(error.detail).toBe(
+        "Tenant domain 'login.example.test' already exists"
+      );
     });
 
     it('does not misclassify an unrelated message containing duplicate', async () => {
@@ -516,6 +524,7 @@ describe('api/v1/controllers/TenantsController', () => {
       const req = createMockRequest({
         params: { slug: 'acme-corp', section: 'branding' },
         body: { companyName: 'Acme' },
+        apiAuth: { client_id: 'management-client' } as any,
       });
       const res = createMockResponse();
       const next = createMockNext();
@@ -524,9 +533,13 @@ describe('api/v1/controllers/TenantsController', () => {
 
       expect(
         deps.tenantSettingsOverrideService!.saveOverrides
-      ).toHaveBeenCalledWith(sampleTenant._id, {
-        branding: { companyName: 'Acme' },
-      });
+      ).toHaveBeenCalledWith(
+        sampleTenant._id,
+        { branding: { companyName: 'Acme' } },
+        'management-client',
+        'Updated branding configuration via Management API',
+        { source: 'platform' }
+      );
       expect(res.status).toHaveBeenCalledWith(200);
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
@@ -597,9 +610,13 @@ describe('api/v1/controllers/TenantsController', () => {
 
       expect(
         deps.tenantSettingsOverrideService!.saveOverrides
-      ).toHaveBeenCalledWith('acme-corp', {
-        branding: { theme: 'dark' },
-      });
+      ).toHaveBeenCalledWith(
+        'acme-corp',
+        { branding: { theme: 'dark' } },
+        'management-api',
+        'Updated branding configuration via Management API',
+        { source: 'platform' }
+      );
     });
 
     it('should call next with 404 when tenant is not found', async () => {

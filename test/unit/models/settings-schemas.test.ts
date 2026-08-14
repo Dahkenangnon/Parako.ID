@@ -383,6 +383,14 @@ describe('settings persistence schemas', () => {
     await expect(document.validate()).resolves.toBeUndefined();
   });
 
+  it('accepts an explicitly removed primary branding logo', async () => {
+    const config = getDefaultFullConfig();
+    config.branding.logo = '';
+    const document = new SettingsSchemasModel(config);
+
+    await expect(document.validate()).resolves.toBeUndefined();
+  });
+
   it('rejects an unsupported legacy persisted deployment environment', async () => {
     const config = getDefaultFullConfig() as unknown as Record<string, any>;
     config.deployment.environment = 'qa';

@@ -588,6 +588,7 @@ function makeHarness(options: HarnessOptions = {}) {
   const securityMiddleware = {
     generateCsrfToken: traceMiddleware('csrf:generate'),
     requireAdmin: traceMiddleware('auth:admin'),
+    requireAuth: traceMiddleware('auth:authenticated'),
     requirePlatformTenant: traceMiddleware('auth:platform'),
     validateCsrfToken: traceMiddleware('csrf:validate'),
   };
@@ -640,6 +641,9 @@ function makeHarness(options: HarnessOptions = {}) {
   const logger = {
     info: vi.fn(),
   };
+  const platformTenantMiddleware = {
+    handler: traceMiddleware('auth:platform-role'),
+  };
   const controllers = {
     home: makeController('home'),
     users: makeController('users'),
@@ -676,7 +680,8 @@ function makeHarness(options: HarnessOptions = {}) {
       configValidationMiddleware as never,
       sessionManager as never,
       logger as never,
-      options.platform ? (controllers.platform as never) : undefined
+      options.platform ? (controllers.platform as never) : undefined,
+      options.platform ? (platformTenantMiddleware as never) : undefined
     )
   );
   app.use(
@@ -714,11 +719,18 @@ describe('adminRoutes', () => {
         `${route.method.toUpperCase()} ${route.path}`
       ).toBe(200);
       expect(response.body.controller).toBe(route.controller);
-      expect(response.body.trace.slice(0, 3)).toEqual([
-        'auth:admin',
-        'csrf:generate',
-        'locals:account',
-      ]);
+      const expectedGuardPrefix = route.controller.startsWith('platform.')
+        ? [
+            'auth:authenticated',
+            'auth:platform',
+            'auth:platform-role',
+            'csrf:generate',
+            'locals:account',
+          ]
+        : ['auth:admin', 'csrf:generate', 'locals:account'];
+      expect(response.body.trace.slice(0, expectedGuardPrefix.length)).toEqual(
+        expectedGuardPrefix
+      );
     }
   });
 
@@ -954,7 +966,7 @@ describe('adminRoutes', () => {
     ]);
   });
 
-  it('only exposes platform tenant management when its controller is installed', async () => {
+  it('only exposes platform tenant management when its controller and role guard are installed', async () => {
     const withoutPlatform = makeHarness();
     const withPlatform = makeHarness({ platform: true });
 
@@ -969,12 +981,31 @@ describe('adminRoutes', () => {
     expect(response.body).toEqual({
       controller: 'platform.listTenantsPage',
       trace: [
-        'auth:admin',
+        'auth:authenticated',
+        'auth:platform',
+        'auth:platform-role',
         'csrf:generate',
         'locals:account',
-        'auth:platform',
         'page:tenants',
       ],
     });
+  });
+
+  it('checks the platform tenant and platform role before CSRF on tenant writes', async () => {
+    const { app } = makeHarness({ platform: true });
+
+    const response = await request(app)
+      .post('/admin/tenants/tenant-a/status')
+      .send({ status: 'suspended' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.trace).toEqual([
+      'auth:authenticated',
+      'auth:platform',
+      'auth:platform-role',
+      'csrf:generate',
+      'locals:account',
+      'csrf:validate',
+    ]);
   });
 });

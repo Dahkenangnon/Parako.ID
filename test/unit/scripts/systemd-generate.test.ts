@@ -34,6 +34,18 @@ describe('systemd unit generation', () => {
     ).toMatchObject(config);
   });
 
+  it('accepts the Commander property produced by --environment-file', () => {
+    expect(
+      getConfigFromFlags({
+        user: 'parako',
+        dir: config.workingDirectory,
+        runtimeDir: config.runtimeDirectory,
+        environmentFile: config.envFile,
+        nodePath: config.nodePath,
+      })
+    ).toMatchObject(config);
+  });
+
   it('rejects path traversal in a non-interactive service name', () => {
     expect(() =>
       getConfigFromFlags({

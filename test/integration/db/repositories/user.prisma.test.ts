@@ -81,6 +81,19 @@ describe('PrismaUserRepository', () => {
       const found = await repo.findByEmail('nobody@example.com');
       expect(found).toBeNull();
     });
+
+    it('rejects duplicate non-null email addresses at the SQLite persistence boundary', async () => {
+      await repo.create(makeUser());
+
+      await expect(
+        repo.create(
+          makeUser({
+            username: 'another-user',
+            email: 'alice@example.com',
+          })
+        )
+      ).rejects.toMatchObject({ code: 'P2002' });
+    });
   });
 
   describe('findByUsername', () => {

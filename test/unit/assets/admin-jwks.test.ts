@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type DomEvent = { key?: string; target?: unknown };
+import { AdminJwksManager } from '../../../src/assets/js/admin/jwks.js';
+
+type DomEvent = {
+  currentTarget?: unknown;
+  key?: string;
+  preventDefault?: () => void;
+  target?: unknown;
+};
 type DomListener = (event: DomEvent) => void;
 
 class ElementFixture {
@@ -9,7 +16,9 @@ class ElementFixture {
   public readonly classList = { add: vi.fn(), remove: vi.fn() };
   public className = '';
   public closestButton: ElementFixture | null = null;
+  public readonly dataset: Record<string, string> = {};
   public readonly focus = vi.fn();
+  public id = '';
   public parentNode: ElementFixture | null = null;
   public readonly select = vi.fn();
   public readonly style: Record<string, string> = {};
@@ -45,8 +54,9 @@ class ElementFixture {
     const clone = new ElementFixture(this.tagName);
     clone.className = this.className;
     clone.textContent = this.textContent;
-    if (deep)
+    if (deep) {
       this.children.forEach(child => clone.appendChild(child.cloneNode(true)));
+    }
     return clone;
   }
 
@@ -74,10 +84,13 @@ class ElementFixture {
   }
 }
 
-function setupInteractiveDom(
+function setupDom(
   options: {
-    copyButton?: ElementFixture | null;
-    jwkJson?: ElementFixture | null;
+    activeElement?: ElementFixture | null;
+    clipboardError?: Error;
+    confirmationForms?: ElementFixture[];
+    copyTriggers?: ElementFixture[];
+    elementsById?: Record<string, ElementFixture>;
     withLucide?: boolean;
   } = {}
 ) {
@@ -86,14 +99,20 @@ function setupInteractiveDom(
   const documentListeners = new Map<string, Set<DomListener>>();
   const createIcons = vi.fn();
   const execCommand = vi.fn();
+  const writeText = options.clipboardError
+    ? vi.fn().mockRejectedValue(options.clipboardError)
+    : vi.fn().mockResolvedValue(undefined);
   const browserWindow: Record<string, unknown> = {
     location: { pathname: '/admin/jwks' },
   };
   if (options.withLucide !== false) {
     browserWindow.lucide = { createIcons };
   }
+
   vi.stubGlobal('window', browserWindow);
+  vi.stubGlobal('navigator', { clipboard: { writeText } });
   vi.stubGlobal('document', {
+    activeElement: options.activeElement ?? null,
     addEventListener: vi.fn((name: string, listener: DomListener) => {
       const listeners = documentListeners.get(name) ?? new Set<DomListener>();
       listeners.add(listener);
@@ -106,17 +125,21 @@ function setupInteractiveDom(
       return element;
     }),
     execCommand,
-    getElementById: vi.fn((id: string) =>
-      id === 'copy-public-jwk'
-        ? (options.copyButton ?? null)
-        : id === 'public-jwk-json'
-          ? (options.jwkJson ?? null)
-          : null
-    ),
+    getElementById: vi.fn((id: string) => options.elementsById?.[id] ?? null),
+    querySelectorAll: vi.fn((selector: string) => {
+      if (selector === '[data-jwks-confirm]') {
+        return options.confirmationForms ?? [];
+      }
+      if (selector === '[data-jwks-copy], [data-jwks-copy-target]') {
+        return options.copyTriggers ?? [];
+      }
+      return [];
+    }),
     removeEventListener: vi.fn((name: string, listener: DomListener) => {
       documentListeners.get(name)?.delete(listener);
     }),
   });
+
   return {
     body,
     browserWindow,
@@ -126,268 +149,194 @@ function setupInteractiveDom(
       documentListeners.get(name)?.forEach(listener => listener(event)),
     documentListeners,
     execCommand,
-    runReady: () =>
-      documentListeners
-        .get('DOMContentLoaded')
-        ?.forEach(listener => listener({})),
+    manager: new AdminJwksManager(),
+    writeText,
   };
 }
 
-function setupDom(
-  options: {
-    pathname?: string;
-  } = {}
-) {
-  let ready: (() => void) | undefined;
-  const browserWindow: Record<string, unknown> = {
-    location: { pathname: options.pathname ?? '/admin/jwks' },
-  };
-  vi.stubGlobal('window', browserWindow);
-  vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      if (_name === 'DOMContentLoaded') ready = listener;
-    }),
-    getElementById: vi.fn(() => null),
-  });
-  return { browserWindow, runReady: () => ready?.() };
+async function flushPromises(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe('admin JWKS controls', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
-    vi.resetModules();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
+  it('opens an accessible rotation dialog through a declarative form', async () => {
+    const form = new ElementFixture('form');
+    form.dataset.jwksConfirm = 'rotate';
+    const trigger = new ElementFixture('button');
+    const { body, browserWindow, created, dispatchDocument, manager } =
+      setupDom({ activeElement: trigger, confirmationForms: [form] });
+    manager.initialize();
+    const event = {
+      currentTarget: form,
+      preventDefault: vi.fn(),
+      target: form,
+    };
 
-    await expect(
-      import('../../../src/assets/js/admin/jwks.js')
-    ).resolves.toBeDefined();
-  });
+    form.trigger('submit', event);
 
-  it('does not expose JWKS handlers on unrelated pages', async () => {
-    const { browserWindow, runReady } = setupDom({ pathname: '/admin/users' });
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
+    const dialog = created.find(
+      element => element.attributes.get('role') === 'dialog'
+    );
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(dialog?.attributes.get('aria-modal')).toBe('true');
+    expect(dialog?.attributes.get('aria-labelledby')).toBeTruthy();
+    expect(dialog?.attributes.get('aria-describedby')).toBeTruthy();
+    const confirm = created.find(
+      element =>
+        element.tagName === 'button' &&
+        element.textContent === 'Yes, Rotate Keys'
+    );
+    expect(confirm?.focus).toHaveBeenCalledOnce();
 
+    dispatchDocument('keydown', { key: 'Escape' });
+    await flushPromises();
+
+    expect(body.children).toHaveLength(0);
+    expect(trigger.focus).toHaveBeenCalledOnce();
+    expect(form.submit).not.toHaveBeenCalled();
     expect(browserWindow).not.toHaveProperty('confirmRotateKeys');
-    expect(browserWindow).not.toHaveProperty('confirmRetireExpired');
     expect(browserWindow).not.toHaveProperty('copyToClipboard');
   });
 
-  it('exposes JWKS handlers when optional copy elements are absent', async () => {
-    const { browserWindow, runReady } = setupDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-
-    expect(runReady).not.toThrow();
-    expect(browserWindow).toMatchObject({
-      confirmRetireExpired: expect.any(Function),
-      confirmRotateKeys: expect.any(Function),
-      copyToClipboard: expect.any(Function),
+  it('submits rotation after confirmation and releases the keyboard listener', async () => {
+    const form = new ElementFixture('form');
+    form.dataset.jwksConfirm = 'rotate';
+    const { created, documentListeners, manager } = setupDom({
+      confirmationForms: [form],
     });
-  });
+    manager.initialize();
+    const event = {
+      currentTarget: form,
+      preventDefault: vi.fn(),
+      target: form,
+    };
 
-  it('cancels key rotation and removes all dialog listeners', async () => {
-    const {
-      body,
-      browserWindow,
-      createIcons,
-      created,
-      documentListeners,
-      runReady,
-    } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
-    const form = new ElementFixture('form');
-    const event = { preventDefault: vi.fn(), target: form };
+    form.trigger('submit', event);
+    created
+      .find(element => element.textContent === 'Yes, Rotate Keys')
+      ?.trigger('click');
+    await flushPromises();
 
-    const result = (
-      browserWindow.confirmRotateKeys as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
-    const cancel = created.find(
-      element =>
-        element.tagName === 'button' && element.textContent === 'Cancel'
-    );
-    const alertIcon = created.find(
-      element => element.attributes.get('data-lucide') === 'alert-triangle'
-    );
-    const confirm = created.find(
-      element =>
-        element.tagName === 'button' &&
-        element.textContent === 'Yes, Rotate Keys'
-    );
-    expect(alertIcon?.className).toContain('text-amber-500');
-    expect(confirm?.className).toContain('bg-amber-500');
-    cancel?.trigger('click');
-
-    await expect(result).resolves.toBe(false);
-    expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(form.submit).not.toHaveBeenCalled();
-    expect(body.children).toHaveLength(0);
-    expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
-    expect(createIcons).toHaveBeenCalledOnce();
-  });
-
-  it('submits key rotation after confirmation and releases its listener', async () => {
-    const { browserWindow, created, documentListeners, runReady } =
-      setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
-    const form = new ElementFixture('form');
-    const event = { preventDefault: vi.fn(), target: form };
-
-    const result = (
-      browserWindow.confirmRotateKeys as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
-    const confirm = created.find(
-      element =>
-        element.tagName === 'button' &&
-        element.textContent === 'Yes, Rotate Keys'
-    );
-    confirm?.trigger('click');
-
-    await expect(result).resolves.toBe(true);
     expect(form.submit).toHaveBeenCalledOnce();
     expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
   });
 
-  it('cancels retiring expired keys only when the dialog backdrop is clicked', async () => {
-    const { body, browserWindow, created, runReady } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
+  it('cancels expired-key retirement through the backdrop and Escape', async () => {
     const form = new ElementFixture('form');
-    const event = { preventDefault: vi.fn(), target: form };
+    form.dataset.jwksConfirm = 'retire-expired';
+    const { body, dispatchDocument, manager } = setupDom({
+      confirmationForms: [form],
+      withLucide: false,
+    });
+    manager.initialize();
+    const event = {
+      currentTarget: form,
+      preventDefault: vi.fn(),
+      target: form,
+    };
 
-    const result = (
-      browserWindow.confirmRetireExpired as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
-    const backdrop = created.find(element =>
-      element.className.includes('fixed inset-0')
-    );
-    backdrop?.trigger('click', { target: new ElementFixture('div') });
+    form.trigger('submit', event);
+    const firstBackdrop = body.children[0];
+    firstBackdrop.trigger('click', { target: firstBackdrop.children[0] });
     expect(body.children).toHaveLength(1);
-    backdrop?.trigger('click', { target: backdrop });
+    firstBackdrop.trigger('click', { target: firstBackdrop });
+    await flushPromises();
 
-    await expect(result).resolves.toBe(false);
-    expect(form.submit).not.toHaveBeenCalled();
+    form.trigger('submit', event);
+    dispatchDocument('keydown', { key: 'Enter' });
+    expect(body.children).toHaveLength(1);
+    dispatchDocument('keydown', { key: 'Escape' });
+    await flushPromises();
+
     expect(body.children).toHaveLength(0);
+    expect(form.submit).not.toHaveBeenCalled();
   });
 
   it('submits expired-key retirement after confirmation', async () => {
-    const { browserWindow, created, runReady } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
     const form = new ElementFixture('form');
-    const event = { preventDefault: vi.fn(), target: form };
+    form.dataset.jwksConfirm = 'retire-expired';
+    const { created, manager } = setupDom({ confirmationForms: [form] });
+    manager.initialize();
 
-    const result = (
-      browserWindow.confirmRetireExpired as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
-    const confirm = created.find(
-      element =>
-        element.tagName === 'button' &&
-        element.textContent === 'Yes, Retire Expired'
-    );
-    confirm?.trigger('click');
+    form.trigger('submit', {
+      currentTarget: form,
+      preventDefault: vi.fn(),
+      target: form,
+    });
+    created
+      .find(element => element.textContent === 'Yes, Retire Expired')
+      ?.trigger('click');
+    await flushPromises();
 
-    await expect(result).resolves.toBe(true);
     expect(form.submit).toHaveBeenCalledOnce();
   });
 
-  it('ignores unrelated keys and cancels a dialog with Escape', async () => {
-    const { browserWindow, dispatchDocument, runReady } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
-    const form = new ElementFixture('form');
-    const event = { preventDefault: vi.fn(), target: form };
-    let settled = false;
+  it('copies a rendered key ID through a declarative button', async () => {
+    vi.useFakeTimers();
+    const copyButton = new ElementFixture('button');
+    copyButton.dataset.jwksCopy = 'key-id';
+    copyButton.closestButton = copyButton;
+    const { manager, writeText } = setupDom({ copyTriggers: [copyButton] });
+    manager.initialize();
 
-    const result = (
-      browserWindow.confirmRetireExpired as (
-        value: typeof event
-      ) => Promise<boolean>
-    )(event);
-    void result.then(() => {
-      settled = true;
-    });
-    dispatchDocument('keydown', { key: 'Enter' });
-    await Promise.resolve();
-    expect(settled).toBe(false);
-
-    dispatchDocument('keydown', { key: 'Escape' });
-    await expect(result).resolves.toBe(false);
-    expect(form.submit).not.toHaveBeenCalled();
-  });
-
-  it('copies text without requiring a visual trigger element', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { browserWindow, runReady } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
-
-    await (browserWindow.copyToClipboard as (text: string) => Promise<void>)(
-      'key-id'
-    );
+    copyButton.trigger('click');
+    await flushPromises();
 
     expect(writeText).toHaveBeenCalledWith('key-id');
+    vi.runAllTimers();
   });
 
-  it('shows and then restores clipboard success feedback on the trigger button', async () => {
+  it('copies the rendered public JWK through a target reference', async () => {
     vi.useFakeTimers();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { browserWindow, createIcons, runReady } = setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
+    const copyButton = new ElementFixture('button');
+    copyButton.dataset.jwksCopyTarget = 'public-jwk-json';
+    copyButton.closestButton = copyButton;
+    const publicJwk = new ElementFixture('pre');
+    publicJwk.textContent = '{"kty":"RSA"}';
+    const { manager, writeText } = setupDom({
+      copyTriggers: [copyButton],
+      elementsById: { 'public-jwk-json': publicJwk },
+    });
+    manager.initialize();
+
+    copyButton.trigger('click');
+    await flushPromises();
+
+    expect(writeText).toHaveBeenCalledWith('{"kty":"RSA"}');
+    vi.runAllTimers();
+  });
+
+  it('shows and restores clipboard feedback on the trigger button', async () => {
+    vi.useFakeTimers();
     const button = new ElementFixture('button');
     const original = new ElementFixture('span');
     original.textContent = 'Copy';
     button.appendChild(original);
-    const trigger = new ElementFixture('i');
-    trigger.closestButton = button;
+    button.closestButton = button;
+    const { createIcons, manager } = setupDom();
 
-    await (
-      browserWindow.copyToClipboard as (
-        text: string,
-        trigger: ElementFixture
-      ) => Promise<void>
-    )('public-jwk', trigger);
+    await manager.copyToClipboard('public-jwk', button as never);
 
-    expect(button.children).toHaveLength(1);
     expect(button.children[0]?.attributes.get('data-lucide')).toBe('check');
     expect(button.classList.add).toHaveBeenCalledWith('text-green-600');
-
     vi.advanceTimersByTime(2000);
-
-    expect(button.children).toHaveLength(1);
     expect(button.children[0]?.textContent).toBe('Copy');
     expect(button.classList.remove).toHaveBeenCalledWith('text-green-600');
     expect(createIcons).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to a temporary textarea when the Clipboard API fails', async () => {
-    vi.stubGlobal('navigator', {
-      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+  it('falls back to a temporary textarea when clipboard writing fails', async () => {
+    const { body, created, execCommand, manager } = setupDom({
+      clipboardError: new Error('denied'),
     });
-    const { body, browserWindow, created, execCommand, runReady } =
-      setupInteractiveDom();
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
 
-    await (browserWindow.copyToClipboard as (text: string) => Promise<void>)(
-      'fallback-value'
-    );
+    await manager.copyToClipboard('fallback-value');
 
     const textArea = created.find(element => element.tagName === 'textarea');
     expect(textArea).toMatchObject({
@@ -399,41 +348,15 @@ describe('admin JWKS controls', () => {
     expect(body.children).toHaveLength(0);
   });
 
-  it('copies the rendered public JWK when its page button is clicked', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
+  it('ignores copy controls without a value or a resolvable target', async () => {
     const copyButton = new ElementFixture('button');
-    const jwkJson = new ElementFixture('pre');
-    jwkJson.textContent = '{"kty":"RSA"}';
-    const { runReady } = setupInteractiveDom({ copyButton, jwkJson });
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
+    copyButton.dataset.jwksCopyTarget = 'missing';
+    const { manager, writeText } = setupDom({ copyTriggers: [copyButton] });
+    manager.initialize();
 
     copyButton.trigger('click');
+    await flushPromises();
 
-    expect(writeText).toHaveBeenCalledWith('{"kty":"RSA"}');
-  });
-
-  it('copies empty rendered content when the optional icon runtime is absent', async () => {
-    vi.useFakeTimers();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const copyButton = new ElementFixture('button');
-    copyButton.closestButton = copyButton;
-    const jwkJson = new ElementFixture('pre');
-    jwkJson.textContent = '';
-    const { runReady } = setupInteractiveDom({
-      copyButton,
-      jwkJson,
-      withLucide: false,
-    });
-    await import('../../../src/assets/js/admin/jwks.js');
-    runReady();
-
-    copyButton.trigger('click');
-    await Promise.resolve();
-    vi.advanceTimersByTime(2000);
-
-    expect(writeText).toHaveBeenCalledWith('');
+    expect(writeText).not.toHaveBeenCalled();
   });
 });

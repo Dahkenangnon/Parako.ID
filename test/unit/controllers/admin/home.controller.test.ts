@@ -22,6 +22,7 @@ function makeMocks() {
   const userService = { countDocuments: vi.fn() };
   const activity = {
     getActivityStats: vi.fn().mockResolvedValue({
+      available: true,
       totalActivities: 20,
       todayCount: 3,
     }),
@@ -169,6 +170,7 @@ describe('AdminHomeController', () => {
         title: 'Admin Dashboard',
         stats: {
           users: {
+            available: true,
             total: 10,
             active: 8,
             verified: 6,
@@ -179,10 +181,21 @@ describe('AdminHomeController', () => {
             verificationRate: 60,
             activeRate: 80,
           },
-          oidc: { clients: 3, activeClients: 2, totalClients: 3 },
-          sessions: { total: 7, active: 5, expired: 2 },
-          grants: { total: 9, active: 5, revoked: 4 },
-          activities: { total: 20, today: 3, thisWeek: 0, thisMonth: 0 },
+          oidc: {
+            available: true,
+            clients: 3,
+            activeClients: 2,
+            totalClients: 3,
+          },
+          sessions: { available: true, total: 7, active: 5, expired: 2 },
+          grants: { available: true, total: 9, active: 5, revoked: 4 },
+          activities: {
+            available: true,
+            total: 20,
+            today: 3,
+            thisWeek: 0,
+            thisMonth: 0,
+          },
         },
         recentActivity: [
           {
@@ -222,7 +235,7 @@ describe('AdminHomeController', () => {
       expect(stats.users.activeRate).toBe(0);
     });
 
-    it('returns a complete zero snapshot when user statistics fail', async () => {
+    it('keeps healthy subsystem statistics when user statistics fail', async () => {
       const failure = new Error('user count failed');
       const mocks = makeMocks();
       mocks.userService.countDocuments.mockRejectedValue(failure);
@@ -230,6 +243,7 @@ describe('AdminHomeController', () => {
 
       await expect(controller.getSystemStats()).resolves.toEqual({
         users: {
+          available: false,
           total: 0,
           active: 0,
           verified: 0,
@@ -240,14 +254,29 @@ describe('AdminHomeController', () => {
           verificationRate: 0,
           activeRate: 0,
         },
-        oidc: { clients: 0, activeClients: 0, totalClients: 0 },
-        sessions: { total: 0, active: 0, expired: 0 },
-        grants: { total: 0, active: 0, revoked: 0 },
-        activities: { total: 0, today: 0, thisWeek: 0, thisMonth: 0 },
+        oidc: {
+          available: true,
+          clients: 3,
+          activeClients: 2,
+          totalClients: 3,
+        },
+        sessions: { available: true, total: 7, active: 5, expired: 2 },
+        grants: { available: true, total: 9, active: 5, revoked: 4 },
+        activities: {
+          available: true,
+          total: 20,
+          today: 3,
+          thisWeek: 0,
+          thisMonth: 0,
+        },
       });
       expect(mocks.logger.error).toHaveBeenCalledWith(failure, {
-        context: 'admin_stats_load_failed',
+        context: 'user_statistics_load_failed',
       });
+      expect(mocks.oidcAdapter.client.getClientStatistics).toHaveBeenCalled();
+      expect(mocks.oidcAdapter.session.getSessionStatistics).toHaveBeenCalled();
+      expect(mocks.oidcAdapter.grant.getGrantStatistics).toHaveBeenCalled();
+      expect(mocks.activity.getActivityStats).toHaveBeenCalled();
     });
 
     it('normalizes missing OIDC totals and falls back on adapter failure', async () => {
@@ -259,6 +288,7 @@ describe('AdminHomeController', () => {
       const { controller } = makeController(mocks);
 
       await expect(controller.getOIDCStats()).resolves.toEqual({
+        available: true,
         clients: 3,
         activeClients: 1,
         totalClients: 0,
@@ -267,6 +297,7 @@ describe('AdminHomeController', () => {
       const failure = new Error('OIDC unavailable');
       mocks.oidcAdapter.client.getClientStatistics.mockRejectedValue(failure);
       await expect(controller.getOIDCStats()).resolves.toEqual({
+        available: false,
         clients: 0,
         activeClients: 0,
         totalClients: 0,
@@ -282,7 +313,7 @@ describe('AdminHomeController', () => {
         'getSessionsStats',
         'session',
         'getSessionStatistics',
-        { total: 0, active: 0, expired: 0 },
+        { available: false, total: 0, active: 0, expired: 0 },
         'session_statistics_load_failed',
       ],
       [
@@ -290,7 +321,7 @@ describe('AdminHomeController', () => {
         'getGrantsStats',
         'grant',
         'getGrantStatistics',
-        { total: 0, active: 0, revoked: 0 },
+        { available: false, total: 0, active: 0, revoked: 0 },
         'grant_statistics_load_failed',
       ],
     ])(
@@ -306,12 +337,31 @@ describe('AdminHomeController', () => {
       }
     );
 
-    it('normalizes missing activity totals and falls back on failure', async () => {
+    it('preserves activity availability and falls back on thrown failures', async () => {
       const mocks = makeMocks();
-      mocks.activity.getActivityStats.mockResolvedValue({} as any);
+      mocks.activity.getActivityStats.mockResolvedValue({
+        available: true,
+      } as any);
       const { controller } = makeController(mocks);
 
       await expect(controller.getActivityStats()).resolves.toEqual({
+        available: true,
+        total: 0,
+        today: 0,
+        thisWeek: 0,
+        thisMonth: 0,
+      });
+
+      mocks.activity.getActivityStats.mockResolvedValue({
+        available: false,
+        totalActivities: 0,
+        uniqueUsers: 0,
+        todayCount: 0,
+        successfulLogins: 0,
+        failedLogins: 0,
+      });
+      await expect(controller.getActivityStats()).resolves.toEqual({
+        available: false,
         total: 0,
         today: 0,
         thisWeek: 0,
@@ -321,6 +371,7 @@ describe('AdminHomeController', () => {
       const failure = new Error('activity stats unavailable');
       mocks.activity.getActivityStats.mockRejectedValue(failure);
       await expect(controller.getActivityStats()).resolves.toEqual({
+        available: false,
         total: 0,
         today: 0,
         thisWeek: 0,

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CreateActivityDto } from '../../../../src/db/repositories/interfaces/activity.repository.js';
 import { MongooseActivityRepository } from '../../../../src/db/repositories/mongoose/activity.repository.js';
 import { PrismaActivityRepository } from '../../../../src/db/repositories/prisma/activity.repository.js';
+import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 
 const includeRelations = {
   actor: true,
@@ -274,6 +275,40 @@ describe('Prisma activity repository', () => {
             trusted_at: trustedAt,
             trusted_until: trustedUntil,
             fingerprint: 'fingerprint-1',
+          },
+        }),
+      })
+    );
+  });
+
+  it('applies the active tenant to every nested activity row', async () => {
+    const create = vi.fn().mockResolvedValue(minimalRow());
+    const repository = new PrismaActivityRepository(
+      prismaClient({ create }) as never
+    );
+
+    await tenantContext.run('tenant-a', () =>
+      repository.create({
+        type: 'admin_enabled_user',
+        description: 'Admin enabled user',
+        status: 'success',
+        actor: { actor_type: 'admin', user_id: 'admin-1' },
+        target: { target_type: 'user', user_id: 'user-1' },
+        device_infos: { fingerprint: 'fingerprint-1' },
+      })
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actor: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          target: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
+          },
+          device: {
+            create: expect.objectContaining({ tenant_id: 'tenant-a' }),
           },
         }),
       })
@@ -659,6 +694,65 @@ describe('Prisma activity repository', () => {
     );
   });
 
+  it('matches activities where the user is either the actor or the target', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const count = vi.fn().mockResolvedValue(0);
+    const repository = new PrismaActivityRepository(
+      prismaClient({ findMany, count }) as never
+    );
+
+    await repository.findMany({
+      related_user_id: 'user-1',
+      type: 'user_enabled_by_admin',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          type: 'user_enabled_by_admin',
+          OR: [
+            { actor: { user_id: 'user-1' } },
+            { target: { user_id: 'user-1' } },
+          ],
+        },
+      })
+    );
+  });
+
+  it('combines search and related-user filters without weakening either one', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const count = vi.fn().mockResolvedValue(0);
+    const repository = new PrismaActivityRepository(
+      prismaClient({ findMany, count }) as never
+    );
+
+    await repository.findMany({
+      search: 'admin.*',
+      related_user_id: 'user-1',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { description: { contains: 'admin.*' } },
+                { actor: { username: { contains: 'admin.*' } } },
+              ],
+            },
+            {
+              OR: [
+                { actor: { user_id: 'user-1' } },
+                { target: { user_id: 'user-1' } },
+              ],
+            },
+          ],
+        },
+      })
+    );
+  });
+
   it('sorts the public username field through the actor relation', async () => {
     const findMany = vi.fn().mockResolvedValue([]);
     const count = vi.fn().mockResolvedValue(0);
@@ -754,6 +848,16 @@ describe('Prisma activity repository', () => {
       where: {
         status: 'success',
         actor: { user_id: 'user-1', username: 'alice' },
+      },
+    });
+    await repository.getDistinctTypes({ related_user_id: 'user-2' });
+    expect(groupBy).toHaveBeenLastCalledWith({
+      by: ['type'],
+      where: {
+        OR: [
+          { actor: { user_id: 'user-2' } },
+          { target: { user_id: 'user-2' } },
+        ],
       },
     });
     await repository.getDistinctTypes();
@@ -854,6 +958,70 @@ describe('Mongoose activity repository', () => {
     });
   });
 
+  it('matches activities where the user is either the actor or the target', async () => {
+    const paginate = vi.fn().mockResolvedValue({
+      results: [],
+      totalResults: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    });
+    const repository = new MongooseActivityRepository({ paginate } as never);
+
+    await repository.findMany({
+      related_user_id: 'user-1',
+      type: 'user_enabled_by_admin',
+    });
+
+    expect(paginate).toHaveBeenCalledWith(
+      {
+        type: 'user_enabled_by_admin',
+        $or: [{ 'actor.user_id': 'user-1' }, { 'target.user_id': 'user-1' }],
+      },
+      { page: 1, limit: 20, sortBy: 'created_at:desc' }
+    );
+  });
+
+  it('combines literal search and related-user filters without weakening either one', async () => {
+    const paginate = vi.fn().mockResolvedValue({
+      results: [],
+      totalResults: 0,
+      page: 1,
+      limit: 20,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    });
+    const repository = new MongooseActivityRepository({ paginate } as never);
+
+    await repository.findMany({
+      search: 'admin.*',
+      related_user_id: 'user-1',
+    });
+
+    expect(paginate).toHaveBeenCalledWith(
+      {
+        $and: [
+          {
+            $or: [
+              { description: { $regex: /admin\.\*/i } },
+              { 'actor.username': { $regex: /admin\.\*/i } },
+            ],
+          },
+          {
+            $or: [
+              { 'actor.user_id': 'user-1' },
+              { 'target.user_id': 'user-1' },
+            ],
+          },
+        ],
+      },
+      { page: 1, limit: 20, sortBy: 'created_at:desc' }
+    );
+  });
+
   it('counts, expires by activity timestamp, and preserves a missing delete count', async () => {
     const countDocuments = vi
       .fn()
@@ -898,6 +1066,10 @@ describe('Mongoose activity repository', () => {
       status: 'success',
       'actor.username': 'alice',
       'actor.user_id': 'user-1',
+    });
+    await repository.getDistinctTypes({ related_user_id: 'user-2' });
+    expect(distinct).toHaveBeenLastCalledWith('type', {
+      $or: [{ 'actor.user_id': 'user-2' }, { 'target.user_id': 'user-2' }],
     });
     await repository.getDistinctTypes();
     expect(distinct).toHaveBeenLastCalledWith('type', {});

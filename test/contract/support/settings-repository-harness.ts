@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import type { PrismaClient } from '@prisma/client';
 import mongoose from 'mongoose';
 
+import { resolvePostgresqlTestUrl } from '../../../scripts/testing/postgresql-test-url.js';
 import { createPrismaClient } from '../../../src/db/prisma.js';
 import type { ISettingsRepository } from '../../../src/db/repositories/interfaces/settings.repository.js';
 import type { ITenantSettingsOverrideRepository } from '../../../src/db/repositories/interfaces/tenant-settings-override.repository.js';
@@ -96,14 +97,11 @@ async function createPrismaHarness(
       storage: { adapter: 'sqlite', sqlite: { path: databasePath } },
     } as never);
   } else {
-    const url =
-      process.env.CONTRACT_DATABASE_URL ??
-      process.env.STORAGE_POSTGRESQL_URL ??
-      process.env.DATABASE_URL;
+    const url = resolvePostgresqlTestUrl(process.env);
 
     if (!url) {
       throw new Error(
-        'CONTRACT_DATABASE_URL or STORAGE_POSTGRESQL_URL is required for PostgreSQL contracts'
+        'CONTRACT_DATABASE_URL, STORAGE_POSTGRESQL_URL, or PARAKO_E2E_POSTGRESQL_URL is required for PostgreSQL contracts'
       );
     }
 
@@ -263,8 +261,10 @@ async function createMongoHarness(): Promise<SettingsRepositoryHarness> {
   };
 }
 
-export async function createSettingsRepositoryHarness(): Promise<SettingsRepositoryHarness> {
-  const adapter = selectedAdapter();
+export async function createSettingsRepositoryHarness(
+  requestedAdapter?: ContractStorageAdapter
+): Promise<SettingsRepositoryHarness> {
+  const adapter = requestedAdapter ?? selectedAdapter();
   return adapter === 'mongodb'
     ? createMongoHarness()
     : createPrismaHarness(adapter);

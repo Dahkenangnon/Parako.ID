@@ -250,14 +250,14 @@ describe('SessionManager - Express session queries', () => {
       expect(mockCursor.limit).toHaveBeenCalledWith(10);
     });
 
-    it('should apply search filter on accountId', async () => {
+    it('treats MongoDB account search as a literal substring', async () => {
       mockCursor.toArray.mockResolvedValue([]);
 
-      await sessionManager.findAllExpressSessions({ search: 'john' });
+      await sessionManager.findAllExpressSessions({ search: 'john+admin' });
 
       expect(mockCollection.find).toHaveBeenCalledWith({
         'session.isAuthenticated': true,
-        'session.accountId': { $regex: 'john', $options: 'i' },
+        'session.accountId': { $regex: 'john\\+admin', $options: 'i' },
         $or: [
           { 'session.tenantId': 'default' },
           { 'session.tenantId': { $exists: false } },
@@ -298,6 +298,22 @@ describe('SessionManager - Express session queries', () => {
         'session.tenantId': 'test-tenant',
       });
       expect(result).toBe(42);
+    });
+
+    it('counts only MongoDB sessions matching the literal account search', async () => {
+      mockCollection.countDocuments.mockResolvedValue(2);
+
+      const result = await sessionManager.countAllExpressSessions('alice+ops');
+
+      expect(mockCollection.countDocuments).toHaveBeenCalledWith({
+        'session.isAuthenticated': true,
+        'session.accountId': { $regex: 'alice\\+ops', $options: 'i' },
+        $or: [
+          { 'session.tenantId': 'default' },
+          { 'session.tenantId': { $exists: false } },
+        ],
+      });
+      expect(result).toBe(2);
     });
 
     it('should return 0 when MongoDB connection is not available', async () => {
@@ -467,6 +483,9 @@ describe('SessionManager - Express session queries', () => {
           session: expect.objectContaining({ accountId: 'Alice@example.com' }),
         },
       ]);
+      await expect(
+        sessionManager.countAllExpressSessions('alice')
+      ).resolves.toBe(1);
     });
 
     it('sorts valid authentication times before malformed Redis values', async () => {
@@ -620,7 +639,9 @@ describe('SessionManager - Express session queries', () => {
           }),
         },
       ]);
-      await expect(sessionManager.countAllExpressSessions()).resolves.toBe(4);
+      await expect(
+        sessionManager.countAllExpressSessions('alice')
+      ).resolves.toBe(2);
     });
   });
 

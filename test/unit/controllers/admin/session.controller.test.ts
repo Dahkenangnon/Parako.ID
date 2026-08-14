@@ -126,6 +126,10 @@ function createMockDeps() {
     }),
   };
 
+  const backchannelLogoutService = {
+    notifySessionRevocation: vi.fn().mockResolvedValue(undefined),
+  };
+
   return {
     logger,
     oidcAdapter,
@@ -135,6 +139,7 @@ function createMockDeps() {
     activityService,
     pubsub,
     configManager,
+    backchannelLogoutService,
     flashChain,
     oidcSession,
   };
@@ -151,7 +156,8 @@ function createController(
     deps.oidcUtils,
     deps.activityService,
     deps.pubsub,
-    deps.configManager
+    deps.configManager,
+    deps.backchannelLogoutService
   );
 }
 
@@ -345,7 +351,7 @@ describe('AdminSessionsController', () => {
       );
     });
 
-    it('filters processed OIDC sessions across every searchable field', async () => {
+    it('filters the complete OIDC result set before paginating searchable fields', async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-08-02T12:00:00.000Z'));
       const req = createMockReq({
@@ -392,11 +398,11 @@ describe('AdminSessionsController', () => {
         expectedFilters,
         'loginTime',
         -1,
-        2,
-        2
+        0,
+        6
       );
       const rendered = (res.render as any).mock.calls[0][1];
-      expect(rendered.sessions).toHaveLength(5);
+      expect(rendered.sessions).toHaveLength(2);
       expect(
         rendered.sessions.every(
           (session: any) => session.sessionType === 'oidc'
@@ -408,6 +414,8 @@ describe('AdminSessionsController', () => {
           hasPrev: true,
           startIndex: 3,
           endIndex: 4,
+          totalSessions: 5,
+          totalPages: 3,
         })
       );
     });
@@ -444,6 +452,9 @@ describe('AdminSessionsController', () => {
         expect.objectContaining({
           search: 'testuser',
         })
+      );
+      expect(deps.sessionManager.countAllExpressSessions).toHaveBeenCalledWith(
+        'testuser'
       );
     });
 
@@ -592,6 +603,33 @@ describe('AdminSessionsController', () => {
   });
 
   describe('revokeSession()', () => {
+    it('notifies relying parties before deleting an OIDC session', async () => {
+      const storedSession = {
+        _id: 'oidc-session-1',
+        payload: {
+          accountId: 'testuser',
+          authorizations: { 'client-a': { sid: 'sid-a' } },
+        },
+      };
+      deps.oidcSession.findSessionById.mockResolvedValue(storedSession);
+      deps.oidcSession.revokeSession.mockResolvedValue(true);
+
+      await controller.revokeSession(
+        createMockReq({ params: { id: 'oidc-session-1' }, body: {} }),
+        createMockRes()
+      );
+
+      expect(
+        deps.backchannelLogoutService.notifySessionRevocation
+      ).toHaveBeenCalledWith(storedSession, 'test-tenant');
+      expect(
+        deps.backchannelLogoutService.notifySessionRevocation.mock
+          .invocationCallOrder[0]
+      ).toBeLessThan(
+        deps.oidcSession.revokeSession.mock.invocationCallOrder[0] as number
+      );
+    });
+
     it('should revoke OIDC session by default', async () => {
       const req = createMockReq({
         params: { id: 'oidc-session-1' },
@@ -781,6 +819,48 @@ describe('AdminSessionsController', () => {
   });
 
   describe('revokeUserSessions()', () => {
+    it('notifies relying parties before deleting every valid OIDC session', async () => {
+      const sessions = [
+        {
+          _id: 'stored-1',
+          payload: {
+            jti: 'oidc-1',
+            accountId: 'testuser',
+            authorizations: { 'client-a': { sid: 'sid-a' } },
+          },
+        },
+        {
+          _id: 'stored-2',
+          payload: {
+            jti: 'oidc-2',
+            accountId: 'testuser',
+            authorizations: { 'client-b': { sid: 'sid-b' } },
+          },
+        },
+      ];
+      deps.oidcSession.findByAccountId.mockResolvedValue(sessions);
+      deps.oidcSession.revokeSession.mockResolvedValue(true);
+
+      await controller.revokeUserSessions(
+        createMockReq({ params: { username: 'testuser' } }),
+        createMockRes()
+      );
+
+      expect(
+        deps.backchannelLogoutService.notifySessionRevocation
+      ).toHaveBeenNthCalledWith(1, sessions[0], 'test-tenant');
+      expect(
+        deps.backchannelLogoutService.notifySessionRevocation
+      ).toHaveBeenNthCalledWith(2, sessions[1], 'test-tenant');
+      const notificationOrder =
+        deps.backchannelLogoutService.notifySessionRevocation.mock
+          .invocationCallOrder;
+      const revocationOrder =
+        deps.oidcSession.revokeSession.mock.invocationCallOrder;
+      expect(notificationOrder[0]).toBeLessThan(revocationOrder[0] as number);
+      expect(notificationOrder[1]).toBeLessThan(revocationOrder[1] as number);
+    });
+
     it('should revoke both OIDC and Express sessions for a user', async () => {
       const req = createMockReq({ params: { username: 'testuser' } });
       const res = createMockRes();

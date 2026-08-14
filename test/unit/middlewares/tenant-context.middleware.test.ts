@@ -95,7 +95,13 @@ function createMockTenantRepo(
       .mockImplementation((slug: string) =>
         Promise.resolve(tenants.get(slug) ?? null)
       ),
-    findByDomain: vi.fn().mockResolvedValue(null),
+    findByDomain: vi
+      .fn()
+      .mockImplementation((domain: string) =>
+        Promise.resolve(
+          [...tenants.values()].find(tenant => tenant.domain === domain) ?? null
+        )
+      ),
     findById: vi.fn().mockResolvedValue(null),
     findAll: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
@@ -108,12 +114,14 @@ function createMockTenantRepo(
 
 function makeTenant(
   slug: string,
-  status: 'active' | 'suspended' | 'archived' = 'active'
+  status: 'active' | 'suspended' | 'archived' = 'active',
+  domain?: string
 ): ITenant {
   return {
     id: `id-${slug}`,
     slug,
     display_name: `${slug} Corp`,
+    ...(domain ? { domain } : {}),
     status,
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
@@ -303,6 +311,74 @@ describe('TenantContextMiddleware', () => {
       await middleware.handler(req, res, next);
 
       expect(capturedTenantId).toBe('acme');
+    });
+
+    it('resolves an exact custom domain before a colliding subdomain slug', async () => {
+      tenantRepo = createMockTenantRepo(
+        new Map([
+          ['vanity', makeTenant('vanity')],
+          [
+            'custom-tenant',
+            makeTenant('custom-tenant', 'active', 'vanity.parako.example'),
+          ],
+        ])
+      );
+      const middleware = new TenantContextMiddleware(
+        logger,
+        createMockConfigManager({ extraction_priority: ['subdomain'] }),
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({ hostname: 'vanity.parako.example' });
+      let capturedTenantId: string | undefined;
+
+      await middleware.handler(
+        req,
+        createMockRes(),
+        vi.fn(() => {
+          capturedTenantId = tenantContext.getTenantId();
+        })
+      );
+
+      expect(tenantRepo.findByDomain).toHaveBeenCalledWith(
+        'vanity.parako.example'
+      );
+      expect(capturedTenantId).toBe('custom-tenant');
+      expect(tenantRepo.findBySlug).not.toHaveBeenCalled();
+    });
+
+    it('keeps a higher-priority header ahead of an exact custom domain', async () => {
+      tenantRepo = createMockTenantRepo(
+        new Map([
+          ['acme', makeTenant('acme')],
+          [
+            'custom-tenant',
+            makeTenant('custom-tenant', 'active', 'vanity.parako.example'),
+          ],
+        ])
+      );
+      const middleware = new TenantContextMiddleware(
+        logger,
+        createMockConfigManager(),
+        tenantRepo,
+        sessionManager
+      );
+      const req = createMockReq({
+        headers: { 'x-tenant-id': 'acme' },
+        hostname: 'vanity.parako.example',
+      });
+      let capturedTenantId: string | undefined;
+
+      await middleware.handler(
+        req,
+        createMockRes(),
+        vi.fn(() => {
+          capturedTenantId = tenantContext.getTenantId();
+        })
+      );
+
+      expect(capturedTenantId).toBe('acme');
+      expect(tenantRepo.findByDomain).not.toHaveBeenCalled();
     });
   });
 

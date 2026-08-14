@@ -20,6 +20,8 @@ export default defineConfig({
       // disposable database. The explicit PostgreSQL integration command owns
       // that prerequisite and must fail rather than silently skip it.
       'test/integration/db/extensions/tenant-postgresql-runtime.test.ts',
+      'test/integration/scripts/admin-cli.postgresql.test.ts',
+      'test/integration/scripts/database-cli.postgresql.test.ts',
     ],
 
     // Coverage configuration
@@ -60,6 +62,7 @@ export default defineConfig({
         'scripts/manage/client/types.ts': { 100: true },
         'scripts/manage/database.ts': { 100: true },
         'scripts/manage/diagnostics.ts': { 100: true },
+        'scripts/manage/shared/redis-config.ts': { 100: true },
         'scripts/manage/keys.ts': { 100: true },
         'scripts/manage/systemd.ts': { 100: true },
         'scripts/manage/keys/commands.ts': { 100: true },

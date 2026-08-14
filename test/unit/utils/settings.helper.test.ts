@@ -14,6 +14,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  convertApplicationFormData,
   convertBooleanFields,
   convertFeaturesFormData,
   convertIntegrationsFormData,
@@ -22,10 +23,45 @@ import {
   convertSecurityFormData,
 } from '../../../src/utils/settings.helper.js';
 
+describe('convertApplicationFormData()', () => {
+  it('removes the checkbox sentinel and normalizes application text and locales', () => {
+    const result = convertApplicationFormData({
+      title: ' Tenant title ',
+      description: ' Tenant description ',
+      locales: {
+        default: ' fr ',
+        available: ['', ' fr ', 'fr', 'en'],
+      },
+    });
+
+    expect(result).toEqual({
+      title: 'Tenant title',
+      description: 'Tenant description',
+      locales: {
+        default: 'fr',
+        available: ['fr', 'en'],
+      },
+    });
+  });
+
+  it('preserves absent locale fields for partial updates', () => {
+    expect(convertApplicationFormData({ title: 'Title' })).toEqual({
+      title: 'Title',
+    });
+  });
+});
+
 describe('convertBooleanFields()', () => {
   it('converts "on" to true', () => {
     const result = convertBooleanFields({ field: 'on' }, ['field']);
     expect(result.field).toBe(true);
+  });
+
+  it('converts explicit boolean strings', () => {
+    expect(convertBooleanFields({ field: 'true' }, ['field']).field).toBe(true);
+    expect(convertBooleanFields({ field: 'false' }, ['field']).field).toBe(
+      false
+    );
   });
 
   it('leaves undefined fields unchanged (not in form data)', () => {
@@ -162,6 +198,24 @@ describe('convertFeaturesFormData()', () => {
 
     const result = convertFeaturesFormData(formData);
     expect(result.social_providers.enabled).toEqual(['google']);
+  });
+
+  it('removes blank optional credentials and trims configured credentials', () => {
+    const result = convertFeaturesFormData({
+      social_providers: {
+        google: { client_id: '  ', client_secret: '' },
+        github: {
+          client_id: ' github-client ',
+          client_secret: ' github-secret ',
+        },
+      },
+    });
+
+    expect(result.social_providers.google).toBeUndefined();
+    expect(result.social_providers.github).toEqual({
+      client_id: 'github-client',
+      client_secret: 'github-secret',
+    });
   });
 
   it('converts behavior boolean fields from hidden+checkbox arrays', () => {

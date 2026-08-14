@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
+import { jwksRotationHandler } from '../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js';
+import { registerJwksRotationSchedule } from '../../../../src/jobs/schedules/jwks-rotation.schedule.js';
 
 const mockLogger = {
   info: vi.fn(),
@@ -31,9 +33,6 @@ describe('JWKS rotation handler', () => {
   it('should skip rotation when needsRotation() returns false', async () => {
     const mockKeyStore = createMockKeyStore();
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const result = await jwksRotationHandler(
       { type: 'process', name: 'jwks-rotation' },
@@ -50,9 +49,6 @@ describe('JWKS rotation handler', () => {
   it('should rotate, promote, and retire when needsRotation() returns true (delay=0)', async () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
-
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
 
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const result = await jwksRotationHandler(
@@ -75,9 +71,6 @@ describe('JWKS rotation handler', () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const onRotated = vi.fn().mockResolvedValue(undefined);
     const onPromoted = vi.fn().mockResolvedValue(undefined);
@@ -97,9 +90,6 @@ describe('JWKS rotation handler', () => {
 
   it('should not call callbacks when rotation is skipped', async () => {
     const mockKeyStore = createMockKeyStore();
-
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
 
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const onRotated = vi.fn().mockResolvedValue(undefined);
@@ -121,9 +111,6 @@ describe('JWKS rotation handler', () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockRejectedValue(new Error('DB down'));
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
 
     await expect(
@@ -144,9 +131,6 @@ describe('JWKS rotation handler', () => {
   it('should schedule delayed promotion when promotionDelayMs > 0 and scheduleDelayedPromotion provided', async () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
-
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
 
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const onRotated = vi.fn().mockResolvedValue(undefined);
@@ -189,9 +173,6 @@ describe('JWKS rotation handler', () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const result = await jwksRotationHandler(
       { type: 'process', name: 'jwks-rotation' },
@@ -211,9 +192,6 @@ describe('JWKS rotation handler', () => {
 
   it('should run promotion-only phase when data.phase is "promote"', async () => {
     const mockKeyStore = createMockKeyStore();
-
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
 
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     const onPromoted = vi.fn().mockResolvedValue(undefined);
@@ -241,9 +219,6 @@ describe('JWKS rotation handler', () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     await jwksRotationHandler(
       { type: 'process', name: 'jwks-rotation', tenantId: 'tenant-abc' },
@@ -260,9 +235,6 @@ describe('JWKS rotation handler', () => {
 
   it('should pass tenantId to keyStore methods in promotion-only phase', async () => {
     const mockKeyStore = createMockKeyStore();
-
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
 
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     await jwksRotationHandler(
@@ -285,9 +257,6 @@ describe('JWKS rotation handler', () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockResolvedValue(true);
 
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     const reportProgress = vi.fn().mockResolvedValue(undefined);
     await jwksRotationHandler(
       { type: 'process', name: 'jwks-rotation' },
@@ -305,9 +274,6 @@ describe('JWKS rotation handler', () => {
 
   it('rejects malformed rotation payloads before using the key store', async () => {
     const mockKeyStore = createMockKeyStore();
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     await expect(
       jwksRotationHandler(
         { type: 'process', name: 'wrong-task' },
@@ -330,9 +296,6 @@ describe('JWKS rotation handler', () => {
   it('rethrows non-Error failures even when no logger is configured', async () => {
     const mockKeyStore = createMockKeyStore();
     mockKeyStore.needsRotation.mockRejectedValue('redis unavailable');
-    const { jwksRotationHandler } =
-      await import('../../../../src/jobs/domains/background-tasks/handlers/jwks-rotation.handler.js');
-
     await expect(
       jwksRotationHandler(
         { type: 'process', name: 'jwks-rotation' },
@@ -348,9 +311,6 @@ describe('JWKS rotation schedule', () => {
     const mockQueue = {
       upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
     };
-
-    const { registerJwksRotationSchedule } =
-      await import('../../../../src/jobs/schedules/jwks-rotation.schedule.js');
 
     // 90 days → monthly cron
     await registerJwksRotationSchedule(mockQueue as any, {
@@ -374,9 +334,6 @@ describe('JWKS rotation schedule', () => {
     const mockQueue = {
       upsertJobScheduler: vi.fn().mockResolvedValue(undefined),
     };
-
-    const { registerJwksRotationSchedule } =
-      await import('../../../../src/jobs/schedules/jwks-rotation.schedule.js');
 
     await registerJwksRotationSchedule(mockQueue as any, {
       rotationIntervalDays: 14,

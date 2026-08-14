@@ -31,9 +31,11 @@ import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
 interface ManagerOptions {
   apiV1Router?: express.Router;
+  multiTenant?: boolean;
   opsSocialCallbackService?: object;
   opsTenantMiddleware?: object;
   platformAdminController?: object;
+  platformTenantMiddleware?: object;
 }
 
 function makeManager(options: ManagerOptions = {}) {
@@ -42,6 +44,11 @@ function makeManager(options: ManagerOptions = {}) {
       application: {
         locales: {
           available: ['en', 'fr'],
+        },
+      },
+      features: {
+        multi_tenancy: {
+          enabled: options.multiTenant ?? false,
         },
       },
       deployment: {
@@ -83,6 +90,7 @@ function makeManager(options: ManagerOptions = {}) {
     options.opsSocialCallbackService as never,
     {} as never,
     options.platformAdminController as never,
+    options.platformTenantMiddleware as never,
     options.apiV1Router as never,
     {} as never
   );
@@ -220,16 +228,32 @@ describe('MainRoutesManager', () => {
     expect(routeMocks.adminRoutes).toHaveBeenCalledOnce();
   });
 
-  it('passes an available platform admin controller to the admin router', () => {
+  it('passes platform management dependencies only in multi-tenant mode', () => {
     const platformAdminController = { dashboard: vi.fn() };
-    const { manager } = makeManager({ platformAdminController });
-    const app = { get: vi.fn(), use: vi.fn() };
+    const platformTenantMiddleware = { handler: vi.fn() };
+    const multiTenant = makeManager({
+      multiTenant: true,
+      platformAdminController,
+      platformTenantMiddleware,
+    });
+    const singleTenant = makeManager({
+      platformAdminController,
+      platformTenantMiddleware,
+    });
+    const multiApp = { get: vi.fn(), use: vi.fn() };
+    const singleApp = { get: vi.fn(), use: vi.fn() };
 
-    manager.registerRoutes(app as never);
+    multiTenant.manager.registerRoutes(multiApp as never);
+    singleTenant.manager.registerRoutes(singleApp as never);
 
-    expect(routeMocks.adminRoutes.mock.calls[0]?.at(-1)).toBe(
-      platformAdminController
-    );
+    expect(routeMocks.adminRoutes.mock.calls[0]?.slice(-2)).toEqual([
+      platformAdminController,
+      platformTenantMiddleware,
+    ]);
+    expect(routeMocks.adminRoutes.mock.calls[1]?.slice(-2)).toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it('routes browser WebAuthn APIs before the bearer-authenticated Management API', async () => {

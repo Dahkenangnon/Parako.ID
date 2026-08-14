@@ -183,7 +183,7 @@ describe('AdminUsersController', () => {
       }
     );
 
-    it('builds escaped search, role, active-status, sort, and pagination data', async () => {
+    it('builds adapter-neutral search, role, status, sort, and pagination data', async () => {
       const users = [createMockUser()];
       deps.userService.findWithPagination.mockResolvedValue({
         results: users,
@@ -212,15 +212,11 @@ describe('AdminUsersController', () => {
 
       const [filter, options] = deps.userService.findWithPagination.mock
         .calls[0] as [Record<string, any>, Record<string, any>];
+      expect(filter.search).toBe('Ada.*');
       expect(filter.roles).toEqual({ $in: ['admin'] });
       expect(filter.account_enabled).toBe(true);
       expect(filter.account_is_anonymized).toBe(false);
-      expect(filter.$or).toHaveLength(5);
-      for (const clause of filter.$or) {
-        const regex = (Object.values(clause)[0] as { $regex: RegExp }).$regex;
-        expect(regex.source).toBe('Ada\\.\\*');
-        expect(regex.flags).toContain('i');
-      }
+      expect(filter).not.toHaveProperty('$or');
       expect(options).toEqual({ page: 2, limit: 5, sort: { email: 1 } });
       expect(res.render).toHaveBeenCalledWith(
         'admin/users/index',
@@ -314,6 +310,7 @@ describe('AdminUsersController', () => {
         title: 'User details',
         user,
         activities: [activity],
+        currentUserId: 'admin-1',
         customIdentifierFields: fields,
       });
     });
@@ -633,6 +630,51 @@ describe('AdminUsersController', () => {
       expect(payload).not.toHaveProperty('phone_number');
     });
 
+    it('validates a case-insensitive custom identifier before normalizing it', async () => {
+      deps.userService.findOne.mockResolvedValue(undefined);
+      deps.userService.getCustomIdentifierFields.mockReturnValue([
+        {
+          slot: 1,
+          name: 'Employee ID',
+          validation_type: 'regex',
+          pattern: '^EMP-[0-9]{4}$',
+          min_length: 8,
+          max_length: 8,
+          case_sensitive: false,
+        },
+      ]);
+      deps.passwordUtils.hashPassword.mockResolvedValue('hashed-password');
+      deps.userService.createUserWithGeneratedUsername.mockResolvedValue(
+        createMockUser()
+      );
+      const res = makeRes();
+
+      await controller.store(
+        makeReq({
+          body: {
+            email: 'ada@example.com',
+            password: 'correct horse battery staple',
+            given_name: 'Ada',
+            family_name: 'Lovelace',
+            custom_identifier_1: 'EMP-0042',
+          },
+        }),
+        res
+      );
+
+      expect(deps.userService.isCustomIdentifierAvailable).toHaveBeenCalledWith(
+        1,
+        'emp-0042',
+        undefined
+      );
+      expect(
+        deps.userService.createUserWithGeneratedUsername
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({ custom_identifier_1: 'emp-0042' })
+      );
+      expect(deps.flash.error).not.toHaveBeenCalled();
+    });
+
     it('rejects an invalid custom identifier', async () => {
       deps.userService.findOne.mockResolvedValue(undefined);
       deps.userService.getCustomIdentifierFields.mockReturnValue([
@@ -808,6 +850,70 @@ describe('AdminUsersController', () => {
       expect(deps.userService.updateWithAssignment).not.toHaveBeenCalled();
     });
 
+    it('rejects deactivating the current administrator through the edit form', async () => {
+      deps.sessionManager.getActiveUser.mockReturnValue({
+        id: 'user-1',
+        username: 'ada',
+        email: 'ada@example.com',
+      });
+      deps.userService.findOne.mockResolvedValue(
+        createMockUser({ roles: ['admin'] })
+      );
+      const res = makeRes();
+
+      await controller.update(
+        makeReq({
+          params: { id: 'user-1' },
+          body: {
+            email: 'ada@example.com',
+            given_name: 'Ada',
+            family_name: 'Lovelace',
+            roles: 'admin',
+            account_enabled: 'false',
+          },
+        }),
+        res
+      );
+
+      expect(deps.flash.error).toHaveBeenCalledWith(
+        'You cannot disable your own account'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/users/user-1/edit');
+      expect(deps.userService.updateWithAssignment).not.toHaveBeenCalled();
+    });
+
+    it('rejects removing the current administrator role through the edit form', async () => {
+      deps.sessionManager.getActiveUser.mockReturnValue({
+        id: 'user-1',
+        username: 'ada',
+        email: 'ada@example.com',
+      });
+      deps.userService.findOne.mockResolvedValue(
+        createMockUser({ roles: ['admin'] })
+      );
+      const res = makeRes();
+
+      await controller.update(
+        makeReq({
+          params: { id: 'user-1' },
+          body: {
+            email: 'ada@example.com',
+            given_name: 'Ada',
+            family_name: 'Lovelace',
+            roles: 'user',
+            account_enabled: 'true',
+          },
+        }),
+        res
+      );
+
+      expect(deps.flash.error).toHaveBeenCalledWith(
+        'You cannot remove your own administrator role'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/users/user-1/edit');
+      expect(deps.userService.updateWithAssignment).not.toHaveBeenCalled();
+    });
+
     it('keeps only configured string roles when updating a user', async () => {
       const user = createMockUser();
       deps.userService.findOne.mockResolvedValue(user);
@@ -963,7 +1069,10 @@ describe('AdminUsersController', () => {
         'Admin updated user',
         updatedUser,
         expect.objectContaining({
-          target: expect.objectContaining({ username: 'ada' }),
+          target: expect.objectContaining({
+            user_id: 'user-1',
+            username: 'ada',
+          }),
         })
       );
       expect(deps.flash.success).toHaveBeenCalledWith(
@@ -1275,7 +1384,10 @@ describe('AdminUsersController', () => {
         'Admin enabled user',
         enabledUser,
         expect.objectContaining({
-          target: expect.objectContaining({ username: 'ada' }),
+          target: expect.objectContaining({
+            user_id: 'user-1',
+            username: 'ada',
+          }),
         })
       );
       expect(res.json).toHaveBeenCalledWith({
@@ -1315,6 +1427,27 @@ describe('AdminUsersController', () => {
         success: false,
         error: 'User not found',
       });
+    });
+
+    it('rejects disabling the current administrator', async () => {
+      deps.sessionManager.getActiveUser.mockReturnValue({
+        id: 'user-1',
+        username: 'ada',
+        email: 'ada@example.com',
+      });
+      deps.userService.findOne.mockResolvedValue(
+        createMockUser({ roles: ['admin'] })
+      );
+      const res = makeRes();
+
+      await controller.disable(makeReq({ params: { id: 'user-1' } }), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'You cannot disable your own account',
+      });
+      expect(deps.userService.updateById).not.toHaveBeenCalled();
     });
 
     it('reports an already-disabled account without writing', async () => {
@@ -1455,6 +1588,27 @@ describe('AdminUsersController', () => {
   });
 
   describe('destroy()', () => {
+    it('rejects anonymizing the current administrator', async () => {
+      deps.sessionManager.getActiveUser.mockReturnValue({
+        id: 'user-1',
+        username: 'ada',
+        email: 'ada@example.com',
+      });
+      deps.userService.findOne.mockResolvedValue(
+        createMockUser({ roles: ['admin'] })
+      );
+      const res = makeRes();
+
+      await controller.destroy(makeReq({ params: { id: 'user-1' } }), res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'You cannot anonymize your own account',
+      });
+      expect(deps.userService.anonymize).not.toHaveBeenCalled();
+    });
+
     it('delegates to the lifecycle anonymizer instead of retaining user PII', async () => {
       const user = createMockUser();
       const anonymizedUser = createMockUser({
@@ -1484,6 +1638,7 @@ describe('AdminUsersController', () => {
         anonymizedUser,
         expect.objectContaining({
           target: expect.objectContaining({
+            user_id: 'user-1',
             username: 'ada',
             email: 'ada@example.com',
           }),
@@ -1607,11 +1762,11 @@ describe('AdminUsersController', () => {
       );
 
       expect(deps.activityService.queryActivities).toHaveBeenCalledWith(
-        { 'actor.user_id': 'user-1', type: 'login' },
+        { related_user_id: 'user-1', type: 'login' },
         { page: 2, limit: 25, sort: { timestamp: -1 } }
       );
       expect(deps.activityService.getUserActivityTypes).toHaveBeenCalledWith(
-        'ada'
+        'user-1'
       );
       expect(activityWithDevice.timestamp).toEqual(
         new Date('2026-08-02T10:00:00.000Z')
@@ -1667,7 +1822,7 @@ describe('AdminUsersController', () => {
       );
 
       expect(deps.activityService.queryActivities).toHaveBeenCalledWith(
-        { 'actor.user_id': 'user-1' },
+        { related_user_id: 'user-1' },
         { page: 1, limit: 100, sort: { timestamp: -1 } }
       );
       expect(res.render).toHaveBeenCalledWith(

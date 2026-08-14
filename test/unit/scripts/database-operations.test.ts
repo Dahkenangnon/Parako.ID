@@ -56,6 +56,7 @@ import {
   buildProgram,
   databaseStatus,
   migrateDatabase,
+  redactDatabaseOutput,
 } from '../../../scripts/manage/database.js';
 
 const ORIGINAL_ENV = { ...process.env };
@@ -107,10 +108,59 @@ describe('database lifecycle operations', () => {
       ],
       expect.objectContaining({
         cwd: '/project',
+        encoding: 'utf8',
         env: expect.objectContaining({ DATABASE_URL: 'file:/data/parako.db' }),
-        stdio: 'inherit',
       })
     );
+  });
+
+  it('forwards useful Prisma output without database paths or passwords', async () => {
+    dependencies.spawnSync.mockReturnValue({
+      status: 0,
+      stdout:
+        'Datasource at file:/data/parako.db\nDatabase path: /data/parako.db\n',
+      stderr: 'Migration warning\n',
+    });
+    const stdout = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    await migrateDatabase();
+
+    expect(stdout).toHaveBeenCalledWith(
+      'Datasource at [database-url]\nDatabase path: [database-path]\n'
+    );
+    expect(stderr).toHaveBeenCalledWith('Migration warning\n');
+  });
+
+  it('redacts database URLs and standalone encoded credentials safely', () => {
+    const databaseUrl =
+      'postgresql://operator:public%2Dtest%2Dpassword@db.example/parako';
+
+    expect(
+      redactDatabaseOutput(
+        `${databaseUrl} public%2Dtest%2Dpassword public-test-password`,
+        { DATABASE_URL: databaseUrl }
+      )
+    ).toBe('[database-url] [database-password] [database-password]');
+    expect(redactDatabaseOutput('plain output', {})).toBe('plain output');
+    expect(redactDatabaseOutput(Buffer.from('buffer output'), {})).toBe(
+      'buffer output'
+    );
+    expect(redactDatabaseOutput(undefined, {})).toBe('');
+    expect(
+      redactDatabaseOutput('invalid-url remains useful', {
+        DATABASE_URL: 'invalid-url',
+      })
+    ).toBe('[database-url] remains useful');
+    expect(
+      redactDatabaseOutput('public%ZZ', {
+        DATABASE_URL: 'postgresql://operator:public%ZZ@db.example/parako',
+      })
+    ).toBe('[database-password]');
   });
 
   it('resolves the release root from the module location when not configured', async () => {

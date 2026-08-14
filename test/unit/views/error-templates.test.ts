@@ -44,5 +44,17 @@ describe('built-in error templates', () => {
 
     expect(html).toContain(`>${status}<`);
     expect(html).toContain('/css/');
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toMatch(/\son\w+=/);
+  });
+
+  it.each([
+    ['error/403.njk', 'back'],
+    ['error/500.njk', 'reload'],
+  ])('uses the external recovery action on %s', (template, action) => {
+    const html = environment.render(template, sharedLocals);
+
+    expect(html).toContain(`data-error-action="${action}"`);
+    expect(html).toMatch(/\/js\/error-page(?:-[A-Z0-9]+)?\.js/);
   });
 });

@@ -26,6 +26,7 @@ vi.mock('ioredis', () => ({
 }));
 
 import { AdminSettingsController } from '../../../../src/controllers/admin/settings.controller.js';
+import { ConfigurationVersionConflictError } from '../../../../src/errors/configuration-version-conflict.error.js';
 import { maskSensitiveValue } from '../../../../src/utils/settings.helper.js';
 
 function uploadedFile(filename: string): Express.Multer.File {
@@ -99,6 +100,7 @@ function createMockDeps() {
     settingsService: {
       findMany: vi.fn().mockResolvedValue([]),
       findOne: vi.fn(),
+      getMainConfiguration: vi.fn().mockResolvedValue({ _version: 7 }),
       saveMainConfiguration: vi.fn(),
       generateConfigDiff: vi.fn().mockReturnValue([]),
       analyzeConfigImpact: vi.fn().mockReturnValue({}),
@@ -107,6 +109,9 @@ function createMockDeps() {
     uploadMiddleware: {
       storeFile: vi.fn(),
       deleteFile: vi.fn(),
+      getFileUrl: vi.fn(
+        (key: string) => `/media/file/${key}?expires=9999&sig=test`
+      ),
     },
     clientDeviceInfoManager: {
       getClientInfoFromRequest: vi.fn().mockReturnValue({
@@ -272,23 +277,57 @@ describe('AdminSettingsController', () => {
         title: 'Application Settings',
         section: 'application',
         config: deps.config.application,
+        configVersion: 7,
       });
     });
 
     it('merges and persists submitted application settings', async () => {
-      const req = makeReq({ method: 'POST', body: { name: 'Updated ID' } });
+      const req = makeReq({
+        method: 'POST',
+        body: { name: 'Updated ID', _configVersion: '7' },
+      });
       const res = makeRes();
 
       await controller.application(req, res);
 
-      expect(deps.configManager.update).toHaveBeenCalledWith({
-        application: { name: 'Updated ID' },
-      });
+      expect(deps.configManager.update).toHaveBeenCalledWith(
+        { application: { name: 'Updated ID' } },
+        7
+      );
       expect(deps.activityService.success).toHaveBeenCalled();
       expect(deps.flash.success).toHaveBeenCalledWith(
         'Application settings updated successfully'
       );
       expect(res.redirect).toHaveBeenCalledWith('/admin/settings/application');
+    });
+
+    it('keeps request transport metadata out of application settings and audit counts', async () => {
+      const req = makeReq({
+        method: 'POST',
+        body: {
+          name: 'Updated ID',
+          _configVersion: '7',
+          _csrf: 'csrf-token',
+          _deviceInfo: '{"visitorId":"browser-fixture"}',
+        },
+      });
+
+      await controller.application(req, makeRes());
+
+      expect(deps.configManager.update).toHaveBeenCalledWith(
+        { application: { name: 'Updated ID' } },
+        7
+      );
+      expect(deps.activityService.success).toHaveBeenCalledWith(
+        'update_config',
+        'Updated application configuration',
+        expect.objectContaining({ id: 'admin-1' }),
+        expect.objectContaining({
+          target: expect.objectContaining({
+            entity_data: { fieldsModified: 1 },
+          }),
+        })
+      );
     });
 
     it('creates application settings when the section is absent', async () => {
@@ -298,20 +337,74 @@ describe('AdminSettingsController', () => {
       });
 
       await controller.application(
-        makeReq({ method: 'POST', body: { name: 'First name' } }),
+        makeReq({
+          method: 'POST',
+          body: { name: 'First name', _configVersion: '7' },
+        }),
         makeRes()
       );
 
-      expect(deps.configManager.update).toHaveBeenCalledWith({
-        application: { name: 'First name' },
-      });
+      expect(deps.configManager.update).toHaveBeenCalledWith(
+        { application: { name: 'First name' } },
+        7
+      );
+    });
+
+    it.each([undefined, '-1', '1.5', 'not-a-version'])(
+      'rejects an invalid submitted configuration version: %s',
+      async submittedVersion => {
+        const res = makeRes();
+
+        await controller.application(
+          makeReq({
+            method: 'POST',
+            body: {
+              name: 'Stale update',
+              _configVersion: submittedVersion,
+            },
+          }),
+          res
+        );
+
+        expect(deps.configManager.update).not.toHaveBeenCalled();
+        expect(deps.flash.error).toHaveBeenCalledWith(
+          'Configuration was modified by another administrator. Reload the latest settings, review them, and try again.'
+        );
+        expect(res.redirect).toHaveBeenCalledWith(
+          '/admin/settings/application'
+        );
+      }
+    );
+
+    it('reports a stale application form without exposing persistence details', async () => {
+      deps.configManager.update.mockRejectedValue(
+        new ConfigurationVersionConflictError(7, 8)
+      );
+      const res = makeRes();
+
+      await controller.application(
+        makeReq({
+          method: 'POST',
+          body: { name: 'Stale update', _configVersion: '7' },
+        }),
+        res
+      );
+
+      expect(deps.flash.error).toHaveBeenCalledWith(
+        'Configuration was modified by another administrator. Reload the latest settings, review them, and try again.'
+      );
+      expect(deps.flash.success).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/admin/settings/application');
     });
 
     it.each([new Error('write failed'), 'write failed'])(
       'handles application update failure %#',
       async failure => {
         deps.configManager.update.mockRejectedValue(failure);
-        const req = makeReq({ method: 'POST', body: { name: 'Updated ID' } });
+        const req = makeReq({
+          method: 'POST',
+          body: { name: 'Updated ID', _configVersion: '7' },
+        });
         const res = makeRes();
 
         await controller.application(req, res);
@@ -338,6 +431,26 @@ describe('AdminSettingsController', () => {
         section: 'branding',
         config: deps.config.branding,
       });
+    });
+
+    it('resolves stored branding keys before rendering previews', async () => {
+      (deps.config.branding as Record<string, unknown>).logo =
+        'default/logos/current.png';
+      deps.uploadMiddleware.getFileUrl.mockResolvedValue(
+        'https://objects.example.test/current.png?signature=test'
+      );
+      const res = makeRes();
+
+      await controller.branding(makeReq(), res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/settings/branding',
+        expect.objectContaining({
+          config: expect.objectContaining({
+            logo: 'https://objects.example.test/current.png?signature=test',
+          }),
+        })
+      );
     });
 
     it('preserves the current logo when no replacement file is submitted', async () => {
@@ -406,6 +519,25 @@ describe('AdminSettingsController', () => {
       }
     );
 
+    it('rolls back a newly stored primary logo without deleting the current logo when persistence fails', async () => {
+      (deps.config.branding as Record<string, unknown>).logo =
+        'logos/current.png';
+      deps.uploadMiddleware.storeFile.mockResolvedValue('logos/new.png');
+      deps.configManager.update.mockRejectedValue(new Error('update failed'));
+      const req = makeReq({
+        method: 'POST',
+        body: { companyName: 'Updated Company' },
+      });
+      req.file = uploadedFile('new.png');
+
+      await controller.branding(req, makeRes());
+
+      expect(deps.uploadMiddleware.deleteFile).toHaveBeenCalledTimes(1);
+      expect(deps.uploadMiddleware.deleteFile).toHaveBeenCalledWith(
+        'logos/new.png'
+      );
+    });
+
     it.each([new Error('upload failed'), 'upload failed'])(
       'handles branding update failure %#',
       async failure => {
@@ -473,7 +605,7 @@ describe('AdminSettingsController', () => {
         expect(res.json).toHaveBeenCalledWith(
           expect.objectContaining({
             success: true,
-            url: `${folder}/${filename}`,
+            url: `/media/file/${folder}/${filename}?expires=9999&sig=test`,
           })
         );
       }
@@ -512,6 +644,27 @@ describe('AdminSettingsController', () => {
       }
     );
 
+    it.each(uploads)(
+      '%s rolls back the new asset and preserves the current asset when persistence fails',
+      async (method, field, folder, filename) => {
+        const currentKey = `${folder}/current`;
+        const newKey = `${folder}/${filename}`;
+        (deps.config.branding as Record<string, unknown>)[field] = currentKey;
+        deps.uploadMiddleware.storeFile.mockResolvedValue(newKey);
+        deps.configManager.update.mockRejectedValue(new Error('update failed'));
+        const req = makeReq({ method: 'POST' });
+        req.file = uploadedFile(filename);
+
+        await (controller[method] as any)(req, makeRes());
+
+        expect(deps.uploadMiddleware.deleteFile).toHaveBeenCalledTimes(1);
+        expect(deps.uploadMiddleware.deleteFile).toHaveBeenCalledWith(newKey);
+        expect(deps.uploadMiddleware.deleteFile).not.toHaveBeenCalledWith(
+          currentKey
+        );
+      }
+    );
+
     const removals = [
       ['removeLogo', 'logo', ''],
       ['removeLogoDark', 'logoDark', null],
@@ -533,8 +686,13 @@ describe('AdminSettingsController', () => {
           `assets/${field}`
         );
         expect(deps.configManager.update).toHaveBeenCalledWith({
-          branding: expect.objectContaining({ [field]: clearedValue }),
+          branding: { [field]: clearedValue },
         });
+        expect(
+          deps.configManager.update.mock.invocationCallOrder[0]
+        ).toBeLessThan(
+          deps.uploadMiddleware.deleteFile.mock.invocationCallOrder[0]
+        );
         expect(res.json).toHaveBeenCalledWith(
           expect.objectContaining({ success: true })
         );
@@ -556,13 +714,16 @@ describe('AdminSettingsController', () => {
     );
 
     it.each(removals)(
-      '%s returns a server error when configuration persistence fails',
-      async method => {
+      '%s preserves the stored asset when configuration persistence fails',
+      async (method, field) => {
+        (deps.config.branding as Record<string, unknown>)[field] =
+          `assets/${field}`;
         deps.configManager.update.mockRejectedValue(new Error('write failed'));
         const res = makeRes();
 
         await (controller[method] as any)(makeReq({ method: 'POST' }), res);
 
+        expect(deps.uploadMiddleware.deleteFile).not.toHaveBeenCalled();
         expect(deps.activityService.failed).toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(500);
       }
@@ -798,6 +959,31 @@ describe('AdminSettingsController', () => {
       }
     );
 
+    it('does not persist request metadata with security configuration', async () => {
+      await controller.securityAuthentication(
+        makeReq({
+          method: 'POST',
+          body: {
+            _csrf: 'request-token',
+            _deviceInfo: '{"visitorId":"browser"}',
+            authentication: {
+              login: { password_policy: { min_length: '12' } },
+            },
+          },
+        }),
+        makeRes()
+      );
+
+      const update = deps.configManager.update.mock.calls[0][0];
+      expect(update.security).toMatchObject({
+        authentication: {
+          login: { password_policy: { min_length: 12 } },
+        },
+      });
+      expect(update.security).not.toHaveProperty('_csrf');
+      expect(update.security).not.toHaveProperty('_deviceInfo');
+    });
+
     it('restores masked secrets before persisting a security update', async () => {
       const actualSecret = 'super-secret-value-that-is-at-least-32-characters';
       (deps.config.security as any).secrets = { jwt_secret: actualSecret };
@@ -843,6 +1029,25 @@ describe('AdminSettingsController', () => {
             multi_factor: {
               totp: { enabled: true },
               webauthn: { enabled: true },
+            },
+          },
+        },
+        [
+          'TOTP issuer name is required when TOTP is enabled',
+          'WebAuthn Relying Party ID is required when WebAuthn is enabled',
+          'WebAuthn Relying Party name is required when WebAuthn is enabled',
+        ],
+      ],
+      [
+        {
+          authentication: {
+            multi_factor: {
+              totp: { enabled: true, issuer_name: '   ' },
+              webauthn: {
+                enabled: true,
+                rp_id: '   ',
+                rp_name: '\t',
+              },
             },
           },
         },
@@ -1016,6 +1221,37 @@ describe('AdminSettingsController', () => {
       });
     });
 
+    it('keeps request transport metadata out of feature settings and audit counts', async () => {
+      await controller.features(
+        makeReq({
+          method: 'POST',
+          body: {
+            oidc: { scopes: 'openid\nemail' },
+            _csrf: 'csrf-token',
+            _deviceInfo: '{"visitorId":"browser-fixture"}',
+          },
+        }),
+        makeRes()
+      );
+
+      expect(deps.configManager.update).toHaveBeenCalledWith({
+        features: expect.not.objectContaining({
+          _csrf: expect.anything(),
+          _deviceInfo: expect.anything(),
+        }),
+      });
+      expect(deps.activityService.success).toHaveBeenCalledWith(
+        'update_config',
+        'Updated features configuration',
+        expect.objectContaining({ id: 'admin-1' }),
+        expect.objectContaining({
+          target: expect.objectContaining({
+            entity_data: { fieldsModified: 1 },
+          }),
+        })
+      );
+    });
+
     it.each([new Error('write failed'), 'write failed'])(
       'handles feature update failure %#',
       async failure => {
@@ -1102,6 +1338,37 @@ describe('AdminSettingsController', () => {
       expect(deps.configManager.update).toHaveBeenCalledWith({
         oidc: expect.any(Object),
       });
+    });
+
+    it('keeps request transport metadata out of OIDC settings and audit counts', async () => {
+      await controller.oidc(
+        makeReq({
+          method: 'POST',
+          body: {
+            oidc: { token_ttl: { access_token: '1800' } },
+            _csrf: 'csrf-token',
+            _deviceInfo: '{"visitorId":"browser-fixture"}',
+          },
+        }),
+        makeRes()
+      );
+
+      expect(deps.configManager.update).toHaveBeenCalledWith({
+        oidc: expect.not.objectContaining({
+          _csrf: expect.anything(),
+          _deviceInfo: expect.anything(),
+        }),
+      });
+      expect(deps.activityService.success).toHaveBeenCalledWith(
+        'update_config',
+        'Updated OIDC configuration',
+        expect.objectContaining({ id: 'admin-1' }),
+        expect.objectContaining({
+          target: expect.objectContaining({
+            entity_data: { fieldsModified: 1 },
+          }),
+        })
+      );
     });
 
     it.each([new Error('write failed'), 'write failed'])(
@@ -1461,8 +1728,11 @@ describe('AdminSettingsController', () => {
       );
     });
 
-    it.each([new Error('SMTP unavailable'), 'SMTP unavailable'])(
-      'returns a server error when email delivery fails %#',
+    it.each([
+      new Error('SMTP unavailable: password=super-secret'),
+      'SMTP unavailable',
+    ])(
+      'returns a secret-safe server error when email delivery fails %#',
       async failure => {
         deps.emailService.sendEmail.mockRejectedValue(failure);
         const res = makeRes();
@@ -1479,10 +1749,7 @@ describe('AdminSettingsController', () => {
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({
           success: false,
-          error:
-            failure instanceof Error
-              ? failure.message
-              : 'Failed to send test email',
+          error: 'Failed to send test email',
         });
       }
     );
@@ -1712,6 +1979,7 @@ describe('AdminSettingsController', () => {
           'Content-Type',
           'application/json'
         );
+        expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
         expect(res.setHeader).toHaveBeenCalledWith(
           'Content-Disposition',
           expect.stringMatching(
@@ -1989,6 +2257,9 @@ describe('AdminSettingsController', () => {
         const message =
           failure instanceof Error ? failure.message : 'Unknown error';
         expect(deps.activityService.failed).toHaveBeenCalled();
+        expect(
+          JSON.stringify(deps.activityService.failed.mock.calls)
+        ).not.toContain('super-secret');
         expect(res.status).toHaveBeenCalledWith(500);
         expect(res.json).toHaveBeenCalledWith({
           success: false,

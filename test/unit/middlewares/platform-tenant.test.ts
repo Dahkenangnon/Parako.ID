@@ -1,18 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Request, Response } from 'express';
+import { PlatformTenantMiddleware } from '../../../src/middlewares/platform-tenant.middleware.js';
 
-/**
- * Tests for PlatformTenantMiddleware
- *
- * The _platforms tenant guard restricts access to users with platform_admin
- * or platform_viewer roles. It checks authentication status and role
- * membership before allowing requests through.
- */
-
-// We'll import after implementing. For now, test the contract.
-// import { PlatformTenantMiddleware } from '../../../src/middlewares/platform-tenant.middleware.js';
-
-/** Minimal mock logger matching ILogger interface */
 function makeMockLogger() {
   return {
     info: vi.fn(),
@@ -22,7 +11,6 @@ function makeMockLogger() {
   };
 }
 
-/** Minimal mock session manager matching the subset we need */
 function makeMockSessionManager(
   overrides: {
     authenticated?: boolean;
@@ -54,6 +42,7 @@ function makeMockReq(overrides: Partial<Request> = {}): Request {
 
 function makeMockRes(): Response {
   const res = {
+    locals: {},
     status: vi.fn().mockReturnThis(),
     json: vi.fn().mockReturnThis(),
     redirect: vi.fn(),
@@ -72,9 +61,6 @@ describe('PlatformTenantMiddleware', () => {
     it('rejects unauthenticated users with 401', async () => {
       const sessionManager = makeMockSessionManager({ authenticated: false });
 
-      // Dynamic import to allow TDD — file doesn't exist yet
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -95,37 +81,35 @@ describe('PlatformTenantMiddleware', () => {
   });
 
   describe('role checks', () => {
-    it('allows admin role as platform_admin fallback', async () => {
-      const sessionManager = makeMockSessionManager({
-        authenticated: true,
-        roles: ['admin'], // regular admin, treated as platform_admin
-      });
+    it.each(['admin', 'superadmin'])(
+      'allows %s as a platform_admin fallback',
+      async role => {
+        const sessionManager = makeMockSessionManager({
+          authenticated: true,
+          roles: [role],
+        });
+        const middleware = new PlatformTenantMiddleware(
+          logger as any,
+          sessionManager as any
+        );
 
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
-      const middleware = new PlatformTenantMiddleware(
-        logger as any,
-        sessionManager as any
-      );
+        const req = makeMockReq();
+        const res = makeMockRes();
+        const next = vi.fn();
 
-      const req = makeMockReq();
-      const res = makeMockRes();
-      const next = vi.fn();
+        await middleware.handler(req, res, next);
 
-      await middleware.handler(req, res, next);
-
-      expect(next).toHaveBeenCalledOnce();
-      expect((req as any).platformRole).toBe('platform_admin');
-    });
+        expect(next).toHaveBeenCalledOnce();
+        expect((req as any).platformRole).toBe('platform_admin');
+        expect(res.locals.platformRole).toBe('platform_admin');
+      }
+    );
 
     it('rejects authenticated users without any admin or platform roles with 403', async () => {
       const sessionManager = makeMockSessionManager({
         authenticated: true,
         roles: ['user'], // no admin or platform roles
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -149,9 +133,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_admin'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -172,9 +153,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_viewer'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -196,9 +174,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_admin'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -211,6 +186,7 @@ describe('PlatformTenantMiddleware', () => {
       await middleware.handler(req, res, next);
 
       expect((req as any).platformRole).toBe('platform_admin');
+      expect(res.locals.platformRole).toBe('platform_admin');
     });
 
     it('sets platformRole on request for platform_viewer', async () => {
@@ -218,9 +194,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_viewer'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -233,6 +206,7 @@ describe('PlatformTenantMiddleware', () => {
       await middleware.handler(req, res, next);
 
       expect((req as any).platformRole).toBe('platform_viewer');
+      expect(res.locals.platformRole).toBe('platform_viewer');
     });
 
     it('prefers platform_admin when user has both roles', async () => {
@@ -240,9 +214,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_viewer', 'platform_admin'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -255,6 +226,7 @@ describe('PlatformTenantMiddleware', () => {
       await middleware.handler(req, res, next);
 
       expect((req as any).platformRole).toBe('platform_admin');
+      expect(res.locals.platformRole).toBe('platform_admin');
     });
   });
 
@@ -266,9 +238,6 @@ describe('PlatformTenantMiddleware', () => {
           authenticated: true,
           roles: ['platform_viewer'],
         });
-
-        const { PlatformTenantMiddleware } =
-          await import('../../../src/middlewares/platform-tenant.middleware.js');
         const middleware = new PlatformTenantMiddleware(
           logger as any,
           sessionManager as any
@@ -293,9 +262,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_admin'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any
@@ -315,9 +281,6 @@ describe('PlatformTenantMiddleware', () => {
         authenticated: true,
         roles: ['platform_viewer'],
       });
-
-      const { PlatformTenantMiddleware } =
-        await import('../../../src/middlewares/platform-tenant.middleware.js');
       const middleware = new PlatformTenantMiddleware(
         logger as any,
         sessionManager as any

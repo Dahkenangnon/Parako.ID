@@ -301,12 +301,11 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       }
     });
 
-    it('mounts forwarding middleware and error handler on the app', () => {
-      // app.use should be called for forwarding middleware + error handler
-      expect(spyApp.use).toHaveBeenCalled();
-      const useCalls = spyApp.use.mock.calls;
-      // At least 2 calls: forwarding middleware + error handler
-      expect(useCalls.length).toBeGreaterThanOrEqual(2);
+    it('mounts only the interaction-router forwarder on the application', () => {
+      // The OIDC error handler must stay inside the interaction router. Mounting
+      // it on the application would intercept errors from routes registered
+      // later, such as the admin UI.
+      expect(spyApp.use).toHaveBeenCalledOnce();
     });
   });
 
@@ -689,8 +688,13 @@ describe('OidcRoutesManager – Dynamic Provider Resolution (Task 4.1)', () => {
       expect(next).toHaveBeenCalledOnce();
     });
 
-    it('delegates route errors to the OIDC error handler', () => {
-      const errorMiddleware = spyApp.use.mock.calls[1][0] as unknown as (
+    it('delegates interaction-route errors to the router-local OIDC handler', () => {
+      const router = (routesManager as any).interactionRouter;
+      const errorLayer = router.stack.find(
+        (layer: any) => !layer.route && layer.handle.length === 4
+      );
+      expect(errorLayer).toBeDefined();
+      const errorMiddleware = errorLayer.handle as unknown as (
         error: Error,
         req: Request,
         res: Response,

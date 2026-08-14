@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type Listener = (event: { target: ElementFixture }) => void;
+interface EventFixture {
+  preventDefault: ReturnType<typeof vi.fn>;
+  target: ElementFixture;
+}
+
+type Listener = (event: EventFixture) => void;
 
 class ElementFixture {
   public className = '';
@@ -36,14 +41,15 @@ class ElementFixture {
     this.attributes.set(name, value);
   }
 
-  public trigger(name: string): void {
-    this.listeners.get(name)?.forEach(listener => listener({ target: this }));
+  public trigger(name: string): EventFixture {
+    const event = { preventDefault: vi.fn(), target: this };
+    this.listeners.get(name)?.forEach(listener => listener(event));
+    return event;
   }
 }
 
 class ButtonFixture extends ElementFixture {
   public disabled = false;
-  public onclick: (() => void) | null = null;
 }
 
 class InputFixture extends ElementFixture {
@@ -61,17 +67,21 @@ class InputFixture extends ElementFixture {
 function setupDom(
   options: {
     csrf?: string | null;
+    confirmationForms?: ElementFixture[];
     inputs?: Record<string, InputFixture>;
     lucide?: boolean;
+    secretButtons?: ButtonFixture[];
   } = {}
 ) {
   vi.useFakeTimers();
   const activityListeners = new Map<string, Array<() => void>>();
   const appendToBody = vi.fn();
   const createIcons = vi.fn();
+  const confirm = vi.fn();
   const createdElements: ElementFixture[] = [];
   const fetch = vi.fn();
   const windowFixture: Record<string, unknown> = {
+    confirm,
     lucide: options.lucide === false ? undefined : { createIcons },
   };
   const csrf = options.csrf === null ? null : { value: options.csrf ?? 'csrf' };
@@ -99,12 +109,20 @@ function setupDom(
     querySelector: vi.fn((selector: string) =>
       selector === 'input[name="_csrf"]' ? csrf : null
     ),
+    querySelectorAll: vi.fn((selector: string) =>
+      selector === 'form[data-confirm-message]'
+        ? (options.confirmationForms ?? [])
+        : selector === 'button[data-secret-field-path][data-secret-input-id]'
+          ? (options.secretButtons ?? [])
+          : []
+    ),
   });
 
   return {
     activityListeners,
     appendToBody,
     createIcons,
+    confirm,
     createdElements,
     fetch,
     windowFixture,
@@ -122,6 +140,53 @@ describe('admin configuration secret controls', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.resetModules();
+  });
+
+  // This module installs browser listeners at import time, so each test needs
+  // a fresh module instance after installing its isolated DOM globals.
+
+  it('requires confirmation before resetting tenant configuration', async () => {
+    const form = new ElementFixture('form');
+    const message =
+      'Are you sure you want to reset Application configuration to defaults?';
+    form.setAttribute('data-confirm-message', message);
+    const { confirm } = setupDom({ confirmationForms: [form] });
+    confirm.mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    await import('../../../src/assets/js/admin/configuration/common.js');
+
+    const cancelled = form.trigger('submit');
+    const accepted = form.trigger('submit');
+
+    expect(confirm).toHaveBeenNthCalledWith(1, message);
+    expect(cancelled.preventDefault).toHaveBeenCalledOnce();
+    expect(accepted.preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('reveals and re-masks a secret through its declarative button', async () => {
+    const button = new ButtonFixture('button');
+    button.setAttribute('data-secret-field-path', 'notifications.apiKey');
+    button.setAttribute('data-secret-input-id', 'secret');
+    const input = new InputFixture('secret');
+    input.parentElement = { querySelector: () => button };
+    const { fetch } = setupDom({
+      inputs: { secret: input },
+      secretButtons: [button],
+    });
+    fetch.mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
+    });
+
+    await import('../../../src/assets/js/admin/configuration/common.js');
+
+    button.trigger('click');
+    await flushPromises();
+    expect(input.type).toBe('text');
+    expect(input.value).toBe('decrypted');
+
+    button.trigger('click');
+    expect(input.type).toBe('password');
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it('can be imported when browser globals are unavailable', async () => {
@@ -182,13 +247,11 @@ describe('admin configuration secret controls', () => {
       inputs,
     });
     await import('../../../src/assets/js/admin/configuration/common.js');
-
-    (
-      windowFixture.revealTenantSecret as (
-        fieldPath: string,
-        inputId: string
-      ) => void
-    )('notifications.apiKey', 'secret');
+    const reveal = windowFixture.revealTenantSecret as (
+      fieldPath: string,
+      inputId: string
+    ) => void;
+    reveal('notifications.apiKey', 'secret');
 
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -219,13 +282,15 @@ describe('admin configuration secret controls', () => {
       json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
     });
     await import('../../../src/assets/js/admin/configuration/common.js');
+    const reveal = windowFixture.revealTenantSecret as (
+      fieldPath: string,
+      inputId: string
+    ) => void;
+    const remask = windowFixture.remaskTenantSecret as (
+      inputId: string
+    ) => void;
 
-    (
-      windowFixture.revealTenantSecret as (
-        fieldPath: string,
-        inputId: string
-      ) => void
-    )('notifications.apiKey', 'secret');
+    reveal('notifications.apiKey', 'secret');
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledWith('/admin/configuration/reveal-secret', {
@@ -243,7 +308,6 @@ describe('admin configuration secret controls', () => {
     expect(input.value).toBe('decrypted');
     expect(input.focus).toHaveBeenCalledOnce();
     expect(button.disabled).toBe(false);
-    expect(button.onclick).toEqual(expect.any(Function));
 
     input.trigger('blur');
     expect(input.getAttribute('data-invisible-style')).toBe('true');
@@ -255,15 +319,14 @@ describe('admin configuration secret controls', () => {
     expect(input.style.color).toBe('');
     expect(input.style.caretColor).toBe('');
 
-    button.onclick?.();
+    remask('secret');
     expect(input.type).toBe('password');
-    expect(button.onclick).toEqual(expect.any(Function));
     expect(input.getAttribute('data-invisible-style')).toBeNull();
 
     input.trigger('blur');
     expect(input.getAttribute('data-invisible-style')).toBeNull();
 
-    button.onclick?.();
+    reveal('notifications.apiKey', 'secret');
     await flushPromises();
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(input.type).toBe('text');

@@ -106,6 +106,21 @@ describe('systemd command dispatch', () => {
     expect(dependencies.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it('preflights both output targets before writing either unit', async () => {
+    dependencies.existsSync
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+
+    await expect(
+      buildProgram().parseAsync(['generate', '--output', '/tmp/units'], {
+        from: 'user',
+      })
+    ).rejects.toThrow('parako-id-worker.service');
+
+    expect(dependencies.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it('shows the enhanced help profile when no subcommand is supplied', async () => {
     await buildProgram().parseAsync([], { from: 'user' });
 

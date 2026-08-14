@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MongooseSettingsRepository } from '../../../../src/db/repositories/mongoose/settings.repository.js';
 import { PrismaSettingsRepository } from '../../../../src/db/repositories/prisma/settings.repository.js';
+import { ConfigurationVersionConflictError } from '../../../../src/errors/configuration-version-conflict.error.js';
 
 function settingsRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -389,6 +390,52 @@ describe('Prisma settings repository', () => {
     });
   });
 
+  it('deactivates only the submitted Prisma revision', async () => {
+    const create = vi
+      .fn()
+      .mockResolvedValue(
+        settingsRow({ version: '1.2.4', int_version: 8, value: '{}' })
+      );
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const repository = new PrismaSettingsRepository(
+      prismaClient({
+        findFirst: vi.fn().mockResolvedValue(settingsRow()),
+        updateMany,
+        create,
+      }) as never
+    );
+
+    await repository.save('parako_config', {}, undefined, 7);
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { key: 'parako_config', is_active: true, int_version: 7 },
+      data: { is_active: false },
+    });
+  });
+
+  it('rejects a stale Prisma revision without creating a replacement row', async () => {
+    const create = vi.fn();
+    const repository = new PrismaSettingsRepository(
+      prismaClient({
+        findFirst: vi
+          .fn()
+          .mockResolvedValue(settingsRow({ version: '1.2.4', int_version: 8 })),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        create,
+      }) as never
+    );
+
+    const rejection = repository.save('parako_config', {}, undefined, 7);
+    await expect(rejection).rejects.toBeInstanceOf(
+      ConfigurationVersionConflictError
+    );
+    await expect(rejection).rejects.toMatchObject({
+      expectedVersion: 7,
+      actualVersion: 8,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('retries Prisma uniqueness races using the latest committed revision', async () => {
     const create = vi
       .fn()
@@ -617,6 +664,48 @@ describe('Mongoose settings repository', () => {
         metadata: { change_reason: 'explicit' },
       })
     );
+  });
+
+  it('deactivates only the submitted MongoDB revision', async () => {
+    const previousQuery = mongooseQuery({ _version: 7, version: '1.2.3' });
+    const findOneAndUpdate = vi.fn().mockReturnValue(previousQuery);
+    const repository = new MongooseSettingsRepository({
+      findOneAndUpdate,
+      create: vi.fn().mockResolvedValue({
+        _id: { toString: () => 'new' },
+        version: '1.2.4',
+        _version: 8,
+      }),
+    } as never);
+
+    await repository.save('parako_config', {}, undefined, 7);
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      { key: 'parako_config', is_active: true, _version: 7 },
+      { $set: { is_active: false } },
+      { returnDocument: 'before' }
+    );
+  });
+
+  it('rejects a stale MongoDB revision without creating a replacement row', async () => {
+    const create = vi.fn();
+    const repository = new MongooseSettingsRepository({
+      findOneAndUpdate: vi.fn().mockReturnValue(mongooseQuery(null)),
+      findOne: vi
+        .fn()
+        .mockReturnValue(mongooseQuery({ _version: 8, version: '1.2.4' })),
+      create,
+    } as never);
+
+    const rejection = repository.save('parako_config', {}, undefined, 7);
+    await expect(rejection).rejects.toBeInstanceOf(
+      ConfigurationVersionConflictError
+    );
+    await expect(rejection).rejects.toMatchObject({
+      expectedVersion: 7,
+      actualVersion: 8,
+    });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('falls back from a missing previous semver and empty metadata', async () => {

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dependencies = vi.hoisted(() => ({
   addClientInteractive: vi.fn(),
@@ -7,7 +7,6 @@ const dependencies = vi.hoisted(() => ({
   createTable: vi.fn((_headers?: unknown, _rows?: string[][]) => 'TABLE'),
   listClientsConfig: vi.fn(),
   log: {
-    error: vi.fn(),
     title: vi.fn(),
     warning: vi.fn(),
   },
@@ -50,12 +49,16 @@ function client(overrides: Partial<OidcClient> = {}): OidcClient {
   };
 }
 
-describe('OIDC client display and listing', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-  });
+beforeEach(() => {
+  dependencies.listClientsConfig.mockReset().mockReturnValue({ clients: [] });
+});
 
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.clearAllMocks();
+});
+
+describe('OIDC client display and listing', () => {
   it('renders all configured client details and an explicitly requested secret', () => {
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
@@ -184,15 +187,12 @@ describe('OIDC client display and listing', () => {
     expect(consoleLog).toHaveBeenCalledWith('TABLE');
   });
 
-  it('reports registry read failures without rejecting the command', async () => {
+  it('propagates registry read failures to the CLI boundary', async () => {
     dependencies.listClientsConfig.mockImplementation(() => {
       throw new Error('registry unavailable');
     });
 
-    await expect(listClients()).resolves.toBeUndefined();
-    expect(dependencies.log.error).toHaveBeenCalledWith(
-      'Failed to list clients: registry unavailable'
-    );
+    await expect(listClients()).rejects.toThrow('registry unavailable');
   });
 });
 

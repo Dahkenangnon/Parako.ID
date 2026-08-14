@@ -47,8 +47,8 @@ class ElementFixture {
     this.attributes.set(name, value);
   }
 
-  public trigger(name: string, event: DomEvent = { target: this }): void {
-    this.listeners.get(name)?.forEach(listener => listener(event));
+  public trigger(name: string, event: DomEvent = { target: this }): unknown[] {
+    return this.listeners.get(name)?.map(listener => listener(event)) ?? [];
   }
 
   public async triggerAsync(
@@ -77,6 +77,8 @@ function setupDom(
   const created: ElementFixture[] = [];
   const documentListeners = new Map<string, Set<DomListener>>();
   const form = new ElementFixture('form');
+  const resetButton = new ElementFixture('button');
+  const testEmailButton = new ElementFixture('button');
   const createIcons = vi.fn();
   const browserWindow: Record<string, unknown> =
     options.withLucide === false ? {} : { lucide: { createIcons } };
@@ -97,6 +99,13 @@ function setupDom(
     getElementById: vi.fn((id: string) => options.elements?.[id] ?? null),
     querySelector: vi.fn((selector: string) => {
       if (selector === 'form') return options.hasForm === false ? null : form;
+      if (selector === 'form[data-integrations-settings]') {
+        return options.hasForm === false ? null : form;
+      }
+      if (selector === 'button[data-integrations-reset]') return resetButton;
+      if (selector === 'button[data-integrations-test-email]') {
+        return testEmailButton;
+      }
       if (selector === 'input[name="_csrf"]') {
         if (options.csrf === undefined) return null;
         const csrfInput = new ElementFixture('input');
@@ -119,10 +128,12 @@ function setupDom(
       documentListeners.get(name)?.forEach(listener => listener(event)),
     documentListeners,
     form,
+    resetButton,
     runReady: () =>
       documentListeners
         .get('DOMContentLoaded')
         ?.forEach(listener => listener({})),
+    testEmailButton,
   };
 }
 
@@ -143,13 +154,87 @@ describe('admin integrations settings manager', () => {
     ).resolves.toBeDefined();
   });
 
+  it('binds form, reset, and test-email actions without inline-handler globals', async () => {
+    const context = setupDom();
+
+    await import('../../../src/assets/js/admin/settings/integrations.js');
+    context.runReady();
+
+    expect(context.form.listenerCount('submit')).toBe(1);
+    expect(context.resetButton.listenerCount('click')).toBe(1);
+    expect(context.testEmailButton.listenerCount('click')).toBe(1);
+    expect(context.browserWindow).not.toHaveProperty('resetForm');
+    expect(context.browserWindow).not.toHaveProperty('testEmail');
+  });
+
+  it('prevents native submission before validation and then requests critical-change confirmation', async () => {
+    const ids = [
+      'integrations.email.smtp_host',
+      'integrations.email.smtp_port',
+      'integrations.email.smtp_username',
+      'integrations.email.smtp_password',
+      'integrations.email.from',
+      'integrations.urls.website',
+      'integrations.urls.contact',
+      'integrations.urls.privacy_policy',
+      'integrations.urls.terms_of_service',
+    ];
+    const elements = Object.fromEntries(
+      ids.map(id => {
+        const input = new ElementFixture('input');
+        input.value = id.endsWith('smtp_port') ? '587' : 'configured';
+        return [id, input];
+      })
+    );
+    const confirmCriticalChange = vi.fn().mockResolvedValue(false);
+    const context = setupDom({ elements, withLucide: false });
+    context.browserWindow.adminSettingsManager = { confirmCriticalChange };
+    await import('../../../src/assets/js/admin/settings/integrations.js');
+    context.runReady();
+    const event = { preventDefault: vi.fn(), target: context.form };
+
+    const pending = Promise.all(context.form.trigger('submit', event));
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    await pending;
+    expect(confirmCriticalChange).toHaveBeenCalledOnce();
+    expect(confirmCriticalChange).toHaveBeenCalledWith(event);
+  });
+
+  it('exposes reset confirmation as an accessible dialog and Escape cancels it', async () => {
+    const context = setupDom();
+    await import('../../../src/assets/js/admin/settings/integrations.js');
+    context.runReady();
+
+    const pending = Promise.all(context.resetButton.trigger('click'));
+    const dialog = context.created.find(
+      element => element.attributes.get('role') === 'dialog'
+    );
+    const cancel = context.created.find(
+      element =>
+        element.tagName === 'button' && element.textContent === 'Cancel'
+    );
+
+    expect(dialog?.attributes.get('aria-modal')).toBe('true');
+    expect(dialog?.attributes.get('aria-labelledby')).toBeTruthy();
+    expect(dialog?.attributes.get('aria-describedby')).toBeTruthy();
+    expect(cancel?.focus).toHaveBeenCalledOnce();
+
+    context.dispatchDocument('keydown', { key: 'Escape' });
+    await pending;
+
+    expect(context.form.reset).not.toHaveBeenCalled();
+    expect(context.body.children).toHaveLength(0);
+    expect(context.documentListeners.get('keydown')?.size ?? 0).toBe(0);
+  });
+
   it('removes the dialog keyboard listener when reset is cancelled', async () => {
-    const { body, browserWindow, created, documentListeners, form, runReady } =
+    const { body, created, documentListeners, form, resetButton, runReady } =
       setupDom();
     await import('../../../src/assets/js/admin/settings/integrations.js');
     runReady();
 
-    const result = (browserWindow.resetForm as () => Promise<void>)();
+    const result = Promise.all(resetButton.trigger('click'));
     const cancel = created.find(
       element =>
         element.tagName === 'button' && element.textContent === 'Cancel'
@@ -169,7 +254,7 @@ describe('admin integrations settings manager', () => {
       csrf: 'csrf-token',
       elements: { 'test-email': emailInput },
     });
-    const button = new ElementFixture('button');
+    const button = context.testEmailButton;
     button.innerHTML = '<i>send</i>Send Test';
     const icon = new ElementFixture('i');
     button.appendChild(icon);
@@ -183,9 +268,9 @@ describe('admin integrations settings manager', () => {
     await import('../../../src/assets/js/admin/settings/integrations.js');
     context.runReady();
 
-    const result = (
-      context.browserWindow.testEmail as (event: Event) => Promise<void>
-    )({ currentTarget: button, target: icon } as unknown as Event);
+    const result = Promise.all(
+      button.trigger('click', { currentTarget: button, target: icon })
+    );
     const confirm = context.created.find(
       element =>
         element.tagName === 'button' && element.textContent === 'Yes, Send Test'
@@ -223,18 +308,13 @@ describe('admin integrations settings manager', () => {
       elements: { 'test-email': emailInput },
       withLucide: false,
     });
-    const button = new ElementFixture('button');
+    const button = context.testEmailButton;
     await import('../../../src/assets/js/admin/settings/integrations.js');
     context.runReady();
 
-    const result = (
-      context.browserWindow.testEmail as (event: Event) => Promise<void>
-    )({ currentTarget: null, target: button } as unknown as Event);
-    const cancel = context.created.find(
-      element =>
-        element.tagName === 'button' && element.textContent === 'Cancel'
+    const result = Promise.all(
+      button.trigger('click', { currentTarget: null, target: button })
     );
-    cancel?.trigger('click');
     await result;
 
     expect(emailInput.focus).toHaveBeenCalledOnce();
@@ -281,13 +361,16 @@ describe('admin integrations settings manager', () => {
       );
       if (missingId) elements[missingId].value = '';
       const context = setupDom({ elements, withLucide: false });
+      const confirmCriticalChange = vi.fn().mockResolvedValue(false);
+      context.browserWindow.adminSettingsManager = { confirmCriticalChange };
       await import('../../../src/assets/js/admin/settings/integrations.js');
       context.runReady();
       const event = { preventDefault: vi.fn(), target: context.form };
 
       await context.form.triggerAsync('submit', event);
 
-      expect(event.preventDefault).toHaveBeenCalledTimes(expected ? 1 : 0);
+      expect(event.preventDefault).toHaveBeenCalledOnce();
+      expect(confirmCriticalChange).toHaveBeenCalledTimes(expected ? 0 : 1);
       if (expected) {
         expect(
           context.created.some(element => element.textContent === expected)
@@ -302,8 +385,8 @@ describe('admin integrations settings manager', () => {
 
     expect(context.runReady).not.toThrow();
     expect(context.form.listenerCount('submit')).toBe(0);
-    expect(context.browserWindow).toHaveProperty('resetForm');
-    expect(context.browserWindow).toHaveProperty('testEmail');
+    expect(context.browserWindow).not.toHaveProperty('resetForm');
+    expect(context.browserWindow).not.toHaveProperty('testEmail');
   });
 
   it('resets after confirmation and supports manual and timed notification dismissal', async () => {
@@ -312,9 +395,7 @@ describe('admin integrations settings manager', () => {
     await import('../../../src/assets/js/admin/settings/integrations.js');
     context.runReady();
 
-    const firstReset = (
-      context.browserWindow.resetForm as () => Promise<void>
-    )();
+    const firstReset = Promise.all(context.resetButton.trigger('click'));
     context.created
       .find(
         element =>
@@ -339,9 +420,7 @@ describe('admin integrations settings manager', () => {
     close?.trigger('click');
     expect(context.body.children).toHaveLength(0);
 
-    const secondReset = (
-      context.browserWindow.resetForm as () => Promise<void>
-    )();
+    const secondReset = Promise.all(context.resetButton.trigger('click'));
     const resetButtons = context.created.filter(
       element =>
         element.tagName === 'button' &&
@@ -362,13 +441,13 @@ describe('admin integrations settings manager', () => {
       elements: { 'test-email': emailInput },
       withLucide: false,
     });
-    const button = new ElementFixture('button');
+    const button = context.testEmailButton;
     await import('../../../src/assets/js/admin/settings/integrations.js');
     context.runReady();
 
-    const backdropResult = (
-      context.browserWindow.testEmail as (event: Event) => Promise<void>
-    )({ currentTarget: button, target: button } as unknown as Event);
+    const backdropResult = Promise.all(
+      button.trigger('click', { currentTarget: button, target: button })
+    );
     const backdrop = context.body.children[0];
     backdrop.trigger('click', { target: backdrop.children[0] });
     expect(context.body.children).toHaveLength(1);
@@ -376,9 +455,9 @@ describe('admin integrations settings manager', () => {
     await backdropResult;
     expect(context.body.children).toHaveLength(0);
 
-    const escapeResult = (
-      context.browserWindow.testEmail as (event: Event) => Promise<void>
-    )({ currentTarget: button, target: button } as unknown as Event);
+    const escapeResult = Promise.all(
+      button.trigger('click', { currentTarget: button, target: button })
+    );
     context.dispatchDocument('keydown', { key: 'Enter' });
     expect(context.body.children).toHaveLength(1);
     context.dispatchDocument('keydown', { key: 'Escape' });
@@ -406,7 +485,7 @@ describe('admin integrations settings manager', () => {
         elements: { 'test-email': emailInput },
         withLucide: false,
       });
-      const button = new ElementFixture('button');
+      const button = context.testEmailButton;
       button.innerHTML = 'Send Test';
       vi.stubGlobal(
         'fetch',
@@ -417,9 +496,9 @@ describe('admin integrations settings manager', () => {
       await import('../../../src/assets/js/admin/settings/integrations.js');
       context.runReady();
 
-      const result = (
-        context.browserWindow.testEmail as (event: Event) => Promise<void>
-      )({ currentTarget: button, target: button } as unknown as Event);
+      const result = Promise.all(
+        button.trigger('click', { currentTarget: button, target: button })
+      );
       context.created
         .find(
           element =>
@@ -457,16 +536,16 @@ describe('admin integrations settings manager', () => {
         elements: { 'test-email': emailInput },
         withLucide: false,
       });
-      const button = new ElementFixture('button');
+      const button = context.testEmailButton;
       button.innerHTML = 'Send Test';
       const fetch = vi.fn().mockRejectedValue(error);
       vi.stubGlobal('fetch', fetch);
       await import('../../../src/assets/js/admin/settings/integrations.js');
       context.runReady();
 
-      const result = (
-        context.browserWindow.testEmail as (event: Event) => Promise<void>
-      )({ currentTarget: button, target: button } as unknown as Event);
+      const result = Promise.all(
+        button.trigger('click', { currentTarget: button, target: button })
+      );
       context.created
         .find(
           element =>

@@ -68,6 +68,46 @@ describe('SecurityMiddleware', () => {
   const accountRedirect = () =>
     `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.dashboard}`;
 
+  it.each([
+    'requireAuth',
+    'requireRole',
+    'requireAdmin',
+    'requirePermissions',
+  ] as const)('%s preserves the localized login route', async guard => {
+    sessionManager.isAuthenticated.mockResolvedValue(false);
+    res.locals.routes = { authFull: { login: '/fr/auth/login' } };
+
+    switch (guard) {
+      case 'requireAuth':
+        await middleware.requireAuth(req, res, next);
+        break;
+      case 'requireRole':
+        await middleware.requireRole('admin')(req, res, next);
+        break;
+      case 'requireAdmin':
+        await middleware.requireAdmin(req, res, next);
+        break;
+      case 'requirePermissions':
+        await middleware.requirePermissions(['users:read'])(req, res, next);
+        break;
+    }
+
+    expect(res.redirect).toHaveBeenCalledWith(
+      `/fr/auth/login?continue=${encodeURIComponent(req.originalUrl)}`
+    );
+  });
+
+  it('rejects a protocol-relative localized login route override', async () => {
+    sessionManager.isAuthenticated.mockResolvedValue(false);
+    res.locals.routes = {
+      authFull: { login: '//attacker.example/auth/login' },
+    };
+
+    await middleware.requireAuth(req, res, next);
+
+    expect(res.redirect).toHaveBeenCalledWith(loginRedirect());
+  });
+
   describe('requireAuth', () => {
     it('continues for an authenticated user', async () => {
       await middleware.requireAuth(req, res, next);

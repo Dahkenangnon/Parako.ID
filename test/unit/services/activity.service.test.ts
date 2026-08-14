@@ -725,7 +725,7 @@ describe('ActivityService — IActivityRepository delegation', () => {
         .mockResolvedValueOnce(['login_success'])
         .mockResolvedValueOnce(['login_success', 'logout']);
 
-      await expect(service.getUserActivityTypes('maria')).resolves.toEqual([
+      await expect(service.getUserActivityTypes('user-123')).resolves.toEqual([
         'login_success',
       ]);
       await expect(service.getActivityTypes()).resolves.toEqual([
@@ -733,20 +733,23 @@ describe('ActivityService — IActivityRepository delegation', () => {
         'logout',
       ]);
       expect(repo.getDistinctTypes).toHaveBeenNthCalledWith(1, {
-        'actor.username': 'maria',
+        related_user_id: 'user-123',
       });
       expect(repo.getDistinctTypes).toHaveBeenNthCalledWith(2);
     });
 
     it('returns empty type lists on repository failures', async () => {
       vi.mocked(repo.getDistinctTypes).mockRejectedValue(new Error('failed'));
-      await expect(service.getUserActivityTypes('maria')).resolves.toEqual([]);
+      await expect(service.getUserActivityTypes('user-123')).resolves.toEqual(
+        []
+      );
       await expect(service.getActivityTypes()).resolves.toEqual([]);
     });
 
-    it('returns zeroed stats when a count fails', async () => {
+    it('marks zeroed stats unavailable when a count fails', async () => {
       vi.mocked(repo.count).mockRejectedValue(new Error('count failed'));
       await expect(service.getActivityStats()).resolves.toEqual({
+        available: false,
         totalActivities: 0,
         uniqueUsers: 0,
         todayCount: 0,
@@ -1059,6 +1062,7 @@ describe('ActivityService — IActivityRepository delegation', () => {
 
       expect(repo.count).toHaveBeenCalled();
       expect(stats).toMatchObject({
+        available: true,
         totalActivities: expect.any(Number),
         todayCount: expect.any(Number),
         successfulLogins: expect.any(Number),

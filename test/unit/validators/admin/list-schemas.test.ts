@@ -22,9 +22,11 @@ describe('adminUserListQuerySchema', () => {
     expect(result.limit).toBe(50);
   });
 
-  it('regex-escapes the search field (Mongo $regex safety)', () => {
-    const result = adminUserListQuerySchema.parse({ search: 'a.b*c' });
-    expect(result.search).toBe('a\\.b\\*c');
+  it('preserves literal search text for repository-specific translation', () => {
+    const result = adminUserListQuerySchema.parse({
+      search: 'person.name+tag@example.test',
+    });
+    expect(result.search).toBe('person.name+tag@example.test');
   });
 
   it('rejects sortBy outside the allow-list', () => {
@@ -62,10 +64,14 @@ describe('adminSessionListQuerySchema', () => {
     });
   });
 
-  it('regex-escapes the username filter', () => {
-    expect(
-      adminSessionListQuerySchema.parse({ username: 'evil.*' }).username
-    ).toBe('evil\\.\\*');
+  it('preserves literal search and username values for the UI and repository boundary', () => {
+    const result = adminSessionListQuerySchema.parse({
+      search: 'person.name+tag@example.test',
+      username: 'evil.*',
+    });
+
+    expect(result.search).toBe('person.name+tag@example.test');
+    expect(result.username).toBe('evil.*');
   });
 
   it('rejects status outside the allow-list', () => {
@@ -126,10 +132,10 @@ describe('adminActivityListQuerySchema', () => {
 });
 
 describe('adminGrantListQuerySchema', () => {
-  it('regex-escapes the clientId filter', () => {
+  it('preserves a literal clientId used by the exact-match repository filter', () => {
     expect(
-      adminGrantListQuerySchema.parse({ clientId: 'my-client.*' }).clientId
-    ).toBe('my-client\\.\\*');
+      adminGrantListQuerySchema.parse({ clientId: 'client.id+1' }).clientId
+    ).toBe('client.id+1');
   });
 
   it('rejects sortBy outside the allow-list', () => {

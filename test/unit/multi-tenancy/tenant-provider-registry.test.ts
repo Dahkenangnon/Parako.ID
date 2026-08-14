@@ -35,7 +35,10 @@ import {
   TenantProviderRegistry,
   type ProviderFactory,
 } from '../../../src/multi-tenancy/tenant-provider-registry.js';
-import { DEFAULT_TENANT_ID } from '../../../src/multi-tenancy/tenant-context.js';
+import {
+  DEFAULT_TENANT_ID,
+  tenantContext,
+} from '../../../src/multi-tenancy/tenant-context.js';
 
 function createMockLogger(): ILogger {
   return {
@@ -252,6 +255,7 @@ describe('TenantProviderRegistry', () => {
 
   afterEach(() => {
     registry.shutdown();
+    tenantContext.disableStrictMode();
   });
 
   describe('construction', () => {
@@ -537,6 +541,33 @@ describe('TenantProviderRegistry', () => {
   });
 
   describe('tenant JWKS Pub/Sub', () => {
+    it('restores strict tenant context before reloading keys from Redis events', async () => {
+      await registry.getProvider('acme');
+      vi.mocked(keyStore.getJWKS).mockClear();
+      vi.mocked(keyStore.getJWKS).mockImplementation(async tenantId => {
+        expect(tenantContext.getTenantId()).toBe('acme');
+        expect(tenantId).toBe('acme');
+        return { keys: [{ kty: 'RSA', kid: 'strict-context-key' }] };
+      });
+      tenantContext.enableStrictMode();
+      const rotationSubscription = vi
+        .mocked(pubsub.subscribe)
+        .mock.calls.find(([channel]) => channel === 'parako:acme:jwks:rotated');
+
+      rotationSubscription?.[1]({});
+
+      await vi.waitFor(() => {
+        expect(mocks.updateProviderJWKS).toHaveBeenCalledWith(
+          expect.any(Object),
+          { keys: [{ kty: 'RSA', kid: 'strict-context-key' }] }
+        );
+      });
+      expect(logger.error).not.toHaveBeenCalledWith(
+        'tenant_provider_jwks_reload_failed',
+        expect.anything()
+      );
+    });
+
     it('reloads only the tenant whose rotation channel fires', async () => {
       const provider = await registry.getProvider('acme');
       vi.mocked(keyStore.getJWKS).mockClear();

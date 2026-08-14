@@ -507,6 +507,14 @@ describe('UploadMiddleware', () => {
       expect(storageProvider.getUrl).not.toHaveBeenCalled();
     });
 
+    it.each(['/images/logo.svg', '/favicon.png'])(
+      'does not delete bundled static asset %j',
+      async staticAsset => {
+        await middleware.deleteFile(staticAsset);
+        expect(storageProvider.delete).not.toHaveBeenCalled();
+      }
+    );
+
     it.each([
       ['/uploads/default/avatars/a.png', 'default/avatars/a.png'],
       ['default/avatars/a.png', 'default/avatars/a.png'],

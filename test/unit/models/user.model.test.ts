@@ -65,6 +65,35 @@ describe('User Mongoose model', () => {
     expect(user.roles).toEqual(['user']);
   });
 
+  it.each(['platform_admin', 'platform_viewer'] as const)(
+    'accepts the built-in %s role required by the system tenant',
+    async role => {
+      User = createUserModel(logger, configManager, passwordUtils);
+      const user = tenantContext.run(
+        '_platforms',
+        () => new User!({ username: role, roles: [role] })
+      );
+
+      await expect(user.validate()).resolves.toBeUndefined();
+    }
+  );
+
+  it('rejects platform roles on an ordinary tenant model', async () => {
+    User = createUserModel(logger, configManager, passwordUtils);
+    const user = tenantContext.run(
+      'tenant-a',
+      () =>
+        new User!({
+          username: 'tenant-platform-admin',
+          roles: ['platform_admin'],
+        })
+    );
+
+    await expect(user.validate()).rejects.toMatchObject({
+      errors: { roles: expect.anything() },
+    });
+  });
+
   it('applies stable account, locale, MFA, recovery, and notification defaults', () => {
     User = createUserModel(logger, configManager, passwordUtils);
     const user = new User({ username: 'maria' });

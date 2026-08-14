@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 interface DomEvent {
+  key?: string;
+  preventDefault?: () => void;
   target?: ElementFixture;
 }
 
@@ -70,6 +72,14 @@ class ElementFixture {
     this.listeners.set(name, listeners);
   }
 
+  public removeEventListener(name: string, listener: DomListener): void {
+    const listeners = this.listeners.get(name) ?? [];
+    this.listeners.set(
+      name,
+      listeners.filter(candidate => candidate !== listener)
+    );
+  }
+
   public appendChild(child: ElementFixture): ElementFixture {
     this.children.push(child);
     child.parentElement = this;
@@ -135,6 +145,11 @@ function setupDom(options: DomOptions = {}) {
   let ready: (() => void) | undefined;
   const createdElements: ElementFixture[] = [];
   const elements = new Map<string, ElementFixture>();
+  const selectors = new Map<string, ElementFixture>();
+  selectors.set('[data-config-import-load]', new ElementFixture());
+  selectors.set('[data-config-import-preview]', new ElementFixture());
+  selectors.set('[data-config-import-clear]', new ElementFixture());
+  selectors.set('[data-config-import-cancel]', new ElementFixture());
   const closeButton = new ElementFixture();
   const queryHandler = (selector: string) =>
     options.closeButton && selector === '.close-notification'
@@ -163,11 +178,15 @@ function setupDom(options: DomOptions = {}) {
       return element;
     }),
     getElementById: vi.fn((id: string) => elements.get(id) ?? null),
-    querySelector: vi.fn((selector: string) =>
-      selector === 'meta[name="csrf-token"]' && options.csrfToken !== undefined
-        ? csrfMeta
-        : null
-    ),
+    querySelector: vi.fn((selector: string) => {
+      if (
+        selector === 'meta[name="csrf-token"]' &&
+        options.csrfToken !== undefined
+      ) {
+        return csrfMeta;
+      }
+      return selectors.get(selector) ?? null;
+    }),
   });
 
   return {
@@ -176,6 +195,7 @@ function setupDom(options: DomOptions = {}) {
     createIcons,
     createdElements,
     elements,
+    selectors,
     runReady: () => ready?.(),
   };
 }
@@ -200,7 +220,18 @@ function addImportFields(dom: ReturnType<typeof setupDom>, json = '{}') {
   const diff = addField(dom.elements, 'diffContent');
   const apply = addField(dom.elements, 'applyButton');
   apply.innerHTML = 'Apply';
-  return { apply, diff, file, impact, preview, textarea };
+  const controls = {
+    apply,
+    cancel: new ElementFixture(),
+    clear: new ElementFixture(),
+    load: new ElementFixture(),
+    preview: new ElementFixture(),
+  };
+  dom.selectors.set('[data-config-import-load]', controls.load);
+  dom.selectors.set('[data-config-import-preview]', controls.preview);
+  dom.selectors.set('[data-config-import-clear]', controls.clear);
+  dom.selectors.set('[data-config-import-cancel]', controls.cancel);
+  return { apply, controls, diff, file, impact, preview, textarea };
 }
 
 function response(body: unknown, ok = true, status = 200) {
@@ -220,6 +251,34 @@ async function loadManager(dom: ReturnType<typeof setupDom>): Promise<void> {
   dom.runReady();
 }
 
+function runControl(element: ElementFixture | undefined): unknown[] {
+  return (element?.listeners.get('click') ?? []).map(listener =>
+    listener.call(element, { target: element })
+  );
+}
+
+async function runAsyncControl(
+  element: ElementFixture | undefined
+): Promise<void> {
+  await Promise.all(runControl(element));
+}
+
+function loadFromFile(dom: ReturnType<typeof setupDom>): void {
+  runControl(dom.selectors.get('[data-config-import-load]'));
+}
+
+function clearForm(dom: ReturnType<typeof setupDom>): void {
+  runControl(dom.selectors.get('[data-config-import-clear]'));
+}
+
+async function previewImport(dom: ReturnType<typeof setupDom>): Promise<void> {
+  await runAsyncControl(dom.selectors.get('[data-config-import-preview]'));
+}
+
+function applyConfigImport(dom: ReturnType<typeof setupDom>): Promise<void> {
+  return runAsyncControl(dom.elements.get('applyButton'));
+}
+
 function findCreated(
   dom: ReturnType<typeof setupDom>,
   text: string
@@ -233,9 +292,7 @@ async function confirmApply(
   dom: ReturnType<typeof setupDom>,
   action: 'confirm' | 'cancel' | 'backdrop' | 'backdrop-child' = 'confirm'
 ): Promise<void> {
-  const applyPromise = (
-    dom.browserWindow.applyConfigImport as () => Promise<void>
-  )();
+  const applyPromise = applyConfigImport(dom);
   if (action === 'backdrop' || action === 'backdrop-child') {
     const backdrop = dom.createdElements.find(item =>
       item.className.startsWith('fixed inset-0')
@@ -263,6 +320,64 @@ describe('admin settings import manager', () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.resetModules();
+  });
+
+  it('binds import controls declaratively without exposing page globals', async () => {
+    const dom = setupDom();
+    const { controls } = addImportFields(dom);
+
+    await loadManager(dom);
+
+    expect(controls.load.listeners.get('click')).toHaveLength(1);
+    expect(controls.preview.listeners.get('click')).toHaveLength(1);
+    expect(controls.clear.listeners.get('click')).toHaveLength(1);
+    expect(controls.cancel.listeners.get('click')).toHaveLength(1);
+    expect(
+      dom.elements.get('applyButton')?.listeners.get('click')
+    ).toHaveLength(1);
+    expect(dom.browserWindow).not.toHaveProperty('loadFromFile');
+    expect(dom.browserWindow).not.toHaveProperty('previewImport');
+    expect(dom.browserWindow).not.toHaveProperty('clearForm');
+    expect(dom.browserWindow).not.toHaveProperty('applyConfigImport');
+  });
+
+  it('presents an accessible confirmation that Escape can cancel', async () => {
+    const dom = setupDom();
+    addImportFields(dom);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        response({
+          success: true,
+          diff: [],
+          impact: { requiresRestart: false },
+          changeCount: 0,
+        })
+      )
+    );
+    await loadManager(dom);
+    await previewImport(dom);
+
+    const applyPromise = applyConfigImport(dom);
+    const backdrop = dom.createdElements.find(item =>
+      item.className.startsWith('fixed inset-0')
+    );
+    const modal = backdrop?.children[0];
+    const cancelButton = findCreated(dom, 'Cancel');
+
+    expect(modal?.getAttribute('role')).toBe('dialog');
+    expect(modal?.getAttribute('aria-modal')).toBe('true');
+    expect(modal?.getAttribute('aria-labelledby')).toBeTruthy();
+    expect(modal?.getAttribute('aria-describedby')).toBeTruthy();
+    expect(cancelButton.focus).toHaveBeenCalledOnce();
+
+    backdrop?.trigger('keydown', {
+      key: 'Escape',
+      preventDefault: vi.fn(),
+      target: backdrop,
+    });
+    await applyPromise;
+    expect(backdrop?.parentElement).toBeNull();
   });
 
   it('applies exactly the configuration that was successfully previewed', async () => {
@@ -294,12 +409,10 @@ describe('admin settings import manager', () => {
 
     await import('../../../src/assets/js/admin/settings/import.js');
     dom.runReady();
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
 
     textarea.value = '{"safe":false}';
-    const applyPromise = (
-      dom.browserWindow.applyConfigImport as () => Promise<void>
-    )();
+    const applyPromise = applyConfigImport(dom);
     const confirmButton = await vi.waitFor(() => {
       const button = dom.createdElements.find(
         element => element.textContent === 'Yes, Apply Changes'
@@ -324,27 +437,27 @@ describe('admin settings import manager', () => {
     const fields = addImportFields(dom);
     await loadManager(dom);
 
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     expect(FileReaderFixture.instances).toHaveLength(0);
 
     fields.file.files = [{}];
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     FileReaderFixture.instances
       .at(-1)
       ?.succeed('{"issuer":"https://idp.example.test"}');
     expect(fields.textarea.value).toContain('issuer');
 
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     FileReaderFixture.instances.at(-1)?.succeed('{invalid');
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     const parse = vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
       throw 'invalid';
     });
     FileReaderFixture.instances.at(-1)?.succeed('{}');
     parse.mockRestore();
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     FileReaderFixture.instances.at(-1)?.succeedWithoutTarget();
-    (dom.browserWindow.loadFromFile as () => void)();
+    loadFromFile(dom);
     FileReaderFixture.instances.at(-1)?.fail();
 
     expect(dom.createIcons).toHaveBeenCalled();
@@ -361,12 +474,12 @@ describe('admin settings import manager', () => {
     fields.file.value = 'config.json';
     await loadManager(dom);
 
-    (dom.browserWindow.clearForm as () => void)();
+    clearForm(dom);
 
     expect(fields.file.value).toBe('');
     expect(fields.textarea.value).toBe('');
     expect(fields.preview.classList.contains('hidden')).toBe(true);
-    await (dom.browserWindow.applyConfigImport as () => Promise<void>)();
+    await applyConfigImport(dom);
     expect(
       dom.createdElements.some(element =>
         element.innerHTML.includes('No preview data available')
@@ -378,7 +491,7 @@ describe('admin settings import manager', () => {
     const dom = setupDom();
     await loadManager(dom);
 
-    expect(() => (dom.browserWindow.clearForm as () => void)()).not.toThrow();
+    expect(() => clearForm(dom)).not.toThrow();
   });
 
   it('rejects empty and malformed configuration before previewing', async () => {
@@ -388,14 +501,14 @@ describe('admin settings import manager', () => {
     vi.stubGlobal('fetch', fetchMock);
     await loadManager(dom);
 
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
     fields.textarea.value = '{invalid';
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
     fields.textarea.value = '{}';
     const parse = vi.spyOn(JSON, 'parse').mockImplementationOnce(() => {
       throw 'invalid';
     });
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
     parse.mockRestore();
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -433,7 +546,7 @@ describe('admin settings import manager', () => {
     vi.stubGlobal('fetch', fetchMock);
     await loadManager(dom);
 
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/admin/settings/import/preview',
@@ -473,9 +586,7 @@ describe('admin settings import manager', () => {
     );
     await loadManager(dom);
 
-    await expect(
-      (dom.browserWindow.previewImport as () => Promise<void>)()
-    ).resolves.toBeUndefined();
+    await expect(previewImport(dom)).resolves.toBeUndefined();
   });
 
   it.each([
@@ -498,7 +609,7 @@ describe('admin settings import manager', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fetchResponse));
     await loadManager(dom);
 
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
 
     expect(fields.preview.classList.contains('hidden')).toBe(true);
     expect(
@@ -514,9 +625,7 @@ describe('admin settings import manager', () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(failure));
       await loadManager(dom);
 
-      await expect(
-        (dom.browserWindow.previewImport as () => Promise<void>)()
-      ).resolves.toBeUndefined();
+      await expect(previewImport(dom)).resolves.toBeUndefined();
     }
   );
 
@@ -535,7 +644,7 @@ describe('admin settings import manager', () => {
       );
       vi.stubGlobal('fetch', fetchMock);
       await loadManager(dom);
-      await (dom.browserWindow.previewImport as () => Promise<void>)();
+      await previewImport(dom);
 
       await confirmApply(dom, action);
 
@@ -543,7 +652,7 @@ describe('admin settings import manager', () => {
     }
   );
 
-  it('returns safely when the apply button is absent after confirmation', async () => {
+  it('does not expose an apply action when its control is absent', async () => {
     const dom = setupDom();
     addField(dom.elements, 'configJson', '{}');
     const fetchMock = vi.fn().mockResolvedValue(
@@ -556,10 +665,16 @@ describe('admin settings import manager', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
     await loadManager(dom);
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
 
-    await confirmApply(dom);
+    await applyConfigImport(dom);
+
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      dom.createdElements.some(item =>
+        item.className.startsWith('fixed inset-0')
+      )
+    ).toBe(false);
   });
 
   it('applies a restart-requiring preview and redirects after success', async () => {
@@ -579,7 +694,7 @@ describe('admin settings import manager', () => {
       .mockResolvedValueOnce(response({ success: true }));
     vi.stubGlobal('fetch', fetchMock);
     await loadManager(dom);
-    await (dom.browserWindow.previewImport as () => Promise<void>)();
+    await previewImport(dom);
 
     await confirmApply(dom);
 
@@ -627,7 +742,7 @@ describe('admin settings import manager', () => {
         .mockResolvedValueOnce(applyResponse);
       vi.stubGlobal('fetch', fetchMock);
       await loadManager(dom);
-      await (dom.browserWindow.previewImport as () => Promise<void>)();
+      await previewImport(dom);
 
       await confirmApply(dom);
 
@@ -659,7 +774,7 @@ describe('admin settings import manager', () => {
         .mockRejectedValueOnce(failure);
       vi.stubGlobal('fetch', fetchMock);
       await loadManager(dom);
-      await (dom.browserWindow.previewImport as () => Promise<void>)();
+      await previewImport(dom);
 
       await confirmApply(dom);
       expect(fields.apply.disabled).toBe(false);
@@ -672,7 +787,7 @@ describe('admin settings import manager', () => {
     addImportFields(dom);
     await loadManager(dom);
 
-    await (dom.browserWindow.applyConfigImport as () => Promise<void>)();
+    await applyConfigImport(dom);
     const firstNotification = dom.createdElements.find(element =>
       element.className.startsWith('fixed top-4')
     );
@@ -680,7 +795,7 @@ describe('admin settings import manager', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(firstNotification?.parentElement).toBeNull();
 
-    await (dom.browserWindow.applyConfigImport as () => Promise<void>)();
+    await applyConfigImport(dom);
     const notification = dom.createdElements
       .filter(element => element.className.startsWith('fixed top-4'))
       .at(-1);

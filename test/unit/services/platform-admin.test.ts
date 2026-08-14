@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
+import { ProtectedTenantError } from '../../../src/errors/platform.errors.js';
+import { PlatformAdminService } from '../../../src/services/platform-admin.service.js';
 
 /**
  * Tests for PlatformAdminService
@@ -20,8 +22,19 @@ function makeMockLogger() {
   };
 }
 
+interface TenantFixture {
+  id?: string;
+  _id?: string;
+  slug: string;
+  display_name: string;
+  domain?: string;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
 function makeMockTenantRepo() {
-  const tenants = [
+  const tenants: TenantFixture[] = [
     {
       _id: 't1',
       slug: 'acme',
@@ -44,6 +57,10 @@ function makeMockTenantRepo() {
     findAll: vi.fn(async () => tenants),
     findBySlug: vi.fn(
       async (slug: string) => tenants.find(t => t.slug === slug) ?? null
+    ),
+    findByDomain: vi.fn(
+      async (domain: string) =>
+        tenants.find(tenant => tenant.domain === domain) ?? null
     ),
     create: vi.fn(async (data: { slug: string; display_name: string }) => ({
       _id: 'new-id',
@@ -110,17 +127,19 @@ describe('PlatformAdminService', () => {
     activityService = makeMockActivityService();
   });
 
+  function makeService(): PlatformAdminService {
+    return new PlatformAdminService(
+      logger as any,
+      tenantRepo as any,
+      userService as any,
+      configManager as any,
+      activityService as any
+    );
+  }
+
   describe('listTenants', () => {
     it('returns all tenants from the repository', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       const result = await service.listTenants();
 
@@ -131,15 +150,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('supports filtering by status', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await service.listTenants({ status: 'active' });
 
@@ -149,15 +160,7 @@ describe('PlatformAdminService', () => {
 
   describe('createTenant', () => {
     it('creates a tenant and returns it', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       const result = await service.createTenant({
         slug: 'newcorp',
@@ -172,15 +175,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('rejects reserved slug _ops', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.createTenant({ slug: '_ops', display_name: 'Ops' })
@@ -188,15 +183,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('rejects reserved slug _platforms', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.createTenant({
@@ -207,15 +194,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('rejects reserved slug _system', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.createTenant({ slug: '_system', display_name: 'System' })
@@ -223,15 +202,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('rejects reserved slug admin', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.createTenant({ slug: 'admin', display_name: 'Admin' })
@@ -239,31 +210,56 @@ describe('PlatformAdminService', () => {
     });
 
     it('rejects duplicate slug when tenant already exists', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.createTenant({ slug: 'acme', display_name: 'Acme Again' })
       ).rejects.toThrow(/already exists/i);
     });
 
-    it('logs activity on successful creation', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
+    it('stores a canonical custom domain', async () => {
+      const service = makeService();
+
+      await service.createTenant({
+        slug: 'newcorp',
+        display_name: 'New Corp',
+        domain: ' Login.NewCorp.Example. ',
+      });
+
+      expect(tenantRepo.findByDomain).toHaveBeenCalledWith(
+        'login.newcorp.example'
       );
+      expect(tenantRepo.create).toHaveBeenCalledWith({
+        slug: 'newcorp',
+        display_name: 'New Corp',
+        domain: 'login.newcorp.example',
+      });
+    });
+
+    it('rejects a custom domain already owned by another tenant', async () => {
+      const service = makeService();
+      tenantRepo.findByDomain.mockResolvedValueOnce({
+        _id: 'domain-owner',
+        slug: 'domain-owner',
+        display_name: 'Domain Owner',
+        domain: 'login.example.test',
+        status: 'active',
+        created_at: new Date('2025-03-01'),
+        updated_at: new Date('2025-03-01'),
+      });
+
+      await expect(
+        service.createTenant({
+          slug: 'newcorp',
+          display_name: 'New Corp',
+          domain: 'LOGIN.EXAMPLE.TEST',
+        })
+      ).rejects.toThrow(/domain.*already/i);
+      expect(tenantRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('logs activity on successful creation', async () => {
+      const service = makeService();
 
       await service.createTenant({
         slug: 'newcorp',
@@ -285,15 +281,7 @@ describe('PlatformAdminService', () => {
 
   describe('getTenantBySlug', () => {
     it('returns tenant when found', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       const result = await service.getTenantBySlug('acme');
 
@@ -302,15 +290,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('returns null when tenant not found', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       const result = await service.getTenantBySlug('nonexistent');
 
@@ -320,15 +300,7 @@ describe('PlatformAdminService', () => {
 
   describe('listTenantUsers', () => {
     it('returns paginated users for a tenant', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
       userService.findWithPagination.mockImplementation(async () => {
         expect(tenantContext.getTenantId()).toBe('acme');
         return {
@@ -357,15 +329,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('throws when tenant does not exist', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.listTenantUsers('nonexistent', { page: 1, limit: 20 })
@@ -374,16 +338,37 @@ describe('PlatformAdminService', () => {
   });
 
   describe('updateTenant', () => {
+    it('rejects mutation of the protected platform master tenant', async () => {
+      const service = makeService();
+
+      await expect(
+        service.updateTenant('_platforms', { display_name: 'Compromised' })
+      ).rejects.toBeInstanceOf(ProtectedTenantError);
+      expect(tenantRepo.update).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(activityService.info).not.toHaveBeenCalled();
+    });
+
+    it('uses the adapter-neutral id returned by Prisma repositories', async () => {
+      const service = makeService();
+      tenantRepo.findBySlug.mockResolvedValueOnce({
+        id: 'prisma-t1',
+        slug: 'acme',
+        display_name: 'Acme Corp',
+        status: 'active',
+        created_at: new Date('2025-01-01'),
+        updated_at: new Date('2025-01-01'),
+      });
+
+      await service.updateTenant('acme', { display_name: 'Acme Updated' });
+
+      expect(tenantRepo.update).toHaveBeenCalledWith('prisma-t1', {
+        display_name: 'Acme Updated',
+      });
+    });
+
     it('updates mutable tenant details and records the complete audit context', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
       const update = {
         display_name: 'Acme International',
         domain: 'login.acme.test',
@@ -410,16 +395,37 @@ describe('PlatformAdminService', () => {
       );
     });
 
-    it('rejects a missing tenant without writing or logging success', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
+    it('canonicalizes a changed domain and rejects ownership by another tenant', async () => {
+      const service = makeService();
+
+      await service.updateTenant('acme', {
+        domain: ' Login.Acme.Example. ',
+      });
+      expect(tenantRepo.findByDomain).toHaveBeenCalledWith(
+        'login.acme.example'
       );
+      expect(tenantRepo.update).toHaveBeenCalledWith('t1', {
+        domain: 'login.acme.example',
+      });
+
+      tenantRepo.update.mockClear();
+      tenantRepo.findByDomain.mockResolvedValueOnce({
+        _id: 'other-id',
+        slug: 'other',
+        display_name: 'Other Tenant',
+        domain: 'login.other.example',
+        status: 'active',
+        created_at: new Date('2025-03-01'),
+        updated_at: new Date('2025-03-01'),
+      });
+      await expect(
+        service.updateTenant('acme', { domain: 'login.other.example' })
+      ).rejects.toThrow(/domain.*already/i);
+      expect(tenantRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a missing tenant without writing or logging success', async () => {
+      const service = makeService();
 
       await expect(
         service.updateTenant('missing', { display_name: 'Missing' })
@@ -431,16 +437,37 @@ describe('PlatformAdminService', () => {
   });
 
   describe('updateTenantStatus', () => {
+    it('rejects status changes for the protected platform master tenant', async () => {
+      const service = makeService();
+
+      await expect(
+        service.updateTenantStatus('_platforms', 'suspended')
+      ).rejects.toBeInstanceOf(ProtectedTenantError);
+      expect(tenantRepo.update).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(activityService.warning).not.toHaveBeenCalled();
+    });
+
+    it('uses the adapter-neutral id returned by Prisma repositories', async () => {
+      const service = makeService();
+      tenantRepo.findBySlug.mockResolvedValueOnce({
+        id: 'prisma-t1',
+        slug: 'acme',
+        display_name: 'Acme Corp',
+        status: 'active',
+        created_at: new Date('2025-01-01'),
+        updated_at: new Date('2025-01-01'),
+      });
+
+      await service.updateTenantStatus('acme', 'suspended');
+
+      expect(tenantRepo.update).toHaveBeenCalledWith('prisma-t1', {
+        status: 'suspended',
+      });
+    });
+
     it('updates tenant status', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await service.updateTenantStatus('acme', 'suspended');
 
@@ -452,15 +479,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('logs activity on status change', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await service.updateTenantStatus('acme', 'suspended');
 
@@ -477,15 +496,7 @@ describe('PlatformAdminService', () => {
     });
 
     it('throws when tenant not found', async () => {
-      const { PlatformAdminService } =
-        await import('../../../src/services/platform-admin.service.js');
-      const service = new PlatformAdminService(
-        logger as any,
-        tenantRepo as any,
-        userService as any,
-        configManager as any,
-        activityService as any
-      );
+      const service = makeService();
 
       await expect(
         service.updateTenantStatus('nonexistent', 'suspended')

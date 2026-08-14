@@ -143,4 +143,17 @@ describe('admin OIDC settings', () => {
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
+
+  it('allows submission when the issuer is computed and only the editable path is present', async () => {
+    const { runReady, submit } = setupDom({
+      issuer: null,
+      path: '/oidc/v1',
+    });
+    await import('../../../src/assets/js/admin/settings/oidc.js');
+    runReady();
+
+    const event = await submit();
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+  });
 });

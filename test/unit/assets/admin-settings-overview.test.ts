@@ -6,17 +6,30 @@ interface ElementFixture {
   children: ElementFixture[];
   className: string;
   focus: ReturnType<typeof vi.fn>;
-  getAttribute: ReturnType<typeof vi.fn>;
+  getAttribute: (name: string) => string | null;
   innerHTML: string;
   method: string;
   name: string;
   onclick?: () => void;
   removeChild: ReturnType<typeof vi.fn>;
+  setAttribute: ReturnType<typeof vi.fn>;
   style: { display: string };
   submit: ReturnType<typeof vi.fn>;
   textContent: string;
   type: string;
   value: string;
+}
+
+interface DocumentEventFixture {
+  key?: string;
+  preventDefault?: () => void;
+  target?: {
+    closest?: (selector: string) =>
+      | {
+          dataset: Record<string, string | undefined>;
+        }
+      | undefined;
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -29,6 +42,7 @@ function escapeHtml(value: string): string {
 }
 
 function makeElement(attributes: Record<string, string> = {}): ElementFixture {
+  const elementAttributes = { ...attributes };
   const children: ElementFixture[] = [];
   let html = '';
   let text = '';
@@ -41,7 +55,7 @@ function makeElement(attributes: Record<string, string> = {}): ElementFixture {
     children,
     className: '',
     focus: vi.fn(),
-    getAttribute: vi.fn((name: string) => attributes[name] ?? null),
+    getAttribute: vi.fn((name: string) => elementAttributes[name] ?? null),
     method: '',
     name: '',
     onclick: undefined,
@@ -49,6 +63,9 @@ function makeElement(attributes: Record<string, string> = {}): ElementFixture {
       const index = children.indexOf(child);
       if (index >= 0) children.splice(index, 1);
       return child;
+    }),
+    setAttribute: vi.fn((name: string, value: string) => {
+      elementAttributes[name] = value;
     }),
     style: { display: '' },
     submit: vi.fn(),
@@ -81,16 +98,17 @@ async function loadOverview(
   windowRoot: Record<string, unknown> = {}
 ) {
   let ready: (() => void) | undefined;
-  const listeners: Record<string, (event: { key: string }) => void> = {};
+  const listeners: Record<string, (event: DocumentEventFixture) => void> = {};
   const body = makeElement();
   vi.stubGlobal('document', {
     addEventListener: vi.fn(
       (
         name: string,
-        listener: ((event: { key: string }) => void) | (() => void)
+        listener: ((event: DocumentEventFixture) => void) | (() => void)
       ) => {
         if (name === 'DOMContentLoaded') ready = listener as () => void;
-        else listeners[name] = listener as (event: { key: string }) => void;
+        else
+          listeners[name] = listener as (event: DocumentEventFixture) => void;
       }
     ),
     removeEventListener: vi.fn((name: string) => {
@@ -98,6 +116,7 @@ async function loadOverview(
     }),
     getElementById: vi.fn((id: string) => elements[id] ?? null),
     createElement: vi.fn(() => makeElement()),
+    activeElement: elements.__activeElement ?? null,
     querySelector: vi.fn((selector: string) =>
       selector === 'meta[name="csrf-token"]'
         ? (elements.__csrfMeta ?? null)
@@ -226,14 +245,36 @@ describe('admin settings overview manager', () => {
 
   it('submits reload and rollback forms with CSRF and supplied data', async () => {
     const meta = makeElement({ content: 'csrf-token' });
+    const trigger = makeElement();
     const windowRoot: Record<string, unknown> = {};
-    const { body } = await loadOverview({ __csrfMeta: meta }, windowRoot);
+    const { body } = await loadOverview(
+      { __csrfMeta: meta, __activeElement: trigger },
+      windowRoot
+    );
 
     const reload = (windowRoot.reloadConfig as () => Promise<void>)();
     const reloadBackdrop = body.children[0];
-    const reloadConfirm = reloadBackdrop?.children[0]?.children[2]?.children[1];
+    const reloadDialog = reloadBackdrop?.children[0];
+    const reloadTitle = reloadDialog?.children[0]?.children[0];
+    const reloadClose = reloadDialog?.children[0]?.children[1];
+    const reloadDescription = reloadDialog?.children[1];
+    const reloadCancel = reloadDialog?.children[2]?.children[0];
+    const reloadConfirm = reloadDialog?.children[2]?.children[1];
+
+    expect(reloadDialog?.getAttribute('role')).toBe('dialog');
+    expect(reloadDialog?.getAttribute('aria-modal')).toBe('true');
+    expect(reloadDialog?.getAttribute('aria-labelledby')).toBe(
+      reloadTitle?.getAttribute('id')
+    );
+    expect(reloadDialog?.getAttribute('aria-describedby')).toBe(
+      reloadDescription?.getAttribute('id')
+    );
+    expect(reloadClose?.getAttribute('aria-label')).toBe('Close');
+    expect(reloadCancel?.focus).toHaveBeenCalledOnce();
+    expect(reloadConfirm?.focus).not.toHaveBeenCalled();
     reloadConfirm?.onclick?.();
     await reload;
+    expect(trigger.focus).toHaveBeenCalledOnce();
 
     const reloadForm = body.children[0];
     expect(reloadForm?.method).toBe('POST');
@@ -300,6 +341,24 @@ describe('admin settings overview manager', () => {
     expect(location.href).toBe('/admin/settings/export');
   });
 
+  it('handles settings actions through CSP-safe data attributes', async () => {
+    const location = { href: '' };
+    const { body, listeners } = await loadOverview({}, { location });
+    const preventDefault = vi.fn();
+    const action = { dataset: { settingsAction: 'export' } };
+
+    listeners.click?.({
+      preventDefault,
+      target: { closest: vi.fn().mockReturnValue(action) },
+    });
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    body.children[0]?.children[0]?.children[2]?.children[1]?.onclick?.();
+    await vi.waitFor(() => {
+      expect(location.href).toBe('/admin/settings/export');
+    });
+  });
+
   it('renders healthy, failed, and unconfigured checks with escaped data', async () => {
     const section = makeElement();
     const results = makeElement();
@@ -313,6 +372,7 @@ describe('admin settings overview manager', () => {
           status: 'healthy',
           checks: {
             configLoaded: true,
+            databaseConnectivity: true,
             smtpConnectivity: false,
             oidcIssuerReachable: null,
             '<custom>': true,
@@ -347,6 +407,8 @@ describe('admin settings overview manager', () => {
     expect(section.style.display).toBe('block');
     expect(badge.innerHTML).toContain('Healthy');
     expect(results.innerHTML).toContain('Configuration loaded');
+    expect(results.innerHTML).toContain('Database connection');
+    expect(results.innerHTML).not.toContain('MongoDB connection');
     expect(results.innerHTML).toContain('Failed');
     expect(results.innerHTML).toContain('Not Configured');
     expect(results.innerHTML).toContain('&lt;custom&gt;');

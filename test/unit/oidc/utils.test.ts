@@ -1117,6 +1117,33 @@ describe('OIDCUtils', () => {
       );
     });
 
+    it('enriches session identity from the user when no matching activity exists', async () => {
+      userService.findByUsername.mockResolvedValue(
+        account({
+          username: 'alice',
+          email: 'alice@example.test',
+          full_name: 'Alice Doe',
+          given_name: 'Alice',
+          family_name: 'Doe',
+        })
+      );
+      vi.spyOn(utils, 'getClientInfo').mockResolvedValue([]);
+
+      const result = await utils.processSessionData({
+        _id: 'session-1',
+        payload: { accountId: 'alice', iat: 100 },
+      });
+
+      expect(userService.findByUsername).toHaveBeenCalledWith('alice');
+      expect(result.userInfo).toEqual({
+        username: 'alice',
+        email: 'alice@example.test',
+        full_name: 'Alice Doe',
+        given_name: 'Alice',
+        family_name: 'Doe',
+      });
+    });
+
     it('logs activity lookup failures while still returning session data', async () => {
       const error = new Error('activity unavailable');
       activityService.findActivitiesAroundTime.mockRejectedValue(error);

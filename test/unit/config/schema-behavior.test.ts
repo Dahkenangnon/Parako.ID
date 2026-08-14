@@ -11,6 +11,42 @@ function parseConfig(config: Record<string, any>) {
 }
 
 describe('AppConfigSchema executable behavior', () => {
+  describe('application locale configuration', () => {
+    it.each(['title', 'description'] as const)(
+      'rejects a whitespace-only application %s',
+      field => {
+        const config = createConfig();
+        config.application[field] = '   ';
+
+        expect(AppConfigSchema.safeParse(config).success).toBe(false);
+      }
+    );
+
+    it('rejects unsafe locale identifiers', () => {
+      const config = createConfig();
+      config.application.locales.available = ['en', '../fr'];
+
+      expect(AppConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('requires the default locale to be available', () => {
+      const config = createConfig();
+      config.application.locales = {
+        default: 'en',
+        available: ['fr'],
+      };
+
+      const result = AppConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map(issue => issue.message)).toContain(
+          'Default locale must be included in available locales'
+        );
+      }
+    });
+  });
+
   describe('HTML boolean coercion', () => {
     it.each([
       [true, true],
@@ -42,17 +78,28 @@ describe('AppConfigSchema executable behavior', () => {
       'favicon',
     ] as const;
 
-    it.each(fields)('accepts relative and HTTP(S) values for %s', field => {
-      for (const value of [
-        '/images/brand.svg',
-        'https://cdn.example.test/brand.svg',
-        'http://cdn.example.test/brand.svg',
-      ]) {
-        const config = createConfig();
-        config.branding[field] = value;
+    it.each(fields)(
+      'accepts static paths, provider keys, and HTTP(S) values for %s',
+      field => {
+        for (const value of [
+          '/images/brand.svg',
+          'default/logos/brand.svg',
+          'https://cdn.example.test/brand.svg',
+          'http://cdn.example.test/brand.svg',
+        ]) {
+          const config = createConfig();
+          config.branding[field] = value;
 
-        expect(AppConfigSchema.safeParse(config).success).toBe(true);
+          expect(AppConfigSchema.safeParse(config).success).toBe(true);
+        }
       }
+    );
+
+    it('accepts an empty primary logo as the explicit no-logo state', () => {
+      const config = createConfig();
+      config.branding.logo = '';
+
+      expect(AppConfigSchema.safeParse(config).success).toBe(true);
     });
 
     it.each(fields)(
@@ -64,6 +111,9 @@ describe('AppConfigSchema executable behavior', () => {
           'data:image/svg+xml,<svg/>',
           '//attacker.example/brand.svg',
           '/\\attacker.example/brand.svg',
+          '../brand.svg',
+          'default/../brand.svg',
+          'default//brand.svg',
         ]) {
           const config = createConfig();
           config.branding[field] = value;
@@ -192,6 +242,62 @@ describe('AppConfigSchema executable behavior', () => {
         expect(result.error.issues.map(issue => issue.message)).toContain(
           message
         );
+      }
+    });
+  });
+
+  describe('social provider configuration', () => {
+    it.each(['apple', 'twitter', 'custom-provider'])(
+      'rejects unsupported enabled provider %s',
+      provider => {
+        const config = createConfig();
+        config.features.social_providers.enabled = ['google', provider];
+
+        expect(AppConfigSchema.safeParse(config).success).toBe(false);
+      }
+    );
+
+    it.each(['apple', 'twitter', 'custom-provider'])(
+      'rejects unsupported available provider %s',
+      provider => {
+        const config = createConfig();
+        config.features.social_providers.available = ['google', provider];
+
+        expect(AppConfigSchema.safeParse(config).success).toBe(false);
+      }
+    );
+
+    it.each([
+      {},
+      { client_id: 'client-id' },
+      {
+        client_id: 'your-google-client-id',
+        client_secret: 'your-google-client-secret',
+      },
+    ])('rejects enabled providers without usable credentials: %j', google => {
+      const config = createConfig();
+      config.features.social_providers.enabled = ['google'];
+      config.features.social_providers.google = google;
+
+      expect(AppConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('accepts and trims an enabled provider with usable credentials', () => {
+      const config = createConfig();
+      config.features.social_providers.enabled = ['google'];
+      config.features.social_providers.google = {
+        client_id: ' client-id ',
+        client_secret: ' client-secret ',
+      };
+
+      const result = AppConfigSchema.safeParse(config);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.features.social_providers.google).toMatchObject({
+          client_id: 'client-id',
+          client_secret: 'client-secret',
+        });
       }
     });
   });

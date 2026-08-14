@@ -41,6 +41,20 @@ describe('PostgresqlFixtureStore expiry controls', () => {
     expect(updateCall?.[0]).toContain("CURRENT_TIMESTAMP - INTERVAL '1 day'");
     expect(updateCall?.[1]).toEqual([email, 'default']);
   });
+
+  it('expires an application session through a tenant-scoped delete', async () => {
+    await expect(
+      store.expireApplicationSession('session-fixture-id')
+    ).resolves.toBe(true);
+
+    const deleteCall = postgresql.query.mock.calls.find(([statement]) =>
+      String(statement).includes('DELETE FROM sessions')
+    );
+    expect(deleteCall).toEqual([
+      expect.stringContaining('tenant_id = $2'),
+      ['session-fixture-id', 'default'],
+    ]);
+  });
 });
 
 const email = 'expiry-control@example.test';

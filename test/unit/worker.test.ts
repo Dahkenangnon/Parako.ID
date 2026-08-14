@@ -23,12 +23,19 @@ const harness = vi.hoisted(() => {
     disconnect: vi.fn(),
   };
   const keyStore = { initialize: vi.fn() };
-  const activityService = { info: vi.fn() };
+  const activityService = { info: vi.fn(), shutdown: vi.fn() };
   const oidcAdapterBridge = { initialize: vi.fn() };
   const dataTransferService = { marker: 'data-transfer' };
   const userService = { marker: 'users' };
   const passwordUtils = { marker: 'passwords' };
   const notificationService = { marker: 'notifications' };
+  const emailService = {
+    initialize: vi.fn(),
+    closeConnection: vi.fn(),
+  };
+  const tenantRepository = {
+    findAll: vi.fn(),
+  };
   const backgroundQueue = { add: vi.fn() };
   const backgroundWorker = { marker: 'worker' };
   const queueManager = {
@@ -68,6 +75,8 @@ const harness = vi.hoisted(() => {
     PasswordUtils: 'PasswordUtils',
     OIDCAdapterBridge: 'OIDCAdapterBridge',
     NotificationService: 'NotificationService',
+    EmailService: 'EmailService',
+    TenantRepository: 'TenantRepository',
   };
   const services = new Map<any, any>([
     [TYPES.ConfigManager, configManager],
@@ -80,6 +89,8 @@ const harness = vi.hoisted(() => {
     [TYPES.PasswordUtils, passwordUtils],
     [TYPES.OIDCAdapterBridge, oidcAdapterBridge],
     [TYPES.NotificationService, notificationService],
+    [TYPES.EmailService, emailService],
+    [TYPES.TenantRepository, tenantRepository],
   ]);
 
   return {
@@ -95,6 +106,8 @@ const harness = vi.hoisted(() => {
     userService,
     passwordUtils,
     notificationService,
+    emailService,
+    tenantRepository,
     backgroundQueue,
     backgroundWorker,
     queueManager,
@@ -121,6 +134,7 @@ const harness = vi.hoisted(() => {
     tenantContext: {
       getStore: vi.fn(),
       getTenantId: vi.fn(),
+      run: vi.fn((_tenantId: string, operation: () => unknown) => operation()),
     },
     Redis: vi.fn(function RedisMock() {
       return redisPublisher;
@@ -237,6 +251,7 @@ describe('worker process entrypoint', () => {
     harness.database.disconnect.mockResolvedValue(undefined);
     harness.keyStore.initialize.mockResolvedValue(undefined);
     harness.activityService.info.mockResolvedValue(undefined);
+    harness.activityService.shutdown.mockResolvedValue(undefined);
     harness.oidcAdapterBridge.initialize.mockResolvedValue(undefined);
     harness.redisPublisher.connect.mockResolvedValue(undefined);
     harness.redisPublisher.publish.mockResolvedValue(1);
@@ -250,6 +265,8 @@ describe('worker process entrypoint', () => {
     harness.queueManager.closeAll.mockResolvedValue(undefined);
     harness.workerManager.closeAll.mockResolvedValue(undefined);
     harness.logger.shutdown.mockResolvedValue(undefined);
+    harness.emailService.closeConnection.mockResolvedValue(undefined);
+    harness.tenantRepository.findAll.mockResolvedValue([]);
     harness.createBackgroundTaskQueue.mockResolvedValue(
       harness.backgroundQueue
     );
@@ -281,6 +298,7 @@ describe('worker process entrypoint', () => {
     );
     expect(harness.keyStore.initialize).toHaveBeenCalledOnce();
     expect(harness.oidcAdapterBridge.initialize).toHaveBeenCalledOnce();
+    expect(harness.emailService.initialize).toHaveBeenCalledOnce();
     expect(harness.queueManager.registerQueue).toHaveBeenCalledWith(
       'background-tasks',
       harness.backgroundQueue
@@ -336,6 +354,39 @@ describe('worker process entrypoint', () => {
     );
   });
 
+  it('checks every active tenant when the scheduled JWKS job runs in multi-tenant mode', async () => {
+    harness.configManager.getConfig.mockReturnValue({
+      ...runtimeConfig,
+      features: { multi_tenancy: { enabled: true } },
+    });
+    harness.tenantRepository.findAll.mockResolvedValue([
+      { slug: 'tenant-a' },
+      { slug: '_platforms' },
+    ]);
+    harness.jwksRotationHandler.mockImplementation(async data => ({
+      tenantId: data.tenantId,
+    }));
+    await importWorker();
+
+    const result = await harness.handlers.get('jwks-rotation')!(
+      { type: 'process', name: 'jwks-rotation' },
+      vi.fn()
+    );
+
+    expect(harness.tenantRepository.findAll).toHaveBeenCalledWith({
+      status: 'active',
+    });
+    expect(
+      harness.jwksRotationHandler.mock.calls.map(([data]) => data.tenantId)
+    ).toEqual(['tenant-a', '_platforms']);
+    expect(result).toEqual({
+      tenants: [
+        { tenantId: 'tenant-a', result: { tenantId: 'tenant-a' } },
+        { tenantId: '_platforms', result: { tenantId: '_platforms' } },
+      ],
+    });
+  });
+
   it('preserves the originating tenant in delayed JWKS promotion jobs', async () => {
     await importWorker();
     const registered = harness.handlers.get('jwks-rotation')!;
@@ -376,10 +427,14 @@ describe('worker process entrypoint', () => {
     expect(harness.safeShutdownStep.mock.calls.map(([name]) => name)).toEqual([
       'worker-manager',
       'queue-manager',
+      'activity-service',
+      'email-service',
       'redis-publisher',
       'database-disconnect',
       'config-cleanup',
     ]);
+    expect(harness.emailService.closeConnection).toHaveBeenCalledOnce();
+    expect(harness.activityService.shutdown).toHaveBeenCalledOnce();
     expect(harness.redisPublisher.quit).toHaveBeenCalledOnce();
     expect(harness.logger.shutdown).toHaveBeenCalledOnce();
   });

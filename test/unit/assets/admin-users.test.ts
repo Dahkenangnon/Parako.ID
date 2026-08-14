@@ -16,6 +16,7 @@ class ElementFixture {
   public readonly attributes = new Map<string, string>();
   public readonly children: ElementFixture[] = [];
   public className = '';
+  public readonly dataset: Record<string, string> = {};
   public readonly focus = vi.fn();
   public parentNode: ElementFixture | null = null;
   public textContent = '';
@@ -56,9 +57,11 @@ class ElementFixture {
 function setupDom(
   options: {
     csrfToken?: string;
+    activeElement?: ElementFixture;
     environment?: string;
     pathname?: string;
     stateText?: string;
+    queryElements?: Record<string, ElementFixture[]>;
     withLucide?: boolean;
   } = {}
 ) {
@@ -88,6 +91,7 @@ function setupDom(
       listeners.add(listener);
       documentListeners.set(name, listeners);
     }),
+    activeElement: options.activeElement ?? null,
     body,
     createElement: vi.fn((tagName: string) => {
       const element = new ElementFixture(tagName);
@@ -101,6 +105,9 @@ function setupDom(
       id === '___MAIN_STATE___' ? stateElement : null
     ),
     querySelector: vi.fn().mockReturnValue(csrfInput),
+    querySelectorAll: vi.fn(
+      (selector: string) => options.queryElements?.[selector] ?? []
+    ),
     removeEventListener: vi.fn((name: string, listener: DomListener) => {
       documentListeners.get(name)?.delete(listener);
     }),
@@ -137,7 +144,10 @@ describe('admin users manager', () => {
   });
 
   it('removes the confirmation keyboard listener when Cancel is clicked', async () => {
-    const { browserWindow, created, documentListeners, runReady } = setupDom();
+    const launchButton = new ElementFixture('button');
+    const { browserWindow, created, documentListeners, runReady } = setupDom({
+      activeElement: launchButton,
+    });
     await import('../../../src/assets/js/admin/users.js');
     runReady();
 
@@ -155,6 +165,7 @@ describe('admin users manager', () => {
 
     await result;
     expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
+    expect(launchButton.focus).toHaveBeenCalledOnce();
   });
 
   it('does not expose admin handlers on a sibling path with the same prefix', async () => {
@@ -190,6 +201,40 @@ describe('admin users manager', () => {
       created.some(element => element.textContent === 'Invalid parameters')
     ).toBe(true);
   });
+  it('binds CSP-safe data attributes to user actions', async () => {
+    const statusButton = new ElementFixture('button');
+    statusButton.dataset.userId = 'user-1';
+    statusButton.dataset.userStatusAction = 'disable';
+    const anonymizeButton = new ElementFixture('button');
+    anonymizeButton.dataset.userId = 'user-2';
+    anonymizeButton.dataset.username = 'Maria';
+    const { created, runReady } = setupDom({
+      queryElements: {
+        '[data-user-anonymize]': [anonymizeButton],
+        '[data-user-status-action]': [statusButton],
+      },
+    });
+    await import('../../../src/assets/js/admin/users.js');
+
+    runReady();
+    statusButton.trigger('click');
+
+    expect(
+      created.some(element => element.textContent === 'Disable User')
+    ).toBe(true);
+    created.find(element => element.textContent === 'Cancel')?.trigger('click');
+
+    anonymizeButton.trigger('click');
+    expect(
+      created.some(
+        element => element.textContent === 'Anonymize User - Permanent Action'
+      )
+    ).toBe(true);
+    findLastCreated(
+      created,
+      element => element.textContent === 'Cancel'
+    )?.trigger('click');
+  });
 
   it('cancels dangerous confirmation through backdrop and Escape only', async () => {
     const {
@@ -206,6 +251,23 @@ describe('admin users manager', () => {
 
     const backdropResult = manager.anonymizeUser('user-1', 'Maria');
     const backdrop = body.children[0];
+    const modal = backdrop.children[0];
+    const titleElement = findLastCreated(
+      created,
+      element => element.tagName === 'h3'
+    );
+    const messageElement = findLastCreated(
+      created,
+      element => element.tagName === 'p'
+    );
+    expect(modal.attributes.get('role')).toBe('dialog');
+    expect(modal.attributes.get('aria-modal')).toBe('true');
+    expect(modal.attributes.get('aria-labelledby')).toBe(
+      titleElement?.attributes.get('id')
+    );
+    expect(modal.attributes.get('aria-describedby')).toBe(
+      messageElement?.attributes.get('id')
+    );
     const confirm = findLastCreated(
       created,
       element => element.textContent === 'Yes, Anonymize Permanently'

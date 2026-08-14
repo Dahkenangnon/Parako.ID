@@ -327,6 +327,198 @@ describe('TenantSettingsOverrideService', () => {
       expect(savedData.notifications).toBeDefined();
     });
 
+    it('rejects a tenant locale selection that excludes the effective default', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides(
+          'acme',
+          { application: { locales: { available: ['fr'] } } } as any,
+          undefined,
+          undefined,
+          {
+            application: {
+              title: 'Platform',
+              description: 'Platform description',
+              locales: { default: 'en', available: ['en', 'fr'] },
+            },
+          }
+        )
+      ).rejects.toThrow('Default locale must be included in available locales');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects unsafe tenant locale identifiers before persistence', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides(
+          'acme',
+          {
+            application: {
+              locales: { default: '../en', available: ['../en'] },
+            },
+          } as any,
+          undefined,
+          undefined,
+          {
+            application: {
+              title: 'Platform',
+              description: 'Platform description',
+              locales: { default: 'en', available: ['en', 'fr'] },
+            },
+          }
+        )
+      ).rejects.toThrow('Locale identifiers may contain only letters');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('normalizes tenant application values before persistence', async () => {
+      const { service, repo } = makeService();
+
+      await service.saveOverrides(
+        'acme',
+        {
+          application: {
+            title: ' Tenant ',
+            description: ' Description ',
+            locales: {
+              default: ' fr ',
+              available: [' fr ', 'fr'],
+            },
+          },
+        } as any,
+        undefined,
+        undefined,
+        {
+          application: {
+            title: 'Platform',
+            description: 'Platform description',
+            locales: { default: 'en', available: ['en', 'fr'] },
+          },
+        }
+      );
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          application: {
+            title: 'Tenant',
+            description: 'Description',
+            locales: { default: 'fr', available: ['fr'] },
+          },
+        }),
+        expect.any(Object)
+      );
+    });
+
+    it.each([
+      [['google', 'custom-provider'], 'custom-provider'],
+      [['apple'], 'apple'],
+      [['twitter'], 'twitter'],
+    ])(
+      'rejects unsupported tenant social providers in %j',
+      async (enabled, unsupportedProvider) => {
+        const { service, repo } = makeService();
+
+        await expect(
+          service.saveOverrides('acme', {
+            features: { social_providers: { enabled } },
+          } as any)
+        ).rejects.toThrow(
+          `Unsupported social provider: ${unsupportedProvider}`
+        );
+        expect(repo.save).not.toHaveBeenCalled();
+      }
+    );
+
+    it('rejects a non-array tenant social provider selection', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          features: { social_providers: { enabled: 'google' } },
+        } as any)
+      ).rejects.toThrow('Social providers must be an array');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects an enabled tenant provider unavailable at platform level', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides(
+          'acme',
+          {
+            features: { social_providers: { enabled: ['google'] } },
+          } as any,
+          undefined,
+          undefined,
+          { features: { social_providers: { google: {} } } }
+        )
+      ).rejects.toThrow(
+        'Enabled social provider google has no usable platform credentials'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('accepts an enabled tenant provider backed by platform credentials', async () => {
+      const { service, repo } = makeService();
+
+      await service.saveOverrides(
+        'acme',
+        {
+          features: { social_providers: { enabled: ['google'] } },
+        } as any,
+        undefined,
+        undefined,
+        {
+          features: {
+            social_providers: {
+              google: {
+                client_id: 'platform-client',
+                client_secret: 'platform-secret',
+              },
+            },
+          },
+        }
+      );
+
+      expect(repo.save).toHaveBeenCalledOnce();
+    });
+
+    it('rejects incomplete tenant-owned credentials instead of mixing credential tiers', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides(
+          'acme',
+          {
+            features: {
+              social_providers: {
+                enabled: ['google'],
+                google: { client_id: 'tenant-client' },
+              },
+            },
+          } as any,
+          undefined,
+          undefined,
+          {
+            features: {
+              social_providers: {
+                google: {
+                  client_id: 'platform-client',
+                  client_secret: 'platform-secret',
+                },
+              },
+            },
+          }
+        )
+      ).rejects.toThrow(
+        'Tenant social provider google requires both client_id and client_secret'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('encrypts sensitive fields before saving', async () => {
       const { service, repo } = makeService();
       const { ensureEncrypted } =
@@ -603,6 +795,79 @@ describe('TenantSettingsOverrideService', () => {
         .calls[0][0];
       expect(savedData.oidc.token_ttl.access_token).toBe(1800);
       expect(savedData.oidc.token_ttl.id_token).toBe(1800);
+    });
+
+    it.each([
+      ['negative', -1],
+      ['fractional', 1.5],
+    ])('rejects a %s tenant OIDC token lifetime', async (_case, value) => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          oidc: { token_ttl: { access_token: value } },
+        } as any)
+      ).rejects.toThrow('Access token TTL must be a positive integer');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid tenant OIDC discovery URL', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          oidc: {
+            discovery: { service_documentation: 'not-a-url' },
+          },
+        } as any)
+      ).rejects.toThrow('Service documentation URI must be a valid URL');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-HTTP tenant OIDC discovery URL', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          oidc: {
+            discovery: { service_documentation: 'ftp://docs.example.test' },
+          },
+        } as any)
+      ).rejects.toThrow('Service documentation URI must use HTTP or HTTPS');
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('normalizes tenant OIDC discovery metadata before persistence', async () => {
+      const { service, repo } = makeService();
+
+      await service.saveOverrides('acme', {
+        oidc: {
+          discovery: {
+            claims_locales_supported: [' en ', 'fr', 'en'],
+            display_values_supported: ['page', 'popup', 'page'],
+          },
+        },
+      } as any);
+
+      const savedData = (repo.save as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      expect(savedData.oidc.discovery).toMatchObject({
+        claims_locales_supported: ['en', 'fr'],
+        display_values_supported: ['page', 'popup'],
+      });
+    });
+
+    it('rejects the ineffective tenant UI locale override', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          oidc: { discovery: { ui_locales_supported: ['fr'] } },
+        } as any)
+      ).rejects.toThrow(
+        'No valid override fields provided after field-level filtering'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 

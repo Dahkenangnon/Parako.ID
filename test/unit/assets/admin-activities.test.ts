@@ -1,15 +1,24 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-interface ModalFixture {
+import { AdminActivitiesManager } from '../../../src/assets/js/admin/activities/index.js';
+
+type EventListener = (event: Record<string, unknown>) => void;
+
+interface ElementFixture {
   addEventListener: ReturnType<typeof vi.fn>;
+  attributes: Map<string, string>;
   classList: {
     add: ReturnType<typeof vi.fn>;
+    contains: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
   };
-  click?: (event: { target: unknown }) => void;
-}
-
-interface DaysFixture {
+  emit: (name: string, event?: Record<string, unknown>) => void;
+  focus: ReturnType<typeof vi.fn>;
+  getAttribute: ReturnType<typeof vi.fn>;
+  removeAttribute: ReturnType<typeof vi.fn>;
+  select: ReturnType<typeof vi.fn>;
+  setAttribute: ReturnType<typeof vi.fn>;
+  textContent: string;
   value: string;
 }
 
@@ -20,280 +29,258 @@ interface FormFixture {
   submit: ReturnType<typeof vi.fn>;
 }
 
-interface MetaFixture {
-  getAttribute: ReturnType<typeof vi.fn>;
-}
+function makeElement(
+  options: { hidden?: boolean; value?: string } = {}
+): ElementFixture {
+  const listeners = new Map<string, EventListener>();
+  const attributes = new Map<string, string>();
+  const classes = new Set(options.hidden ? ['hidden'] : []);
+  const element = {
+    addEventListener: vi.fn((name: string, listener: EventListener) => {
+      listeners.set(name, listener);
+    }),
+    attributes,
+    classList: {
+      add: vi.fn((name: string) => classes.add(name)),
+      contains: vi.fn((name: string) => classes.has(name)),
+      remove: vi.fn((name: string) => classes.delete(name)),
+    },
+    emit: (name: string, event: Record<string, unknown> = {}) =>
+      listeners.get(name)?.({ target: element, ...event }),
+    focus: vi.fn(),
+    getAttribute: vi.fn((name: string) => attributes.get(name) ?? null),
+    removeAttribute: vi.fn((name: string) => attributes.delete(name)),
+    select: vi.fn(),
+    setAttribute: vi.fn((name: string, value: string) => {
+      attributes.set(name, value);
+    }),
+    textContent: '',
+    value: options.value ?? '',
+  } satisfies ElementFixture;
 
-function makeModal(): ModalFixture {
-  const modal: ModalFixture = {
-    addEventListener: vi.fn(
-      (_name: string, listener: (event: { target: unknown }) => void) => {
-        modal.click = listener;
-      }
-    ),
-    classList: { add: vi.fn(), remove: vi.fn() },
-  };
-  return modal;
+  return element;
 }
 
 function setupDom(
   options: {
-    csrfInput?: { value: string } | null;
-    csrfMeta?: MetaFixture | null;
-    days?: DaysFixture | null;
-    modal?: ModalFixture | null;
-    stateText?: string | null;
+    activeElement?: ElementFixture | null;
+    config?: ConstructorParameters<typeof AdminActivitiesManager>[0];
+    csrfInput?: ElementFixture | null;
+    csrfMeta?: ElementFixture | null;
+    days?: ElementFixture | null;
+    error?: ElementFixture | null;
+    modal?: ElementFixture | null;
   } = {}
 ) {
-  const listeners = new Map<string, (event?: unknown) => void>();
-  const browserWindow: Record<string, unknown> = {};
+  const documentListeners = new Map<string, EventListener>();
+  const trigger = makeElement();
+  const cancel = makeElement();
+  const confirm = makeElement();
+  const modal =
+    options.modal === undefined ? makeElement({ hidden: true }) : options.modal;
+  const days =
+    options.days === undefined ? makeElement({ value: '90' }) : options.days;
+  const error =
+    options.error === undefined ? makeElement({ hidden: true }) : options.error;
+  const createdInputs: Array<{ name: string; type: string; value: string }> =
+    [];
   const form: FormFixture = {
     action: '',
     appendChild: vi.fn(),
     method: '',
     submit: vi.fn(),
   };
-  const inputs: Array<{ name: string; type: string; value: string }> = [];
-  const appendChild = vi.fn();
-  const createElement = vi.fn((tagName: string) => {
-    if (tagName === 'form') return form;
-    const input = { name: '', type: '', value: '' };
-    inputs.push(input);
-    return input;
-  });
-  vi.stubGlobal('window', browserWindow);
-  vi.stubGlobal('document', {
-    body: { appendChild },
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      listeners.set(_name, listener as (event?: unknown) => void);
+  const appendToBody = vi.fn();
+  const documentFixture = {
+    activeElement: options.activeElement ?? trigger,
+    addEventListener: vi.fn((name: string, listener: EventListener) => {
+      documentListeners.set(name, listener);
     }),
-    createElement,
-    getElementById: vi.fn((id: string) =>
-      id === 'clearOldModal'
-        ? (options.modal ?? null)
-        : id === 'days'
-          ? (options.days ?? null)
-          : id === '___ADMIN_ACTIVITIES_STATE___' &&
-              options.stateText !== undefined
-            ? { textContent: options.stateText }
-            : null
-    ),
-    querySelector: vi.fn((selector: string) =>
-      selector === 'input[name="_csrf"]'
-        ? (options.csrfInput ?? null)
-        : selector === 'meta[name="csrf-token"]'
-          ? (options.csrfMeta ?? null)
-          : null
-    ),
-  });
+    body: { appendChild: appendToBody },
+    createElement: vi.fn((tagName: string) => {
+      if (tagName === 'form') return form;
+      const input = { name: '', type: '', value: '' };
+      createdInputs.push(input);
+      return input;
+    }),
+    getElementById: vi.fn((id: string) => {
+      if (id === 'clearOldModal') return modal;
+      if (id === 'days') return days;
+      if (id === 'clearOldError') return error;
+      return null;
+    }),
+    querySelector: vi.fn((selector: string) => {
+      if (selector === '[data-activities-clear-old]') return trigger;
+      if (selector === '[data-activities-clear-cancel]') return cancel;
+      if (selector === '[data-activities-clear-confirm]') return confirm;
+      if (selector === 'input[name="_csrf"]') return options.csrfInput ?? null;
+      if (selector === 'meta[name="csrf-token"]')
+        return options.csrfMeta ?? null;
+      return null;
+    }),
+  };
+  vi.stubGlobal('document', documentFixture);
+
+  const manager = new AdminActivitiesManager(options.config);
+  manager.initialize();
+
   return {
-    appendChild,
-    browserWindow,
-    createElement,
-    dispatch: (name: string, event?: unknown) => listeners.get(name)?.(event),
+    appendToBody,
+    cancel,
+    confirm,
+    createdInputs,
+    days,
+    dispatchDocument: (name: string, event: Record<string, unknown>) =>
+      documentListeners.get(name)?.(event),
+    error,
     form,
-    inputs,
-    runReady: () => listeners.get('DOMContentLoaded')?.(),
+    manager,
+    modal,
+    trigger,
   };
 }
 
-describe('admin activities manager', () => {
+describe('AdminActivitiesManager', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/activities/index.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(AdminActivitiesManager).toBeTypeOf('function');
   });
 
-  it('initializes with defaults when optional page elements are absent', async () => {
-    const { browserWindow, createElement, dispatch, runReady } = setupDom();
-    await import('../../../src/assets/js/admin/activities/index.js');
+  it('initializes safely when optional page elements are absent', () => {
+    const { manager } = setupDom({ days: null, error: null, modal: null });
 
-    expect(runReady).not.toThrow();
-    expect(browserWindow).toMatchObject({
-      AdminActivitiesManager: expect.any(Function),
-      clearOldActivities: expect.any(Function),
-      hideClearOldModal: expect.any(Function),
-      showClearOldModal: expect.any(Function),
-    });
-    expect(() =>
-      (browserWindow.clearOldActivities as () => void)()
-    ).not.toThrow();
     expect(() => {
-      (browserWindow.showClearOldModal as () => void)();
-      (browserWindow.hideClearOldModal as () => void)();
-      dispatch('keydown', { key: 'Enter' });
+      manager.showModal();
+      manager.hideModal();
+      manager.clearOldActivities();
     }).not.toThrow();
-    expect(createElement).not.toHaveBeenCalled();
   });
 
-  it('opens and closes the clear-old modal from every supported control', async () => {
-    const modal = makeModal();
-    const { browserWindow, dispatch, runReady } = setupDom({ modal });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
+  it('opens from the declarative trigger and closes from cancel with focus restoration', () => {
+    const previousFocus = makeElement();
+    const { cancel, days, modal, trigger } = setupDom({
+      activeElement: previousFocus,
+    });
 
-    (browserWindow.showClearOldModal as () => void)();
-    expect(modal.classList.remove).toHaveBeenCalledWith('hidden');
+    trigger.emit('click');
+    expect(modal?.classList.remove).toHaveBeenCalledWith('hidden');
+    expect(modal?.setAttribute).toHaveBeenCalledWith('aria-hidden', 'false');
+    expect(days?.focus).toHaveBeenCalledOnce();
+    expect(days?.select).toHaveBeenCalledOnce();
 
-    (browserWindow.hideClearOldModal as () => void)();
-    dispatch('keydown', { key: 'Escape' });
-    modal.click?.({ target: modal });
-    modal.click?.({ target: {} });
-
-    expect(modal.classList.add).toHaveBeenCalledTimes(3);
-    expect(modal.classList.add).toHaveBeenCalledWith('hidden');
+    cancel.emit('click');
+    expect(modal?.classList.add).toHaveBeenCalledWith('hidden');
+    expect(modal?.setAttribute).toHaveBeenCalledWith('aria-hidden', 'true');
+    expect(previousFocus.focus).toHaveBeenCalledOnce();
   });
 
-  it.each(['', '0', '-1', '1.5', '1 day', '9007199254740992'])(
-    'rejects invalid retention days %j instead of coercing them',
-    async value => {
-      const alert = vi.fn();
-      vi.stubGlobal('alert', alert);
-      const { browserWindow, createElement, runReady } = setupDom({
-        days: { value },
+  it('closes an open dialog with Escape and a backdrop click only', () => {
+    const { dispatchDocument, modal, trigger } = setupDom();
+    trigger.emit('click');
+
+    dispatchDocument('keydown', { key: 'Enter' });
+    expect(modal?.classList.add).not.toHaveBeenCalled();
+
+    dispatchDocument('keydown', { key: 'Escape' });
+    expect(modal?.classList.add).toHaveBeenCalledTimes(1);
+
+    trigger.emit('click');
+    modal?.emit('click', { target: {} });
+    expect(modal?.classList.add).toHaveBeenCalledTimes(1);
+    modal?.emit('click');
+    expect(modal?.classList.add).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['', '0', '-1', '1.5', '1 day', '36501', '9007199254740992'])(
+    'rejects invalid retention days %j with an inline accessible error',
+    value => {
+      const days = makeElement({ value });
+      const error = makeElement({ hidden: true });
+      const { confirm, createdInputs } = setupDom({
+        config: {
+          translations: { invalidDays: 'Choose valid whole days' },
+        },
+        days,
+        error,
       });
-      await import('../../../src/assets/js/admin/activities/index.js');
-      runReady();
 
-      (browserWindow.clearOldActivities as () => void)();
+      confirm.emit('click');
 
-      expect(alert).toHaveBeenCalledWith('Please enter a valid number of days');
-      expect(createElement).not.toHaveBeenCalled();
+      expect(days.setAttribute).toHaveBeenCalledWith('aria-invalid', 'true');
+      expect(days.focus).toHaveBeenCalledOnce();
+      expect(error.textContent).toBe('Choose valid whole days');
+      expect(error.classList.remove).toHaveBeenCalledWith('hidden');
+      expect(createdInputs).toEqual([]);
     }
   );
 
-  it('submits valid whole days to the configured route with the page CSRF token', async () => {
-    const { appendChild, browserWindow, form, inputs, runReady } = setupDom({
-      csrfInput: { value: 'page-csrf' },
-      days: { value: ' 30 ' },
-      stateText: JSON.stringify({
+  it('clears the validation state when the administrator edits the input', () => {
+    const days = makeElement({ value: 'invalid' });
+    const error = makeElement({ hidden: true });
+    const { confirm } = setupDom({ days, error });
+    confirm.emit('click');
+
+    days.emit('input');
+
+    expect(days.removeAttribute).toHaveBeenCalledWith('aria-invalid');
+    expect(error.classList.add).toHaveBeenCalledWith('hidden');
+  });
+
+  it('submits whole days to the configured route with the page CSRF token', () => {
+    const days = makeElement({ value: ' 36500 ' });
+    const csrfInput = makeElement({ value: 'page-csrf' });
+    const { appendToBody, confirm, createdInputs, form } = setupDom({
+      config: {
         csrfToken: 'configured-csrf',
         routes: { clearOld: '/custom/clear-old' },
-        translations: { invalidDays: 'Choose whole days' },
-      }),
+      },
+      csrfInput,
+      days,
     });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
 
-    (browserWindow.clearOldActivities as () => void)();
+    confirm.emit('click');
 
     expect(form).toMatchObject({
       action: '/custom/clear-old',
       method: 'POST',
     });
-    expect(inputs).toEqual([
-      { name: 'days', type: 'hidden', value: '30' },
+    expect(createdInputs).toEqual([
+      { name: 'days', type: 'hidden', value: '36500' },
       { name: '_csrf', type: 'hidden', value: 'page-csrf' },
     ]);
     expect(form.appendChild).toHaveBeenCalledTimes(2);
-    expect(appendChild).toHaveBeenCalledWith(form);
+    expect(appendToBody).toHaveBeenCalledWith(form);
     expect(form.submit).toHaveBeenCalledOnce();
   });
 
-  it('falls back to the configured CSRF token when the meta token is empty', async () => {
-    const csrfMeta = { getAttribute: vi.fn(() => null) };
-    const { browserWindow, inputs, runReady } = setupDom({
+  it('uses the meta token before the configured CSRF fallback', () => {
+    const csrfInput = makeElement({ value: '' });
+    const csrfMeta = makeElement();
+    csrfMeta.attributes.set('content', 'meta-csrf');
+    const { createdInputs, manager } = setupDom({
+      config: { csrfToken: 'configured-csrf' },
+      csrfInput,
       csrfMeta,
-      days: { value: '7' },
-      stateText: JSON.stringify({
-        csrfToken: 'configured-csrf',
-        routes: { clearOld: '/admin/activities/clear-old' },
-        translations: {},
-      }),
+      days: makeElement({ value: '30' }),
     });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
 
-    (browserWindow.clearOldActivities as () => void)();
+    manager.clearOldActivities();
 
-    expect(csrfMeta.getAttribute).toHaveBeenCalledWith('content');
-    expect(inputs[1]?.value).toBe('configured-csrf');
+    expect(createdInputs[1]?.value).toBe('meta-csrf');
   });
 
-  it('uses the meta CSRF token when the hidden token is empty', async () => {
-    const csrfMeta = { getAttribute: vi.fn(() => 'meta-csrf') };
-    const { browserWindow, inputs, runReady } = setupDom({
-      csrfInput: { value: '' },
-      csrfMeta,
-      days: { value: '7' },
+  it('uses safe route and CSRF defaults when optional configuration is empty', () => {
+    const { createdInputs, form, manager } = setupDom({
+      config: { csrfToken: '', routes: { clearOld: '' } },
+      days: makeElement({ value: '1' }),
     });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
 
-    (browserWindow.clearOldActivities as () => void)();
-
-    expect(inputs[1]?.value).toBe('meta-csrf');
-  });
-
-  it('uses the safe route fallback and an empty token when no CSRF source exists', async () => {
-    const { browserWindow, form, inputs, runReady } = setupDom({
-      days: { value: '1' },
-      stateText: JSON.stringify({
-        csrfToken: '',
-        routes: { clearOld: '' },
-        translations: {},
-      }),
-    });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
-
-    (browserWindow.clearOldActivities as () => void)();
+    manager.clearOldActivities();
 
     expect(form.action).toBe('/admin/activities/clear-old');
-    expect(inputs[1]?.value).toBe('');
-  });
-
-  it('logs malformed persisted state and initializes with safe defaults', async () => {
-    const alert = vi.fn();
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    vi.stubGlobal('alert', alert);
-    const { browserWindow, runReady } = setupDom({
-      days: { value: 'invalid' },
-      stateText: '{bad json',
-    });
-    await import('../../../src/assets/js/admin/activities/index.js');
-
-    expect(runReady).not.toThrow();
-    (browserWindow.clearOldActivities as () => void)();
-
-    expect(error).toHaveBeenCalledWith(
-      '[AdminActivitiesManager] Initialization failed:',
-      expect.any(SyntaxError)
-    );
-    expect(alert).toHaveBeenCalledWith('Please enter a valid number of days');
-  });
-
-  it('uses defaults when the persisted state element is blank', async () => {
-    const alert = vi.fn();
-    vi.stubGlobal('alert', alert);
-    const { browserWindow, runReady } = setupDom({
-      days: { value: 'invalid' },
-      stateText: '',
-    });
-    await import('../../../src/assets/js/admin/activities/index.js');
-    runReady();
-
-    (browserWindow.clearOldActivities as () => void)();
-
-    expect(alert).toHaveBeenCalledWith('Please enter a valid number of days');
-  });
-
-  it('initializes in a document-only environment without exporting globals', async () => {
-    const { runReady } = setupDom();
-    vi.stubGlobal('window', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/activities/index.js')
-    ).resolves.toBeDefined();
-    expect(runReady).not.toThrow();
+    expect(createdInputs[1]?.value).toBe('');
   });
 });

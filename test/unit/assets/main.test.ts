@@ -69,6 +69,7 @@ class ElementFixture {
 }
 
 interface SetupOptions {
+  activeElement?: ElementFixture;
   bodyTheme?: string;
   debugStorage?: string | null;
   documentEnvironment?: string;
@@ -162,6 +163,7 @@ function setupDom(options: SetupOptions = {}) {
 
   vi.stubGlobal('window', windowFixture);
   vi.stubGlobal('document', {
+    activeElement: options.activeElement ?? null,
     addEventListener: vi.fn(addDocumentListener),
     removeEventListener: vi.fn(removeDocumentListener),
     body,
@@ -337,6 +339,23 @@ describe('main browser entrypoint', () => {
       'keydown',
       expect.any(Function)
     );
+  });
+
+  it('restores focus after a confirmation is cancelled', async () => {
+    const trigger = new ElementFixture();
+    const context = setupDom({ activeElement: trigger });
+    await import('../../../src/assets/js/main.js');
+    context.runReady();
+
+    const result = (context.windowFixture as any).dialog.showConfirm(
+      'Revoke sessions',
+      'This cannot be undone'
+    );
+    const cancelButton = context.created[9]!;
+    cancelButton.trigger('click');
+
+    await expect(result).resolves.toBe(false);
+    expect(trigger.focus).toHaveBeenCalledOnce();
   });
 
   it('supports keyboard and backdrop confirmation cancellation without Lucide', async () => {

@@ -42,6 +42,7 @@ vi.mock('../../../src/services/settings.service.js', () => ({
 }));
 
 import { DatabaseConfigProvider } from '../../../src/config/provider/db-provider.js';
+import { ConfigurationVersionConflictError } from '../../../src/errors/configuration-version-conflict.error.js';
 
 type SettingsDouble = ReturnType<typeof createSettingsDouble>;
 
@@ -282,9 +283,10 @@ describe('DatabaseConfigProvider core behavior', () => {
     mocks.parse.mockReturnValue(validated);
     provider.subscribe(subscriber);
 
-    const result = await provider.updateConfig({
-      application: { title: 'Updated' },
-    } as never);
+    const result = await provider.updateConfig(
+      { application: { title: 'Updated' } } as never,
+      7
+    );
 
     expect(mocks.validateNonBootstrapConfig).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -299,12 +301,161 @@ describe('DatabaseConfigProvider core behavior', () => {
     expect(mocks.applyComputedDefaults).toHaveBeenCalledWith(sanitized);
     expect(mocks.parse).toHaveBeenCalledWith(computed);
     expect(settings.saveMainConfigurationWithTransaction).toHaveBeenCalledWith(
-      validated
+      validated,
+      undefined,
+      undefined,
+      7
     );
-    expect(subscriber).toHaveBeenCalledWith(reloaded, undefined);
+    expect(subscriber).toHaveBeenCalledWith(
+      reloaded,
+      undefined,
+      'local-update'
+    );
     expect(result).toEqual(reloaded);
 
     provider.unsubscribe(subscriber);
+  });
+
+  it('applies an implicit partial update to the latest persisted version', async () => {
+    const stale = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: 'logos/dark.svg',
+        favicon: 'favicons/current.svg',
+      },
+    });
+    const latest = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: null,
+        favicon: 'favicons/current.svg',
+      },
+    });
+    const saved = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: null,
+        favicon: null,
+      },
+    });
+    const { provider, settings } = trackedProvider();
+    settings.configDocumentExists.mockResolvedValue(true);
+    settings.loadAndDecryptConfiguration
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(latest)
+      .mockResolvedValueOnce(saved);
+    settings.getMainConfigurationLastUpdated.mockResolvedValue(new Date());
+    settings.getMainConfiguration.mockResolvedValue({ _version: 8 });
+    settings.saveMainConfigurationWithTransaction.mockResolvedValue(undefined);
+    await provider.loadConfiguration();
+
+    const result = await provider.updateConfig({
+      branding: { favicon: null },
+    });
+
+    expect(settings.saveMainConfigurationWithTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        branding: {
+          companyName: 'Parako',
+          logoDark: null,
+          favicon: null,
+        },
+      }),
+      undefined,
+      undefined,
+      8
+    );
+    expect(result).toEqual(saved);
+  });
+
+  it('retries an implicit partial update after a concurrent version change', async () => {
+    const firstBase = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: 'logos/dark.svg',
+        favicon: 'favicons/current.svg',
+      },
+    });
+    const newerBase = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: null,
+        favicon: 'favicons/current.svg',
+      },
+    });
+    const saved = createStoredSettings({
+      branding: {
+        companyName: 'Parako',
+        logoDark: null,
+        favicon: null,
+      },
+    });
+    const { provider, settings } = trackedProvider();
+    settings.configDocumentExists.mockResolvedValue(true);
+    settings.loadAndDecryptConfiguration
+      .mockResolvedValueOnce(firstBase)
+      .mockResolvedValueOnce(newerBase)
+      .mockResolvedValueOnce(saved);
+    settings.getMainConfigurationLastUpdated.mockResolvedValue(new Date());
+    settings.getMainConfiguration
+      .mockResolvedValueOnce({ _version: 8 })
+      .mockResolvedValueOnce({ _version: 9 });
+    settings.saveMainConfigurationWithTransaction
+      .mockRejectedValueOnce(new ConfigurationVersionConflictError(8, 9))
+      .mockResolvedValueOnce(undefined);
+
+    const result = await provider.updateConfig({
+      branding: { favicon: null },
+    });
+
+    expect(settings.saveMainConfigurationWithTransaction).toHaveBeenCalledTimes(
+      2
+    );
+    expect(
+      settings.saveMainConfigurationWithTransaction
+    ).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        branding: {
+          companyName: 'Parako',
+          logoDark: null,
+          favicon: null,
+        },
+      }),
+      undefined,
+      undefined,
+      9
+    );
+    expect(result).toEqual(saved);
+  });
+
+  it('bounds implicit partial-update retries and preserves the final conflict', async () => {
+    const conflicts = [
+      new ConfigurationVersionConflictError(8, 9),
+      new ConfigurationVersionConflictError(9, 10),
+      new ConfigurationVersionConflictError(10, 11),
+    ];
+    const { provider, settings } = trackedProvider();
+    settings.configDocumentExists.mockResolvedValue(true);
+    settings.loadAndDecryptConfiguration.mockResolvedValue(
+      createStoredSettings()
+    );
+    settings.getMainConfigurationLastUpdated.mockResolvedValue(new Date());
+    settings.getMainConfiguration
+      .mockResolvedValueOnce({ _version: 8 })
+      .mockResolvedValueOnce({ _version: 9 })
+      .mockResolvedValueOnce({ _version: 10 });
+    settings.saveMainConfigurationWithTransaction
+      .mockRejectedValueOnce(conflicts[0])
+      .mockRejectedValueOnce(conflicts[1])
+      .mockRejectedValueOnce(conflicts[2]);
+
+    await expect(
+      provider.updateConfig({ branding: { favicon: null } })
+    ).rejects.toBe(conflicts[2]);
+    expect(settings.saveMainConfigurationWithTransaction).toHaveBeenCalledTimes(
+      3
+    );
   });
 
   it.each([new Error('update failed'), 'update failed'])(
@@ -318,6 +469,19 @@ describe('DatabaseConfigProvider core behavior', () => {
       );
     }
   );
+
+  it('preserves typed version conflicts from the settings service', async () => {
+    const conflict = new ConfigurationVersionConflictError(7, 8);
+    const { provider, settings } = trackedProvider();
+    settings.configDocumentExists.mockResolvedValue(true);
+    settings.loadAndDecryptConfiguration.mockResolvedValue(
+      createStoredSettings()
+    );
+    settings.getMainConfigurationLastUpdated.mockResolvedValue(new Date());
+    settings.saveMainConfigurationWithTransaction.mockRejectedValue(conflict);
+
+    await expect(provider.updateConfig({}, 7)).rejects.toBe(conflict);
+  });
 
   it('isolates subscriber failures from other subscribers', async () => {
     const { provider, settings } = trackedProvider();

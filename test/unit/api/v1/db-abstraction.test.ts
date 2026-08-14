@@ -227,6 +227,7 @@ describe('API v1 — DB abstraction contract', () => {
           getTenantBySlug: vi.fn().mockResolvedValue(tenant),
         },
         tenantSettingsOverrideService: mockOverrideService,
+        configManager: { getPlatformConfig: vi.fn() },
         logger: { error: vi.fn(), info: vi.fn() },
       };
       const controller = new TenantsController(deps);
@@ -351,6 +352,7 @@ describe('API v1 — DB abstraction contract', () => {
           getTenantBySlug: vi.fn().mockResolvedValue(tenant),
         },
         tenantSettingsOverrideService: mockOverrideService,
+        configManager: { getPlatformConfig: vi.fn() },
         logger: { error: vi.fn(), info: vi.fn() },
       };
       const controller = new TenantsController(deps);

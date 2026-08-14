@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import type { BootstrapConfig } from '../../../../src/config/schemas/bootstrap-schema.js';
+import { resolvePostgresqlTestUrl } from '../../../../scripts/testing/postgresql-test-url.js';
 import { createPrismaClient } from '../../../../src/db/prisma.js';
 import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 import { PrismaOidcStoreAdapter } from '../../../../src/oidc/adapter/prisma/index.js';
@@ -18,9 +19,7 @@ describe('PostgreSQL generated client and RLS runtime', () => {
   const logger = { error: () => {} } as unknown as ILogger;
 
   beforeAll(() => {
-    const url =
-      process.env.STORAGE_POSTGRESQL_URL ??
-      process.env.PARAKO_E2E_POSTGRESQL_URL;
+    const url = resolvePostgresqlTestUrl(process.env);
     if (!url) {
       throw new Error(
         'STORAGE_POSTGRESQL_URL or PARAKO_E2E_POSTGRESQL_URL is required'

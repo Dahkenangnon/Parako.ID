@@ -363,6 +363,12 @@ describe('LocalsMiddleware', () => {
         setup_webauthn: '/fr/accounts/setup-webauthn',
         settings_social: '/fr/accounts/settings/social',
       },
+      adminFull: {
+        dashboard: '/fr/admin',
+        users: '/fr/admin/users',
+        oidc_clients: '/fr/admin/oidc-clients',
+        logout: '/fr/auth/logout',
+      },
       oidc: {
         authorization: `${config.oidc.path}${config.oidc.routes.authorization}`,
         end_session: `${config.oidc.path}${config.oidc.routes.end_session}`,
@@ -381,6 +387,8 @@ describe('LocalsMiddleware', () => {
     expect(res.locals.routes.app.auth).toBe('/auth');
     expect(res.locals.routes.authFull.login).toBe('/auth/login');
     expect(res.locals.routes.accountFull.dashboard).toBe('/accounts/');
+    expect(res.locals.routes.adminFull.dashboard).toBe('/admin');
+    expect(res.locals.routes.adminFull.logout).toBe('/auth/logout');
     expect(next).toHaveBeenCalledOnce();
   });
 

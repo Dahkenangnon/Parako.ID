@@ -94,7 +94,11 @@ describe('DEFAULT_FULL_CONFIG alignment', () => {
           scopes: ['openid', 'custom_scope'],
         },
         social_providers: {
-          enabled: ['microsoft'],
+          enabled: ['microsoft' as const],
+          microsoft: {
+            client_id: 'microsoft-client-id',
+            client_secret: 'microsoft-client-secret',
+          },
         },
       },
     };
@@ -229,6 +233,20 @@ describe('DEFAULT_FULL_CONFIG alignment', () => {
   it('hardened defaults: security & correctness fields', () => {
     // Social providers disabled by default (no credentials configured)
     expect(DEFAULT_FULL_CONFIG.features.social_providers.enabled).toEqual([]);
+    for (const provider of [
+      'google',
+      'github',
+      'microsoft',
+      'linkedin',
+      'facebook',
+    ] as const) {
+      expect(
+        DEFAULT_FULL_CONFIG.features.social_providers[provider]?.client_id
+      ).toBeUndefined();
+      expect(
+        DEFAULT_FULL_CONFIG.features.social_providers[provider]?.client_secret
+      ).toBeUndefined();
+    }
 
     // Rate limiting enabled by default
     expect(DEFAULT_FULL_CONFIG.security.protection.rate_limiting.enabled).toBe(
@@ -258,6 +276,21 @@ describe('DEFAULT_FULL_CONFIG alignment', () => {
     expect(result.data.oidc.token_ttl.interaction).toBe(600);
     expect(result.data.oidc.token_ttl.refresh_token).toBe(86400);
     expect(result.data.oidc.token_ttl.session).toBe(86400);
+
+    // OIDC Discovery advertises supported display modes, not locales.
+    expect(DEFAULT_FULL_CONFIG.oidc.discovery.display_values_supported).toEqual(
+      ['page']
+    );
+    expect(result.data.oidc.discovery.display_values_supported).toEqual([
+      'page',
+    ]);
+
+    const nonHttpDiscoveryUrl = structuredClone(DEFAULT_FULL_CONFIG);
+    nonHttpDiscoveryUrl.oidc.discovery.service_documentation =
+      'ftp://docs.example.test';
+    expect(AppConfigSchema.safeParse(nonHttpDiscoveryUrl)).toMatchObject({
+      success: false,
+    });
   });
 
   it('mergeConfig preserves empty arrays from overrides', () => {

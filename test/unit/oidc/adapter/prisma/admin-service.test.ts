@@ -167,6 +167,32 @@ describe('PrismaOidcAdminService session and grant behavior', () => {
     ]);
   });
 
+  it('translates an anchored portable account filter to an indexed prefix query', async () => {
+    const prisma = makePrisma();
+    const service = new PrismaOidcAdminService(prisma as any, 'Session');
+    const filters = {
+      'payload.accountId': {
+        $regex: '^alice\\.admin',
+        $options: 'i',
+      },
+    };
+
+    await service.countSessions(filters);
+    await service.findSessionsWithPagination(filters);
+
+    const expectedWhere = {
+      model: 'Session',
+      tenant_id: 'default',
+      account_id: { startsWith: 'alice.admin' },
+    };
+    expect(prisma.oidcStore.count).toHaveBeenCalledWith({
+      where: expectedWhere,
+    });
+    expect(prisma.oidcStore.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere })
+    );
+  });
+
   it('returns a normalized session or null from direct lookup', async () => {
     const prisma = makePrisma();
     prisma.oidcStore.findFirst

@@ -12,12 +12,13 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 
 import {
+  loginLimiter,
   loginBruteForceByIdentifierAndIp,
   loginBruteForceByIp,
 } from '../../../src/utils/rate-limiter.js';
 import { HARDENING } from '../../../src/config/hardening-defaults.js';
 
-// The two limiters under test consume their quota only when a downstream
+// The three production login limiters consume their quota only when a downstream
 // handler marks the response with `res.locals.loginFailed = true`. The test
 // app below stands in for the OIDC login handler — it accepts the form
 // payload and either marks the response as failed (the `fail=1` flag) or
@@ -29,6 +30,7 @@ function buildLoginApp(): Express {
   app.use(express.urlencoded({ extended: true }));
   app.post(
     '/login',
+    loginLimiter,
     loginBruteForceByIp,
     loginBruteForceByIdentifierAndIp,
     (req, res) => {
@@ -137,5 +139,19 @@ describe('login brute-force protection', () => {
       .set('X-Forwarded-For', IP_OK)
       .send({ login: 'good@user.test', password: 'wrong', fail: '1' });
     expect(next.status).toBe(200);
+  });
+
+  it('allows repeated successful sign-ins from one caller', async () => {
+    const callerIp = '203.0.113.31';
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const response = await request(app)
+        .post('/login')
+        .set('X-Forwarded-For', callerIp)
+        .send({ login: `member-${attempt}@example.test`, password: 'right' });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({ ok: true });
+    }
   });
 });

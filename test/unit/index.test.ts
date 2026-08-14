@@ -99,6 +99,12 @@ const harness = vi.hoisted(() => {
   const oidcAdapterBridge = { client: { destroy: vi.fn() } };
   const expressApp = { set: vi.fn() };
   const rateLimitRedisClient = { quit: vi.fn() };
+  const opsRedisClient = {
+    status: 'ready',
+    quit: vi.fn(),
+    disconnect: vi.fn(),
+  };
+  const containerBehavior = { opsRedisBound: false };
 
   const TYPES = {
     ConfigManager: 'ConfigManager',
@@ -110,6 +116,7 @@ const harness = vi.hoisted(() => {
     Application: 'Application',
     ActivityService: 'ActivityService',
     OIDCAdapterBridge: 'OIDCAdapterBridge',
+    OpsRedisClient: 'OpsRedisClient',
   };
   const services = new Map<any, any>([
     [TYPES.ConfigManager, configManager],
@@ -121,6 +128,7 @@ const harness = vi.hoisted(() => {
     [TYPES.Application, application],
     [TYPES.ActivityService, activityService],
     [TYPES.OIDCAdapterBridge, oidcAdapterBridge],
+    [TYPES.OpsRedisClient, opsRedisClient],
   ]);
 
   const servers: FakeHttpServer[] = [];
@@ -144,13 +152,22 @@ const harness = vi.hoisted(() => {
     oidcAdapterBridge,
     expressApp,
     rateLimitRedisClient,
+    opsRedisClient,
+    containerBehavior,
     TYPES,
     services,
     servers,
     serverBehavior,
     hardening,
     createServer,
-    container: { get: vi.fn((token: any) => services.get(token)) },
+    container: {
+      get: vi.fn((token: any) => services.get(token)),
+      isBound: vi.fn((token: any) =>
+        token === TYPES.OpsRedisClient
+          ? containerBehavior.opsRedisBound
+          : services.has(token)
+      ),
+    },
     assertContainerValid: vi.fn(),
     initRateLimitRedis: vi.fn(),
     getRateLimitRedisClient: vi.fn(),
@@ -254,6 +271,10 @@ describe('server process entrypoint', () => {
     harness.activityService.shutdown.mockResolvedValue(undefined);
     harness.oidcAdapterBridge.client.destroy.mockResolvedValue(undefined);
     harness.rateLimitRedisClient.quit.mockResolvedValue(undefined);
+    harness.opsRedisClient.status = 'ready';
+    harness.opsRedisClient.quit.mockResolvedValue(undefined);
+    harness.opsRedisClient.disconnect.mockReturnValue(undefined);
+    harness.containerBehavior.opsRedisBound = false;
     harness.getRateLimitRedisClient.mockReturnValue(
       harness.rateLimitRedisClient
     );
@@ -767,6 +788,7 @@ describe('server process entrypoint', () => {
       'activity-service',
       'redis-pubsub',
       'rate-limit-redis',
+      'ops-redis',
       'config-cleanup',
     ]);
     expect(harness.activityService.shutdown).toHaveBeenCalledOnce();
@@ -816,6 +838,36 @@ describe('server process entrypoint', () => {
 
     expect(harness.rateLimitRedisClient.quit).not.toHaveBeenCalled();
   });
+
+  it('quits a connected operations Redis client during shutdown', async () => {
+    harness.containerBehavior.opsRedisBound = true;
+    await importEntrypoint();
+
+    harness.processHandlers.get('SIGINT')!();
+    await vi.waitFor(() => {
+      expect(harness.processMock.exit).toHaveBeenCalledWith(0);
+    });
+
+    expect(harness.opsRedisClient.quit).toHaveBeenCalledOnce();
+    expect(harness.opsRedisClient.disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each(['wait', 'end'])(
+    'disconnects an idle operations Redis client with status %s',
+    async status => {
+      harness.containerBehavior.opsRedisBound = true;
+      harness.opsRedisClient.status = status;
+      await importEntrypoint();
+
+      harness.processHandlers.get('SIGINT')!();
+      await vi.waitFor(() => {
+        expect(harness.processMock.exit).toHaveBeenCalledWith(0);
+      });
+
+      expect(harness.opsRedisClient.disconnect).toHaveBeenCalledOnce();
+      expect(harness.opsRedisClient.quit).not.toHaveBeenCalled();
+    }
+  );
 
   it('continues shutdown when database disconnect fails', async () => {
     const failure = new Error('database close failed');

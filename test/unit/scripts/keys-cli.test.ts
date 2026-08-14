@@ -28,6 +28,12 @@ vi.mock('jose', () => ({
   calculateJwkThumbprint: vi.fn().mockResolvedValue('test-kid-123'),
 }));
 
+import {
+  createBackup,
+  generateKeys,
+  generateKeysInteractive,
+} from '../../../scripts/manage/keys/index.js';
+
 describe('Keys CLI — index.ts exports', () => {
   beforeEach(() => {
     vi.spyOn(fs, 'chmodSync').mockImplementation(() => {});
@@ -39,10 +45,21 @@ describe('Keys CLI — index.ts exports', () => {
   });
 
   describe('generateKeys()', () => {
-    it('should generate keys and write jwks.json to runtime/jwks/', async () => {
-      const { generateKeys } =
-        await import('../../../scripts/manage/keys/index.js');
+    it('refuses an existing first-boot JWKS file before generating keys', async () => {
+      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      const writeSpy = vi
+        .spyOn(fs, 'writeFileSync')
+        .mockImplementation(() => {});
 
+      await expect(generateKeys()).rejects.toThrow(
+        'Refusing to overwrite first-boot keys'
+      );
+
+      expect(jose.generateKeyPair).not.toHaveBeenCalled();
+      expect(writeSpy).not.toHaveBeenCalled();
+    });
+
+    it('should generate keys and write jwks.json to runtime/jwks/', async () => {
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
@@ -74,8 +91,6 @@ describe('Keys CLI — index.ts exports', () => {
     });
 
     it('can generate only the required RSA and EC keys', async () => {
-      const { generateKeys } =
-        await import('../../../scripts/manage/keys/index.js');
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
@@ -85,7 +100,7 @@ describe('Keys CLI — index.ts exports', () => {
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await generateKeys(false);
+      await generateKeys(false, true);
 
       const writtenContent = JSON.parse(writeSpy.mock.calls[0][1] as string);
       expect(writtenContent.keys).toHaveLength(2);
@@ -93,8 +108,6 @@ describe('Keys CLI — index.ts exports', () => {
     });
 
     it('enforces owner-only permissions on the private JWKS file', async () => {
-      const { generateKeys } =
-        await import('../../../scripts/manage/keys/index.js');
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
@@ -102,11 +115,12 @@ describe('Keys CLI — index.ts exports', () => {
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await generateKeys(false);
+      await generateKeys(false, true);
 
       const outputPath = writeSpy.mock.calls[0]?.[0] as string;
       expect(writeSpy).toHaveBeenCalledWith(outputPath, expect.any(String), {
         encoding: 'utf8',
+        flag: 'w',
         mode: 0o600,
       });
       expect(chmodSpy).toHaveBeenCalledWith(outputPath, 0o600);
@@ -115,9 +129,6 @@ describe('Keys CLI — index.ts exports', () => {
 
   describe('createBackup()', () => {
     it('should create a timestamped backup of the given file', async () => {
-      const { createBackup } =
-        await import('../../../scripts/manage/keys/index.js');
-
       const copySpy = vi.spyOn(fs, 'copyFileSync').mockImplementation(() => {});
 
       const backupPath = createBackup('/some/path/jwks.json');
@@ -131,8 +142,6 @@ describe('Keys CLI — index.ts exports', () => {
 
   describe('generateKeysInteractive()', () => {
     it('generates immediately when no JWKS file exists', async () => {
-      const { generateKeysInteractive } =
-        await import('../../../scripts/manage/keys/index.js');
       vi.spyOn(fs, 'existsSync').mockReturnValue(false);
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
@@ -150,8 +159,6 @@ describe('Keys CLI — index.ts exports', () => {
     });
 
     it('leaves an existing JWKS file untouched when overwrite is declined', async () => {
-      const { generateKeysInteractive } =
-        await import('../../../scripts/manage/keys/index.js');
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
@@ -168,8 +175,6 @@ describe('Keys CLI — index.ts exports', () => {
     });
 
     it('backs up an existing JWKS file before confirmed replacement', async () => {
-      const { generateKeysInteractive } =
-        await import('../../../scripts/manage/keys/index.js');
       vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   applyComputedDefaults: vi.fn(),
   buildRedisKey: vi.fn(),
+  buildRedisKeyForTenant: vi.fn(),
   getDefaultFullConfig: vi.fn(),
   getTenantIdSafe: vi.fn(),
   tenantRun: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock('../../../src/config/constants.js', () => ({
 }));
 vi.mock('../../../src/multi-tenancy/redis-key.js', () => ({
   buildRedisKey: mocks.buildRedisKey,
+  buildRedisKeyForTenant: mocks.buildRedisKeyForTenant,
 }));
 vi.mock('../../../src/multi-tenancy/tenant-context.js', () => ({
   tenantContext: {
@@ -26,6 +28,7 @@ vi.mock('../../../src/multi-tenancy/tenant-context.js', () => ({
 }));
 
 import { ConfigManager } from '../../../src/config/index.js';
+import { ConfigurationVersionConflictError } from '../../../src/errors/configuration-version-conflict.error.js';
 
 function createPersistedConfig(overrides: Record<string, unknown> = {}) {
   return {
@@ -141,6 +144,9 @@ describe('ConfigManager core behavior', () => {
     vi.stubEnv('USE_FILE_CONFIG', 'false');
     mocks.applyComputedDefaults.mockReset().mockImplementation(value => value);
     mocks.buildRedisKey.mockReset().mockReturnValue('tenant:config:key');
+    mocks.buildRedisKeyForTenant
+      .mockReset()
+      .mockReturnValue('tenant-a:config:key');
     mocks.getDefaultFullConfig
       .mockReset()
       .mockReturnValue(createPersistedConfig());
@@ -511,13 +517,16 @@ describe('ConfigManager core behavior', () => {
   );
 
   it('applies an external database change and isolates failing subscribers', async () => {
-    const { bootstrapProvider, dbProvider, manager } = createManager();
+    const { bootstrapProvider, dbProvider, manager, tenantOverrideService } =
+      createManager();
     bootstrapProvider.loadConfiguration.mockResolvedValue(
       createBootstrapConfig()
     );
     dbProvider.isAvailable.mockResolvedValue(true);
     dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
     await manager.load();
+    await manager.ensureTenantConfig('tenant-a');
+    expect(tenantOverrideService.loadOverrides).toHaveBeenCalledOnce();
     manager.getConfigSection('application');
     const successfulSubscriber = vi.fn();
     const failingSubscriber = vi.fn().mockRejectedValue(new Error('offline'));
@@ -538,6 +547,8 @@ describe('ConfigManager core behavior', () => {
     expect(successfulSubscriber).toHaveBeenCalledOnce();
     expect(failingSubscriber).toHaveBeenCalledOnce();
     expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
+    await manager.ensureTenantConfig('tenant-a');
+    expect(tenantOverrideService.loadOverrides).toHaveBeenCalledTimes(2);
     expect(console.error).toHaveBeenCalledWith(
       'Error notifying subscriber failing:',
       expect.any(Error)
@@ -658,13 +669,15 @@ describe('ConfigManager core behavior', () => {
     };
     manager.setPubSub(pubsub as never);
 
-    const updated = await manager.update({
-      application: { title: 'Requested' },
-    } as never);
+    const updated = await manager.update(
+      { application: { title: 'Requested' } } as never,
+      7
+    );
 
-    expect(dbProvider.updateConfig).toHaveBeenCalledWith({
-      application: { title: 'Requested' },
-    });
+    expect(dbProvider.updateConfig).toHaveBeenCalledWith(
+      { application: { title: 'Requested' } },
+      7
+    );
     expect(updated.application.title).toBe('Updated');
     expect(subscriber).toHaveBeenCalledWith(updated);
     expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
@@ -678,6 +691,92 @@ describe('ConfigManager core behavior', () => {
       timestamp: Date.now(),
       tenantId: '*',
     });
+  });
+
+  it('notifies runtime subscribers once when the database provider echoes a local update', async () => {
+    const { bootstrapProvider, dbProvider, manager } = createManager();
+    const updatedPersistedConfig = createPersistedConfig({
+      application: { title: 'Updated once' },
+    });
+    bootstrapProvider.loadConfiguration.mockResolvedValue(
+      createBootstrapConfig()
+    );
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
+    dbProvider.updateConfig.mockImplementation(async () => {
+      const providerSubscriber = dbProvider.subscribe.mock.calls[0][0];
+      void providerSubscriber(
+        updatedPersistedConfig,
+        undefined,
+        'local-update'
+      );
+      return updatedPersistedConfig;
+    });
+    await manager.load();
+    const subscriber = vi.fn();
+    manager.subscribe('update-listener', subscriber);
+
+    const updated = await manager.update({
+      application: { title: 'Updated once' },
+    } as never);
+
+    expect(updated.application.title).toBe('Updated once');
+    expect(subscriber).toHaveBeenCalledOnce();
+    expect(subscriber).toHaveBeenCalledWith(updated);
+  });
+
+  it('serializes concurrent database updates so each partial is applied in order', async () => {
+    const { bootstrapProvider, dbProvider, manager } = createManager();
+    bootstrapProvider.loadConfiguration.mockResolvedValue(
+      createBootstrapConfig()
+    );
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
+
+    let releaseFirstUpdate!: () => void;
+    const firstUpdateBlocked = new Promise<void>(resolve => {
+      releaseFirstUpdate = resolve;
+    });
+    dbProvider.updateConfig
+      .mockImplementationOnce(async () => {
+        await firstUpdateBlocked;
+        return createPersistedConfig({
+          branding: { companyName: 'Parako', logoDark: null },
+        });
+      })
+      .mockResolvedValueOnce(
+        createPersistedConfig({
+          branding: {
+            companyName: 'Parako',
+            logoDark: null,
+            favicon: null,
+          },
+        })
+      );
+    await manager.load();
+
+    const first = manager.update({
+      branding: { logoDark: null },
+    } as never);
+    await vi.waitFor(() =>
+      expect(dbProvider.updateConfig).toHaveBeenCalledTimes(1)
+    );
+
+    const second = manager.update({
+      branding: { favicon: null },
+    } as never);
+    await Promise.resolve();
+
+    const callsBeforeFirstCompleted = dbProvider.updateConfig.mock.calls.length;
+    releaseFirstUpdate();
+    await Promise.all([first, second]);
+
+    expect(callsBeforeFirstCompleted).toBe(1);
+    expect(dbProvider.updateConfig).toHaveBeenNthCalledWith(
+      2,
+      { branding: { favicon: null } },
+      undefined
+    );
   });
 
   it('does not fail an update when pubsub broadcasting fails', async () => {
@@ -775,6 +874,22 @@ describe('ConfigManager core behavior', () => {
       expect(manager.getPlatformConfig()).toBe(previous);
     }
   );
+
+  it('preserves typed version conflicts and the last-known-good cache', async () => {
+    const conflict = new ConfigurationVersionConflictError(7, 8);
+    const { bootstrapProvider, dbProvider, manager } = createManager();
+    bootstrapProvider.loadConfiguration.mockResolvedValue(
+      createBootstrapConfig()
+    );
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
+    dbProvider.updateConfig.mockRejectedValue(conflict);
+    await manager.load();
+    const previous = manager.getPlatformConfig();
+
+    await expect(manager.update({}, 7)).rejects.toBe(conflict);
+    expect(manager.getPlatformConfig()).toBe(previous);
+  });
 
   it('reloads from the active database provider and clears tenant config', async () => {
     const { bootstrapProvider, dbProvider, manager, tenantOverrideService } =
@@ -917,6 +1032,51 @@ describe('ConfigManager core behavior', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it('broadcasts a tenant-only invalidation on the explicit tenant channel', async () => {
+    const { bootstrapProvider, dbProvider, manager } = createManager();
+    bootstrapProvider.loadConfiguration.mockResolvedValue(
+      createBootstrapConfig()
+    );
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
+    await manager.load();
+    const pubsub = {
+      isConnected: vi.fn().mockReturnValue(true),
+      psubscribe: vi.fn(),
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+    manager.setPubSub(pubsub as never);
+
+    manager.invalidateTenantConfig('tenant-a', { broadcast: true });
+
+    expect(mocks.buildRedisKeyForTenant).toHaveBeenCalledWith(
+      'persisted-prefix',
+      'tenant-a',
+      'config',
+      'invalidated'
+    );
+    expect(pubsub.publish).toHaveBeenCalledWith('tenant-a:config:key', {
+      originId: 'manager-origin',
+      timestamp: Date.now(),
+      tenantId: 'tenant-a',
+    });
+  });
+
+  it('evicts only the addressed tenant for an external tenant invalidation', async () => {
+    const { manager } = createManager();
+    const reload = vi.spyOn(manager, 'reload').mockResolvedValue({} as never);
+    const invalidate = vi.spyOn(manager, 'invalidateTenantConfig');
+    const pubsub = { psubscribe: vi.fn() };
+    manager.setPubSub(pubsub as never);
+    const handler = pubsub.psubscribe.mock.calls[0][1];
+
+    handler({ originId: 'other-process', tenantId: 'tenant-a' });
+    await Promise.resolve();
+
+    expect(invalidate).toHaveBeenCalledWith('tenant-a');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
   it('reloads on external pubsub invalidation and logs reload failures', async () => {
     const { manager } = createManager();
     const reloadError = new Error('reload unavailable');
@@ -956,6 +1116,20 @@ describe('ConfigManager core behavior', () => {
     expect(manager.getSubscribers()).toEqual([]);
     expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
     expect(manager.isLoaded()).toBe(false);
+  });
+
+  it('detaches its config invalidation handler during cleanup', () => {
+    const { manager } = createManager();
+    const pubsub = {
+      psubscribe: vi.fn(),
+      punsubscribe: vi.fn(),
+    };
+    manager.setPubSub(pubsub as never);
+    const [pattern, handler] = pubsub.psubscribe.mock.calls[0];
+
+    manager.cleanup();
+
+    expect(pubsub.punsubscribe).toHaveBeenCalledWith(pattern, handler);
   });
 
   it('handles a tenant config request before global configuration is loaded', async () => {

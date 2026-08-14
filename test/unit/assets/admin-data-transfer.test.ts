@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { initAdminDataTransfer } from '../../../src/assets/js/admin/data-transfer/data-transfer.js';
 
 const { parseCsv } = vi.hoisted(() => ({ parseCsv: vi.fn() }));
 
@@ -45,8 +46,10 @@ class ElementFixture {
     text: () => Promise<string>;
   }> = [];
   public textContent = '';
+  public tabIndex = 0;
   public value = '';
   public readonly submit = vi.fn();
+  public readonly focus = vi.fn();
   public closestResult: ElementFixture | null = null;
   private readonly attributes = new Map<string, string>();
 
@@ -86,8 +89,8 @@ class ElementFixture {
     this.attributes.set(name, value);
   }
 
-  public async trigger(type: string): Promise<EventFixture> {
-    const event = new EventFixture();
+  public async trigger(type: string, key = ''): Promise<EventFixture> {
+    const event = new EventFixture(key);
     for (const listener of this.listeners.get(type) ?? []) {
       await listener(event);
     }
@@ -96,6 +99,8 @@ class ElementFixture {
 }
 
 class EventFixture {
+  constructor(public readonly key = '') {}
+
   public readonly preventDefault = vi.fn();
 }
 
@@ -166,7 +171,6 @@ interface SetupOptions {
 }
 
 async function setup(options: SetupOptions = {}) {
-  vi.resetModules();
   parseCsv.mockReset();
   EventSourceFixture.instances = [];
 
@@ -202,8 +206,10 @@ async function setup(options: SetupOptions = {}) {
 
   const importTab = new ElementFixture();
   importTab.dataset.tab = 'import';
+  importTab.setAttribute('aria-selected', 'true');
   const exportTab = new ElementFixture();
   exportTab.dataset.tab = 'export';
+  exportTab.setAttribute('aria-selected', 'false');
   const tabs = [importTab, exportTab];
 
   const csrfMeta = new ElementFixture();
@@ -232,7 +238,7 @@ async function setup(options: SetupOptions = {}) {
   vi.stubGlobal('fetch', fetchMock);
   vi.stubGlobal('EventSource', EventSourceFixture);
 
-  await import('../../../src/assets/js/admin/data-transfer/data-transfer.js');
+  initAdminDataTransfer();
 
   return {
     elements,
@@ -286,7 +292,6 @@ describe('admin data transfer browser controller', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it.each([null, '', '{malformed'])(
@@ -312,6 +317,27 @@ describe('admin data transfer browser controller', () => {
     expect(
       context.elements.get('export-panel')?.classList.contains('hidden')
     ).toBe(false);
+  });
+
+  it('supports arrow, Home, and End keyboard navigation between tabs', async () => {
+    const context = await setup();
+
+    expect(context.tabs.map(tab => tab.tabIndex)).toEqual([0, -1]);
+
+    const arrowEvent = await context.tabs[0].trigger('keydown', 'ArrowRight');
+    expect(arrowEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(context.tabs[1].focus).toHaveBeenCalledOnce();
+    expect(context.tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual([
+      'false',
+      'true',
+    ]);
+    expect(context.tabs.map(tab => tab.tabIndex)).toEqual([-1, 0]);
+
+    await context.tabs[1].trigger('keydown', 'Home');
+    expect(context.tabs[0].focus).toHaveBeenCalledOnce();
+
+    await context.tabs[0].trigger('keydown', 'End');
+    expect(context.tabs[1].focus).toHaveBeenCalledTimes(2);
   });
 
   it('rejects oversized and incorrectly typed files', async () => {
@@ -748,6 +774,9 @@ describe('admin data transfer browser controller', () => {
     expect(context.elements.get('progress-percent')?.textContent).toBe('0%');
     await source.emit('progress', JSON.stringify({ progress: 150 }));
     expect(context.elements.get('progress-percent')?.textContent).toBe('100%');
+    expect(
+      context.elements.get('progress-bar')?.getAttribute('aria-valuenow')
+    ).toBe('100');
     expect(context.elements.get('progress-status')?.textContent).toBe(
       'Finalizing...'
     );

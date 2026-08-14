@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import postgresqlVitestConfig from '../../integration/config/vitest.postgresql.config.js';
 import vitestConfig from '../../../vitest.config.js';
 
 const GLOBAL_THRESHOLD_KEYS = new Set([
@@ -18,6 +19,21 @@ function coverageConfiguration() {
 }
 
 describe('coverage policy', () => {
+  it('routes real PostgreSQL suites through the mandatory PostgreSQL gate', () => {
+    const postgresqlSuites = [
+      'test/integration/db/extensions/tenant-postgresql-runtime.test.ts',
+      'test/integration/scripts/admin-cli.postgresql.test.ts',
+      'test/integration/scripts/database-cli.postgresql.test.ts',
+    ];
+
+    expect(vitestConfig.test?.exclude).toEqual(
+      expect.arrayContaining(postgresqlSuites)
+    );
+    expect(postgresqlVitestConfig.test?.include).toEqual(
+      expect.arrayContaining(postgresqlSuites)
+    );
+  });
+
   it('exposes enforceable global floors using the Vitest 4 threshold shape', () => {
     expect(coverageConfiguration().thresholds).toMatchObject({
       branches: 16.01,

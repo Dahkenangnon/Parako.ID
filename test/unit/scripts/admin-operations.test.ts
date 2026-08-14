@@ -120,6 +120,30 @@ describe('administrator activation lifecycle', () => {
     expect(dependencies.createPrismaClient).not.toHaveBeenCalled();
   });
 
+  it('refuses the single-tenant activation workflow in multi-tenant mode', async () => {
+    process.env.MULTI_TENANCY_ENABLED = 'true';
+
+    await expect(
+      createAdminActivation('admin@example.com', 60)
+    ).rejects.toThrow(
+      'The administrator activation CLI supports only single-tenant deployments'
+    );
+    expect(dependencies.resolveAdapterEnvironment).not.toHaveBeenCalled();
+    expect(dependencies.createPrismaClient).not.toHaveBeenCalled();
+    expect(dependencies.mongoClient).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed multi-tenancy configuration before adapter access', async () => {
+    process.env.MULTI_TENANCY_ENABLED = 'truthy';
+
+    await expect(
+      createAdminActivation('admin@example.com', 60)
+    ).rejects.toThrow('MULTI_TENANCY_ENABLED must be true or false');
+    expect(dependencies.resolveAdapterEnvironment).not.toHaveBeenCalled();
+    expect(dependencies.createPrismaClient).not.toHaveBeenCalled();
+    expect(dependencies.mongoClient).not.toHaveBeenCalled();
+  });
+
   it('requires an HTTPS deployment URL before writing an activation', async () => {
     process.env.DEPLOYMENT_URL = 'http://id.example.com';
 

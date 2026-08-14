@@ -134,6 +134,7 @@ function setupDom() {
   const accountsLoadingSidebar = new ElementFixture();
   const accountsListSidebar = new ElementFixture();
   const accountsErrorSidebar = new ElementFixture();
+  const accountsRetrySidebar = new ElementFixture();
   const otherAccountsListSidebar = new ElementFixture();
   const accountStatusText = new ElementFixture();
   const mobileUserBtn = new ElementFixture();
@@ -141,6 +142,7 @@ function setupDom() {
   const accountsLoadingMobile = new ElementFixture();
   const accountsListMobile = new ElementFixture();
   const accountsErrorMobile = new ElementFixture();
+  const accountsRetryMobile = new ElementFixture();
   const otherAccountsListMobile = new ElementFixture();
   const themeIcon = new ElementFixture();
   const themeToggle = new ElementFixture();
@@ -167,6 +169,7 @@ function setupDom() {
   elements.set('accounts-loading-sidebar', accountsLoadingSidebar);
   elements.set('accounts-list-sidebar', accountsListSidebar);
   elements.set('accounts-error-sidebar', accountsErrorSidebar);
+  elements.set('accounts-retry-sidebar', accountsRetrySidebar);
   elements.set('other-accounts-list-sidebar', otherAccountsListSidebar);
   elements.set('account-status-text', accountStatusText);
   elements.set('mobile-user-btn', mobileUserBtn);
@@ -174,6 +177,7 @@ function setupDom() {
   elements.set('accounts-loading-mobile', accountsLoadingMobile);
   elements.set('accounts-list-mobile', accountsListMobile);
   elements.set('accounts-error-mobile', accountsErrorMobile);
+  elements.set('accounts-retry-mobile', accountsRetryMobile);
   elements.set('other-accounts-list-mobile', otherAccountsListMobile);
   elements.set('theme-icon', themeIcon);
   elements.set('theme-toggle', themeToggle);
@@ -211,9 +215,11 @@ function setupDom() {
     accountsErrorSidebar,
     accountsListSidebar,
     accountsLoadingSidebar,
+    accountsRetrySidebar,
     accountsErrorMobile,
     accountsListMobile,
     accountsLoadingMobile,
+    accountsRetryMobile,
     body,
     darkLogo,
     documentElement,
@@ -570,6 +576,32 @@ describe('account layout manager', () => {
     expect(wrapper?.className).toContain('min-h-[60px]');
   });
 
+  it('retries both account switchers declaratively without page globals', async () => {
+    const {
+      accountsListMobile,
+      accountsListSidebar,
+      accountsRetryMobile,
+      accountsRetrySidebar,
+      windowFixture,
+    } = setupDom();
+    const fetch = vi.fn().mockResolvedValue({
+      json: vi.fn().mockResolvedValue({ accounts: [], success: true }),
+    });
+    vi.stubGlobal('fetch', fetch);
+    await initializeManager();
+
+    accountsRetrySidebar.trigger('click');
+    accountsRetryMobile.trigger('click');
+
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(accountsListSidebar.classList.contains('hidden')).toBe(false);
+      expect(accountsListMobile.classList.contains('hidden')).toBe(false);
+    });
+    expect(windowFixture.loadSidebarAccountData).toBeUndefined();
+    expect(windowFixture.loadMobileAccountData).toBeUndefined();
+  });
+
   it('does not remove an account when confirmation is declined', async () => {
     const { windowFixture } = setupDom();
     const showConfirm = vi.fn().mockResolvedValue(false);
@@ -865,9 +897,8 @@ describe('account layout manager', () => {
     runReady();
 
     expect(themeIcon.getAttribute('data-lucide')).toBe('sun');
-    expect((window as any).loadSidebarAccountData).toEqual(
-      expect.any(Function)
-    );
+    expect((window as any).loadSidebarAccountData).toBeUndefined();
+    expect((window as any).loadMobileAccountData).toBeUndefined();
   });
 
   it('contains malformed embedded account layout state', async () => {
@@ -946,30 +977,29 @@ describe('account layout manager', () => {
   });
 
   it('loads safely when optional account result lists are absent', async () => {
-    const { elements, windowFixture } = setupDom();
+    const { accountsRetryMobile, accountsRetrySidebar, elements } = setupDom();
     elements.delete('other-accounts-list-sidebar');
     elements.delete('other-accounts-list-mobile');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        json: vi.fn().mockResolvedValue({
-          accounts: [],
-          success: true,
-        }),
-      })
-    );
+    const fetch = vi.fn().mockResolvedValue({
+      json: vi.fn().mockResolvedValue({
+        accounts: [],
+        success: true,
+      }),
+    });
+    vi.stubGlobal('fetch', fetch);
     await initializeManager();
 
-    await expect(
-      (windowFixture.loadSidebarAccountData as () => Promise<void>)()
-    ).resolves.toBeUndefined();
-    await expect(
-      (windowFixture.loadMobileAccountData as () => Promise<void>)()
-    ).resolves.toBeUndefined();
+    accountsRetrySidebar.trigger('click');
+    accountsRetryMobile.trigger('click');
+
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('uses initials without an account status element and handles malformed avatars', async () => {
-    const { elements, otherAccountsListSidebar, windowFixture } = setupDom();
+    const { accountsRetrySidebar, elements, otherAccountsListSidebar } =
+      setupDom();
     elements.delete('account-status-text');
     vi.stubGlobal(
       'fetch',
@@ -998,9 +1028,11 @@ describe('account layout manager', () => {
     );
     await initializeManager();
 
-    await (windowFixture.loadSidebarAccountData as () => Promise<void>)();
+    accountsRetrySidebar.trigger('click');
 
-    expect(otherAccountsListSidebar.appendChild).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(otherAccountsListSidebar.appendChild).toHaveBeenCalledTimes(2);
+    });
     for (const [wrapper] of otherAccountsListSidebar.appendChild.mock.calls) {
       const avatar = wrapper.appendChild.mock.calls[0]?.[0];
       expect(avatar?.appendChild.mock.calls[0]?.[0].textContent).not.toBe('');

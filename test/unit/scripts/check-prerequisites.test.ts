@@ -20,6 +20,10 @@ function createTemporaryRoot(prefix: string): string {
   return root;
 }
 
+function availablePseudoTerminal() {
+  return vi.fn().mockResolvedValue(undefined);
+}
+
 function createInstalledFixture(): { root: string } {
   const root = createTemporaryRoot('parako-prerequisites-');
   const clientDirectory = join(root, 'node_modules/@prisma/client');
@@ -29,10 +33,11 @@ function createInstalledFixture(): { root: string } {
 }
 
 describe('test prerequisites', () => {
-  it('accepts the self-contained local prerequisites without PostgreSQL', async () => {
+  it('accepts the self-contained local prerequisites without infrastructure services', async () => {
     const fixture = createInstalledFixture();
     const probeBrowser = vi.fn().mockResolvedValue(undefined);
     const probePostgresql = vi.fn();
+    const probeRedis = vi.fn();
 
     await expect(
       collectPrerequisiteFailures({
@@ -41,11 +46,14 @@ describe('test prerequisites', () => {
         pnpmVersion: '11.4.0',
         full: false,
         probeBrowser,
+        probePseudoTerminal: availablePseudoTerminal(),
         probePostgresql,
+        probeRedis,
       })
     ).resolves.toEqual([]);
     expect(probeBrowser).toHaveBeenCalledOnce();
     expect(probePostgresql).not.toHaveBeenCalled();
+    expect(probeRedis).not.toHaveBeenCalled();
   });
 
   it('reports every missing local prerequisite together', async () => {
@@ -59,6 +67,7 @@ describe('test prerequisites', () => {
       probeBrowser: vi
         .fn()
         .mockRejectedValue(new Error('Chrome executable is unavailable')),
+      probePseudoTerminal: availablePseudoTerminal(),
     });
 
     expect(failures).toEqual(
@@ -70,9 +79,29 @@ describe('test prerequisites', () => {
     );
   });
 
-  it('probes the configured PostgreSQL service for full verification', async () => {
+  it('reports a missing GNU pseudo-terminal utility before process tests', async () => {
+    const fixture = createInstalledFixture();
+
+    const failures = await collectPrerequisiteFailures({
+      ...fixture,
+      nodeVersion: '24.1.0',
+      pnpmVersion: '11.4.0',
+      full: false,
+      probeBrowser: vi.fn().mockResolvedValue(undefined),
+      probePseudoTerminal: vi
+        .fn()
+        .mockRejectedValue(new Error('GNU util-linux script is unavailable')),
+    });
+
+    expect(failures).toEqual([
+      'Pseudo-terminal prerequisite failed: GNU util-linux script is unavailable. Install util-linux.',
+    ]);
+  });
+
+  it('probes the configured infrastructure services for full verification', async () => {
     const fixture = createInstalledFixture();
     const probePostgresql = vi.fn().mockResolvedValue(undefined);
+    const probeRedis = vi.fn().mockResolvedValue(undefined);
     const url = 'postgresql://operator:secret@127.0.0.1:5432/parako_e2e'; // gitleaks:allow -- non-routable test fixture
 
     await expect(
@@ -82,11 +111,23 @@ describe('test prerequisites', () => {
         pnpmVersion: '11.4.0',
         full: true,
         postgresqlUrl: url,
+        redisEnvironment: {
+          REDIS_HOST: '127.0.0.1',
+          REDIS_PORT: '6379',
+          REDIS_DATABASE: '15',
+        },
         probeBrowser: vi.fn().mockResolvedValue(undefined),
+        probePseudoTerminal: availablePseudoTerminal(),
         probePostgresql,
+        probeRedis,
       })
     ).resolves.toEqual([]);
     expect(probePostgresql).toHaveBeenCalledWith(url);
+    expect(probeRedis).toHaveBeenCalledWith({
+      host: '127.0.0.1',
+      port: 6379,
+      database: 15,
+    });
   });
 
   it('fails full verification before tests when PostgreSQL is unavailable', async () => {
@@ -98,14 +139,57 @@ describe('test prerequisites', () => {
       pnpmVersion: '11.4.0',
       full: true,
       postgresqlUrl: 'postgresql://operator@127.0.0.1/parako',
+      redisEnvironment: { REDIS_HOST: '127.0.0.1' },
       probeBrowser: vi.fn().mockResolvedValue(undefined),
+      probePseudoTerminal: availablePseudoTerminal(),
       probePostgresql: vi
         .fn()
         .mockRejectedValue(new Error('connection refused')),
+      probeRedis: vi.fn().mockResolvedValue(undefined),
     });
 
     expect(failures).toEqual([
       'PostgreSQL prerequisite failed: connection refused',
     ]);
+  });
+
+  it('fails full verification before tests when Redis is not configured', async () => {
+    const fixture = createInstalledFixture();
+
+    const failures = await collectPrerequisiteFailures({
+      ...fixture,
+      nodeVersion: '24.1.0',
+      pnpmVersion: '11.4.0',
+      full: true,
+      postgresqlUrl: 'postgresql://operator@127.0.0.1/parako',
+      redisEnvironment: {},
+      probeBrowser: vi.fn().mockResolvedValue(undefined),
+      probePseudoTerminal: availablePseudoTerminal(),
+      probePostgresql: vi.fn().mockResolvedValue(undefined),
+      probeRedis: vi.fn(),
+    });
+
+    expect(failures).toEqual([
+      'Redis prerequisite failed: REDIS_HOST is required.',
+    ]);
+  });
+
+  it('reports an unreachable Redis service during full verification', async () => {
+    const fixture = createInstalledFixture();
+
+    const failures = await collectPrerequisiteFailures({
+      ...fixture,
+      nodeVersion: '24.1.0',
+      pnpmVersion: '11.4.0',
+      full: true,
+      postgresqlUrl: 'postgresql://operator@127.0.0.1/parako',
+      redisEnvironment: { REDIS_HOST: '127.0.0.1' },
+      probeBrowser: vi.fn().mockResolvedValue(undefined),
+      probePseudoTerminal: availablePseudoTerminal(),
+      probePostgresql: vi.fn().mockResolvedValue(undefined),
+      probeRedis: vi.fn().mockRejectedValue(new Error('connection refused')),
+    });
+
+    expect(failures).toEqual(['Redis prerequisite failed: connection refused']);
   });
 });

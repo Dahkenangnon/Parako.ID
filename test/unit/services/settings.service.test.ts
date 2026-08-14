@@ -10,6 +10,7 @@ import { SettingsService } from '../../../src/services/settings.service.js';
 import type { ISettings } from '../../../src/models/settings/types.js';
 import type { ISettingsRepository } from '../../../src/db/repositories/interfaces/settings.repository.js';
 import { getDefaultFullConfig } from '../../../src/config/constants.js';
+import { ConfigurationVersionConflictError } from '../../../src/errors/configuration-version-conflict.error.js';
 import {
   ensureDecrypted,
   ensureEncrypted,
@@ -454,13 +455,69 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       try {
         await expect(
           service.saveMainConfiguration({}, 'admin')
-        ).rejects.toThrow(
-          'Configuration was modified by another user. Please refresh the page and try again.'
+        ).rejects.toBeInstanceOf(ConfigurationVersionConflictError);
+      } finally {
+        if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = originalKey;
+      }
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('forwards the submitted active version to the atomic repository save', async () => {
+      const originalKey = process.env.ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = '4'.repeat(64);
+      const current = makeSettings({ _version: 7, version: '1.0.7' });
+      const saved = makeSettings({ _version: 8, version: '1.0.8' });
+      vi.mocked(repo.findActive).mockResolvedValue(current);
+      vi.mocked(repo.findHistory).mockResolvedValue([current]);
+      vi.mocked(repo.save).mockResolvedValue(saved);
+
+      try {
+        await expect(
+          service.saveMainConfiguration({}, 'admin', 'update', 7)
+        ).resolves.toBe(saved);
+      } finally {
+        if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = originalKey;
+      }
+
+      expect(repo.save).toHaveBeenCalledWith(
+        'parako_config',
+        expect.any(Object),
+        expect.objectContaining({
+          last_modified_by: 'admin',
+          change_reason: 'update',
+        }),
+        7
+      );
+    });
+
+    it('rejects a stale submitted version before attempting a repository write', async () => {
+      const originalKey = process.env.ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = '5'.repeat(64);
+      const current = makeSettings({ _version: 8, version: '1.0.8' });
+      vi.mocked(repo.findActive).mockResolvedValue(current);
+
+      try {
+        const rejection = service.saveMainConfiguration(
+          {},
+          'admin',
+          'stale update',
+          7
+        );
+        await expect(rejection).rejects.toMatchObject({
+          expectedVersion: 7,
+          actualVersion: 8,
+        });
+        await expect(rejection).rejects.toBeInstanceOf(
+          ConfigurationVersionConflictError
         );
       } finally {
         if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
         else process.env.ENCRYPTION_KEY = originalKey;
       }
+
+      expect(repo.findHistory).not.toHaveBeenCalled();
       expect(repo.save).not.toHaveBeenCalled();
     });
 
@@ -471,9 +528,9 @@ describe('SettingsService — ISettingsRepository delegation', () => {
         .mockResolvedValue(saved);
 
       await expect(
-        service.saveMainConfigurationWithTransaction({}, 'admin', 'reason')
+        service.saveMainConfigurationWithTransaction({}, 'admin', 'reason', 7)
       ).resolves.toBe(saved);
-      expect(save).toHaveBeenCalledWith({}, 'admin', 'reason');
+      expect(save).toHaveBeenCalledWith({}, 'admin', 'reason', 7);
     });
   });
 

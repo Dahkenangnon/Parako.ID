@@ -1,148 +1,84 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { AdminGrantsManager } from '../../../src/assets/js/admin/grants/index.js';
+
+type SubmitEvent = {
+  preventDefault: ReturnType<typeof vi.fn>;
+};
+
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
-  nativeSubmit: ReturnType<typeof vi.fn>;
-  onSubmit?: (event: {
-    preventDefault: ReturnType<typeof vi.fn>;
-  }) => Promise<void>;
+  dataset: Record<string, string>;
+  emitSubmit: () => Promise<SubmitEvent>;
   submit: ReturnType<typeof vi.fn>;
 }
 
-function makeForm(): FormFixture {
-  const nativeSubmit = vi.fn();
-  const form: FormFixture = {
+function makeForm(dataset: Record<string, string> = {}): FormFixture {
+  let listener: ((event: SubmitEvent) => Promise<void>) | undefined;
+  const form = {
     addEventListener: vi.fn(
-      (
-        _name: string,
-        listener: (event: {
-          preventDefault: ReturnType<typeof vi.fn>;
-        }) => Promise<void>
-      ) => {
-        form.onSubmit = listener;
+      (_name: string, nextListener: (event: SubmitEvent) => Promise<void>) => {
+        listener = nextListener;
       }
     ),
-    nativeSubmit,
-    submit: nativeSubmit,
-  };
+    dataset,
+    emitSubmit: async () => {
+      const event = { preventDefault: vi.fn() };
+      await listener?.(event);
+      return event;
+    },
+    submit: vi.fn(),
+  } satisfies FormFixture;
   return form;
 }
 
 function setupDom(
-  options: {
-    confirmed?: boolean;
-    csrfInput?: { value: string } | null;
-    csrfMeta?: { getAttribute: ReturnType<typeof vi.fn> } | null;
-    form?: FormFixture | null;
-    stateText?: string | null;
-  } = {}
+  options: { confirmed?: boolean; forms?: FormFixture[] } = {}
 ) {
-  let ready: (() => void) | undefined;
-  const form = options.form === undefined ? makeForm() : options.form;
-  const showAlert = vi.fn().mockResolvedValue(undefined);
+  const forms = options.forms ?? [makeForm()];
   const showConfirm = vi.fn().mockResolvedValue(options.confirmed ?? false);
-  const reload = vi.fn();
-  const browserWindow: Record<string, unknown> = {
-    dialog: { showAlert, showConfirm },
-    location: { reload },
-  };
-  vi.stubGlobal('window', browserWindow);
+  vi.stubGlobal('window', { dialog: { showConfirm } });
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
-    getElementById: vi.fn((id: string) => {
-      if (id === 'revoke-grant-form') return form;
-      if (
-        id === '___ADMIN_GRANTS_STATE___' &&
-        options.stateText !== undefined
-      ) {
-        return { textContent: options.stateText };
-      }
-      return null;
-    }),
-    querySelector: vi.fn((selector: string) =>
-      selector === 'input[name="_csrf"]'
-        ? (options.csrfInput ?? null)
-        : selector === 'meta[name="csrf-token"]'
-          ? (options.csrfMeta ?? null)
-          : null
-    ),
+    querySelectorAll: vi.fn(() => forms),
   });
-  return {
-    browserWindow,
-    form,
-    reload,
-    runReady: () => ready?.(),
-    showAlert,
-    showConfirm,
-    submit: async () => {
-      const event = { preventDefault: vi.fn() };
-      await form?.onSubmit?.(event);
-      return event;
-    },
-  };
+
+  return { forms, showConfirm };
 }
 
-describe('admin grants manager', () => {
+describe('AdminGrantsManager', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/grants/index.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(AdminGrantsManager).toBeTypeOf('function');
   });
 
-  it('initializes without a revoke form in a document-only environment', async () => {
-    const { runReady } = setupDom({ form: null });
-    vi.stubGlobal('window', undefined);
+  it('initializes safely when the page has no revocation forms', () => {
+    setupDom({ forms: [] });
 
-    await expect(
-      import('../../../src/assets/js/admin/grants/index.js')
-    ).resolves.toBeDefined();
-    expect(runReady).not.toThrow();
+    expect(() => new AdminGrantsManager().initialize()).not.toThrow();
   });
 
-  it('logs malformed persisted state and initializes with safe defaults', async () => {
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    const { browserWindow, runReady } = setupDom({ stateText: '{bad json' });
-    await import('../../../src/assets/js/admin/grants/index.js');
+  it('preserves native form submission when the dialog service is unavailable', async () => {
+    const form = makeForm();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      querySelectorAll: vi.fn(() => [form]),
+    });
+    new AdminGrantsManager().initialize();
 
-    expect(runReady).not.toThrow();
-    expect(error).toHaveBeenCalledWith(
-      '[AdminGrantsManager] Initialization failed:',
-      expect.any(SyntaxError)
-    );
-    expect(browserWindow.revokeGrant).toEqual(expect.any(Function));
+    const event = await form.emitSubmit();
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(form.submit).not.toHaveBeenCalled();
   });
 
-  it('uses defaults when the persisted state element is blank', async () => {
-    const { runReady, showConfirm, submit } = setupDom({ stateText: '' });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
+  it('prevents native submission and keeps a grant when revocation is cancelled', async () => {
+    const { forms, showConfirm } = setupDom();
+    new AdminGrantsManager().initialize();
 
-    await submit();
-
-    expect(showConfirm).toHaveBeenCalledWith(
-      'Revoke Authorization',
-      expect.any(String),
-      expect.objectContaining({ confirmText: 'Revoke', cancelText: 'Cancel' })
-    );
-  });
-
-  it('prevents native form submission and keeps a grant when revocation is cancelled', async () => {
-    const { browserWindow, form, runReady, showConfirm, submit } = setupDom();
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    const event = await submit();
+    const event = await forms[0]!.emitSubmit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showConfirm).toHaveBeenCalledWith(
@@ -154,29 +90,22 @@ describe('admin grants manager', () => {
         cancelText: 'Cancel',
       }
     );
-    expect(form?.nativeSubmit).not.toHaveBeenCalled();
-    expect(browserWindow).toMatchObject({
-      AdminGrantsManager: expect.any(Function),
-      revokeGrant: expect.any(Function),
-    });
+    expect(forms[0]!.submit).not.toHaveBeenCalled();
   });
 
-  it('submits the revoke form after localized confirmation', async () => {
-    const { form, runReady, showConfirm, submit } = setupDom({
-      confirmed: true,
-      stateText: JSON.stringify({
-        translations: {
-          revokeCancel: 'Keep it',
-          revokeConfirm: 'Remove it',
-          revokeMessage: 'Remove this authorization?',
-          revokeTitle: 'Confirm removal',
-        },
-      }),
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
+  it('submits only the selected form after localized confirmation', async () => {
+    const forms = [makeForm(), makeForm()];
+    const { showConfirm } = setupDom({ confirmed: true, forms });
+    new AdminGrantsManager({
+      translations: {
+        revokeCancel: 'Keep it',
+        revokeConfirm: 'Remove it',
+        revokeMessage: 'Remove this authorization?',
+        revokeTitle: 'Confirm removal',
+      },
+    }).initialize();
 
-    await submit();
+    await forms[1]!.emitSubmit();
 
     expect(showConfirm).toHaveBeenCalledWith(
       'Confirm removal',
@@ -187,210 +116,23 @@ describe('admin grants manager', () => {
         cancelText: 'Keep it',
       }
     );
-    expect(form?.nativeSubmit).toHaveBeenCalledOnce();
+    expect(forms[0]!.submit).not.toHaveBeenCalled();
+    expect(forms[1]!.submit).toHaveBeenCalledOnce();
   });
 
-  it('does not call the revoke endpoint when AJAX revocation is cancelled', async () => {
-    const fetch = vi.fn();
-    vi.stubGlobal('fetch', fetch);
-    const { browserWindow, runReady } = setupDom();
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it('revokes through the configured route with an encoded grant id', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ success: true }),
+  it('uses a form-specific message for scoped bulk revocation', async () => {
+    const form = makeForm({
+      grantRevokeMessage: 'Revoke every authorization for alice?',
     });
-    vi.stubGlobal('fetch', fetch);
-    const { browserWindow, reload, runReady, showAlert } = setupDom({
-      confirmed: true,
-      csrfInput: { value: 'page-csrf' },
-      stateText: JSON.stringify({
-        csrfToken: 'configured-csrf',
-        routes: { revokeGrant: '/custom/grants/{id}/remove' },
-      }),
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
+    const { showConfirm } = setupDom({ forms: [form] });
+    new AdminGrantsManager().initialize();
 
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant/1'
-    );
+    await form.emitSubmit();
 
-    expect(fetch).toHaveBeenCalledWith('/custom/grants/grant%2F1/remove', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'CSRF-Token': 'page-csrf',
-      },
-    });
-    expect(showAlert).toHaveBeenCalledWith(
-      'Success',
-      'Authorization revoked successfully',
-      { variant: 'success' }
-    );
-    expect(reload).toHaveBeenCalledOnce();
-  });
-
-  it('uses the safe default route when the configured route is blank', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ success: true }),
-    });
-    vi.stubGlobal('fetch', fetch);
-    const { browserWindow, runReady } = setupDom({
-      confirmed: true,
-      stateText: JSON.stringify({ routes: { revokeGrant: '' } }),
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant/1'
-    );
-
-    expect(fetch).toHaveBeenCalledWith(
-      '/admin/user-grants/grant%2F1/revoke',
+    expect(showConfirm).toHaveBeenCalledWith(
+      'Revoke Authorization',
+      'Revoke every authorization for alice?',
       expect.any(Object)
     );
-  });
-
-  it('shows the server error and does not reload when revocation is rejected', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({
-        error: 'Grant is already inactive',
-        success: false,
-      }),
-    });
-    vi.stubGlobal('fetch', fetch);
-    const { browserWindow, reload, runReady, showAlert } = setupDom({
-      confirmed: true,
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(showAlert).toHaveBeenCalledWith(
-      'Error',
-      'Failed to revoke authorization: Grant is already inactive',
-      { variant: 'error' }
-    );
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it('uses the unknown-error fallback when a rejection has no details', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        json: vi.fn().mockResolvedValue({ success: false }),
-      })
-    );
-    const { browserWindow, runReady, showAlert } = setupDom({
-      confirmed: true,
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(showAlert).toHaveBeenCalledWith(
-      'Error',
-      'Failed to revoke authorization: Unknown error',
-      { variant: 'error' }
-    );
-  });
-
-  it('uses the meta CSRF token when the hidden token is empty', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ success: true }),
-    });
-    vi.stubGlobal('fetch', fetch);
-    const csrfMeta = { getAttribute: vi.fn(() => 'meta-csrf') };
-    const { browserWindow, runReady } = setupDom({
-      confirmed: true,
-      csrfInput: { value: '' },
-      csrfMeta,
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(csrfMeta.getAttribute).toHaveBeenCalledWith('content');
-    expect(fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        headers: expect.objectContaining({ 'CSRF-Token': 'meta-csrf' }),
-      })
-    );
-  });
-
-  it('falls back to the configured CSRF token when the meta token is empty', async () => {
-    const fetch = vi.fn().mockResolvedValue({
-      json: vi.fn().mockResolvedValue({ success: true }),
-    });
-    vi.stubGlobal('fetch', fetch);
-    const csrfMeta = { getAttribute: vi.fn(() => '') };
-    const { browserWindow, runReady } = setupDom({
-      confirmed: true,
-      csrfMeta,
-      stateText: JSON.stringify({ csrfToken: 'configured-csrf' }),
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(fetch).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'CSRF-Token': 'configured-csrf',
-        }),
-      })
-    );
-  });
-
-  it('logs transport failures and shows a retryable error', async () => {
-    const failure = new Error('network unavailable');
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(failure));
-    const { browserWindow, reload, runReady, showAlert } = setupDom({
-      confirmed: true,
-    });
-    await import('../../../src/assets/js/admin/grants/index.js');
-    runReady();
-
-    await (browserWindow.revokeGrant as (grantId: string) => Promise<void>)(
-      'grant-1'
-    );
-
-    expect(error).toHaveBeenCalledWith(
-      'Error revoking authorization:',
-      failure
-    );
-    expect(showAlert).toHaveBeenCalledWith(
-      'Error',
-      'Failed to revoke authorization. Please try again.',
-      { variant: 'error' }
-    );
-    expect(reload).not.toHaveBeenCalled();
   });
 });

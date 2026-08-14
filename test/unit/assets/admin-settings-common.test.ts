@@ -66,6 +66,7 @@ async function loadModule(
     includeState?: boolean;
     state?: string;
     csrfInput?: { value: string } | null;
+    resetButtons?: ElementFixture[];
     textareas?: ElementFixture[];
     window?: Record<string, unknown>;
   } = {}
@@ -89,7 +90,15 @@ async function loadModule(
       if (selector === 'input[name="_csrf"]') return options.csrfInput ?? null;
       return null;
     }),
-    querySelectorAll: vi.fn(() => options.textareas ?? []),
+    querySelectorAll: vi.fn((selector: string) => {
+      if (selector === '[data-settings-reset]') {
+        return options.resetButtons ?? [];
+      }
+      if (selector === 'textarea') {
+        return options.textareas ?? [];
+      }
+      return [];
+    }),
   });
   const windowRoot = options.window ?? {};
   vi.stubGlobal('window', windowRoot);
@@ -132,6 +141,7 @@ describe('admin settings common manager', () => {
 
   it('resets the selected form and auto-resizes textareas', async () => {
     const form = makeForm();
+    const resetButton = makeElement();
     const textarea = makeElement();
     textarea.scrollHeight = 73;
     const showConfirm = vi.fn().mockResolvedValue(true);
@@ -149,14 +159,13 @@ describe('admin settings common manager', () => {
         },
         features: { hasLogoUpload: false },
       }),
+      resetButtons: [resetButton],
       textareas: [textarea],
       window: windowRoot,
     });
 
     textarea.listeners.input?.call(textarea);
-    await (
-      windowRoot as typeof windowRoot & { resetForm: () => Promise<void> }
-    ).resetForm();
+    await resetButton.listeners.click?.();
 
     expect(textarea.style.height).toBe('73px');
     expect(showConfirm).toHaveBeenCalledWith('Start over', 'Discard changes?', {
@@ -169,36 +178,47 @@ describe('admin settings common manager', () => {
 
   it('uses native reset confirmation when the dialog is absent or rejects', async () => {
     const rejectedForm = makeForm();
+    const rejectedResetButton = makeElement();
     const rejectedConfirm = vi.fn().mockRejectedValue(new Error('offline'));
     const rejectedWindow = { dialog: { showConfirm: rejectedConfirm } };
     vi.stubGlobal(
       'confirm',
       vi.fn(() => true)
     );
-    await loadModule({ form: rejectedForm, window: rejectedWindow });
+    await loadModule({
+      form: rejectedForm,
+      resetButtons: [rejectedResetButton],
+      window: rejectedWindow,
+    });
     vi.mocked(confirm).mockReturnValue(true);
 
-    await (
-      rejectedWindow as typeof rejectedWindow & {
-        resetForm: () => Promise<void>;
-      }
-    ).resetForm();
+    await rejectedResetButton.listeners.click?.();
     expect(rejectedForm.reset).toHaveBeenCalledOnce();
 
     vi.resetModules();
     const cancelledForm = makeForm();
+    const cancelledResetButton = makeElement();
     const nativeWindow: Record<string, unknown> = {};
-    await loadModule({ form: cancelledForm, window: nativeWindow });
+    await loadModule({
+      form: cancelledForm,
+      resetButtons: [cancelledResetButton],
+      window: nativeWindow,
+    });
     vi.mocked(confirm).mockReturnValue(false);
-    await (nativeWindow.resetForm as () => Promise<void>)();
+    await cancelledResetButton.listeners.click?.();
     expect(cancelledForm.reset).not.toHaveBeenCalled();
 
     vi.resetModules();
     vi.mocked(confirm).mockReturnValue(true);
+    const noFormResetButton = makeElement();
     const noFormWindow: Record<string, unknown> = {};
-    await loadModule({ form: null, window: noFormWindow });
+    await loadModule({
+      form: null,
+      resetButtons: [noFormResetButton],
+      window: noFormWindow,
+    });
     await expect(
-      (noFormWindow.resetForm as () => Promise<void>)()
+      noFormResetButton.listeners.click?.()
     ).resolves.toBeUndefined();
   });
 
@@ -344,6 +364,28 @@ describe('admin settings common manager', () => {
     });
     await expect(emptyUpload.listeners.change?.()).resolves.toBeUndefined();
     expect(emptyForm.submit).not.toHaveBeenCalled();
+  });
+
+  it('leaves logo controls to the dedicated branding manager', async () => {
+    const logoUpload = makeInput();
+    const preview = makeElement();
+    const removeButton = makeElement();
+    const resetButton = makeElement();
+
+    await loadModule({
+      elements: {
+        ___ADMIN_BRANDING_STATE___: makeElement(),
+        'logo-upload': logoUpload,
+        'preview-logo': preview,
+        'remove-logo-button': removeButton,
+      },
+      resetButtons: [resetButton],
+      state: JSON.stringify({ features: { hasLogoUpload: true } }),
+    });
+
+    expect(logoUpload.listeners.change).toBeUndefined();
+    expect(removeButton.listeners.click).toBeUndefined();
+    expect(resetButton.listeners.click).toEqual(expect.any(Function));
   });
 
   it('removes a logo through the configured route and refreshes the page', async () => {
@@ -504,15 +546,20 @@ describe('admin settings common manager', () => {
 
   it('falls back to defaults when page state is malformed', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const resetButton = makeElement();
     const windowRoot: Record<string, unknown> = {};
 
-    await loadModule({ state: '{broken', window: windowRoot });
+    await loadModule({
+      resetButtons: [resetButton],
+      state: '{broken',
+      window: windowRoot,
+    });
 
     expect(errorSpy).toHaveBeenCalledWith(
       '[AdminSettingsManager] Initialization failed:',
       expect.any(SyntaxError)
     );
-    expect(windowRoot.resetForm).toEqual(expect.any(Function));
+    expect(resetButton.listeners.click).toEqual(expect.any(Function));
   });
 
   it('infers logo support without state and tolerates an empty state payload', async () => {
@@ -528,8 +575,13 @@ describe('admin settings common manager', () => {
     expect(inferredUpload.listeners.change).toEqual(expect.any(Function));
 
     vi.resetModules();
+    const emptyResetButton = makeElement();
     const emptyWindow: Record<string, unknown> = {};
-    await loadModule({ state: '', window: emptyWindow });
-    expect(emptyWindow.resetForm).toEqual(expect.any(Function));
+    await loadModule({
+      resetButtons: [emptyResetButton],
+      state: '',
+      window: emptyWindow,
+    });
+    expect(emptyResetButton.listeners.click).toEqual(expect.any(Function));
   });
 });

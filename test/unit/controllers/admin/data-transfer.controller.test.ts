@@ -151,7 +151,7 @@ function makeReq(overrides: Record<string, unknown> = {}) {
 }
 
 function makeRes() {
-  const res = {
+  const res = Object.assign(new EventEmitter(), {
     render: vi.fn(),
     redirect: vi.fn(),
     status: vi.fn(),
@@ -161,7 +161,7 @@ function makeRes() {
     writeHead: vi.fn(),
     write: vi.fn(),
     end: vi.fn(),
-  } as any;
+  }) as any;
   res.status.mockReturnValue(res);
   return res;
 }
@@ -192,6 +192,8 @@ describe('AdminDataTransferController', () => {
             entityId: 'users',
             hasImport: true,
             hasExport: true,
+            hasSensitiveFields: true,
+            hasSecretFields: true,
           }),
           expect.objectContaining({
             entityId: 'oidc-clients',
@@ -202,6 +204,8 @@ describe('AdminDataTransferController', () => {
             entityId: 'activities',
             hasImport: false,
             hasExport: true,
+            hasSensitiveFields: false,
+            hasSecretFields: false,
           }),
         ],
       });
@@ -267,6 +271,26 @@ describe('AdminDataTransferController', () => {
             hasExport: true,
           }),
           importColumns: undefined,
+        })
+      );
+    });
+
+    it('advertises only the field groups supported by OIDC client exports', async () => {
+      const { controller } = makeController();
+      const res = makeRes();
+
+      await controller.entityPage(
+        makeReq({ params: { entityId: 'oidc-clients' } }),
+        res
+      );
+
+      expect(res.render).toHaveBeenCalledWith(
+        'admin/data-transfer/entity',
+        expect.objectContaining({
+          entity: expect.objectContaining({
+            hasSensitiveFields: false,
+            hasSecretFields: true,
+          }),
         })
       );
     });
@@ -837,9 +861,11 @@ describe('AdminDataTransferController', () => {
       );
 
       req.emit('close');
+      expect(res.end).not.toHaveBeenCalled();
+      res.emit('close');
       await vi.waitFor(() => expect(res.end).toHaveBeenCalledOnce());
       expect(events.close).toHaveBeenCalledOnce();
-      expect(queue.close).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
     });
 
     it.each([
@@ -876,11 +902,42 @@ describe('AdminDataTransferController', () => {
 
         expect(res.write).toHaveBeenLastCalledWith(message);
         expect(events.close).toHaveBeenCalledOnce();
-        expect(queue.close).toHaveBeenCalledOnce();
-        req.emit('close');
+        await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
+        res.emit('close');
         expect(res.end).toHaveBeenCalledOnce();
       }
     );
+
+    it('ends a terminal live response before awaiting resource shutdown', async () => {
+      let releaseEvents!: () => void;
+      const eventsClosed = new Promise<void>(resolve => {
+        releaseEvents = resolve;
+      });
+      const queue = { close: vi.fn().mockResolvedValue(undefined) };
+      queueMocks.create.mockResolvedValue(queue);
+      queueMocks.fromId.mockResolvedValue({
+        data: { tenantId: 'tenant-a' },
+        getState: vi.fn().mockResolvedValue('active'),
+      });
+      const { controller } = makeController();
+      const res = makeRes();
+
+      await controller.importProgress(
+        makeReq({ params: { jobId: 'job-1' } }),
+        res
+      );
+      const events = queueMocks.queueEvents[0]!;
+      events.close.mockReturnValue(eventsClosed);
+      events.handlers.get('failed')?.({
+        jobId: 'job-1',
+        failedReason: 'write failed',
+      });
+
+      expect(res.end).toHaveBeenCalledOnce();
+      expect(queue.close).not.toHaveBeenCalled();
+      releaseEvents();
+      await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
+    });
 
     it('times out an inactive stream and releases resources', async () => {
       vi.useFakeTimers();
@@ -920,11 +977,11 @@ describe('AdminDataTransferController', () => {
       await controller.importProgress(req, res);
       const events = queueMocks.queueEvents[0]!;
       events.close.mockRejectedValue(new Error('events close failed'));
-      req.emit('close');
+      res.emit('close');
       await vi.waitFor(() => expect(res.end).toHaveBeenCalledOnce());
 
       expect(events.close).toHaveBeenCalledOnce();
-      expect(queue.close).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
     });
 
     it('closes the queue when QueueEvents setup fails before streaming', async () => {

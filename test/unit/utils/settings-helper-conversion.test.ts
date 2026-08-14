@@ -198,6 +198,17 @@ describe('settings helper form conversion', () => {
     });
   });
 
+  it.each([
+    ['', []],
+    [['', 'public', ''], ['public']],
+  ])('normalizes submitted OIDC subject types: %j', (submitted, expected) => {
+    const result = convertFeaturesFormData({
+      oidc: { subject_types: submitted },
+    });
+
+    expect(result.oidc.subject_types).toEqual(expected);
+  });
+
   it('creates empty feature arrays only for present empty sections', () => {
     expect(
       convertFeaturesFormData({
@@ -231,7 +242,7 @@ describe('settings helper form conversion', () => {
         },
         jwa: {
           attest_signing_alg_values: 'RS256',
-          authorization_encryption_alg_values: ['RSA-OAEP'],
+          authorization_encryption_alg_values: ['', 'RSA-OAEP', ''],
           id_token_signing_alg_values: null,
           userinfo_signing_alg_values: '',
         },
@@ -378,5 +389,41 @@ describe('settings helper form conversion', () => {
     expect(result.authentication.signup.signup_methods).toEqual([
       'email+password',
     ]);
+  });
+
+  it('normalizes human-entered MFA identifiers before validation and persistence', () => {
+    const result = convertSecurityFormData({
+      authentication: {
+        multi_factor: {
+          totp: { issuer_name: '  Parako.ID  ' },
+          webauthn: {
+            rp_name: '  Parako Passkeys  ',
+            rp_id: '  id.example.com  ',
+          },
+        },
+      },
+    });
+
+    expect(result.authentication.multi_factor).toMatchObject({
+      totp: { issuer_name: 'Parako.ID' },
+      webauthn: {
+        rp_name: 'Parako Passkeys',
+        rp_id: 'id.example.com',
+      },
+    });
+  });
+
+  it('preserves a checked impossible-travel control submitted with its hidden fallback', () => {
+    const result = convertSecurityFormData({
+      protection: {
+        device_matching: {
+          enable_impossible_travel: ['', 'on'],
+        },
+      },
+    });
+
+    expect(result.protection.device_matching.enable_impossible_travel).toBe(
+      true
+    );
   });
 });

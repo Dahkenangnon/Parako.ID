@@ -15,6 +15,7 @@ import { encryptValue } from '../../../src/utils/encryption.js';
 import type { IUser } from '../../../src/types/user.js';
 import type { IUserRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
 import type { CustomIdentifierFieldConfig } from '../../../src/di/interfaces/user/user-custom-identifier-service.interface.js';
+import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
 vi.mock('../../../src/utils/encryption.js', () => ({
   encryptValue: vi.fn((value: string) => `encrypted:${value}`),
@@ -2241,6 +2242,38 @@ describe('UserService — statistics, creation, and lifecycle', () => {
       expect(repo.create).not.toHaveBeenCalled();
     });
 
+    it.each(['platform_admin', 'platform_viewer'] as const)(
+      'persists the built-in %s role in the platform tenant',
+      async role => {
+        const created = makeUser({ roles: [role] });
+        vi.mocked(repo.create).mockResolvedValueOnce(created);
+
+        await expect(
+          tenantContext.run('_platforms', () =>
+            service.createUserWithGeneratedUsername({
+              email: `${role}@example.com`,
+              roles: [role],
+            })
+          )
+        ).resolves.toBe(created);
+        expect(repo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ roles: [role] })
+        );
+      }
+    );
+
+    it('rejects platform roles outside the platform tenant', async () => {
+      await expect(
+        tenantContext.run('tenant-a', () =>
+          service.createUserWithGeneratedUsername({
+            email: 'platform-admin@example.com',
+            roles: ['platform_admin'],
+          })
+        )
+      ).rejects.toThrow("Role 'platform_admin' is not available");
+      expect(repo.create).not.toHaveBeenCalled();
+    });
+
     it.each([
       ['email', { email: 1 }, 'Email is already registered'],
       [
@@ -2290,6 +2323,76 @@ describe('UserService — statistics, creation, and lifecycle', () => {
         ).rejects.toThrow(message);
       }
     );
+
+    it('translates Prisma 7 driver-adapter email conflicts', async () => {
+      const error = Object.assign(new Error('P2002 sensitive details'), {
+        code: 'P2002',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              constraint: { fields: ['email'] },
+            },
+          },
+        },
+      });
+      vi.mocked(repo.create).mockRejectedValueOnce(error);
+
+      await expect(
+        service.createUserWithGeneratedUsername({
+          email: 'alice@example.com',
+        })
+      ).rejects.toThrow('Email is already registered');
+    });
+
+    it('translates Prisma 7 PostgreSQL constraint-index conflicts', async () => {
+      const error = Object.assign(new Error('P2002 sensitive details'), {
+        code: 'P2002',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              constraint: { index: 'users_tenant_id_email_key' },
+            },
+          },
+        },
+      });
+      vi.mocked(repo.create).mockRejectedValueOnce(error);
+
+      await expect(
+        service.createUserWithGeneratedUsername({
+          email: 'alice@example.com',
+        })
+      ).rejects.toThrow('Email is already registered');
+    });
+
+    it('infers the conflicting field when Prisma 7 PostgreSQL omits constraint metadata', async () => {
+      const error = Object.assign(new Error('P2002 sensitive details'), {
+        code: 'P2002',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              constraint: undefined,
+            },
+          },
+        },
+      });
+      vi.mocked(repo.create).mockRejectedValueOnce(error);
+      vi.mocked(repo.count).mockImplementation(async filter =>
+        filter && 'email' in filter ? 1 : 0
+      );
+
+      await expect(
+        service.createUserWithGeneratedUsername({
+          email: 'alice@example.com',
+        })
+      ).rejects.toThrow('Email is already registered');
+      expect(repo.count).toHaveBeenCalledWith({ email: 'alice@example.com' });
+    });
 
     it('rethrows unrelated creation errors', async () => {
       const failure = new Error('connection failed');

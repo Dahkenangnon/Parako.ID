@@ -101,6 +101,18 @@ describe('SocialLoginManager', () => {
     expect(manager.getAvailableProviders()).toEqual([]);
   });
 
+  it('does not enable a provider with sample placeholder credentials', () => {
+    const config = createConfig(['google']);
+    config.features.social_providers.google = {
+      client_id: 'your-google-client-id',
+      client_secret: 'your-google-client-secret',
+    };
+    const { manager } = createManager(config);
+
+    expect(manager.isProviderAvailable('google')).toBe(false);
+    expect(manager.getAvailableProviders()).toEqual([]);
+  });
+
   it('registers each enabled configured provider with its own implementation', () => {
     const { manager, providers } = createManager();
 

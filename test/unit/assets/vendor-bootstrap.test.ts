@@ -7,7 +7,7 @@ const dependencies = vi.hoisted(() => ({
   icons: { shield: {} },
 }));
 
-vi.mock('alpinejs', () => ({ default: dependencies.alpine }));
+vi.mock('@alpinejs/csp', () => ({ default: dependencies.alpine }));
 vi.mock('lucide', () => ({
   createIcons: dependencies.createIcons,
   icons: dependencies.icons,

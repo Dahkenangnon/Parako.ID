@@ -235,6 +235,33 @@ describe('Mongoose base repository', () => {
     expect(model.findOne).toHaveBeenCalledWith({ name: 'missing' });
   });
 
+  it('treats a malformed document id as a missing record', async () => {
+    const castError = Object.assign(new Error('invalid object id'), {
+      name: 'CastError',
+      path: '_id',
+    });
+    const invalidQuery = query(null);
+    invalidQuery.exec.mockRejectedValue(castError);
+    const model = {
+      findById: vi.fn().mockReturnValue(invalidQuery),
+    };
+    const repository = new MongooseRepositoryHarness(model as never);
+
+    await expect(repository.findById('not-an-object-id')).resolves.toBeNull();
+  });
+
+  it('propagates query failures unrelated to document-id casting', async () => {
+    const databaseError = new Error('database unavailable');
+    const failingQuery = query(null);
+    failingQuery.exec.mockRejectedValue(databaseError);
+    const model = {
+      findById: vi.fn().mockReturnValue(failingQuery),
+    };
+    const repository = new MongooseRepositoryHarness(model as never);
+
+    await expect(repository.findById('valid-id')).rejects.toBe(databaseError);
+  });
+
   it('finds many records with optional sort, skip, and limit', async () => {
     const fullQuery = query([{ _id: { toString: () => 'one' } }]);
     const plainQuery = query([]);

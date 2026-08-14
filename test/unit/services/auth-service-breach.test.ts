@@ -23,6 +23,7 @@ import type { IPasswordUtils } from '../../../src/di/interfaces/password-utils.i
 import type { IMfaUtils } from '../../../src/di/interfaces/mfa-utils.interface.js';
 import type { IConfigManager } from '../../../src/di/interfaces/config-manager.interface.js';
 import type { IUser } from '../../../src/types/user.js';
+import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
 const mockedCheckPasswordBreach = vi.mocked(checkPasswordBreach);
 const mockedComputeSha1PrefixSuffix = vi.mocked(computeSha1PrefixSuffix);
@@ -443,6 +444,40 @@ describe('AuthService - breach detection', () => {
       expect(
         mocks.userService.createUserWithGeneratedUsername
       ).not.toHaveBeenCalled();
+    });
+    it.each(['platform_admin', 'platform_viewer'] as const)(
+      'allows the built-in %s role only in the platform tenant',
+      async role => {
+        const mocks = createMocks();
+        const service = createAuthService(mocks);
+
+        await tenantContext.run('_platforms', () =>
+          service.registerManagedUser({
+            email: `${role}@example.com`,
+            password: 'safe-password',
+            role,
+          })
+        );
+
+        expect(
+          mocks.userService.createUserWithGeneratedUsername
+        ).toHaveBeenCalledWith(expect.objectContaining({ roles: [role] }));
+      }
+    );
+
+    it('does not make platform roles available to ordinary tenants', async () => {
+      const mocks = createMocks();
+      const service = createAuthService(mocks);
+
+      await expect(
+        tenantContext.run('tenant-a', () =>
+          service.registerManagedUser({
+            email: 'platform-viewer@example.com',
+            password: 'safe-password',
+            role: 'platform_viewer',
+          })
+        )
+      ).rejects.toThrow("Role 'platform_viewer' is not available");
     });
   });
 

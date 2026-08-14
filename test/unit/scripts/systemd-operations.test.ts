@@ -128,13 +128,41 @@ describe('systemd service operations', () => {
         code: 0,
       });
 
-    await showStatus('parako-id');
+    await expect(showStatus('parako-id')).rejects.toThrow(
+      'Failed to query systemd service status: parako-id: unit not found'
+    );
 
     expect(dependencies.log.warning).toHaveBeenCalledOnce();
     expect(dependencies.log.warning).toHaveBeenCalledWith(
       'Service parako-id may not be installed or running'
     );
     expect(consoleLog).toHaveBeenCalledWith('unit not found');
+    expect(dependencies.executeCommand.mock.calls).toEqual([
+      ['systemctl', ['status', 'parako-id']],
+      ['systemctl', ['status', 'parako-id-worker']],
+    ]);
+  });
+
+  it('reports a service status exit code when stderr is empty', async () => {
+    dependencies.executeCommand
+      .mockResolvedValueOnce({
+        success: false,
+        stdout: '',
+        stderr: '',
+        code: 7,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        stdout: '',
+        stderr: '',
+        code: 0,
+      });
+
+    await expect(showStatus('parako-id')).rejects.toThrow(
+      'Failed to query systemd service status: parako-id: exit code 7'
+    );
+
+    expect(dependencies.executeCommand).toHaveBeenCalledTimes(2);
   });
 
   it('rejects non-root restart without calling systemctl', async () => {
