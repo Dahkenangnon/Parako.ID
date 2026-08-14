@@ -90,6 +90,12 @@ pnpm keys generate
 
 Generates a new key set with three algorithms: RS256, ES256, and EdDSA. Required before first startup — the OIDC provider cannot sign tokens without keys.
 
+The explicit `generate` command fails if `runtime/jwks/jwks.json` already
+exists, preventing an unattended invocation from replacing active signing
+keys. Run `pnpm keys` from an interactive terminal if an intentional
+replacement is required; the CLI asks for confirmation and creates an
+owner-only backup before writing the new key set.
+
 ### Rotation and Listing
 
 The CLI exposes only `generate` for first-boot bootstrap. In production, key rotation and listing are handled by the **DB-backed key store**, configured under `security.key_store` (`type: 'database'`):
@@ -123,20 +129,25 @@ pnpm systemd <command>
 
 ### Options
 
-| Option                   | Default           | Description                                                     |
-| ------------------------ | ----------------- | --------------------------------------------------------------- |
-| `-u, --user <user>`      | current user      | Service user                                                    |
-| `-d, --dir <directory>`  | current directory | Working directory                                               |
-| `-e, --env-file <path>`  | `.env`            | Environment file path                                           |
-| `-n, --node-path <path>` | auto-detected     | Node.js binary path                                             |
-| `--name <name>`          | `parako-id`       | Service name prefix                                             |
-| `--memory-app <size>`    | `1G`              | `MemoryMax` for the main app service                            |
-| `--memory-worker <size>` | `300M`            | `MemoryMax` for the worker service                              |
-| `-o, --output <dir>`     | —                 | (`generate` only) Write unit files to `<dir>` instead of stdout |
-| `--force`                | off               | (`generate -o` and `install`) Overwrite existing files on diff  |
-| `--worker`               | off               | (`logs` only) Tail only the worker service                      |
-| `--since <time>`         | —                 | (`logs` only) e.g. `"1 hour ago"`, `"2025-01-01"`               |
-| `--no-follow`            | off               | (`logs` only) Don't follow new entries                          |
+| Option                          | Default           | Description                                                     |
+| ------------------------------- | ----------------- | --------------------------------------------------------------- |
+| `-u, --user <user>`             | current user      | Service user                                                    |
+| `-d, --dir <directory>`         | current directory | Working directory                                               |
+| `-e, --environment-file <path>` | `.env`            | Environment file path                                           |
+| `-n, --node-path <path>`        | auto-detected     | Node.js binary path                                             |
+| `--name <name>`                 | `parako-id`       | Service name prefix                                             |
+| `--memory-app <size>`           | `1G`              | `MemoryMax` for the main app service                            |
+| `--memory-worker <size>`        | `300M`            | `MemoryMax` for the worker service                              |
+| `-o, --output <dir>`            | —                 | (`generate` only) Write unit files to `<dir>` instead of stdout |
+| `--force`                       | off               | (`generate -o` and `install`) Overwrite existing files on diff  |
+| `--worker`                      | off               | (`logs` only) Tail only the worker service                      |
+| `--since <time>`                | —                 | (`logs` only) e.g. `"1 hour ago"`, `"2025-01-01"`               |
+| `--no-follow`                   | off               | (`logs` only) Don't follow new entries                          |
+
+The environment option is deliberately named `--environment-file`. Node.js
+also defines a global `--env-file` option and can consume that spelling before
+the systemd CLI receives it. The package script additionally terminates Node.js
+option parsing before invoking the compiled command.
 
 ### Installing
 
@@ -153,12 +164,16 @@ sudo pnpm systemd install
 # Non-interactive install with custom memory caps
 sudo pnpm systemd install \
   --user parako --dir /opt/parako \
-  --env-file /opt/parako/.env --node-path /usr/bin/node \
+  --environment-file /opt/parako/.env --node-path /usr/bin/node \
   --memory-app 2G --memory-worker 512M
 
 # Check status
 pnpm systemd status
 ```
+
+`status` inspects both the application and worker units. It exits nonzero when
+either delegated `systemctl status` command fails while still showing the
+available diagnostic output for both units.
 
 `install` runs pre-install validation: it verifies the configured user exists, the working directory exists, and warns if the env file is missing. It refuses to overwrite existing unit files when content differs (showing a diff) unless you pass `--force`. Identical content is a safe no-op.
 

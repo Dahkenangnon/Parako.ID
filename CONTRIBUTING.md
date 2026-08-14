@@ -11,6 +11,7 @@ Requirements:
 - Node.js 24 or newer.
 - pnpm 11 or newer.
 - Git.
+- GNU util-linux `script` for real-terminal CLI integration tests.
 
 SQLite is the default development database and requires no database server.
 MongoDB and PostgreSQL are needed only when working on those adapters or the
@@ -48,7 +49,9 @@ pnpm test:coverage
 The default integration suite uses SQLite and ephemeral MongoDB fixtures. The
 first MongoDB-backed run may download a matching `mongod` binary into the
 tool's user cache. PostgreSQL RLS tests are intentionally separate and fail
-when their database is unavailable.
+when their database is unavailable. Interactive CLI process tests use GNU
+util-linux `script` to provide a real pseudo-terminal; on Debian or Ubuntu it
+is provided by the `util-linux` package.
 
 Browser tests use Playwright with Chrome:
 
@@ -68,9 +71,10 @@ pnpm test:e2e
 
 Supported cells are `sqlite-single`, `mongodb-single`, `mongodb-multi`,
 `postgresql-single`, and `postgresql-multi`. SQLite does not support
-multi-tenancy. The feature profiles are `default`, `notification-policy`,
-`phone-verification`, `security-questions`, `sms-recovery`, `social`,
-`social-policy-max`, `social-policy-restricted`, and `webauthn`.
+multi-tenancy. The feature profiles are `default`, `database-configuration`,
+`notification-policy`, `phone-verification`, `security-questions`,
+`sms-recovery`, `social`, `social-policy-max`, `social-policy-restricted`,
+`background-jobs`, `worker-drain`, `operations`, and `webauthn`.
 
 The complete local matrix requires a PostgreSQL URL whose disposable test role
 can create and drop isolated databases. Never point it at production:

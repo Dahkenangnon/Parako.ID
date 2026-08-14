@@ -144,6 +144,10 @@ Open the printed single-use activation URL over the configured HTTPS origin.
 After setting the password, finish application and OIDC client configuration in
 the admin panel. The CLI refuses to replace an activated administrator.
 
+The activation CLI is single-tenant only. Multi-tenant deployments seed their
+initial `_platforms` administrator through the documented bootstrap
+environment variables.
+
 Multi-tenant platform bootstrap has additional role and hostname requirements;
 see [Multi-Tenancy](multi-tenancy.md).
 

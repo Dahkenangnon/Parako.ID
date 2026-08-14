@@ -78,6 +78,11 @@ SHA-256 hash in the database, expires, and is invalidated when the password is
 set. If an activated administrator already exists, the command refuses to
 replace it.
 
+This command is for single-tenant deployments. In multi-tenant mode, seed the
+initial `_platforms` administrator with `PARAKO_BOOTSTRAP_ADMIN_EMAIL` and
+`PARAKO_BOOTSTRAP_ADMIN_PASSWORD` before first startup, as documented in the
+[multi-tenancy guide](./multi-tenancy.md#bootstrap-admin).
+
 ## Backups and restores
 
 ```bash
@@ -134,4 +139,6 @@ and a running HTTP service.
 - Concurrent installer mutation is blocked with a file lock.
 - Runtime data survives update, rollback, and normal uninstall.
 - Migration failures and partial app/worker activation fail closed.
+- Database commands preserve Prisma diagnostics while redacting configured URLs,
+  passwords, and local database paths.
 - The systemd service cannot write into immutable release directories.

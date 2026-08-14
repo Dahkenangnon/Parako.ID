@@ -7,7 +7,8 @@ order: 2
 
 ## Local development
 
-Prerequisites are Node.js 24 or later and pnpm 11 or later.
+Prerequisites are Node.js 24 or later, pnpm 11 or later, and GNU util-linux
+`script` for real-terminal CLI integration tests.
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
