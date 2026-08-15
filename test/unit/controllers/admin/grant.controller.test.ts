@@ -659,6 +659,26 @@ describe('AdminUserGrantsController', () => {
 
       expect(res.render.mock.calls[0][1].grant.client.uri).toBe('');
     });
+
+    it('keeps the unknown-developer fallback for a URI without a hostname', async () => {
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantById.mockResolvedValue({
+        _id: 'row-1',
+        payload: { clientId: 'client-1' },
+      });
+      mocks.oidcAdapter.client.find.mockResolvedValue({
+        clientId: 'client-1',
+        clientUri: 'file:///legacy/client',
+      });
+      const { controller } = makeController(mocks);
+      const res = makeRes();
+
+      await controller.show(makeReq({ params: { id: 'row-1' } }), res);
+
+      expect(res.render.mock.calls[0][1].grant.client.developer).toBe(
+        'Unknown Developer'
+      );
+    });
   });
 
   describe('revokeGrant()', () => {
@@ -708,6 +728,49 @@ describe('AdminUserGrantsController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('redirects native forms when the persisted grant has no provider identifier', async () => {
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantById.mockResolvedValue({ payload: {} });
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { id: 'row-1' },
+      });
+      const res = makeRes();
+
+      await controller.revokeGrant(req, res);
+
+      expect(mocks.sessionManager.flash(req).error).toHaveBeenCalledWith(
+        'Grant has no valid identifier'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('redirects native forms when the provider grant has disappeared', async () => {
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantById.mockResolvedValue({
+        payload: { jti: 'grant-1' },
+      });
+      mocks.oidcAdapter.grant.find.mockResolvedValue(undefined);
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { id: 'row-1' },
+      });
+      const res = makeRes();
+
+      await controller.revokeGrant(req, res);
+
+      expect(mocks.sessionManager.flash(req).error).toHaveBeenCalledWith(
+        'Grant not found in OIDC provider'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.status).not.toHaveBeenCalled();
     });
 
     it('returns 404 when the database grant does not exist', async () => {
@@ -834,6 +897,27 @@ describe('AdminUserGrantsController', () => {
       expect(mocks.logger.info).toHaveBeenCalledWith(
         expect.stringContaining('Admin unknown revoked grant')
       );
+    });
+
+    it('redirects a native form when grant revocation fails', async () => {
+      const failure = new Error('provider unavailable');
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantById.mockRejectedValue(failure);
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { id: 'row-1' },
+      });
+      const res = makeRes();
+
+      await controller.revokeGrant(req, res);
+
+      expect(mocks.sessionManager.flash(req).error).toHaveBeenCalledWith(
+        'Failed to revoke grant'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.status).not.toHaveBeenCalled();
     });
 
     it('returns a stable 500 response when revocation fails', async () => {
@@ -992,6 +1076,27 @@ describe('AdminUserGrantsController', () => {
       );
     });
 
+    it('redirects a native form when loading user grants fails', async () => {
+      const failure = new Error('grant store unavailable');
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantsByAccountId.mockRejectedValue(failure);
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { username: 'alice' },
+      });
+      const res = makeRes();
+
+      await controller.revokeUserGrants(req, res);
+
+      expect(mocks.sessionManager.flash(req).error).toHaveBeenCalledWith(
+        'Failed to revoke user grants'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
     it('returns 500 when loading the user grants fails', async () => {
       const failure = new Error('grant store unavailable');
       const { controller, oidcAdapter, logger } = makeController();
@@ -1033,6 +1138,26 @@ describe('AdminUserGrantsController', () => {
 
       expect(mocks.sessionManager.flash(req).success).toHaveBeenCalledWith(
         'Successfully revoked 1 grant(s)'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('redirects a native form when the client has no grants', async () => {
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantsByClientId.mockResolvedValue([]);
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { clientId: 'client-1' },
+      });
+      const res = makeRes();
+
+      await controller.revokeClientGrants(req, res);
+
+      expect(mocks.sessionManager.flash(req).info).toHaveBeenCalledWith(
+        'No grants found for this client'
       );
       expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
       expect(res.json).not.toHaveBeenCalled();
@@ -1130,6 +1255,27 @@ describe('AdminUserGrantsController', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ revokedCount: 0 })
       );
+    });
+
+    it('redirects a native form when loading client grants fails', async () => {
+      const failure = new Error('grant store unavailable');
+      const mocks = makeMocks();
+      mocks.oidcAdapter.grant.findGrantsByClientId.mockRejectedValue(failure);
+      const { controller } = makeController(mocks);
+      const req = makeReq({
+        accepts: vi.fn(() => 'html'),
+        headers: { accept: 'text/html' },
+        params: { clientId: 'client-1' },
+      });
+      const res = makeRes();
+
+      await controller.revokeClientGrants(req, res);
+
+      expect(mocks.sessionManager.flash(req).error).toHaveBeenCalledWith(
+        'Failed to revoke client grants'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/user-grants');
+      expect(res.status).not.toHaveBeenCalled();
     });
 
     it('returns 500 when loading the client grants fails', async () => {

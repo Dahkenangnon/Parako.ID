@@ -35,6 +35,10 @@ import { requireE2ePostgresqlUrl } from './support/e2e-prerequisites.js';
 const RP_ORIGIN = 'http://127.0.0.1:19389';
 const RP_CLIENT_ID = 'parako-public-account-matrix-rp';
 const MANAGEMENT_CLIENT_ID = 'parako-public-account-matrix-management';
+// This journey covers the complete visitor and account-management lifecycle
+// against a real server. Slower database profiles need a bounded CI budget that
+// accommodates the full sequence without weakening any browser assertions.
+const PUBLIC_ACCOUNT_JOURNEY_TIMEOUT_MS = 600_000;
 // gitleaks:allow -- deterministic credential for disposable E2E runtimes.
 const MANAGEMENT_CLIENT_SECRET =
   'parako-public-account-matrix-management-secret-long-enough';
@@ -1030,7 +1034,7 @@ test.afterAll(async () => {
 });
 
 test.describe('Public and normal-account adapter matrix', () => {
-  test.setTimeout(300_000);
+  test.setTimeout(PUBLIC_ACCOUNT_JOURNEY_TIMEOUT_MS);
 
   test('SQLite single tenant', async ({ browser }) => {
     await runPublicAccountJourney(browser, async () => {

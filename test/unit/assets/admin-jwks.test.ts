@@ -163,6 +163,7 @@ describe('admin JWKS controls', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('opens an accessible rotation dialog through a declarative form', async () => {
@@ -348,6 +349,17 @@ describe('admin JWKS controls', () => {
     expect(body.children).toHaveLength(0);
   });
 
+  it('ignores copy controls without an inline value or target', async () => {
+    const copyButton = new ElementFixture('button');
+    const { manager, writeText } = setupDom({ copyTriggers: [copyButton] });
+    manager.initialize();
+
+    copyButton.trigger('click');
+    await flushPromises();
+
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it('ignores copy controls without a value or a resolvable target', async () => {
     const copyButton = new ElementFixture('button');
     copyButton.dataset.jwksCopyTarget = 'missing';
@@ -358,5 +370,91 @@ describe('admin JWKS controls', () => {
     await flushPromises();
 
     expect(writeText).not.toHaveBeenCalled();
+  });
+  it('cancels rotation with the accessible cancel button', async () => {
+    const form = new ElementFixture('form');
+    const { body, created, manager } = setupDom();
+    const result = manager.confirmRotateKeys({
+      currentTarget: form,
+      preventDefault: vi.fn(),
+    } as never);
+
+    created.find(element => element.textContent === 'Cancel')?.trigger('click');
+
+    await expect(result).resolves.toBe(false);
+    expect(body.children).toHaveLength(0);
+    expect(form.submit).not.toHaveBeenCalled();
+  });
+
+  it('uses the event target for rotation when currentTarget is unavailable', async () => {
+    const form = new ElementFixture('form');
+    const { created, manager } = setupDom();
+    const result = manager.confirmRotateKeys({
+      preventDefault: vi.fn(),
+      target: form,
+    } as never);
+
+    created.find(element => element.textContent === 'Cancel')?.trigger('click');
+
+    await expect(result).resolves.toBe(false);
+    expect(form.submit).not.toHaveBeenCalled();
+  });
+
+  it('uses the event target when currentTarget is unavailable', async () => {
+    const form = new ElementFixture('form');
+    const { created, manager } = setupDom();
+    const result = manager.confirmRetireExpired({
+      preventDefault: vi.fn(),
+      target: form,
+    } as never);
+
+    created
+      .find(element => element.textContent === 'Yes, Retire Expired')
+      ?.trigger('click');
+
+    await expect(result).resolves.toBe(true);
+    expect(form.submit).toHaveBeenCalledOnce();
+  });
+
+  it('automatically initializes only on the JWKS administration route', async () => {
+    vi.resetModules();
+    const listeners = new Map<string, DomListener>();
+    const querySelectorAll = vi.fn(() => []);
+    vi.stubGlobal('window', { location: { pathname: '/admin/jwks/keys' } });
+    vi.stubGlobal('document', {
+      addEventListener: vi.fn((name: string, listener: DomListener) =>
+        listeners.set(name, listener)
+      ),
+      querySelectorAll,
+    });
+
+    await import('../../../src/assets/js/admin/jwks.js');
+    listeners.get('DOMContentLoaded')?.({});
+
+    expect(querySelectorAll).toHaveBeenCalledTimes(2);
+    expect(
+      (window as Window & { adminJwksManager?: unknown }).adminJwksManager
+    ).toBeTypeOf('object');
+  });
+
+  it('does not initialize automatically outside the JWKS administration route', async () => {
+    vi.resetModules();
+    const listeners = new Map<string, DomListener>();
+    const querySelectorAll = vi.fn(() => []);
+    vi.stubGlobal('window', { location: { pathname: '/admin/users' } });
+    vi.stubGlobal('document', {
+      addEventListener: vi.fn((name: string, listener: DomListener) =>
+        listeners.set(name, listener)
+      ),
+      querySelectorAll,
+    });
+
+    await import('../../../src/assets/js/admin/jwks.js');
+    listeners.get('DOMContentLoaded')?.({});
+
+    expect(querySelectorAll).not.toHaveBeenCalled();
+    expect(
+      (window as Window & { adminJwksManager?: unknown }).adminJwksManager
+    ).toBeUndefined();
   });
 });

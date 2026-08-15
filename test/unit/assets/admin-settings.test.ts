@@ -429,6 +429,23 @@ describe('admin settings manager', () => {
     }
   );
 
+  it('settles confirmation once and ignores unrelated keyboard input', async () => {
+    const dom = setupDom();
+    const manager = await loadManager(dom);
+    const result = manager.showConfirmDialog('Warning', 'Proceed?');
+    const backdrop = dom.body.children.at(-1)!;
+    const footer = backdrop.children[0]!.children[2]!;
+
+    dom.documentListeners.get('keydown')?.[0]?.({ key: 'Enter' });
+    expect(backdrop.remove).not.toHaveBeenCalled();
+    footer.children[0]!.trigger('click');
+    footer.children[0]!.trigger('click');
+    footer.children[1]!.trigger('click');
+
+    await expect(result).resolves.toBe(false);
+    expect(backdrop.remove).toHaveBeenCalledOnce();
+  });
+
   it('ignores clicks inside the confirmation modal', async () => {
     const dom = setupDom();
     const manager = await loadManager(dom);
@@ -687,14 +704,19 @@ describe('admin settings manager', () => {
   });
 
   it('validates remask parameters and missing elements', async () => {
-    const manager = await loadManager(setupDom());
+    const dom = setupDom();
+    const manager = await loadManager(dom);
     const showError = vi
       .spyOn(manager, 'showError')
       .mockImplementation(() => {});
 
     manager.remaskSecret('');
     manager.remaskSecret('missing');
+    const { field } = addFieldWithButton(dom, 'unmasked');
+    field.value = 'unchanged';
+    manager.remaskSecret('unmasked');
 
+    expect(field.value).toBe('unchanged');
     expect(showError).toHaveBeenNthCalledWith(1, 'Invalid field parameter');
     expect(showError).toHaveBeenNthCalledWith(
       2,
@@ -708,6 +730,11 @@ describe('admin settings manager', () => {
     button.setAttribute('data-secret-input-id', 'jwt');
     button.setAttribute('data-secret-field-path', 'security.jwt');
     dom.secretButtons.push(button);
+    const missingFieldId = new ElementFixture();
+    missingFieldId.setAttribute('data-secret-field-path', 'security.jwt');
+    const missingFieldPath = new ElementFixture();
+    missingFieldPath.setAttribute('data-secret-input-id', 'jwt');
+    dom.secretButtons.push(missingFieldId, missingFieldPath);
     const manager = await loadManager(dom);
     const reveal = vi.spyOn(manager, 'revealSecret').mockResolvedValue();
     const remask = vi
@@ -722,6 +749,8 @@ describe('admin settings manager', () => {
     await Promise.all(button.trigger('click'));
     expect(remask).toHaveBeenCalledWith('jwt');
     expect(button.listeners.get('click')).toHaveLength(1);
+    expect(missingFieldId.listeners.get('click')).toBeUndefined();
+    expect(missingFieldPath.listeners.get('click')).toBeUndefined();
   });
 
   it.each([

@@ -68,5 +68,5 @@ describe('Prisma SQLite runtime environment', () => {
     expect(existsSync(path.join(root, 'runtime', 'data', 'parako.db'))).toBe(
       false
     );
-  }, 30_000);
+  }, 90_000); // A real Prisma CLI schema push can be CPU-bound under the full parallel suite.
 });

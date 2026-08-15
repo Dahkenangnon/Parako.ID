@@ -189,6 +189,25 @@ describe('admin configuration secret controls', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
+  it('ignores malformed declarative secret controls', async () => {
+    const missingFieldPath = new ButtonFixture('button');
+    missingFieldPath.setAttribute('data-secret-input-id', 'secret');
+    const missingInputId = new ButtonFixture('button');
+    missingInputId.setAttribute(
+      'data-secret-field-path',
+      'notifications.apiKey'
+    );
+    const { fetch } = setupDom({
+      secretButtons: [missingFieldPath, missingInputId],
+    });
+
+    await import('../../../src/assets/js/admin/configuration/common.js');
+
+    missingFieldPath.trigger('click');
+    missingInputId.trigger('click');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('can be imported when browser globals are unavailable', async () => {
     vi.stubGlobal('document', undefined);
     vi.stubGlobal('window', undefined);

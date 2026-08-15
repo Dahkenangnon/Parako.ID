@@ -92,7 +92,8 @@ function setupDom(
   };
   const appendToBody = vi.fn();
   const documentFixture = {
-    activeElement: options.activeElement ?? trigger,
+    activeElement:
+      options.activeElement === undefined ? trigger : options.activeElement,
     addEventListener: vi.fn((name: string, listener: EventListener) => {
       documentListeners.set(name, listener);
     }),
@@ -143,6 +144,7 @@ function setupDom(
 describe('AdminActivitiesManager', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('is statically importable without a browser document', () => {
@@ -217,6 +219,17 @@ describe('AdminActivitiesManager', () => {
     }
   );
 
+  it('contains validation safely when the optional error element is absent', () => {
+    const days = makeElement({ value: 'invalid' });
+    const { confirm } = setupDom({ days, error: null });
+
+    confirm.emit('click');
+    days.emit('input');
+
+    expect(days.setAttribute).toHaveBeenCalledWith('aria-invalid', 'true');
+    expect(days.removeAttribute).toHaveBeenCalledWith('aria-invalid');
+  });
+
   it('clears the validation state when the administrator edits the input', () => {
     const days = makeElement({ value: 'invalid' });
     const error = makeElement({ hidden: true });
@@ -272,6 +285,20 @@ describe('AdminActivitiesManager', () => {
     expect(createdInputs[1]?.value).toBe('meta-csrf');
   });
 
+  it('uses the configured CSRF token when an empty meta element is present', () => {
+    const csrfMeta = makeElement();
+    const { createdInputs, manager } = setupDom({
+      config: { csrfToken: 'configured-csrf' },
+      csrfMeta,
+      days: makeElement({ value: '14' }),
+    });
+
+    manager.clearOldActivities();
+
+    expect(csrfMeta.getAttribute).toHaveBeenCalledWith('content');
+    expect(createdInputs[1]?.value).toBe('configured-csrf');
+  });
+
   it('uses safe route and CSRF defaults when optional configuration is empty', () => {
     const { createdInputs, form, manager } = setupDom({
       config: { csrfToken: '', routes: { clearOld: '' } },
@@ -282,5 +309,111 @@ describe('AdminActivitiesManager', () => {
 
     expect(form.action).toBe('/admin/activities/clear-old');
     expect(createdInputs[1]?.value).toBe('');
+  });
+  it('restores trigger focus when the page has no active element', () => {
+    const { cancel, trigger } = setupDom({ activeElement: null });
+
+    trigger.emit('click');
+    cancel.emit('click');
+
+    expect(trigger.focus).toHaveBeenCalledOnce();
+  });
+
+  it('bootstraps with defaults when serialized state is absent', async () => {
+    vi.resetModules();
+    const listeners = new Map<string, EventListener>();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      activeElement: null,
+      addEventListener: vi.fn((name: string, listener: EventListener) =>
+        listeners.set(name, listener)
+      ),
+      getElementById: vi.fn(() => null),
+      querySelector: vi.fn(() => null),
+      readyState: 'complete',
+    });
+
+    await import('../../../src/assets/js/admin/activities/index.js');
+
+    expect(
+      (window as typeof window & { AdminActivitiesManager?: unknown })
+        .AdminActivitiesManager
+    ).toBeTypeOf('function');
+  });
+
+  it('waits for DOM readiness and falls back safely from malformed state', async () => {
+    vi.resetModules();
+    const listeners = new Map<string, EventListener>();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      activeElement: null,
+      addEventListener: vi.fn((name: string, listener: EventListener) =>
+        listeners.set(name, listener)
+      ),
+      getElementById: vi.fn((id: string) =>
+        id === '___ADMIN_ACTIVITIES_STATE___'
+          ? { textContent: '{invalid-json' }
+          : null
+      ),
+      querySelector: vi.fn(() => null),
+      readyState: 'loading',
+    });
+
+    await import('../../../src/assets/js/admin/activities/index.js');
+    listeners.get('DOMContentLoaded')?.({});
+
+    expect(consoleError).toHaveBeenCalledWith(
+      '[AdminActivitiesManager] Initialization failed:',
+      expect.any(SyntaxError)
+    );
+  });
+
+  it('bootstraps the page from serialized state', async () => {
+    vi.resetModules();
+    const confirm = makeElement();
+    const days = makeElement({ value: '7' });
+    const error = makeElement({ hidden: true });
+    const modal = makeElement({ hidden: true });
+    const appended = vi.fn();
+    const form = {
+      action: '',
+      appendChild: vi.fn(),
+      method: '',
+      submit: vi.fn(),
+    };
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      activeElement: null,
+      addEventListener: vi.fn(),
+      body: { appendChild: appended },
+      createElement: vi.fn((tag: string) =>
+        tag === 'form' ? form : { name: '', type: '', value: '' }
+      ),
+      getElementById: vi.fn((id: string) => {
+        if (id === '___ADMIN_ACTIVITIES_STATE___')
+          return {
+            textContent: JSON.stringify({
+              routes: { clearOld: '/serialized' },
+            }),
+          };
+        if (id === 'clearOldModal') return modal;
+        if (id === 'days') return days;
+        if (id === 'clearOldError') return error;
+        return null;
+      }),
+      querySelector: vi.fn((selector: string) =>
+        selector === '[data-activities-clear-confirm]' ? confirm : null
+      ),
+      readyState: 'complete',
+    });
+
+    await import('../../../src/assets/js/admin/activities/index.js');
+    confirm.emit('click');
+
+    expect(form.action).toBe('/serialized');
+    expect(form.submit).toHaveBeenCalledOnce();
   });
 });

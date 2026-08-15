@@ -240,17 +240,28 @@ describe('MainRoutesManager', () => {
       platformAdminController,
       platformTenantMiddleware,
     });
+    const multiTenantWithoutPlatformDependencies = makeManager({
+      multiTenant: true,
+    });
     const multiApp = { get: vi.fn(), use: vi.fn() };
     const singleApp = { get: vi.fn(), use: vi.fn() };
+    const missingDependenciesApp = { get: vi.fn(), use: vi.fn() };
 
     multiTenant.manager.registerRoutes(multiApp as never);
     singleTenant.manager.registerRoutes(singleApp as never);
+    multiTenantWithoutPlatformDependencies.manager.registerRoutes(
+      missingDependenciesApp as never
+    );
 
     expect(routeMocks.adminRoutes.mock.calls[0]?.slice(-2)).toEqual([
       platformAdminController,
       platformTenantMiddleware,
     ]);
     expect(routeMocks.adminRoutes.mock.calls[1]?.slice(-2)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(routeMocks.adminRoutes.mock.calls[2]?.slice(-2)).toEqual([
       undefined,
       undefined,
     ]);

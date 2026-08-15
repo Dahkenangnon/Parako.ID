@@ -708,6 +708,23 @@ describe('Mongoose settings repository', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('reports an unknown current revision when a stale MongoDB key is missing', async () => {
+    const create = vi.fn();
+    const repository = new MongooseSettingsRepository({
+      findOneAndUpdate: vi.fn().mockReturnValue(mongooseQuery(null)),
+      findOne: vi.fn().mockReturnValue(mongooseQuery(null)),
+      create,
+    } as never);
+
+    const rejection = repository.save('parako_config', {}, undefined, 7);
+
+    await expect(rejection).rejects.toMatchObject({
+      expectedVersion: 7,
+      actualVersion: undefined,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('falls back from a missing previous semver and empty metadata', async () => {
     const previousQuery = mongooseQuery({ _version: 4, version: null });
     const create = vi.fn().mockResolvedValue({

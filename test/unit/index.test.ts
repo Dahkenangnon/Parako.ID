@@ -852,6 +852,26 @@ describe('server process entrypoint', () => {
     expect(harness.opsRedisClient.disconnect).not.toHaveBeenCalled();
   });
 
+  it('disconnects a connected operations Redis client without a quit method', async () => {
+    const quit = harness.opsRedisClient.quit;
+    harness.containerBehavior.opsRedisBound = true;
+    (harness.opsRedisClient as any).quit = undefined;
+
+    try {
+      await importEntrypoint();
+
+      harness.processHandlers.get('SIGINT')!();
+      await vi.waitFor(() => {
+        expect(harness.processMock.exit).toHaveBeenCalledWith(0);
+      });
+
+      expect(harness.opsRedisClient.disconnect).toHaveBeenCalledOnce();
+      expect(quit).not.toHaveBeenCalled();
+    } finally {
+      harness.opsRedisClient.quit = quit;
+    }
+  });
+
   it.each(['wait', 'end'])(
     'disconnects an idle operations Redis client with status %s',
     async status => {

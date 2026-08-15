@@ -167,6 +167,8 @@ for (const cell of cells) {
     test('applies configured roles and case-insensitive custom identifiers', async ({
       page,
     }) => {
+      // Each cell boots a disposable IdP and exercises two complete user-creation cycles.
+      test.slow();
       const failures = observeBrowserFailures(page);
       const instance = await cell.start(profileConfig);
 

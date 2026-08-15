@@ -8,7 +8,15 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
 const adminEntrypoint = join(
@@ -25,6 +33,12 @@ const prismaEntrypoint = join(
   'build',
   'index.js'
 );
+
+const COMPILED_ADMIN_TEST_TIMEOUT_MS = 60_000;
+
+// Compiled process startup is slower than in-process integration work,
+// especially when the complete suite runs under coverage instrumentation.
+vi.setConfig({ testTimeout: COMPILED_ADMIN_TEST_TIMEOUT_MS });
 
 function runAdminBootstrap(
   temporaryRoot: string,
@@ -162,7 +176,7 @@ describe.sequential('compiled administrator CLI with SQLite', () => {
       administrator?.reset_password_expires?.getTime()
     ).toBeLessThanOrEqual(Date.now() + 10 * 60_000);
     expect(result.stdout).not.toContain(databasePath);
-  }, 30_000); // Compiled process startup can exceed the shared budget under full-suite load.
+  }, 60_000); // Compiled process startup can exceed the shared budget under full-suite load.
 
   it('reissues the sole pending activation without creating another administrator', async () => {
     const firstResult = runSqliteAdminBootstrap(
@@ -200,7 +214,7 @@ describe.sequential('compiled administrator CLI with SQLite', () => {
     expect(administrators[0]?.reset_password_token).not.toBe(
       createHash('sha256').update(firstToken).digest('hex')
     );
-  }, 30_000); // Two compiled CLI processes must complete under full-suite load.
+  }, 60_000); // Two compiled CLI processes must complete under full-suite load.
 
   it('refuses to replace an activated administrator without leaking database details', async () => {
     await prisma.user.create({

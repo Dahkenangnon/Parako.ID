@@ -1062,6 +1062,73 @@ describe('ConfigManager core behavior', () => {
     });
   });
 
+  it.each([new Error('redis offline'), 'redis offline'])(
+    'logs tenant invalidation broadcast failures without rejecting: %s',
+    async failure => {
+      const configWithoutPrefix = createPersistedConfig({
+        deployment: {
+          url: 'https://persisted.example.test',
+          server: { trust_proxy_hops: 1 },
+        },
+      });
+      const { bootstrapProvider, dbProvider, logger, manager } =
+        createManager();
+      bootstrapProvider.loadConfiguration.mockResolvedValue(
+        createBootstrapConfig()
+      );
+      dbProvider.isAvailable.mockResolvedValue(true);
+      dbProvider.loadConfiguration.mockResolvedValue(configWithoutPrefix);
+      await manager.load();
+      const pubsub = {
+        isConnected: vi.fn().mockReturnValue(true),
+        psubscribe: vi.fn(),
+        publish: vi.fn().mockRejectedValue(failure),
+      };
+      manager.setPubSub(pubsub as never);
+
+      await expect(
+        manager.invalidateTenantConfig('tenant-a', { broadcast: true })
+      ).resolves.toBeUndefined();
+
+      expect(mocks.buildRedisKeyForTenant).toHaveBeenCalledWith(
+        'parako',
+        'tenant-a',
+        'config',
+        'invalidated'
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        failure instanceof Error
+          ? failure
+          : expect.objectContaining({ message: failure }),
+        {
+          context: 'tenant_config_invalidation_broadcast_failed',
+          tenantId: 'tenant-a',
+        }
+      );
+    }
+  );
+
+  it('replaces an existing tenant invalidation subscription', () => {
+    const { manager } = createManager();
+    const firstPubSub = {
+      psubscribe: vi.fn(),
+      punsubscribe: vi.fn(),
+    };
+    const secondPubSub = {
+      psubscribe: vi.fn(),
+    };
+
+    manager.setPubSub(firstPubSub as never);
+    const [pattern, handler] = firstPubSub.psubscribe.mock.calls[0];
+    manager.setPubSub(secondPubSub as never);
+
+    expect(firstPubSub.punsubscribe).toHaveBeenCalledWith(pattern, handler);
+    expect(secondPubSub.psubscribe).toHaveBeenCalledWith(
+      pattern,
+      expect.any(Function)
+    );
+  });
+
   it('evicts only the addressed tenant for an external tenant invalidation', async () => {
     const { manager } = createManager();
     const reload = vi.spyOn(manager, 'reload').mockResolvedValue({} as never);

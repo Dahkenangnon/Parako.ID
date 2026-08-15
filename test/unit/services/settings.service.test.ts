@@ -492,6 +492,50 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       );
     });
 
+    it('treats legacy active settings without a revision as version zero', async () => {
+      const originalKey = process.env.ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = '6'.repeat(64);
+      const current = makeSettings({ _version: undefined });
+      const saved = makeSettings({ _version: 1, version: '1.0.1' });
+      vi.mocked(repo.findActive).mockResolvedValue(current);
+      vi.mocked(repo.findHistory).mockResolvedValue([current]);
+      vi.mocked(repo.save).mockResolvedValue(saved);
+
+      try {
+        await expect(
+          service.saveMainConfiguration({}, 'admin', 'legacy update', 0)
+        ).resolves.toBe(saved);
+      } finally {
+        if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = originalKey;
+      }
+
+      expect(repo.save).toHaveBeenCalledWith(
+        'parako_config',
+        expect.any(Object),
+        expect.objectContaining({ change_reason: 'legacy update' }),
+        0
+      );
+    });
+
+    it('rejects a submitted version when no active configuration exists', async () => {
+      const originalKey = process.env.ENCRYPTION_KEY;
+      process.env.ENCRYPTION_KEY = '7'.repeat(64);
+      vi.mocked(repo.findActive).mockResolvedValue(null);
+
+      try {
+        await expect(
+          service.saveMainConfiguration({}, 'admin', 'stale update', 7)
+        ).rejects.toMatchObject({ expectedVersion: 7 });
+      } finally {
+        if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+        else process.env.ENCRYPTION_KEY = originalKey;
+      }
+
+      expect(repo.findHistory).not.toHaveBeenCalled();
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('rejects a stale submitted version before attempting a repository write', async () => {
       const originalKey = process.env.ENCRYPTION_KEY;
       process.env.ENCRYPTION_KEY = '5'.repeat(64);

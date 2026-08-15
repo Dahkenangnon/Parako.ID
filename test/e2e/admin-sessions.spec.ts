@@ -176,12 +176,13 @@ test('an administrator can search, paginate, inspect, and revoke real OIDC sessi
         item.request().method() === 'POST' &&
         /\/admin\/sessions\/[^/]+\/revoke$/.test(new URL(item.url()).pathname)
     );
-    await dialog.getByRole('button', { name: 'Revoke' }).click();
-    expect((await response).status()).toBe(302);
-    await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/sessions`);
-    await expect(page.getByRole('alert')).toContainText(
+    const successAlert = expect(page.getByRole('alert')).toContainText(
       'Session revoked successfully'
     );
+    await dialog.getByRole('button', { name: 'Revoke' }).click();
+    expect((await response).status()).toBe(302);
+    await successAlert;
+    await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/sessions`);
 
     await page.goto(`${IDP_ORIGIN}/admin/sessions?${query}`);
     await expect(oidcSection(page).locator('tbody tr')).toHaveCount(1);
@@ -318,11 +319,12 @@ test('the bulk dialog can be cancelled and then revokes every session for one ac
         new URL(item.url()).pathname ===
           `/admin/sessions/revoke-user/${user.username}`
     );
-    await dialog.getByRole('button', { name: 'Revoke' }).click();
-    expect((await response).status()).toBe(302);
-    await expect(page.getByRole('alert')).toContainText(
+    const successAlert = expect(page.getByRole('alert')).toContainText(
       `session(s) for user ${user.username}`
     );
+    await dialog.getByRole('button', { name: 'Revoke' }).click();
+    expect((await response).status()).toBe(302);
+    await successAlert;
 
     await page.goto(`${IDP_ORIGIN}/admin/sessions?${query}`);
     await expect(

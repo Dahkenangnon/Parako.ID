@@ -175,6 +175,11 @@ describe('admin users form manager', () => {
     expect(buttonWithoutTarget.listeners.get('click')).toBeUndefined();
 
     elements.delete('password_icon');
+    password.type = 'password';
+    expect(() =>
+      button.trigger('click', { preventDefault: vi.fn() })
+    ).not.toThrow();
+    password.type = 'text';
     expect(() =>
       button.trigger('click', { preventDefault: vi.fn() })
     ).not.toThrow();

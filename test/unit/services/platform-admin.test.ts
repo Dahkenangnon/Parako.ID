@@ -367,6 +367,22 @@ describe('PlatformAdminService', () => {
       });
     });
 
+    it('rejects a malformed repository tenant without an identity', async () => {
+      const service = makeService();
+      tenantRepo.findBySlug.mockResolvedValueOnce({
+        slug: 'acme',
+        display_name: 'Acme Corp',
+        status: 'active',
+        created_at: new Date('2025-01-01'),
+        updated_at: new Date('2025-01-01'),
+      } as any);
+
+      await expect(
+        service.updateTenant('acme', { display_name: 'Acme Updated' })
+      ).rejects.toThrow("Tenant 'acme' has no repository identity");
+      expect(tenantRepo.update).not.toHaveBeenCalled();
+    });
+
     it('updates mutable tenant details and records the complete audit context', async () => {
       const service = makeService();
       const update = {

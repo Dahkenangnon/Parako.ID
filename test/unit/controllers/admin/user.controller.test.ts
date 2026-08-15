@@ -914,6 +914,39 @@ describe('AdminUsersController', () => {
       expect(deps.userService.updateWithAssignment).not.toHaveBeenCalled();
     });
 
+    it('allows the current administrator to preserve an enabled admin account', async () => {
+      deps.sessionManager.getActiveUser.mockReturnValue({
+        id: 'user-1',
+        username: 'ada',
+        email: 'ada@example.com',
+      });
+      const user = createMockUser({ roles: ['admin'] });
+      deps.userService.findOne.mockResolvedValue(user);
+      deps.userService.updateWithAssignment.mockResolvedValue(user);
+      const res = makeRes();
+
+      await controller.update(
+        makeReq({
+          params: { id: 'user-1' },
+          body: {
+            email: 'ada@example.com',
+            given_name: 'Ada',
+            family_name: 'Lovelace',
+            roles: 'admin',
+            account_enabled: 'true',
+          },
+        }),
+        res
+      );
+
+      expect(deps.userService.updateWithAssignment).toHaveBeenCalledWith(
+        'user-1',
+        expect.objectContaining({ roles: ['admin'], account_enabled: true })
+      );
+      expect(deps.flash.error).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/admin/users/user-1');
+    });
+
     it('keeps only configured string roles when updating a user', async () => {
       const user = createMockUser();
       deps.userService.findOne.mockResolvedValue(user);
@@ -1372,7 +1405,11 @@ describe('AdminUsersController', () => {
 
     it('enables and audits the user', async () => {
       const disabledUser = createMockUser({ account_enabled: false });
-      const enabledUser = createMockUser({ account_enabled: true });
+      const enabledUser = createMockUser({
+        _id: undefined,
+        id: 'user-1',
+        account_enabled: true,
+      });
       deps.userService.findOne.mockResolvedValue(disabledUser);
       deps.userService.updateById.mockResolvedValue(enabledUser);
       const res = makeRes();

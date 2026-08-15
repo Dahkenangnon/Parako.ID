@@ -1159,10 +1159,53 @@ describe('OIDCUtils', () => {
       });
     });
 
+    it('contains current-user lookup failures while still returning session data', async () => {
+      const error = new Error('user repository unavailable');
+      userService.findByUsername.mockRejectedValue(error);
+      vi.spyOn(utils, 'getClientInfo').mockResolvedValue([]);
+
+      const result = await utils.processSessionData({
+        _id: 'session',
+        payload: { accountId: 'alice', iat: 100 },
+      });
+
+      expect(result.userInfo).toEqual(
+        expect.objectContaining({ username: 'alice', email: 'Unknown' })
+      );
+      expect(logger.error).toHaveBeenCalledWith(error, {
+        context: 'Could not get current user info for alice',
+      });
+    });
+
     it('uses activity identity fallbacks when actor details are absent', async () => {
       activityService.findActivitiesAroundTime.mockResolvedValue([
         { actor: {} },
       ]);
+      vi.spyOn(utils, 'getClientInfo').mockResolvedValue([]);
+
+      const result = await utils.processSessionData({
+        _id: 'session',
+        payload: { accountId: 'alice', iat: 100 },
+      });
+
+      expect(result.userInfo).toEqual({
+        username: 'alice',
+        email: 'Unknown',
+        full_name: 'Unknown User',
+        given_name: '',
+        family_name: '',
+      });
+    });
+
+    it('uses stable identity fallbacks when the current user has no profile fields', async () => {
+      userService.findByUsername.mockResolvedValue(
+        account({
+          email: undefined,
+          name: undefined,
+          given_name: undefined,
+          family_name: undefined,
+        })
+      );
       vi.spyOn(utils, 'getClientInfo').mockResolvedValue([]);
 
       const result = await utils.processSessionData({

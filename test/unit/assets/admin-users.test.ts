@@ -208,15 +208,24 @@ describe('admin users manager', () => {
     const anonymizeButton = new ElementFixture('button');
     anonymizeButton.dataset.userId = 'user-2';
     anonymizeButton.dataset.username = 'Maria';
+    const invalidStatusButton = new ElementFixture('button');
+    invalidStatusButton.dataset.userId = 'user-3';
+    invalidStatusButton.dataset.userStatusAction = 'archive';
+    const invalidAnonymizeButton = new ElementFixture('button');
+    invalidAnonymizeButton.dataset.userId = 'user-4';
     const { created, runReady } = setupDom({
       queryElements: {
-        '[data-user-anonymize]': [anonymizeButton],
-        '[data-user-status-action]': [statusButton],
+        '[data-user-anonymize]': [anonymizeButton, invalidAnonymizeButton],
+        '[data-user-status-action]': [statusButton, invalidStatusButton],
       },
     });
     await import('../../../src/assets/js/admin/users.js');
 
     runReady();
+    invalidStatusButton.trigger('click');
+    invalidAnonymizeButton.trigger('click');
+    expect(created).toHaveLength(0);
+
     statusButton.trigger('click');
 
     expect(

@@ -11,7 +11,15 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
 const systemdEntrypoint = join(
@@ -21,6 +29,13 @@ const systemdEntrypoint = join(
   'manage',
   'systemd.js'
 );
+
+const SYSTEMD_PROCESS_TIMEOUT_MS = 30_000;
+const SYSTEMD_TEST_TIMEOUT_MS = 45_000;
+
+// Every assertion exercises the compiled CLI in a child process. Keep this
+// allowance scoped to the file so the rest of the integration suite stays strict.
+vi.setConfig({ testTimeout: SYSTEMD_TEST_TIMEOUT_MS });
 
 function runSystemd(arguments_: string[], environment: NodeJS.ProcessEnv = {}) {
   return spawnSync(process.execPath, [systemdEntrypoint, ...arguments_], {
@@ -32,7 +47,7 @@ function runSystemd(arguments_: string[], environment: NodeJS.ProcessEnv = {}) {
       NODE_ENV: 'test',
       ...environment,
     },
-    timeout: 10_000,
+    timeout: SYSTEMD_PROCESS_TIMEOUT_MS,
   });
 }
 

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type DomEvent = { currentTarget?: unknown; key?: string; target?: unknown };
+type DomEvent = {
+  currentTarget?: unknown;
+  key?: string;
+  preventDefault?: () => void;
+  target?: unknown;
+};
 type DomListener = (event: DomEvent) => unknown;
 
 class ElementFixture {
@@ -137,6 +142,27 @@ function setupDom(
   };
 }
 
+function makeValidIntegrationElements(): Record<string, ElementFixture> {
+  const ids = [
+    'integrations.email.smtp_host',
+    'integrations.email.smtp_port',
+    'integrations.email.smtp_username',
+    'integrations.email.smtp_password',
+    'integrations.email.from',
+    'integrations.urls.website',
+    'integrations.urls.contact',
+    'integrations.urls.privacy_policy',
+    'integrations.urls.terms_of_service',
+  ];
+  return Object.fromEntries(
+    ids.map(id => {
+      const input = new ElementFixture('input');
+      input.value = id.endsWith('smtp_port') ? '587' : 'configured';
+      return [id, input];
+    })
+  );
+}
+
 describe('admin integrations settings manager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -168,24 +194,7 @@ describe('admin integrations settings manager', () => {
   });
 
   it('prevents native submission before validation and then requests critical-change confirmation', async () => {
-    const ids = [
-      'integrations.email.smtp_host',
-      'integrations.email.smtp_port',
-      'integrations.email.smtp_username',
-      'integrations.email.smtp_password',
-      'integrations.email.from',
-      'integrations.urls.website',
-      'integrations.urls.contact',
-      'integrations.urls.privacy_policy',
-      'integrations.urls.terms_of_service',
-    ];
-    const elements = Object.fromEntries(
-      ids.map(id => {
-        const input = new ElementFixture('input');
-        input.value = id.endsWith('smtp_port') ? '587' : 'configured';
-        return [id, input];
-      })
-    );
+    const elements = makeValidIntegrationElements();
     const confirmCriticalChange = vi.fn().mockResolvedValue(false);
     const context = setupDom({ elements, withLucide: false });
     context.browserWindow.adminSettingsManager = { confirmCriticalChange };
@@ -194,11 +203,60 @@ describe('admin integrations settings manager', () => {
     const event = { preventDefault: vi.fn(), target: context.form };
 
     const pending = Promise.all(context.form.trigger('submit', event));
+    const duplicate = context.form.trigger('submit', {
+      preventDefault: vi.fn(),
+      target: context.form,
+    });
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
-    await pending;
+    await Promise.all([pending, ...duplicate]);
     expect(confirmCriticalChange).toHaveBeenCalledOnce();
     expect(confirmCriticalChange).toHaveBeenCalledWith(event);
+  });
+
+  it('contains missing and failing critical-change confirmation services', async () => {
+    const first = setupDom({
+      elements: makeValidIntegrationElements(),
+      withLucide: false,
+    });
+    await import('../../../src/assets/js/admin/settings/integrations.js');
+    first.runReady();
+    const firstEvent = { preventDefault: vi.fn(), target: first.form };
+
+    await first.form.triggerAsync('submit', firstEvent);
+
+    expect(
+      first.created.some(element => element.textContent === 'Unable to Save')
+    ).toBe(true);
+
+    vi.resetModules();
+    vi.unstubAllGlobals();
+    const second = setupDom({
+      elements: makeValidIntegrationElements(),
+      withLucide: false,
+    });
+    const failure = new Error('confirmation failed');
+    const error = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    second.browserWindow.adminSettingsManager = {
+      confirmCriticalChange: vi.fn().mockRejectedValue(failure),
+    };
+    await import('../../../src/assets/js/admin/settings/integrations.js');
+    second.runReady();
+
+    await second.form.triggerAsync('submit', {
+      preventDefault: vi.fn(),
+      target: second.form,
+    });
+
+    expect(error).toHaveBeenCalledWith(
+      'Failed to confirm integrations settings change',
+      failure
+    );
+    expect(
+      second.created.some(element => element.textContent === 'Unable to Save')
+    ).toBe(true);
   });
 
   it('exposes reset confirmation as an accessible dialog and Escape cancels it', async () => {
@@ -239,6 +297,7 @@ describe('admin integrations settings manager', () => {
       element =>
         element.tagName === 'button' && element.textContent === 'Cancel'
     );
+    cancel?.trigger('click');
     cancel?.trigger('click');
     await result;
 
@@ -341,24 +400,7 @@ describe('admin integrations settings manager', () => {
   ])(
     'validates integration settings before native submission: $missingId',
     async ({ expected, missingId }) => {
-      const ids = [
-        'integrations.email.smtp_host',
-        'integrations.email.smtp_port',
-        'integrations.email.smtp_username',
-        'integrations.email.smtp_password',
-        'integrations.email.from',
-        'integrations.urls.website',
-        'integrations.urls.contact',
-        'integrations.urls.privacy_policy',
-        'integrations.urls.terms_of_service',
-      ];
-      const elements = Object.fromEntries(
-        ids.map(id => {
-          const input = new ElementFixture('input');
-          input.value = id.endsWith('smtp_port') ? '587' : 'configured';
-          return [id, input];
-        })
-      );
+      const elements = makeValidIntegrationElements();
       if (missingId) elements[missingId].value = '';
       const context = setupDom({ elements, withLucide: false });
       const confirmCriticalChange = vi.fn().mockResolvedValue(false);

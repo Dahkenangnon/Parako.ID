@@ -2394,6 +2394,38 @@ describe('UserService — statistics, creation, and lifecycle', () => {
       expect(repo.count).toHaveBeenCalledWith({ email: 'alice@example.com' });
     });
 
+    it('continues duplicate-field inference when a repository probe fails', async () => {
+      const error = Object.assign(new Error('P2002 sensitive details'), {
+        code: 'P2002',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              kind: 'UniqueConstraintViolation',
+              constraint: undefined,
+            },
+          },
+        },
+      });
+      vi.mocked(repo.create).mockRejectedValueOnce(error);
+      vi.mocked(repo.count).mockImplementation(async filter => {
+        if (filter && 'email' in filter) throw new Error('probe failed');
+        return filter && 'username' in filter ? 1 : 0;
+      });
+
+      await expect(
+        service.createUserWithGeneratedUsername({
+          email: 'alice@example.com',
+          username: 'alice',
+        })
+      ).rejects.toThrow('Username is already taken');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Unable to identify duplicate user field',
+        { field: 'email' }
+      );
+      expect(repo.count).toHaveBeenCalledWith({ username: 'alice' });
+    });
+
     it('rethrows unrelated creation errors', async () => {
       const failure = new Error('connection failed');
       vi.mocked(repo.create).mockRejectedValueOnce(failure);

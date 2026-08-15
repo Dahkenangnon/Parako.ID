@@ -48,6 +48,7 @@ function setupDom(
 describe('AdminGrantsManager', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('is statically importable without a browser document', () => {
@@ -134,5 +135,85 @@ describe('AdminGrantsManager', () => {
       'Revoke every authorization for alice?',
       expect.any(Object)
     );
+  });
+
+  it('bootstraps with defaults when serialized state is absent', async () => {
+    vi.resetModules();
+    const form = makeForm();
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      getElementById: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => [form]),
+      readyState: 'complete',
+    });
+
+    await import('../../../src/assets/js/admin/grants/index.js');
+    await form.emitSubmit();
+
+    expect(form.addEventListener).toHaveBeenCalledWith(
+      'submit',
+      expect.any(Function)
+    );
+  });
+
+  it('waits for DOM readiness and falls back safely from malformed state', async () => {
+    vi.resetModules();
+    const form = makeForm();
+    const listeners = new Map<string, () => void>();
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', {
+      addEventListener: vi.fn((name: string, listener: () => void) => {
+        listeners.set(name, listener);
+      }),
+      getElementById: vi.fn(() => ({ textContent: '{invalid-json' })),
+      querySelectorAll: vi.fn(() => [form]),
+      readyState: 'loading',
+    });
+
+    await import('../../../src/assets/js/admin/grants/index.js');
+    expect(form.addEventListener).not.toHaveBeenCalled();
+
+    listeners.get('DOMContentLoaded')?.();
+
+    expect(form.addEventListener).toHaveBeenCalledWith(
+      'submit',
+      expect.any(Function)
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      '[AdminGrantsManager] Initialization failed:',
+      expect.any(SyntaxError)
+    );
+  });
+
+  it('bootstraps the page from its serialized state', async () => {
+    vi.resetModules();
+    const form = makeForm();
+    const showConfirm = vi.fn().mockResolvedValue(false);
+    vi.stubGlobal('window', { dialog: { showConfirm } });
+    vi.stubGlobal('document', {
+      getElementById: vi.fn(() => ({
+        textContent: JSON.stringify({
+          translations: { revokeTitle: 'Serialized title' },
+        }),
+      })),
+      querySelectorAll: vi.fn(() => [form]),
+      readyState: 'complete',
+    });
+
+    await import('../../../src/assets/js/admin/grants/index.js');
+    await form.emitSubmit();
+
+    expect(showConfirm).toHaveBeenCalledWith(
+      'Serialized title',
+      expect.any(String),
+      expect.any(Object)
+    );
+    expect(
+      (window as typeof window & { AdminGrantsManager?: unknown })
+        .AdminGrantsManager
+    ).toBeTypeOf('function');
   });
 });

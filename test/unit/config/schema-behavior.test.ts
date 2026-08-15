@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { getDefaultFullConfig } from '../../../src/config/constants.js';
-import { AppConfigSchema } from '../../../src/config/schemas/schema.js';
+import {
+  AppConfigSchema,
+  OidcOverrideSchema,
+} from '../../../src/config/schemas/schema.js';
 
 function createConfig(): Record<string, any> {
   return structuredClone(getDefaultFullConfig()) as Record<string, any>;
@@ -9,6 +12,24 @@ function createConfig(): Record<string, any> {
 function parseConfig(config: Record<string, any>) {
   return AppConfigSchema.parse(config);
 }
+
+describe('OIDC override schema', () => {
+  it('accepts empty and HTTP metadata URLs but rejects other protocols', () => {
+    expect(
+      OidcOverrideSchema.safeParse({ discovery: { op_policy_uri: '' } }).success
+    ).toBe(true);
+    expect(
+      OidcOverrideSchema.safeParse({
+        discovery: { op_policy_uri: 'https://issuer.example.test/policy' },
+      }).success
+    ).toBe(true);
+    expect(
+      OidcOverrideSchema.safeParse({
+        discovery: { op_policy_uri: 'ftp://issuer.example.test/policy' },
+      }).success
+    ).toBe(false);
+  });
+});
 
 describe('AppConfigSchema executable behavior', () => {
   describe('application locale configuration', () => {
@@ -278,6 +299,14 @@ describe('AppConfigSchema executable behavior', () => {
       const config = createConfig();
       config.features.social_providers.enabled = ['google'];
       config.features.social_providers.google = google;
+
+      expect(AppConfigSchema.safeParse(config).success).toBe(false);
+    });
+
+    it('rejects an enabled provider whose configuration is absent', () => {
+      const config = createConfig();
+      config.features.social_providers.enabled = ['google'];
+      delete config.features.social_providers.google;
 
       expect(AppConfigSchema.safeParse(config).success).toBe(false);
     });

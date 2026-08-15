@@ -200,7 +200,9 @@ describe('settings helper form conversion', () => {
 
   it.each([
     ['', []],
+    ['public', ['public']],
     [['', 'public', ''], ['public']],
+    [{ custom: true }, { custom: true }],
   ])('normalizes submitted OIDC subject types: %j', (submitted, expected) => {
     const result = convertFeaturesFormData({
       oidc: { subject_types: submitted },

@@ -211,6 +211,29 @@ describe('AdminDataTransferController', () => {
       });
     });
 
+    it('reports no field capabilities when an entity has no export configuration', async () => {
+      vi.spyOn(entityRegistry, 'getEntityConfigFactory').mockReturnValueOnce(
+        () => ({
+          entityId: 'users',
+          displayName: 'Users',
+          description: 'User accounts',
+        })
+      );
+      const { controller } = makeController();
+      const res = makeRes();
+
+      await controller.overview(makeReq(), res);
+
+      expect(res.render.mock.calls[0][1].entities[0]).toEqual(
+        expect.objectContaining({
+          entityId: 'users',
+          hasExport: false,
+          hasSecretFields: false,
+          hasSensitiveFields: false,
+        })
+      );
+    });
+
     it('fails explicitly if the advertised entity registry is inconsistent', async () => {
       vi.spyOn(entityRegistry, 'getEntityConfigFactory').mockReturnValueOnce(
         null

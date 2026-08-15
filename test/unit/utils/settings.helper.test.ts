@@ -49,6 +49,22 @@ describe('convertApplicationFormData()', () => {
       title: 'Title',
     });
   });
+
+  it('normalizes a single available locale without coercing non-string defaults', () => {
+    expect(
+      convertApplicationFormData({
+        locales: { default: null, available: ' fr ' },
+      })
+    ).toEqual({
+      locales: { default: null, available: ['fr'] },
+    });
+  });
+
+  it('preserves a locale object when optional fields are absent', () => {
+    expect(convertApplicationFormData({ locales: {} })).toEqual({
+      locales: {},
+    });
+  });
 });
 
 describe('convertBooleanFields()', () => {
@@ -208,6 +224,7 @@ describe('convertFeaturesFormData()', () => {
           client_id: ' github-client ',
           client_secret: ' github-secret ',
         },
+        facebook: { client_id: 42 },
       },
     });
 
@@ -216,6 +233,7 @@ describe('convertFeaturesFormData()', () => {
       client_id: 'github-client',
       client_secret: 'github-secret',
     });
+    expect(result.social_providers.facebook).toEqual({ client_id: 42 });
   });
 
   it('converts behavior boolean fields from hidden+checkbox arrays', () => {

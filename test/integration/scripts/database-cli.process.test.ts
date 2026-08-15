@@ -12,7 +12,15 @@ import { join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
 const databaseEntrypoint = join(
@@ -22,6 +30,12 @@ const databaseEntrypoint = join(
   'manage',
   'database.js'
 );
+
+const COMPILED_DATABASE_TEST_TIMEOUT_MS = 120_000;
+
+// Database provisioning crosses compiled CLI and adapter process boundaries;
+// keep the timeout local to this file so unrelated integration tests stay strict.
+vi.setConfig({ testTimeout: COMPILED_DATABASE_TEST_TIMEOUT_MS });
 
 function runDatabase(
   temporaryRoot: string,
@@ -101,7 +115,7 @@ describe.sequential('compiled database CLI with SQLite', () => {
     expect(secondCount).toBe(firstCount);
     expect(first.stdout + first.stderr).not.toContain('Prisma exited');
     expect(second.stdout + second.stderr).not.toContain('Prisma exited');
-  }, 60_000);
+  }, 120_000);
 
   it('reports a migrated SQLite database as healthy', () => {
     const databasePath = join(temporaryRoot, 'status.db');
@@ -115,7 +129,7 @@ describe.sequential('compiled database CLI with SQLite', () => {
     expect(result.stdout + result.stderr).toContain(
       'Database schema is up to date'
     );
-  }, 60_000);
+  }, 120_000);
 
   it.each(['status', 'migrate'])(
     'returns a failing %s status when SQLite cannot open the configured database',
@@ -133,7 +147,7 @@ describe.sequential('compiled database CLI with SQLite', () => {
       expect(result.stderr).not.toContain('undefined');
       expect(result.stdout + result.stderr).not.toContain(directoryPath);
     },
-    30_000 // Prisma CLI startup owns most of this bounded process duration.
+    120_000 // Prisma CLI startup owns most of this bounded process duration.
   );
 
   it('rejects an unsupported adapter through the compiled boundary', () => {
@@ -212,7 +226,7 @@ describe.sequential('compiled database CLI with SQLite', () => {
       rolled_back_at: null,
     });
     expect(migration.finished_at).not.toBeNull();
-  }, 30_000);
+  }, 120_000);
 });
 
 describe.sequential('compiled database CLI with MongoDB', () => {
@@ -299,7 +313,7 @@ describe.sequential('compiled database CLI with MongoDB', () => {
     expect(status.stdout).toContain(
       '20260812000100_test  2026-08-12T00:01:00.000Z'
     );
-  });
+  }, 30_000); // Three compiled CLI processes must complete under full-suite coverage.
 
   it('rejects the Prisma baseline command without altering MongoDB', async () => {
     const result = runDatabase(

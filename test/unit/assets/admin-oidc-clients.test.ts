@@ -222,6 +222,43 @@ describe('admin OIDC clients manager', () => {
     vi.runAllTimers();
   });
 
+  it('dispatches every declarative action and ignores copy controls without values', async () => {
+    const deleteForm = new ElementFixture('form');
+    deleteForm.dataset.oidcClientConfirm = 'delete';
+    const regenerateForm = new ElementFixture('form');
+    regenerateForm.dataset.oidcClientConfirm = 'regenerate-secret';
+    const copyButton = new ElementFixture('button');
+    const { created, runReady, writeText } = setupDom({
+      confirmationForms: [deleteForm, regenerateForm],
+      copyTriggers: [copyButton],
+    });
+    await import('../../../src/assets/js/admin/oidc-clients.js');
+    runReady();
+
+    deleteForm.trigger('submit', {
+      currentTarget: deleteForm,
+      preventDefault: vi.fn(),
+      target: deleteForm,
+    });
+    created.find(element => element.textContent === 'Cancel')?.trigger('click');
+
+    regenerateForm.trigger('submit', {
+      currentTarget: regenerateForm,
+      preventDefault: vi.fn(),
+      target: regenerateForm,
+    });
+    [...created]
+      .reverse()
+      .find(element => element.textContent === 'Cancel')
+      ?.trigger('click');
+    copyButton.trigger('click');
+    await Promise.resolve();
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(deleteForm.submit).not.toHaveBeenCalled();
+    expect(regenerateForm.submit).not.toHaveBeenCalled();
+  });
+
   it('does not expose handlers on a sibling path with the same prefix', async () => {
     const { browserWindow, runReady } = setupDom({
       pathname: '/admin/oidc-clients-preview',

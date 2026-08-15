@@ -359,6 +359,55 @@ describe('admin settings overview manager', () => {
     });
   });
 
+  it('routes every supported settings action and ignores incomplete actions', async () => {
+    const location = { href: '' };
+    const { body, listeners } = await loadOverview({}, { location });
+    const dispatch = (
+      settingsAction?: string,
+      extra: Record<string, string | undefined> = {}
+    ) => {
+      const preventDefault = vi.fn();
+      listeners.click?.({
+        preventDefault,
+        target: settingsAction
+          ? {
+              closest: vi.fn().mockReturnValue({
+                dataset: { settingsAction, ...extra },
+              }),
+            }
+          : undefined,
+      });
+      return preventDefault;
+    };
+
+    expect(dispatch()).not.toHaveBeenCalled();
+    expect(dispatch('unknown')).toHaveBeenCalledOnce();
+    expect(dispatch('check-health')).toHaveBeenCalledOnce();
+    expect(dispatch('toggle-history')).toHaveBeenCalledOnce();
+    expect(dispatch('hide-health')).toHaveBeenCalledOnce();
+
+    dispatch('rollback', { settingsVersionId: 'version-1' });
+    expect(body.children).toHaveLength(0);
+
+    dispatch('export');
+    body.children[0]?.children[0]?.children[2]?.children[0]?.onclick?.();
+    await Promise.resolve();
+
+    dispatch('reload');
+    body.children[0]?.children[0]?.children[2]?.children[0]?.onclick?.();
+    await Promise.resolve();
+
+    dispatch('rollback', {
+      settingsVersionId: 'version-1',
+      settingsVersionNumber: '12',
+    });
+    body.children[0]?.children[0]?.children[2]?.children[0]?.onclick?.();
+    await Promise.resolve();
+
+    expect(body.children).toHaveLength(0);
+    expect(location.href).toBe('');
+  });
+
   it('renders healthy, failed, and unconfigured checks with escaped data', async () => {
     const section = makeElement();
     const results = makeElement();

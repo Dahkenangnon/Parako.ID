@@ -115,6 +115,21 @@ describe('admin deployment settings', () => {
     );
   });
 
+  it('falls back to the native alert when the dialog service is unavailable', async () => {
+    const alert = vi.fn();
+    vi.stubGlobal('alert', alert);
+    const { runReady, submit } = setupDom({ allowedOrigins: 'invalid origin' });
+    await import('../../../src/assets/js/admin/settings/deployment.js');
+    runReady();
+
+    const event = await submit();
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
+    expect(alert).toHaveBeenCalledWith(
+      '"invalid origin" is not a valid origin URL.'
+    );
+  });
+
   it('does not validate the read-only application URL as a form field', async () => {
     const { getElementById, querySelector, runReady, submit } = setupDom();
     await import('../../../src/assets/js/admin/settings/deployment.js');
