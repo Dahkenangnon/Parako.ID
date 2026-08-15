@@ -68,15 +68,15 @@ Row-level security (RLS) policies enforce tenant isolation at the database level
 
 Parako.ID reserves three tenant identifiers for internal use:
 
-| Tenant       | Purpose                                                                              |
-| ------------ | ------------------------------------------------------------------------------------ |
-| `default`    | Used when no tenant is resolved from the request                                     |
-| `_ops`       | Stateless infrastructure gateway — cross-tenant OAuth state management               |
-| `_platforms` | Master tenant — full auth + admin panel, plus cross-tenant management at `/platform` |
+| Tenant       | Purpose                                                                                   |
+| ------------ | ----------------------------------------------------------------------------------------- |
+| `default`    | Used when no tenant is resolved from the request                                          |
+| `_ops`       | Stateless infrastructure gateway — cross-tenant OAuth state management                    |
+| `_platforms` | Master tenant — full auth + admin panel, plus cross-tenant management at `/admin/tenants` |
 
 The `_ops` tenant is a stateless infrastructure gateway — it has no session binding, no config cache, and returns JSON only. It serves health/metrics probes and relays social OAuth callbacks for tenants where the OAuth redirect cannot go directly to a tenant subdomain.
 
-The `_platforms` tenant is the **master tenant** (similar to Keycloak's master realm). It is automatically created at first startup and operates as a fully functional tenant with its own OIDC provider, login page, admin panel, and session management. In addition to standard tenant capabilities, it mounts platform-level routes at `/platform/*` for cross-tenant management (listing tenants, creating tenants, viewing tenant users, updating tenant status). These platform routes are guarded by `PlatformTenantMiddleware` which requires `platform_admin` role.
+The `_platforms` tenant is the **master tenant** (similar to Keycloak's master realm). It is automatically created at first startup and operates as a fully functional tenant with its own OIDC provider, login page, admin panel, and session management. In addition to standard tenant capabilities, it mounts cross-tenant management routes at `/admin/tenants/*` for listing, creating, inspecting, editing, and changing tenant status. These routes accept `platform_admin`, `admin`, and `superadmin` for mutations; `platform_viewer` remains read-only.
 
 ### Bootstrap admin
 
