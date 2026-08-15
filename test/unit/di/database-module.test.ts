@@ -95,11 +95,19 @@ describe('databaseModule — repository bindings', () => {
     );
   });
 
-  it('rejects a Prisma runtime bundle for MongoDB configuration', () => {
+  it('rejects a Prisma client for MongoDB configuration', () => {
+    const container = buildContainer('mongodb', prismaBundle);
+
+    expect(() => container.get(TYPES.PrismaClient)).toThrow(
+      'AdapterBundle kind "prisma" does not match storage adapter "mongodb"'
+    );
+  });
+
+  it('rejects a Prisma user repository for MongoDB configuration', () => {
     const container = buildContainer('mongodb', prismaBundle);
 
     expect(() => container.get(TYPES.UserRepository)).toThrow(
-      'AdapterBundle kind "prisma" does not match storage adapter "mongodb"'
+      'A Prisma user repository requires sqlite or postgresql storage'
     );
   });
 

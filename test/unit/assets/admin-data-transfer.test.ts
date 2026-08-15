@@ -292,6 +292,31 @@ describe('admin data transfer browser controller', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('can be imported when the document is unavailable', async () => {
+    vi.resetModules();
+    vi.stubGlobal('document', undefined);
+
+    await expect(
+      import('../../../src/assets/js/admin/data-transfer/data-transfer.js')
+    ).resolves.toBeDefined();
+  });
+
+  it('automatically initializes when the document is available', async () => {
+    vi.resetModules();
+    const getElementById = vi.fn().mockReturnValue(null);
+    vi.stubGlobal('document', {
+      getElementById,
+      querySelector: vi.fn().mockReturnValue(null),
+      querySelectorAll: vi.fn().mockReturnValue([]),
+    });
+    vi.stubGlobal('window', { dialog: {} });
+
+    await import('../../../src/assets/js/admin/data-transfer/data-transfer.js');
+
+    expect(getElementById).toHaveBeenCalledWith('__ENTITY_CONFIG__');
   });
 
   it.each([null, '', '{malformed'])(
@@ -333,8 +358,15 @@ describe('admin data transfer browser controller', () => {
     ]);
     expect(context.tabs.map(tab => tab.tabIndex)).toEqual([-1, 0]);
 
-    await context.tabs[1].trigger('keydown', 'Home');
+    const leftEvent = await context.tabs[1].trigger('keydown', 'ArrowLeft');
+    expect(leftEvent.preventDefault).toHaveBeenCalledOnce();
     expect(context.tabs[0].focus).toHaveBeenCalledOnce();
+
+    const ignoredEvent = await context.tabs[0].trigger('keydown', 'Enter');
+    expect(ignoredEvent.preventDefault).not.toHaveBeenCalled();
+
+    await context.tabs[1].trigger('keydown', 'Home');
+    expect(context.tabs[0].focus).toHaveBeenCalledTimes(2);
 
     await context.tabs[0].trigger('keydown', 'End');
     expect(context.tabs[1].focus).toHaveBeenCalledTimes(2);

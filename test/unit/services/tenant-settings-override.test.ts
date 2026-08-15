@@ -21,6 +21,7 @@
 import 'reflect-metadata';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TenantSettingsOverrideService } from '../../../src/services/tenant-settings-override.service.js';
+import { ensureEncrypted } from '../../../src/utils/encryption.js';
 import type { ITenantSettingsOverrideRepository } from '../../../src/db/repositories/interfaces/tenant-settings-override.repository.js';
 import type { ITenantSettingsOverride } from '../../../src/types/tenant-settings-override.js';
 import type { IConfigManager } from '../../../src/di/interfaces/config-manager.interface.js';
@@ -519,10 +520,63 @@ describe('TenantSettingsOverrideService', () => {
       expect(repo.save).not.toHaveBeenCalled();
     });
 
+    it('accepts complete tenant-owned social provider credentials', async () => {
+      const { service, repo } = makeService();
+
+      await service.saveOverrides('acme', {
+        features: {
+          social_providers: {
+            enabled: ['google'],
+            google: {
+              client_id: 'tenant-client',
+              client_secret: 'tenant-secret',
+            },
+          },
+        },
+      } as any);
+
+      expect(repo.save).toHaveBeenCalledOnce();
+    });
+
+    it('rejects tenant-owned credentials with only a client secret', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides('acme', {
+          features: {
+            social_providers: {
+              enabled: ['google'],
+              google: { client_secret: 'tenant-secret' },
+            },
+          },
+        } as any)
+      ).rejects.toThrow(
+        'Tenant social provider google requires both client_id and client_secret'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects an enabled platform provider with no credentials object', async () => {
+      const { service, repo } = makeService();
+
+      await expect(
+        service.saveOverrides(
+          'acme',
+          {
+            features: { social_providers: { enabled: ['google'] } },
+          } as any,
+          undefined,
+          undefined,
+          { features: { social_providers: {} } }
+        )
+      ).rejects.toThrow(
+        'Enabled social provider google has no usable platform credentials'
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
     it('encrypts sensitive fields before saving', async () => {
       const { service, repo } = makeService();
-      const { ensureEncrypted } =
-        await import('../../../src/utils/encryption.js');
 
       const overrides = {
         integrations: {
@@ -567,8 +621,6 @@ describe('TenantSettingsOverrideService', () => {
 
     it('encrypts social provider client_secret fields', async () => {
       const { service, repo } = makeService();
-      const { ensureEncrypted } =
-        await import('../../../src/utils/encryption.js');
 
       const overrides = {
         features: {
@@ -605,8 +657,6 @@ describe('TenantSettingsOverrideService', () => {
         })
       );
       const { service } = makeService(repo);
-      const { ensureEncrypted } =
-        await import('../../../src/utils/encryption.js');
 
       await service.saveOverrides('acme', {
         integrations: {
@@ -626,8 +676,6 @@ describe('TenantSettingsOverrideService', () => {
 
     it('does not persist a masked sentinel when no existing secret is available', async () => {
       const { service, repo } = makeService();
-      const { ensureEncrypted } =
-        await import('../../../src/utils/encryption.js');
 
       await service.saveOverrides('acme', {
         integrations: {
@@ -645,8 +693,6 @@ describe('TenantSettingsOverrideService', () => {
 
     it('fails closed instead of storing plaintext when encryption fails', async () => {
       const { service, repo, logger } = makeService();
-      const { ensureEncrypted } =
-        await import('../../../src/utils/encryption.js');
       vi.mocked(ensureEncrypted).mockImplementationOnce(() => {
         throw new Error('encryption unavailable');
       });

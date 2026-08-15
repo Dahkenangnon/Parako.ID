@@ -665,6 +665,36 @@ describe('Prisma user repository', () => {
     expect(count).toHaveBeenCalledWith({ where });
   });
 
+  it('combines search and serialized role membership without extra scalar filters', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const count = vi.fn().mockResolvedValue(0);
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ findMany, count }) as never
+    );
+
+    await repository.findMany(
+      { search: 'Ada', roles: ['admin'] },
+      { page: 1, limit: 20 }
+    );
+
+    const where = {
+      AND: [
+        {
+          OR: [
+            { username: { contains: 'Ada' } },
+            { email: { contains: 'Ada' } },
+            { name: { contains: 'Ada' } },
+            { given_name: { contains: 'Ada' } },
+            { family_name: { contains: 'Ada' } },
+          ],
+        },
+        { OR: [{ roles: { contains: '"admin"' } }] },
+      ],
+    };
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+    expect(count).toHaveBeenCalledWith({ where });
+  });
+
   it.each([
     ['sqlite', undefined],
     ['postgresql', 'insensitive'],
@@ -1655,6 +1685,31 @@ describe('Prisma user repository', () => {
       },
       include: expect.any(Object),
     });
+  });
+
+  it('clears relational recovery collections when replacement lists are empty', async () => {
+    const update = vi.fn().mockResolvedValue(prismaUserRow());
+    const repository = new PrismaUserRepository(
+      prismaUserClient({ update }) as never
+    );
+
+    await repository.update('user-1', {
+      recovery: {
+        enabled: true,
+        methods: [],
+        backup_codes: { codes: [] },
+        security_questions: { questions: [] },
+      },
+    } as never);
+
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          backup_codes: { deleteMany: {} },
+          security_questions: { deleteMany: {} },
+        }),
+      })
+    );
   });
 
   it('handles empty updates, deletion, and filtered and unfiltered counts', async () => {

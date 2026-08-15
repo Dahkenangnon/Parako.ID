@@ -101,7 +101,6 @@ interface ImageOptions {
 }
 
 const isLogicalAssetPath = (src: string): boolean => {
-  if (!src) return false;
   if (/^[a-z][a-z0-9+.-]*:/i.test(src)) return false;
   return !src.startsWith('/');
 };

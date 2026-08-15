@@ -13,6 +13,10 @@ const DANGEROUS_REDIRECT_PROTOCOLS = new Set([
   'vbscript:',
 ]);
 
+const CLEAR_INVALID_INPUT_THEME = {
+  validationFailureMode: 'clear',
+} as const;
+
 function isSafeRedirectUri(value: string): boolean {
   try {
     const parsed = new URL(value);
@@ -82,8 +86,12 @@ export async function addClientInteractive(): Promise<void> {
         type: 'input',
         name: 'client_id',
         message: 'Client ID (leave empty to auto-generate):',
+        theme: CLEAR_INVALID_INPUT_THEME,
         validate: async (input: string) => {
           if (!input) return true; // Allow empty for auto-generation
+          if (/[\u0000-\u001f\u007f]/u.test(input)) {
+            return 'Client ID cannot contain control characters';
+          }
           if (findClientById(input)) {
             return `Client with ID '${input}' already exists!`;
           }
@@ -137,6 +145,7 @@ export async function addClientInteractive(): Promise<void> {
             {
               type: 'input',
               name: 'uri',
+              theme: CLEAR_INVALID_INPUT_THEME,
               message: `Redirect URI ${redirectUris.length + 1} (press Enter to finish):`,
               validate: (input: string) => {
                 if (!input) return true; // Empty to finish
@@ -178,6 +187,7 @@ export async function addClientInteractive(): Promise<void> {
                 {
                   type: 'input',
                   name: 'uri',
+                  theme: CLEAR_INVALID_INPUT_THEME,
                   message: `Post-logout URI ${logoutUris.length + 1} (press Enter to finish):`,
                   validate: (input: string) => {
                     if (!input) return true;
@@ -214,6 +224,7 @@ export async function addClientInteractive(): Promise<void> {
       {
         type: 'input',
         name: 'client_uri',
+        theme: CLEAR_INVALID_INPUT_THEME,
         message: 'Client URI (optional):',
         validate: (input: string) => {
           if (!input) return true;
@@ -223,6 +234,7 @@ export async function addClientInteractive(): Promise<void> {
       {
         type: 'input',
         name: 'logo_uri',
+        theme: CLEAR_INVALID_INPUT_THEME,
         message: 'Logo URI (optional):',
         validate: (input: string) => {
           if (!input) return true;

@@ -184,8 +184,7 @@ export function initAdminDataTransfer(): void {
       if (nextIndex === null) return;
 
       event.preventDefault();
-      const nextButton = tabs[nextIndex];
-      if (nextButton) activateTab(nextButton, true);
+      activateTab(tabs[nextIndex], true);
     });
   });
 

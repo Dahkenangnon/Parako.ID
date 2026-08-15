@@ -279,7 +279,7 @@ describe('compiled client-management CLI', () => {
     const steps = [
       { prompt: 'What type of client are you creating?', answer: '\r' },
       { prompt: clientIdPrompt, answer: 'existing-rp\r' },
-      { prompt: clientIdPrompt, answer: '\u0015replacement-rp\r' },
+      { prompt: clientIdPrompt, answer: 'replacement-rp\r' },
       { prompt: 'Client name:', answer: 'Replacement RP\r' },
       { prompt: 'Description (optional):', answer: '\r' },
       { prompt: 'Add redirect URIs?', answer: 'n\r' },
@@ -324,7 +324,7 @@ describe('compiled client-management CLI', () => {
       { prompt: redirectPrompt, answer: 'javascript:alert(1)\r' },
       {
         prompt: redirectPrompt,
-        answer: '\u0015https://rp.example.test/callback\r',
+        answer: 'https://rp.example.test/callback\r',
       },
       { prompt: 'Redirect URI 2 (press Enter to finish):', answer: '\r' },
       { prompt: 'Add post-logout redirect URIs?', answer: 'n\r' },
@@ -334,9 +334,9 @@ describe('compiled client-management CLI', () => {
         answer: '\r',
       },
       { prompt: clientUriPrompt, answer: 'javascript:alert(1)\r' },
-      { prompt: clientUriPrompt, answer: '\u0015\r' },
+      { prompt: clientUriPrompt, answer: '\r' },
       { prompt: logoUriPrompt, answer: 'data:image/svg+xml,unsafe\r' },
-      { prompt: logoUriPrompt, answer: '\u0015\r' },
+      { prompt: logoUriPrompt, answer: '\r' },
       { prompt: 'Tags (comma-separated, optional):', answer: '\r' },
       { prompt: 'Create this client?', answer: '\r' },
     ];

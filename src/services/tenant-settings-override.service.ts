@@ -482,10 +482,8 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
 
     const overrideResult = ApplicationOverrideSchema.safeParse(application);
     if (!overrideResult.success) {
-      throw new Error(
-        overrideResult.error.issues[0]?.message ??
-          'Invalid application configuration'
-      );
+      // A failed Zod parse always contains at least one issue.
+      throw new Error(overrideResult.error.issues[0].message);
     }
 
     const platformApplication = platformConfig?.application;
@@ -494,10 +492,7 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
         mergeConfig(platformApplication, overrideResult.data)
       );
       if (!effectiveResult.success) {
-        throw new Error(
-          effectiveResult.error.issues[0]?.message ??
-            'Invalid application configuration'
-        );
+        throw new Error(effectiveResult.error.issues[0].message);
       }
     }
 
@@ -515,9 +510,7 @@ export class TenantSettingsOverrideService implements ITenantSettingsOverrideSer
 
     const result = OidcOverrideSchema.safeParse(oidc);
     if (!result.success) {
-      throw new Error(
-        result.error.issues[0]?.message ?? 'Invalid OIDC configuration'
-      );
+      throw new Error(result.error.issues[0].message);
     }
 
     return {

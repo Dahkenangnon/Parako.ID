@@ -350,7 +350,7 @@ describe('AdminSettingsController', () => {
       );
     });
 
-    it.each([undefined, '-1', '1.5', 'not-a-version'])(
+    it.each([undefined, '-1', '1.5', 'not-a-version', '9007199254740992'])(
       'rejects an invalid submitted configuration version: %s',
       async submittedVersion => {
         const res = makeRes();
@@ -518,6 +518,31 @@ describe('AdminSettingsController', () => {
         });
       }
     );
+
+    it('keeps a persisted logo replacement when deleting the previous object fails', async () => {
+      const cleanupError = new Error('cleanup failed');
+      (deps.config.branding as Record<string, unknown>).logo =
+        'logos/current.png';
+      deps.uploadMiddleware.storeFile.mockResolvedValue('logos/new.png');
+      deps.uploadMiddleware.deleteFile.mockRejectedValue(cleanupError);
+      const req = makeReq({
+        method: 'POST',
+        body: { companyName: 'Updated Company' },
+      });
+      req.file = uploadedFile('new.png');
+      const res = makeRes();
+
+      await controller.branding(req, res);
+
+      expect(deps.configManager.update).toHaveBeenCalledWith({
+        branding: expect.objectContaining({ logo: 'logos/new.png' }),
+      });
+      expect(deps.logger.error).toHaveBeenCalledWith(cleanupError, {
+        context: 'logo_upload_old_file_cleanup_failed',
+        storageKey: 'logos/current.png',
+      });
+      expect(res.redirect).toHaveBeenCalledWith('/admin/settings/branding');
+    });
 
     it('rolls back a newly stored primary logo without deleting the current logo when persistence fails', async () => {
       (deps.config.branding as Record<string, unknown>).logo =

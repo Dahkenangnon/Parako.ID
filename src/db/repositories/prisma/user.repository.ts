@@ -85,7 +85,9 @@ function normalizeUserFilterToPrisma(
     Object.keys(normalized).length > 0
       ? [normalized, ...conditions]
       : conditions;
-  return parts.length === 1 ? parts[0] : { AND: parts };
+  // Earlier returns handle zero or one condition without a pre-existing OR.
+  // Every remaining path has at least two clauses and therefore requires AND.
+  return { AND: parts };
 }
 
 const USER_INCLUDE = {

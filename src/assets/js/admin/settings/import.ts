@@ -389,11 +389,11 @@
         return;
       }
 
-      if (!this.applyButton) return;
-
-      const originalText = this.applyButton.innerHTML;
-      this.applyButton.disabled = true;
-      this.applyButton.innerHTML =
+      // This method is only bound when cacheElements found the apply control.
+      const applyButton = this.applyButton as HTMLButtonElement;
+      const originalText = applyButton.innerHTML;
+      applyButton.disabled = true;
+      applyButton.innerHTML =
         '<i data-lucide="loader" class="h-4 w-4 mr-2 animate-spin"></i>Applying...';
 
       try {
@@ -447,8 +447,8 @@
         );
 
         // Re-enable button
-        this.applyButton.disabled = false;
-        this.applyButton.innerHTML = originalText;
+        applyButton.disabled = false;
+        applyButton.innerHTML = originalText;
 
         // Re-initialize Lucide icons
         this.refreshIcons();

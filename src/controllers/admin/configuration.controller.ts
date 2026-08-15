@@ -290,10 +290,9 @@ export class AdminConfigurationController implements IAdminConfigurationControll
         sectionData = convertOidcFormData({ oidc: rawSectionData }).oidc;
       } else if (section === 'integrations') {
         sectionData = convertIntegrationsFormData(rawSectionData);
-      } else if (section === 'notifications') {
-        sectionData = convertNotificationsFormData(rawSectionData);
       } else {
-        sectionData = rawSectionData;
+        // isConfigurableSection() narrows the only remaining case to notifications.
+        sectionData = convertNotificationsFormData(rawSectionData);
       }
 
       if (section === 'branding') {

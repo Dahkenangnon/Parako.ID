@@ -585,6 +585,12 @@ describe('picture URL validation', () => {
     await expect(
       resolveBrandingUrlAsync('/images/logo.svg', async () => 'unexpected')
     ).resolves.toBe('/images/logo.svg');
+    await expect(
+      resolveBrandingUrlAsync(
+        'tenant/invalid.svg',
+        async () => undefined as unknown as string
+      )
+    ).resolves.toBe('tenant/invalid.svg');
   });
 });
 

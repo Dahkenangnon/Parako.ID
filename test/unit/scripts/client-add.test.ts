@@ -35,6 +35,7 @@ import type { OidcClient } from '../../../scripts/manage/client/local-types.js';
 
 type Question = {
   name: string;
+  theme?: { validationFailureMode?: string };
   validate?: (input: never) => boolean | string | Promise<boolean | string>;
 };
 
@@ -83,9 +84,14 @@ describe('interactive OIDC client creation', () => {
     dependencies.prompt
       .mockResolvedValueOnce({ clientType: 'web' })
       .mockImplementationOnce(async (questions: Question[]) => {
-        const id = question(questions, 'client_id').validate!;
+        const idQuestion = question(questions, 'client_id');
+        const id = idQuestion.validate!;
+        expect(idQuestion.theme).toEqual({ validationFailureMode: 'clear' });
         const name = question(questions, 'client_name').validate!;
         expect(await id('' as never)).toBe(true);
+        expect(await id('unsafe\u0000id' as never)).toBe(
+          'Client ID cannot contain control characters'
+        );
         expect(await id('duplicate' as never)).toContain('already exists');
         expect(await id('web-rp' as never)).toBe(true);
         expect(name('   ' as never)).toBe('Client name is required');
@@ -98,7 +104,9 @@ describe('interactive OIDC client creation', () => {
       })
       .mockResolvedValueOnce({ needsRedirectUris: true })
       .mockImplementationOnce(async (questions: Question[]) => {
-        const validate = question(questions, 'uri').validate!;
+        const uriQuestion = question(questions, 'uri');
+        const validate = uriQuestion.validate!;
+        expect(uriQuestion.theme).toEqual({ validationFailureMode: 'clear' });
         expect(validate('' as never)).toBe(true);
         expect(validate('not a URL' as never)).toBe('Please enter a valid URL');
         expect(validate('javascript:alert(1)' as never)).toBe(

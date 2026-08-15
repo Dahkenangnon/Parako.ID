@@ -372,10 +372,17 @@ describe('admin settings import manager', () => {
     expect(cancelButton.focus).toHaveBeenCalledOnce();
 
     backdrop?.trigger('keydown', {
+      key: 'Enter',
+      preventDefault: vi.fn(),
+      target: backdrop,
+    });
+    expect(backdrop?.parentElement).not.toBeNull();
+    backdrop?.trigger('keydown', {
       key: 'Escape',
       preventDefault: vi.fn(),
       target: backdrop,
     });
+    cancelButton.trigger('click');
     await applyPromise;
     expect(backdrop?.parentElement).toBeNull();
   });
@@ -473,6 +480,10 @@ describe('admin settings import manager', () => {
     const fields = addImportFields(dom, '{"value":1}');
     fields.file.value = 'config.json';
     await loadManager(dom);
+
+    fields.preview.classList.remove('hidden');
+    runControl(fields.controls.cancel);
+    expect(fields.preview.classList.contains('hidden')).toBe(true);
 
     clearForm(dom);
 
