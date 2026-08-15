@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -5,9 +7,59 @@ import {
   runMatrixInfrastructureCli,
   runMatrixInfrastructurePlan,
 } from '../../../../scripts/testing/run-e2e-matrix.js';
-import { E2E_PROFILES } from '../../../e2e/config/matrix.js';
+import {
+  E2E_CELL_IDS,
+  E2E_PROFILE_IDS,
+  E2E_PROFILES,
+} from '../../../e2e/config/matrix.js';
+
+const CI_WORKFLOW = readFileSync(
+  new URL('../../../../.github/workflows/release.yml', import.meta.url),
+  'utf8'
+);
+
+function readCiJob(name: 'e2e-infrastructure' | 'e2e-browser-matrix'): string {
+  const marker = `  ${name}:\n`;
+  const start = CI_WORKFLOW.indexOf(marker);
+  if (start < 0) throw new Error(`Unable to find ${name} in CI workflow`);
+
+  const remaining = CI_WORKFLOW.slice(start + marker.length);
+  const nextJob = remaining.search(/^  [a-z][a-z0-9-]+:\n/m);
+  return marker + (nextJob < 0 ? remaining : remaining.slice(0, nextJob));
+}
+
+function readCiMatrixValues(key: 'cell' | 'profile'): string[] {
+  const browserJob = readCiJob('e2e-browser-matrix');
+  const values = browserJob.match(
+    new RegExp(`^        ${key}:\\n((?:          - [^\\n]+\\n)+)`, 'm')
+  )?.[1];
+
+  if (!values) {
+    throw new Error(`Unable to read ${key} values from the browser CI matrix`);
+  }
+
+  return [...values.matchAll(/^          - ([a-z0-9-]+)$/gm)].map(
+    match => match[1]!
+  );
+}
 
 describe('E2E deployment matrix runner', () => {
+  it('keeps the CI browser matrix aligned with every typed cell and profile', () => {
+    expect(readCiMatrixValues('cell')).toEqual([...E2E_CELL_IDS]);
+    expect(readCiMatrixValues('profile')).toEqual([...E2E_PROFILE_IDS]);
+  });
+
+  it('provides the required Redis service and sufficient execution time', () => {
+    const infrastructureJob = readCiJob('e2e-infrastructure');
+    const browserJob = readCiJob('e2e-browser-matrix');
+
+    for (const job of [infrastructureJob, browserJob]) {
+      expect(job).toContain('timeout-minutes: 75');
+      expect(job).toContain('      redis:\n        image: redis:7-alpine');
+      expect(job).toContain('redis-cli ping');
+    }
+  });
+
   it('keeps every configuration-specific spec out of the default profile', () => {
     const configurationSpecificSpecs = Object.values(E2E_PROFILES)
       .filter(profile => profile.id !== 'default')
@@ -25,7 +77,7 @@ describe('E2E deployment matrix runner', () => {
   });
 
   it.each([
-    'mysql://operator:secret@127.0.0.1/parako',
+    'mysql://operator:secret@127.0.0.1/parako', // gitleaks:allow -- invalid non-routable URL fixture
     'postgresql://127.0.0.1',
     'postgresql://operator@/parako',
   ])('rejects an unusable PostgreSQL URL: %s', postgresqlUrl => {
@@ -53,7 +105,7 @@ describe('E2E deployment matrix runner', () => {
       environment: {
         PARAKO_E2E_PROFILE: 'self-starting',
         PARAKO_E2E_POSTGRESQL_URL:
-          'postgresql://operator:secret@127.0.0.1:5432/parako_e2e',
+          'postgresql://operator:secret@127.0.0.1:5432/parako_e2e', // gitleaks:allow -- non-routable test fixture
       },
     });
 
@@ -147,14 +199,14 @@ describe('E2E deployment matrix runner', () => {
       testMatch: ['ops-infrastructure.spec.ts'],
       environment: {
         PARAKO_E2E_OPERATIONS: 'true',
-        PARAKO_E2E_HMAC_SECRET: 'parako-browser-e2e-ops-hmac-secret',
+        PARAKO_E2E_HMAC_SECRET: 'parako-browser-e2e-ops-hmac-secret', // gitleaks:allow -- deterministic test fixture
       },
     });
     expect(profileCommands.at(-1)?.environment).toMatchObject({
       PARAKO_E2E_STORAGE_ADAPTER: 'postgresql',
       PARAKO_E2E_MULTI_TENANCY: 'true',
       PARAKO_E2E_POSTGRESQL_URL:
-        'postgresql://operator:secret@127.0.0.1:5432/parako_e2e',
+        'postgresql://operator:secret@127.0.0.1:5432/parako_e2e', // gitleaks:allow -- non-routable test fixture
       PARAKO_E2E_TENANT_ID: 'browser-e2e',
       PARAKO_E2E_IDP_ORIGIN: 'http://browser-e2e.idp.localhost:19007',
       PARAKO_E2E_DEPLOYMENT_URL: 'http://idp.localhost:19007',
