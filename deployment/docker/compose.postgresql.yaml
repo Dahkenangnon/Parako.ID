@@ -1,0 +1,50 @@
+services:
+  postgresql:
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: parako
+      POSTGRES_USER: parako
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgresql_password
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/run/postgresql:rw,nosuid,nodev,size=16m
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    secrets:
+      - postgresql_password
+    networks:
+      - backend
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U parako -d parako']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  app:
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+  worker:
+    depends_on:
+      postgresql:
+        condition: service_healthy
+
+secrets:
+  postgresql_password:
+    file: ./docker/secrets/postgresql-password
+
+volumes:
+  postgresql-data:

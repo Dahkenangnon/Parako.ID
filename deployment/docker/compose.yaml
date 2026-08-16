@@ -1,0 +1,59 @@
+name: ${PARAKO_COMPOSE_PROJECT:-parako-id}
+
+x-parako-service: &parako-service
+  image: ${PARAKO_DOCKER_IMAGE:?PARAKO_DOCKER_IMAGE is required}
+  env_file:
+    - ./runtime/.env
+  init: true
+  read_only: true
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  stop_grace_period: 35s
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  volumes:
+    - parako-runtime:/app/runtime
+  networks:
+    - backend
+    - egress
+
+services:
+  app:
+    <<: *parako-service
+    ports:
+      - '127.0.0.1:${PARAKO_HTTP_PORT:-9007}:9007'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:9007/readyz',
+          {headers:{'x-forwarded-proto':'https'}})
+          .then(response=>{if(!response.ok)process.exit(1)})
+          .catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  worker:
+    <<: *parako-service
+    command: ['node', 'dist/src/worker.js']
+
+  migrate:
+    <<: *parako-service
+    command: ['node', 'dist/scripts/manage/database.js', 'migrate']
+    restart: 'no'
+    profiles: ['operator']
+
+volumes:
+  parako-runtime:
+
+networks:
+  backend:
+    internal: true
+  egress:

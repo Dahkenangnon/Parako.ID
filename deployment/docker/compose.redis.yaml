@@ -1,0 +1,55 @@
+services:
+  redis:
+    image: redis:7.2.14-bookworm@sha256:f0707c78ea880b293ccdeb410c9c0a8ccae93fe7128799b751333a698b0a39a7
+    entrypoint: ['/bin/sh', '-ec']
+    command:
+      - |
+        password=$$(cat /run/secrets/redis_password)
+        umask 077
+        printf 'appendonly yes\nrequirepass %s\n' "$${password}" >/tmp/redis.conf
+        printf '%s\n' "$${password}" >/tmp/redis-health-password
+        chown redis:redis /tmp/redis.conf
+        exec /usr/local/bin/docker-entrypoint.sh redis-server /tmp/redis.conf
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    volumes:
+      - redis-data:/data
+    secrets:
+      - redis_password
+    networks:
+      - backend
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli --no-auth-warning -a "$$(cat /tmp/redis-health-password)" ping | grep -q PONG
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    depends_on:
+      redis:
+        condition: service_healthy
+
+secrets:
+  redis_password:
+    file: ./docker/secrets/redis-password
+
+volumes:
+  redis-data:

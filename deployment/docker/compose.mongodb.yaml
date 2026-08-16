@@ -1,0 +1,64 @@
+services:
+  mongodb:
+    image: mongo:8.0.16-noble@sha256:5dda65a823a0d73d9caae4f449ab01973cf9884cea4ef56f9cb84dbe5e00acbd
+    restart: unless-stopped
+    entrypoint: ['/bin/bash', '-ec']
+    command:
+      - |
+        install -o mongodb -g mongodb -m 0400 /run/secrets/mongodb_password /tmp/mongodb-password
+        export MONGO_INITDB_ROOT_PASSWORD_FILE=/tmp/mongodb-password
+        exec /usr/local/bin/docker-entrypoint.sh mongod
+    environment:
+      MONGO_INITDB_DATABASE: parako
+      MONGO_INITDB_ROOT_USERNAME: parako
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The official entrypoint initializes mounted volume ownership, then drops
+    # to the unprivileged mongodb account before starting mongod.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    secrets:
+      - mongodb_password
+    networks:
+      - backend
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet --username parako
+          --password "$$(cat /run/secrets/mongodb_password)"
+          --authenticationDatabase admin
+          --eval "quit(db.adminCommand('ping').ok ? 0 : 1)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  app:
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  worker:
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+secrets:
+  mongodb_password:
+    file: ./docker/secrets/mongodb-password
+
+volumes:
+  mongodb-data:
+  mongodb-config:

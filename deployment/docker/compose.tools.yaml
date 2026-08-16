@@ -1,0 +1,26 @@
+x-operator-tool: &operator-tool
+  env_file:
+    - ./runtime/.env
+  entrypoint: ['/bin/sh', '-ec']
+  command: ['true']
+  user: '999:999'
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=32m
+  networks:
+    - backend
+    - egress
+  profiles: ['operator']
+
+services:
+  postgresql-tool:
+    <<: *operator-tool
+    image: postgres:17.10-bookworm@sha256:9b18b78397054fce88a9552e9d5a3ad5bb7fd258c5b3cc1c5028e46373d6ea8f
+
+  mongodb-tool:
+    <<: *operator-tool
+    image: mongo:8.0.16-noble@sha256:5dda65a823a0d73d9caae4f449ab01973cf9884cea4ef56f9cb84dbe5e00acbd
