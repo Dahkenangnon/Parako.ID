@@ -539,7 +539,7 @@
           "continue", // Continue URL parameter
         ],
       },
-      "accept_query_param_access_tokens": true, // Accept access tokens in query parameters
+      "accept_query_param_access_tokens": false, // Keep bearer tokens out of URLs, logs, history, and referrers
       "conform_id_token_claims": false, // Conform ID token claims to spec
       "allow_omitting_single_registered_redirect_uri": true, // Allow omitting single redirect URI
       "enable_http_post_methods": false, // Enable HTTP POST methods for token endpoint
