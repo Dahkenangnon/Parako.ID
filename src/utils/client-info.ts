@@ -1,5 +1,5 @@
 import { Request } from 'express';
-import { UAParser } from 'ua-parser-js';
+import { parseUserAgent } from './user-agent.js';
 import crypto from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
 import { injectable, inject } from 'inversify';
@@ -43,34 +43,25 @@ export type ClientDetails = {
   language?: string;
   timezone_guess?: string;
 
-  /**
-   * Server-side generated fingerprint.
-   */
-  fingerprint: string; // Server-side generated
+  fingerprint: string;
 
   /**
    * FingerprintJS visitorId is sent to the server at each login success.
    */
-  fingerprint_js_id?: string; // From FingerprintJS
+  fingerprint_js_id?: string;
 };
 
 /**
  * Device match evaluation result with detailed analysis
  */
 export type DeviceMatchResult = {
-  /** True if this is a completely new device */
   is_new_device: boolean;
-  /** True if this device requires 2FA verification */
   requires_2fa: boolean;
-  /** True if this is a suspicious login attempt */
   is_suspicious: boolean;
   /** Confidence score (0-100) for the match */
   confidence_score: number;
-  /** Detailed reason for the evaluation */
   reason: string;
-  /** Matched device if found */
   matched_device?: ClientDetails;
-  /** Risk level: 'low', 'medium', 'high', 'critical' */
   risk_level: 'low' | 'medium' | 'high' | 'critical';
 };
 
@@ -90,9 +81,7 @@ export type DeviceMatchConfig = {
   fingerprint_similarity_threshold: number;
   /** Maximum time difference in hours for suspicious activity */
   max_time_difference_hours: number;
-  /** Countries/regions considered suspicious */
   suspicious_regions: string[];
-  /** Known VPN/Proxy IP ranges */
   vpn_proxy_ranges: string[];
 };
 
@@ -453,8 +442,7 @@ export default class ClientDeviceInfoManager implements IClientDeviceInfoManager
       const language =
         req.headers['accept-language']?.split(',')[0]?.trim() || 'en';
 
-      const parser = new UAParser(userAgent);
-      const result = parser.getResult();
+      const result = parseUserAgent(userAgent);
 
       const sanitizedPayload = this.sanitizeClientPayload(clientPayload);
 

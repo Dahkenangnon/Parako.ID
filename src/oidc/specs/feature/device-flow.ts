@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
 import type { IViewResolver } from '../../../di/interfaces/view-resolver.interface.js';
 import type { Client, KoaContextWithOIDC } from 'oidc-provider';
-import { UAParser } from 'ua-parser-js';
+import { parseUserAgent } from '../../../utils/user-agent.js';
 import * as cheerio from 'cheerio';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 
@@ -72,8 +72,7 @@ export default function DeviceFlow(
       }
 
       // Use ua-parser-js for browser-based device detection
-      const parser = new UAParser(rawUA);
-      const result = parser.getResult();
+      const result = parseUserAgent(rawUA);
 
       let deviceType: string;
       if (result.device.type) {

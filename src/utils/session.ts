@@ -1,11 +1,10 @@
 import type { Express, Request, Response, NextFunction } from 'express';
 import session, { SessionOptions, Store } from 'express-session';
-import MongoDBStore from 'connect-mongodb-session';
+import MongoStore from 'connect-mongo';
 import { RedisStore } from 'connect-redis';
 import { Redis } from 'ioredis';
 import crypto from 'node:crypto';
 import mongoose from 'mongoose';
-import { UAParser } from 'ua-parser-js';
 import { injectable, inject, unmanaged } from 'inversify';
 import type { PrismaClient } from '@prisma/client';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
@@ -29,10 +28,8 @@ import {
   tenantContext,
 } from '../multi-tenancy/tenant-context.js';
 import { escapeRegExp } from '../validators/listing-query.js';
+import { parseUserAgent } from './user-agent.js';
 
-/**
- * Fields that contain sensitive data and should be encrypted at rest
- */
 const SENSITIVE_SESSION_FIELDS = [
   'authenticatedUsers',
   'csrfToken',
@@ -88,11 +85,7 @@ function sessionBelongsToTenant(
   );
 }
 
-/**
- * Encrypted Session Store Wrapper
- * Wraps any session store to provide transparent encryption of sensitive fields
- * Uses the existing encryption utilities from src/utils/encryption.ts
- */
+/** Transparently encrypts sensitive fields before delegating to a session store. */
 class EncryptedSessionStore extends Store {
   private innerStore: Store;
   private logger: ILogger;
@@ -103,9 +96,6 @@ class EncryptedSessionStore extends Store {
     this.logger = logger;
   }
 
-  /**
-   * Get session data with decryption
-   */
   get(
     sid: string,
     callback: (err: any, session?: session.SessionData | null) => void
@@ -128,9 +118,6 @@ class EncryptedSessionStore extends Store {
     });
   }
 
-  /**
-   * Set session data with encryption
-   */
   set(
     sid: string,
     sessionData: session.SessionData,
@@ -153,16 +140,10 @@ class EncryptedSessionStore extends Store {
     }
   }
 
-  /**
-   * Destroy session
-   */
   destroy(sid: string, callback?: (err?: any) => void): void {
     this.innerStore.destroy(sid, callback);
   }
 
-  /**
-   * Touch session (update expiry)
-   */
   touch?(
     sid: string,
     sessionData: session.SessionData,
@@ -189,10 +170,6 @@ class EncryptedSessionStore extends Store {
     }
   }
 
-  /**
-   * Encrypt sensitive fields in session data
-   * Uses the existing encryption utilities (AES-256-GCM with ENCRYPTION_KEY env var)
-   */
   private encryptSession(
     sessionData: session.SessionData
   ): session.SessionData {
@@ -200,7 +177,6 @@ class EncryptedSessionStore extends Store {
 
     for (const field of SENSITIVE_SESSION_FIELDS) {
       if (encrypted[field] !== undefined) {
-        // Use existing encryption utility - serialize to JSON then encrypt
         const jsonValue = JSON.stringify(encrypted[field]);
         encrypted[`_enc_${field}`] = encryptValue(jsonValue);
         delete encrypted[field];
@@ -211,17 +187,13 @@ class EncryptedSessionStore extends Store {
     return encrypted;
   }
 
-  /**
-   * Decrypt sensitive fields in session data
-   * Uses the existing encryption utilities
-   */
   private decryptSession(
     sessionData: session.SessionData
   ): session.SessionData {
     const data: any = sessionData;
 
     if (!data._encrypted) {
-      return sessionData; // Return as-is if not encrypted
+      return sessionData;
     }
 
     const decrypted: any = { ...sessionData };
@@ -252,16 +224,9 @@ class EncryptedSessionStore extends Store {
   }
 }
 
-/**
- * Circuit Breaker States
- */
 type CircuitState = 'closed' | 'open' | 'half-open';
 
-/**
- * Circuit Breaker Session Store Wrapper
- * Provides graceful degradation when the session store is unavailable
- * Returns 503 Service Unavailable when circuit is open
- */
+/** Fails session operations fast with HTTP 503 while the backing store is unhealthy. */
 class CircuitBreakerStore extends Store {
   private innerStore: Store;
   private logger: ILogger;
@@ -271,9 +236,9 @@ class CircuitBreakerStore extends Store {
   private lastFailure = 0;
   private successCount = 0;
 
-  private readonly failureThreshold = 5; // Open after 5 consecutive failures
-  private readonly resetTimeout = 30000; // 30 seconds before trying again
-  private readonly successThreshold = 3; // Consecutive successes to close
+  private readonly failureThreshold = 5;
+  private readonly resetTimeout = 30_000;
+  private readonly successThreshold = 3;
 
   constructor(innerStore: Store, logger: ILogger) {
     super();
@@ -281,9 +246,6 @@ class CircuitBreakerStore extends Store {
     this.logger = logger;
   }
 
-  /**
-   * Check if circuit allows operation
-   */
   private canExecute(): boolean {
     if (this.state === 'closed') {
       return true;
@@ -299,13 +261,9 @@ class CircuitBreakerStore extends Store {
       return false;
     }
 
-    // half-open state allows execution
     return true;
   }
 
-  /**
-   * Record a successful operation
-   */
   private recordSuccess(): void {
     this.failures = 0;
 
@@ -319,9 +277,6 @@ class CircuitBreakerStore extends Store {
     }
   }
 
-  /**
-   * Record a failed operation
-   */
   private recordFailure(): void {
     this.failures++;
     this.lastFailure = Date.now();
@@ -344,9 +299,6 @@ class CircuitBreakerStore extends Store {
     }
   }
 
-  /**
-   * Create circuit breaker error for 503 response
-   */
   private createCircuitOpenError(): Error {
     const error = new Error('Session store unavailable - circuit breaker open');
     (error as any).statusCode = 503;
@@ -354,9 +306,6 @@ class CircuitBreakerStore extends Store {
     return error;
   }
 
-  /**
-   * Get session data with circuit breaker protection
-   */
   get(
     sid: string,
     callback: (err: any, session?: session.SessionData | null) => void
@@ -376,9 +325,6 @@ class CircuitBreakerStore extends Store {
     });
   }
 
-  /**
-   * Set session data with circuit breaker protection
-   */
   set(
     sid: string,
     sessionData: session.SessionData,
@@ -410,9 +356,6 @@ class CircuitBreakerStore extends Store {
     }
   }
 
-  /**
-   * Destroy session with circuit breaker protection
-   */
   destroy(sid: string, callback?: (err?: any) => void): void {
     if (!this.canExecute()) {
       if (callback) callback(this.createCircuitOpenError());
@@ -440,9 +383,6 @@ class CircuitBreakerStore extends Store {
     }
   }
 
-  /**
-   * Touch session with circuit breaker protection
-   */
   touch?(
     sid: string,
     sessionData: session.SessionData,
@@ -482,9 +422,6 @@ class CircuitBreakerStore extends Store {
     }
   }
 
-  /**
-   * Get current circuit state (for monitoring/debugging)
-   */
   getCircuitState(): {
     state: CircuitState;
     failures: number;
@@ -498,25 +435,11 @@ class CircuitBreakerStore extends Store {
   }
 }
 
-/**
- * Available session storage backend types
- * - mongodb: MongoDB session store
- * - redis: Redis session store
- * - sqlite: Prisma-backed SQLite session store
- * - postgresql: Prisma-backed PostgreSQL session store
- *
- * Session storage type is automatically determined by the effective OIDC adapter
- */
+/** Selected from the effective OIDC adapter configuration. */
 export type SessionStoreType = 'mongodb' | 'redis' | 'sqlite' | 'postgresql';
 
-/**
- * Flash message types
- */
 export type FlashType = 'success' | 'error' | 'info' | 'warning';
 
-/**
- * Flash message object structure
- */
 export interface FlashMessage {
   type: FlashType;
   message: string;
@@ -525,17 +448,11 @@ export interface FlashMessage {
   timeout?: number;
 }
 
-/**
- * Flash message options
- */
 export interface FlashOptions {
   dismissible?: boolean;
   timeout?: number;
 }
 
-/**
- * Flash message container in session
- */
 export interface FlashContainer {
   success: FlashMessage[];
   error: FlashMessage[];
@@ -544,72 +461,38 @@ export interface FlashContainer {
   [key: string]: FlashMessage[];
 }
 
-/**
- * User account data in session
- * Contains basic user information required for UI and authentication
- */
 export interface SessionUserAccount {
-  /** User's unique MongoDB identifier */
   id: string;
-  /** User's username (used as accountId in OIDC) */
   username: string;
-  /** User's email address */
   email?: string;
-  /** Whether the user's email is verified */
   email_verified?: boolean;
-  /** User's phone number */
   phone_number?: string;
-  /** Whether the user's phone number is verified */
   phone_number_verified?: boolean;
-  /** User's first/given name */
   given_name?: string;
-  /** User's last/family name */
   family_name?: string;
-  /** Full name (computed from given_name and family_name) */
   full_name?: string;
-  /** URL to user's profile picture */
   picture?: string;
-  /** User roles for authorization */
   roles?: string[];
-  /** Whether the user has admin privileges */
   is_admin?: boolean;
-  /** Last time this account was used */
   last_used?: number;
-  /** User's timezone (IANA format, e.g., 'Africa/Lagos', 'Europe/Paris') */
   zoneinfo?: string;
-  /** User's locale preference (e.g., 'en', 'fr') */
   locale?: string;
 }
 
-/**
- * Authenticated users container in session
- * Supports multiple accounts with one active account
- */
+/** Supports multiple authenticated accounts while identifying the active one. */
 export interface AuthenticatedUsers {
-  /** Currently active user account */
   active: SessionUserAccount;
-  /** Other user accounts available for selection */
   others: SessionUserAccount[];
 }
 
-/**
- * Session metadata for debugging and auditing
- * Stored when store_metadata config is enabled
- */
+/** Optional audit metadata collected when `store_metadata` is enabled. */
 export interface SessionMetadata {
-  /** When the session was created */
   created_at: Date;
-  /** How the session was created */
   createdFrom: 'login' | 'social' | 'api' | 'session-switch' | 'unknown';
-  /** IP address when session was created */
   createdIp?: string;
-  /** User agent when session was created */
   userAgent?: string;
-  /** Browser information */
   browser?: { name?: string; version?: string };
-  /** Operating system information */
   os?: { name?: string; version?: string };
-  /** Device information */
   device?: { type?: string; vendor?: string; model?: string };
 }
 
@@ -625,53 +508,25 @@ function isSessionCreationSource(
   );
 }
 
-/**
- * Session data interface - extend this to add custom session data
- * Contains commonly used session properties for authentication and user tracking
- */
 export interface SessionData {
-  /**
-   * Container for authenticated user accounts
-   * This is the primary source for user identity information
-   */
   authenticatedUsers?: AuthenticatedUsers;
-  /** Whether the user is currently authenticated */
   isAuthenticated?: boolean;
-  /**
-   * Active user's account ID (username) - stored unencrypted for session querying
-   * Used to enforce concurrent session limits by querying sessions by user
-   */
+  /** Intentionally unencrypted for user-scoped lookup and concurrency enforcement. */
   accountId?: string;
-  /** Timestamp when authentication occurred */
   authTime?: number;
-  /** Timestamp of last user activity */
   lastActivity?: number;
-  /** Timestamp when the session was created */
   created?: number;
-  /** User's IP address */
   ipAddress?: string;
-  /** User's browser/client information */
   userAgent?: string;
-  /** Unique device identifier */
   deviceId?: string;
-  /** CSRF protection token */
   csrfToken?: string;
-  /** Flash messages container */
   flash?: FlashContainer;
-  /** Session metadata for debugging (when store_metadata enabled) */
   _metadata?: SessionMetadata;
-  /** Allow any additional custom properties */
   [key: string]: any;
 }
-/**
- * Flash Manager - provides a chainable API for flash messages
- */
+
 @injectable()
 export class FlashManager implements IFlashManager {
-  /**
-   * @param request - Express request object
-   * @param sessionManager - Session manager instance
-   */
   constructor(
     @unmanaged() private request: Request,
     @inject(TYPES.SessionManager) private sessionManager: ISessionManager,
@@ -681,9 +536,6 @@ export class FlashManager implements IFlashManager {
     this.initialize();
   }
 
-  /**
-   * Initialize flash container if it doesn't exist
-   */
   private initialize(): void {
     if (!this.sessionManager.exists(this.request)) {
       throw new Error('Session not available');
@@ -711,15 +563,6 @@ export class FlashManager implements IFlashManager {
     }
   }
 
-  /**
-   * Add a flash message of any type
-   *
-   * @param type - Message type
-   * @param message - Message content
-   * @param title - Optional title
-   * @param options - Additional options
-   * @returns FlashManager instance for chaining
-   */
   public add(
     type: FlashType,
     message: string,
@@ -730,9 +573,6 @@ export class FlashManager implements IFlashManager {
     return this;
   }
 
-  /**
-   * Add a success flash message
-   */
   public success(
     message: string,
     title?: string,
@@ -741,9 +581,6 @@ export class FlashManager implements IFlashManager {
     return this.add('success', message, title, options);
   }
 
-  /**
-   * Add an error flash message
-   */
   public error(
     message: string,
     title?: string,
@@ -752,9 +589,6 @@ export class FlashManager implements IFlashManager {
     return this.add('error', message, title, options);
   }
 
-  /**
-   * Add an info flash message
-   */
   public info(
     message: string,
     title?: string,
@@ -763,9 +597,6 @@ export class FlashManager implements IFlashManager {
     return this.add('info', message, title, options);
   }
 
-  /**
-   * Add a warning flash message
-   */
   public warning(
     message: string,
     title?: string,
@@ -774,15 +605,6 @@ export class FlashManager implements IFlashManager {
     return this.add('warning', message, title, options);
   }
 
-  /**
-   * Add a flash message of specific type
-   *
-   * @param type - Message type
-   * @param message - Message content
-   * @param title - Optional title
-   * @param options - Additional options
-   * @private
-   */
   private addMessage(
     type: FlashType,
     message: string,
@@ -816,7 +638,6 @@ export class FlashManager implements IFlashManager {
       });
     }
 
-    // If at total limit, remove oldest message from type with most messages
     if (totalCount >= maxTotal) {
       const types: FlashType[] = ['success', 'error', 'info', 'warning'];
       const typeWithMost = types.reduce((a, b) =>
@@ -841,11 +662,6 @@ export class FlashManager implements IFlashManager {
     this.sessionManager.set(this.request, 'flash', flash);
   }
 
-  /**
-   * Get all flash messages and clear them
-   *
-   * @returns Object containing all flash messages
-   */
   public all(): FlashContainer {
     const flash = this.sessionManager.get<FlashContainer>(
       this.request,
@@ -868,11 +684,6 @@ export class FlashManager implements IFlashManager {
     return flashCopy;
   }
 
-  /**
-   * Get flash messages without clearing them
-   *
-   * @returns Object containing all flash messages
-   */
   public peek(): FlashContainer {
     const flash = this.sessionManager.get<FlashContainer>(
       this.request,
@@ -891,11 +702,6 @@ export class FlashManager implements IFlashManager {
     return { ...flash };
   }
 
-  /**
-   * Clear all flash messages
-   *
-   * @returns FlashManager instance for chaining
-   */
   public clear(): IFlashManager {
     this.sessionManager.set(this.request, 'flash', {
       success: [],
@@ -908,73 +714,34 @@ export class FlashManager implements IFlashManager {
   }
 }
 
-/**
- * Configuration options for the SessionManager
- * Session storage type and connection details are automatically determined by OIDC adapter configuration
- */
 export interface SessionManagerOptions {
-  /** Secret key used to sign the session cookie (min 32 chars in production) */
   secret?: string;
-  /** Name of the session cookie */
   name?: string;
-  /** Type of session store to use (automatically determined by OIDC adapter configuration) */
   storeType?: SessionStoreType;
-  /** Session time-to-live in seconds */
   ttl?: number;
-  /** Cookie configuration options */
   cookie?: {
-    /** Whether the cookie should only be sent over HTTPS */
     secure?: boolean;
-    /** Prevents client-side JavaScript from accessing the cookie */
     httpOnly?: boolean;
-    /** Cookie expiration time in milliseconds */
     maxAge?: number;
-    /** Cookie domain */
     domain?: string;
-    /** Controls when cookies are sent with cross-site requests */
     sameSite?: boolean | 'lax' | 'strict' | 'none';
-    /** Cookie path */
     path?: string;
   };
-  /** Reset expiration on activity */
   rolling?: boolean;
-  /** Save session even if unmodified */
   resave?: boolean;
-  /** Save new but unmodified sessions */
   saveUninitialized?: boolean;
-  /** Trust proxy headers */
   proxy?: boolean;
-  /** MongoDB collection name for sessions (only used when OIDC adapter is MongoDB) */
   collection?: string;
-  /** Custom session ID generator function */
   sessionIdGenerator?: (request?: Request) => string;
 }
 
-/**
- * SessionManager - Centralized system for managing Express sessions
- *
- * Features:
- * - Multiple storage backends (Memory, MongoDB, Redis)
- * - Session manipulation methods (get, set, clear, etc.)
- * - Type-safe access to session data
- * - Authentication helpers
- * - CSRF protection
- * - Activity tracking
- * - Flash messages
- *
- * Uses the Singleton pattern to ensure only one instance exists.
- */
+/** Coordinates Express sessions across the configured persistent store. */
 @injectable()
 export class SessionManager implements ISessionManager {
-  /** Configuration options */
   private options: SessionManagerOptions;
-  /** Session store instance */
   private store: Store | undefined;
-  /** Express session middleware */
   private sessionMiddleware: any;
-  /** Flag indicating if the manager has been initialized */
   private initialized: boolean = false;
-  /** Injected dependencies */
   private configManager: IConfigManager;
   private viewResolver: IViewResolver;
   private logger: ILogger;
@@ -984,15 +751,6 @@ export class SessionManager implements ISessionManager {
   private redisClient: Redis | null = null;
   private sessionPrefix: string = '';
 
-  /**
-   * Constructor with dependency injection
-   *
-   * @param configManager - Configuration manager instance
-   * @param viewResolver - View resolver instance
-   * @param options - Session manager configuration options
-   * @throws Error if session secret is insufficient in production
-   */
-  /** Initial session settings for change detection */
   private initialSessionSettings: {
     cookieSecrets: string[];
     storeType: string;
@@ -1034,10 +792,6 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Handle configuration changes
-   * Detects critical changes that require restart and logs appropriate warnings
-   */
   private handleConfigChange(updatedConfig: any): void {
     if (!this.initialSessionSettings) {
       return;
@@ -1086,13 +840,6 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Merge provided options with default configuration
-   * Session storage type is automatically determined by OIDC adapter configuration
-   *
-   * @param options - User-provided options
-   * @returns Complete options with defaults applied
-   */
   private mergeWithDefaultOptions(
     options: SessionManagerOptions
   ): SessionManagerOptions {
@@ -1101,7 +848,6 @@ export class SessionManager implements ISessionManager {
     const defaultCookieConfig =
       this.configManager.getConfig().deployment.cookies.defaults;
 
-    // Security session settings can override deployment cookie settings
     const securitySessionConfig =
       this.configManager.getConfig().security?.authentication?.session;
 
@@ -1128,8 +874,6 @@ export class SessionManager implements ISessionManager {
       sessionCookieConfig.sameSite ||
       'lax';
 
-    // Use OIDC session TTL for Express session (default 14 days = 1209600 seconds)
-    // This aligns Express session lifetime with OIDC session lifetime
     const oidcSessionTtl =
       this.configManager.getConfig().oidc.token_ttl.session || 1209600;
 
@@ -1218,12 +962,6 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Initialize the session manager and attach middleware to Express app
-   *
-   * @param app - Express application instance
-   * @throws Error if initialization fails
-   */
   public initialize(app: Express): void {
     if (this.initialized) {
       this.logger.info('Session manager already initialized');
@@ -1244,7 +982,6 @@ export class SessionManager implements ISessionManager {
         `Session middleware configured with ${this.options.storeType} store`
       );
 
-      // Warn if using insecure cookies in development
       const environment = this.configManager.getConfig().deployment.environment;
       const sessionCookieConfig =
         this.configManager.getConfig().deployment.cookies.types.session;
@@ -1263,27 +1000,12 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Set the OIDC adapter bridge for concurrent session management
-   * This should be called after the OIDC adapter is initialized
-   *
-   * @param bridge - OIDC adapter bridge instance
-   */
   public setOidcAdapterBridge(bridge: IOIDCAdapterBridge): void {
     this.oidcAdapterBridge = bridge;
     this.logger.debug('OIDC adapter bridge set for session management');
   }
 
-  /**
-   * Enforce concurrent session limits for a user in the active tenant.
-   * Removes oldest Express sessions if the user exceeds the configured limit
-   *
-   * Note: This is called BEFORE the new session is fully established,
-   * so we remove oldest sessions to make room for the new one.
-   *
-   * @param userId - User ID (username/accountId) to enforce limits for
-   * @returns Number of sessions removed
-   */
+  /** Reserves room for the new session by removing the tenant's oldest sessions. */
   public async enforceSessionLimit(
     userId: string,
     currentSessionId?: string
@@ -1488,7 +1210,6 @@ export class SessionManager implements ISessionManager {
       validSessions.length - maxConcurrentSessions + 1;
     const sessionsToRemove = validSessions.slice(0, sessionsToRemoveCount);
 
-    // Pipeline delete all at once
     const pipeline = this.redisClient.multi();
     for (const { sid } of sessionsToRemove) {
       pipeline.del(`${this.sessionPrefix}${sid}`);
@@ -1593,13 +1314,6 @@ export class SessionManager implements ISessionManager {
     return removedCount;
   }
 
-  /**
-   * Revoke all Express sessions for a specific user in the active tenant.
-   * Used when admin disables an account to immediately log out the user
-   *
-   * @param userId - Username or user ID to revoke sessions for
-   * @returns Number of sessions revoked
-   */
   public async revokeAllSessionsForUser(userId: string): Promise<number> {
     if (typeof userId !== 'string' || userId.trim().length === 0) {
       return 0;
@@ -1681,7 +1395,6 @@ export class SessionManager implements ISessionManager {
           return 0;
         }
 
-        // Pipeline delete all session keys
         const pipeline = this.redisClient.multi();
         for (const sid of revocableSessionIds) {
           pipeline.del(`${this.sessionPrefix}${sid}`);
@@ -1763,10 +1476,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Find all Express sessions for a specific user in the active tenant.
-   * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
-   */
   public async findExpressSessionsForUser(accountId: string): Promise<any[]> {
     if (typeof accountId !== 'string' || accountId.trim().length === 0) {
       return [];
@@ -1879,10 +1588,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Revoke a single Express session by its session ID in the active tenant.
-   * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
-   */
   public async revokeExpressSession(sessionId: string): Promise<boolean> {
     if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
       return false;
@@ -1999,10 +1704,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Find authenticated Express sessions across all users in the active tenant.
-   * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
-   */
   public async findAllExpressSessions(
     options: { limit?: number; offset?: number; search?: string } = {}
   ): Promise<any[]> {
@@ -2141,10 +1842,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Count authenticated Express sessions across all users in the active tenant.
-   * Supports MongoDB, Redis, and Prisma (SQLite/PostgreSQL).
-   */
   public async countAllExpressSessions(search?: string): Promise<number> {
     const storeType = this.resolveStoreType();
 
@@ -2261,11 +1958,7 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Set up the appropriate session store based on OIDC adapter configuration.
-   * Uses the bridge's effectiveOidcAdapter() when available so all three components
-   * (OIDC adapter, session store, OIDCAdapterBridge) resolve the same type.
-   */
+  /** Uses the bridge's effective adapter so all session components select one backend. */
   private setupStore(): void {
     const effectiveType: SessionStoreType = this.oidcAdapterBridge
       ? this.oidcAdapterBridge.effectiveOidcAdapter()
@@ -2290,7 +1983,6 @@ export class SessionManager implements ISessionManager {
 
       this.applyEncryptionWrapper();
 
-      // Apply circuit breaker wrapper for graceful degradation
       this.applyCircuitBreakerWrapper();
     } catch (error) {
       this.logger.error(error as Error, {
@@ -2300,10 +1992,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Apply circuit breaker wrapper to the session store
-   * Provides graceful degradation when the store is unavailable
-   */
   private applyCircuitBreakerWrapper(): void {
     if (this.store) {
       this.store = new CircuitBreakerStore(this.store, this.logger);
@@ -2311,10 +1999,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Apply encryption wrapper to the session store if enabled in config
-   * Uses the existing encryption utilities which rely on ENCRYPTION_KEY env var
-   */
   private applyEncryptionWrapper(): void {
     const config = this.configManager.getConfig();
     const encryptionEnabled =
@@ -2328,11 +2012,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Configure MongoDB session store using OIDC adapter configuration
-   *
-   * @throws Error if MongoDB URI is missing
-   */
   private setupMongoDBStore(): void {
     const config = this.configManager.getConfig();
     const oidcAdapterConfig = config.oidc_storage.oidc_adapter;
@@ -2341,23 +2020,21 @@ export class SessionManager implements ISessionManager {
       throw new Error('MongoDB URI is required for MongoDB session store');
     }
 
-    // Derive touchAfter from idle_timeout_minutes to ensure session updates are
-    // persisted before idle timeout kicks in. Default: 30 minutes = 1800 seconds
+    // Persist touches often enough for the configured idle timeout to remain authoritative.
     const idleTimeoutMinutes =
       config.security?.authentication?.session?.idle_timeout_minutes || 30;
     const touchAfterSeconds = idleTimeoutMinutes * 60;
 
-    const MongoStore = MongoDBStore(session);
-    this.store = new MongoStore({
-      uri: oidcAdapterConfig.mongodb.uri,
-      collection: this.options.collection || 'sessions',
-      expires: this.options.ttl,
-      connectionOptions: {
+    this.store = MongoStore.create({
+      mongoUrl: oidcAdapterConfig.mongodb.uri,
+      collectionName: this.options.collection || 'sessions',
+      ttl: this.options.ttl,
+      mongoOptions: {
         serverSelectionTimeoutMS: 10000,
         maxPoolSize: 10,
       },
       touchAfter: touchAfterSeconds,
-    } as any);
+    });
 
     this.handleStoreErrors(this.store);
     this.logger.info(
@@ -2365,9 +2042,6 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Configure Redis session store using OIDC adapter configuration
-   */
   private setupRedisStore(): void {
     const config = this.configManager.getConfig();
     const oidcAdapterConfig = config.oidc_storage.oidc_adapter;
@@ -2396,7 +2070,6 @@ export class SessionManager implements ISessionManager {
       this.logger.info('Redis session store connected successfully');
     });
 
-    // Derive session prefix from the unified base prefix.
     const basePrefix = config.deployment?.redis_prefix || 'parako';
     const sessionPrefix = `${basePrefix}:session:`;
     this.sessionPrefix = sessionPrefix;
@@ -2411,9 +2084,6 @@ export class SessionManager implements ISessionManager {
     this.logger.info('Redis session store configured');
   }
 
-  /**
-   * Configure Prisma session store (SQLite or PostgreSQL)
-   */
   private setupPrismaStore(): void {
     if (!this.prismaClient) {
       throw new Error(
@@ -2431,10 +2101,6 @@ export class SessionManager implements ISessionManager {
     this.logger.info('Prisma session store configured');
   }
 
-  /**
-   * Resolve the effective session store type.
-   * Uses the OIDC adapter bridge when available, falls back to config.
-   */
   private resolveStoreType(): SessionStoreType {
     if (this.oidcAdapterBridge) {
       return this.oidcAdapterBridge.effectiveOidcAdapter();
@@ -2445,9 +2111,6 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Build the Redis key for a user's session index set.
-   */
   private redisUserSessionsKey(
     accountId: string,
     tenantId = tenantContext.getTenantId()
@@ -2552,9 +2215,7 @@ export class SessionManager implements ISessionManager {
     return [...actualIds];
   }
 
-  /**
-   * Add a session ID to a user's Redis session index set (fire-and-forget).
-   */
+  /** Best-effort index maintenance; authoritative scans repair missed writes. */
   private redisIndexAdd(accountId: string, sessionId: string): void {
     if (!this.redisClient || !accountId) return;
     try {
@@ -2581,9 +2242,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Remove a session ID from a user's Redis session index set (fire-and-forget).
-   */
   private redisIndexRemove(accountId: string, sessionId: string): void {
     if (!this.redisClient || !accountId) return;
     const logFailure = (err: unknown): void => {
@@ -2602,10 +2260,7 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Atomically move a session from one user's index to another's.
-   * Used when the active accountId changes on a session (e.g. switchUser).
-   */
+  /** Keeps the Redis user index consistent when the active account changes. */
   private redisIndexReplace(
     oldAccountId: string,
     newAccountId: string,
@@ -2679,9 +2334,6 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Configure the Express session middleware
-   */
   private setupMiddleware(): void {
     const sessionOptions: SessionOptions = {
       secret: this.options.secret!,
@@ -2698,11 +2350,6 @@ export class SessionManager implements ISessionManager {
     this.sessionMiddleware = session(sessionOptions);
   }
 
-  /**
-   * Set up error handlers for session store
-   *
-   * @param store - Session store instance
-   */
   private handleStoreErrors(store: any): void {
     if (store && typeof store.on === 'function') {
       store.on('error', (error: Error) => {
@@ -2711,8 +2358,6 @@ export class SessionManager implements ISessionManager {
         if (
           this.configManager.getConfig().deployment.environment === 'production'
         ) {
-          // In a production environment, we might want to try to reconnect
-          // or trigger an alert to the operations team
           if (
             this.options.storeType === 'mongodb' &&
             error.message?.includes('disconnected')
@@ -2720,7 +2365,6 @@ export class SessionManager implements ISessionManager {
             this.logger.warn(
               'MongoDB session store disconnected. Attempting to reconnect...'
             );
-            // The connection will be automatically retried by MongoDB driver
           }
         }
       });
@@ -2733,12 +2377,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Get the session middleware for manual integration
-   *
-   * @returns Express middleware function
-   * @throws Error if called before initialization
-   */
   public getMiddleware(): any {
     if (!this.sessionMiddleware) {
       throw new Error(
@@ -2748,12 +2386,6 @@ export class SessionManager implements ISessionManager {
     return this.sessionMiddleware;
   }
 
-  /**
-   * Create middleware to track session activity
-   * Updates lastActivity timestamp on each request
-   *
-   * @returns Express middleware function
-   */
   public activityTracker(): (
     req: Request,
     res: Response,
@@ -2770,13 +2402,7 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Extract device ID (FingerprintJS visitorId) from request body
-   * Device info is sent in a static field named _deviceInfo
-   *
-   * @param req - Express request object
-   * @returns The visitorId string or null if not found/invalid
-   */
+  /** Reads the FingerprintJS visitor ID from the static `_deviceInfo` field. */
   private extractDeviceIdFromRequest(req: Request): string | null {
     try {
       const csrfToken = this.get<string>(req, 'csrfToken');
@@ -2812,13 +2438,6 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Validate session binding (IP address and User-Agent)
-   * Detects potential session hijacking attempts
-   *
-   * @param req - Express request object
-   * @returns Object with validation result and reason for failure
-   */
   public validateSessionBinding(req: Request): {
     valid: boolean;
     reason?: string;
@@ -2830,7 +2449,6 @@ export class SessionManager implements ISessionManager {
     const config = this.configManager.getConfig();
     const sessionSecurity = config.security?.authentication?.session || {};
 
-    // IP binding validation (optional, configurable)
     if (sessionSecurity.bind_ip) {
       const storedIp = this.get<string>(req, 'ipAddress');
       const currentIp = req.ip;
@@ -2848,7 +2466,6 @@ export class SessionManager implements ISessionManager {
       }
     }
 
-    // User-Agent binding validation (optional, configurable)
     if (sessionSecurity.bind_user_agent) {
       const storedUA = this.get<string>(req, 'userAgent');
       const currentUA = req.headers['user-agent'];
@@ -2866,8 +2483,6 @@ export class SessionManager implements ISessionManager {
       }
     }
 
-    // Device ID binding validation (optional, configurable)
-    // Validates FingerprintJS visitorId from client against stored value
     if (sessionSecurity.bind_device) {
       const storedDeviceId = this.get<string>(req, 'deviceId');
       const currentDeviceId = this.extractDeviceIdFromRequest(req);
@@ -2892,12 +2507,7 @@ export class SessionManager implements ISessionManager {
     return { valid: true };
   }
 
-  /**
-   * Create middleware to validate session binding (IP/User-Agent)
-   * Destroys sessions that fail validation to prevent hijacking
-   *
-   * @returns Express middleware function
-   */
+  /** Destroys sessions whose configured request bindings no longer match. */
   public sessionBindingValidator(): (
     req: Request,
     res: Response,
@@ -2931,12 +2541,6 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Create middleware to enforce server-side idle timeout
-   * Destroys sessions that have been idle beyond the configured limit
-   *
-   * @returns Express middleware function
-   */
   public idleTimeoutMiddleware(): (
     req: Request,
     res: Response,
@@ -2951,7 +2555,6 @@ export class SessionManager implements ISessionManager {
       const idleTimeoutMinutes =
         config.security?.authentication?.session?.idle_timeout_minutes;
 
-      // Skip if idle timeout is not configured
       if (!idleTimeoutMinutes || idleTimeoutMinutes <= 0) {
         return next();
       }
@@ -2985,12 +2588,6 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Create middleware to enforce absolute session timeout
-   * Destroys sessions that have exceeded their maximum lifetime
-   *
-   * @returns Express middleware function
-   */
   public absoluteTimeoutMiddleware(): (
     req: Request,
     res: Response,
@@ -3005,7 +2602,6 @@ export class SessionManager implements ISessionManager {
       const absoluteTimeoutHours =
         config.security?.authentication?.session?.absolute_timeout_hours;
 
-      // Skip if absolute timeout is not configured
       if (!absoluteTimeoutHours || absoluteTimeoutHours <= 0) {
         return next();
       }
@@ -3039,14 +2635,6 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Set a value in the session
-   *
-   * @param req - Express request object
-   * @param key - Session property key
-   * @param value - Value to store
-   * @throws Error if session is unavailable
-   */
   public set(req: Request, key: string, value: any): void {
     if (!req.session) {
       throw new Error('Session not available');
@@ -3055,14 +2643,6 @@ export class SessionManager implements ISessionManager {
     req.session[key] = value;
   }
 
-  /**
-   * Get a value from the session
-   *
-   * @param req - Express request object
-   * @param key - Session property key
-   * @param defaultValue - A default value to return if not found
-   * @returns The stored value or undefined if not found
-   */
   public get<T = any>(
     req: Request,
     key: string,
@@ -3077,12 +2657,6 @@ export class SessionManager implements ISessionManager {
       : defaultValue;
   }
 
-  /**
-   * Get all session data
-   *
-   * @param req - Express request object
-   * @returns Object containing all session data
-   */
   public getAll(req: Request): SessionData {
     if (!req.session) {
       return {};
@@ -3099,12 +2673,6 @@ export class SessionManager implements ISessionManager {
     return sessionData;
   }
 
-  /**
-   * Remove a value from the session
-   *
-   * @param req - Express request object
-   * @param key - Session property key
-   */
   public remove(req: Request, key: string): void {
     if (!req.session) {
       return;
@@ -3113,12 +2681,6 @@ export class SessionManager implements ISessionManager {
     delete req.session[key];
   }
 
-  /**
-   * Clear all session data except for keys specified in preserveKeys
-   *
-   * @param req - Express request object
-   * @param preserveKeys - Array of keys to preserve
-   */
   public clear(req: Request, preserveKeys: string[] = []): void {
     if (!req.session) {
       return;
@@ -3144,14 +2706,7 @@ export class SessionManager implements ISessionManager {
     });
   }
 
-  /**
-   * Regenerate the session ID while preserving session data
-   * Used for security to prevent session fixation attacks
-   *
-   * @param req - Express request object
-   * @returns Promise resolving when regeneration completes
-   * @throws Error if session is unavailable or regeneration fails
-   */
+  /** Regenerates the identifier without dropping data to prevent session fixation. */
   public regenerate(req: Request): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!req.session) {
@@ -3159,7 +2714,6 @@ export class SessionManager implements ISessionManager {
       }
 
       const sessionData = this.getAll(req);
-      // Capture old session ID and accountId before regeneration
       const oldSessionId = req.session.id;
       const accountId = sessionData.accountId as string | undefined;
 
@@ -3208,19 +2762,12 @@ export class SessionManager implements ISessionManager {
     });
   }
 
-  /**
-   * Destroy the current session
-   *
-   * @param req - Express request object
-   * @returns Promise resolving when session is destroyed
-   */
   public destroy(req: Request): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!req.session) {
         return resolve();
       }
 
-      // Capture before destroy callback clears the session
       const accountId = this.get<string>(req, 'accountId');
       const sessionId = req.session.id;
 
@@ -3233,19 +2780,13 @@ export class SessionManager implements ISessionManager {
           this.redisIndexRemove(accountId, sessionId);
         }
 
-        // Clear the session reference to prevent any further access
         req.session = null as any;
         resolve();
       });
     });
   }
 
-  /**
-   * Clear all authentication-related data from session
-   * This should be called before destroy() to ensure clean logout
-   *
-   * @param req - Express request object
-   */
+  /** Clears authentication state before the session is destroyed during logout. */
   public clearAuthenticationData(req: Request): void {
     if (!req.session) {
       return;
@@ -3273,22 +2814,10 @@ export class SessionManager implements ISessionManager {
     this.remove(req, 'currentActiveLoggedUser');
   }
 
-  /**
-   * Check if session exists
-   *
-   * @param req - Express request object
-   * @returns true if session exists, false otherwise
-   */
   public exists(req: Request): boolean {
     return !!req.session;
   }
 
-  /**
-   * Check if user is authenticated in current session and their account is enabled
-   *
-   * @param req - Express request object
-   * @returns Promise<boolean> - true if authenticated and account is enabled
-   */
   public async isAuthenticated(req: Request): Promise<boolean> {
     if (!this.exists(req)) {
       return false;
@@ -3327,19 +2856,12 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Set session as authenticated with user data
-   *
-   * @param req - Express request object
-   * @param userData - Additional user data to store in session
-   */
   public setAuthenticated(
     req: Request,
     userData: Partial<SessionData> = {}
   ): void {
     let userAccount: SessionUserAccount | undefined;
     if (userData.currentActiveLoggedUser) {
-      // Support for the structure passed from OIDC routes
       userAccount = {
         id: userData.currentActiveLoggedUser.id,
         username: userData.currentActiveLoggedUser.username,
@@ -3369,7 +2891,6 @@ export class SessionManager implements ISessionManager {
             ?.session_management?.multiple_accounts?.enabled;
 
         if (multiAccountEnabled === false) {
-          // Multi-account disabled: replace the active account, don't accumulate others
           this.set(req, 'authenticatedUsers', {
             active: userAccount,
             others: [],
@@ -3405,7 +2926,6 @@ export class SessionManager implements ISessionManager {
           });
         }
       } else {
-        // First login - no existing accounts
         this.set(req, 'authenticatedUsers', {
           active: userAccount,
           others: [],
@@ -3422,8 +2942,7 @@ export class SessionManager implements ISessionManager {
 
     if (storeMetadata) {
       const userAgentString = req.headers['user-agent'] || '';
-      const parser = new UAParser(userAgentString);
-      const uaResult = parser.getResult();
+      const uaResult = parseUserAgent(userAgentString);
 
       let createdFrom: SessionMetadata['createdFrom'] = 'unknown';
       if (isSessionCreationSource(userData.createdFrom)) {
@@ -3483,24 +3002,11 @@ export class SessionManager implements ISessionManager {
     }
   }
 
-  /**
-   * Get the currently active user account
-   *
-   * @param req - Express request object
-   * @returns The active user account or undefined if not authenticated
-   */
   public getActiveUser(req: Request): SessionUserAccount | undefined {
     const authUsers = this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
     return authUsers?.active;
   }
 
-  /**
-   * Update specific fields of the active user account in session
-   *
-   * @param req - Express request object
-   * @param updates - Partial user data to update
-   * @returns true if update was successful, false otherwise
-   */
   public updateActiveUserData(
     req: Request,
     updates: Partial<SessionUserAccount>
@@ -3542,23 +3048,10 @@ export class SessionManager implements ISessionManager {
     return true;
   }
 
-  /**
-   * Get all authenticated user accounts
-   *
-   * @param req - Express request object
-   * @returns Object containing active and other user accounts
-   */
   public getAuthenticatedUsers(req: Request): AuthenticatedUsers | undefined {
     return this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
   }
 
-  /**
-   * Switch to a different authenticated user
-   *
-   * @param req - Express request object
-   * @param userId - ID of the user to switch to
-   * @returns Result object with success flag and optional reason for failure
-   */
   public switchUser(req: Request, userId: string): SwitchUserResult {
     const authUsers = this.get<AuthenticatedUsers>(req, 'authenticatedUsers');
 
@@ -3579,7 +3072,6 @@ export class SessionManager implements ISessionManager {
       config.security?.authentication?.session?.require_reauth_on_switch;
 
     if (requireReauth) {
-      // Re-authentication is required - caller must handle this
       this.set(req, 'pendingSwitchUserId', userId);
       this.logger.debug('Account switch requires re-authentication', {
         targetUserId: userId,
@@ -3588,7 +3080,6 @@ export class SessionManager implements ISessionManager {
       return { success: false, reason: 'reauth_required' };
     }
 
-    // Capture old accountId for Redis index update
     const oldAccountId = authUsers.active?.username;
 
     const newActiveUser = authUsers.others[userIndex];
@@ -3618,14 +3109,6 @@ export class SessionManager implements ISessionManager {
     return { success: true };
   }
 
-  /**
-   * Add another authenticated user to the session
-   *
-   * @param req - Express request object
-   * @param userAccount - User account to add
-   * @param setAsActive - Whether to set this user as the active user
-   * @returns Result object with success flag and optional reason for failure
-   */
   public addAuthenticatedUser(
     req: Request,
     userAccount: SessionUserAccount,
@@ -3642,7 +3125,6 @@ export class SessionManager implements ISessionManager {
       config.security?.authentication?.session?.max_accounts_per_session || 5;
 
     if (!storedAuthUsers?.active) {
-      // First user - create the container
       this.set(req, 'authenticatedUsers', {
         active: sessionUserAccount,
         others: [],
@@ -3694,7 +3176,6 @@ export class SessionManager implements ISessionManager {
     }
 
     if (setAsActive) {
-      // Capture old accountId for Redis index update
       const oldAccountId = authUsers.active?.username;
 
       authUsers.others.push({
@@ -3724,14 +3205,7 @@ export class SessionManager implements ISessionManager {
     return { success: true };
   }
 
-  /**
-   * Remove an authenticated user from the session
-   * Also revokes OIDC grants for the removed account
-   *
-   * @param req - Express request object
-   * @param userId - ID of the user to remove
-   * @returns true if the user was removed, false if not found
-   */
+  /** Also revokes OIDC grants owned by the removed account. */
   public async removeAuthenticatedUser(
     req: Request,
     userId: string
@@ -3756,14 +3230,12 @@ export class SessionManager implements ISessionManager {
       authUsers.active.id === userId ||
       authUsers.active.username === userId
     ) {
-      // Can't remove active user if it's the only one
       if (authUsers.others.length === 0) {
         return false;
       }
 
       removedUser = authUsers.active;
 
-      // Make the most recently used other account active
       authUsers.others.sort((a, b) => (b.last_used || 0) - (a.last_used || 0));
       authUsers.active = authUsers.others.shift() as SessionUserAccount;
 
@@ -3819,12 +3291,6 @@ export class SessionManager implements ISessionManager {
     return true;
   }
 
-  /**
-   * Get session's remaining time-to-live in seconds
-   *
-   * @param req - Express request object
-   * @returns Remaining TTL in seconds, or 0 if expired/unavailable
-   */
   public getTTL(req: Request): number {
     if (!req.session || !req.session.cookie) {
       return 0;
@@ -3849,25 +3315,12 @@ export class SessionManager implements ISessionManager {
     return 0;
   }
 
-  /**
-   * Generate a secure CSRF token and store it in the session
-   *
-   * @param req - Express request object
-   * @returns Generated CSRF token
-   */
   public generateCsrfToken(req: Request): string {
     const token = crypto.randomBytes(32).toString('hex');
     this.set(req, 'csrfToken', token);
     return token;
   }
 
-  /**
-   * Validate a CSRF token against the one stored in session
-   *
-   * @param req - Express request object
-   * @param token - CSRF token to validate
-   * @returns true if token is valid, false otherwise
-   */
   public validateCsrfToken(req: Request, token: string): boolean {
     const storedToken = this.get<string>(req, 'csrfToken');
     if (
@@ -3887,13 +3340,7 @@ export class SessionManager implements ISessionManager {
     );
   }
 
-  /**
-   * Rotate CSRF token after sensitive operations
-   * Should be called after: password change, account deletion, session management, MFA changes
-   *
-   * @param req - Express request object
-   * @returns New CSRF token
-   */
+  /** Rotates the token after security-sensitive account operations. */
   public rotateCsrfToken(req: Request): string {
     const oldToken = this.get<string>(req, 'csrfToken');
     const newToken = crypto.randomBytes(32).toString('hex');
@@ -3907,12 +3354,6 @@ export class SessionManager implements ISessionManager {
     return newToken;
   }
 
-  /**
-   * Middleware for CSRF protection
-   * Validates CSRF token on non-GET requests
-   *
-   * @returns Express middleware function
-   */
   public csrfProtection(): (
     req: Request,
     res: Response,
@@ -4051,21 +3492,10 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Get a FlashManager instance for the request
-   *
-   * @param req - Express request object
-   * @returns FlashManager instance for chaining flash operations
-   */
   public flash(req: Request): IFlashManager {
     return new FlashManager(req, this, this.logger, this.configManager);
   }
 
-  /**
-   * Middleware to expose flash messages to views
-   *
-   * @returns Express middleware function
-   */
   public flashMiddleware(): (
     req: Request,
     res: Response,
@@ -4074,7 +3504,6 @@ export class SessionManager implements ISessionManager {
     return (req: Request, res: Response, next: NextFunction) => {
       const flashManager = this.flash(req);
 
-      // Make flash messages available to templates
       res.locals.flash = flashManager.peek();
 
       const originalRender = res.render;
@@ -4083,10 +3512,8 @@ export class SessionManager implements ISessionManager {
         originalRender.call(this, view, renderOptions);
       };
 
-      // This prevents stale flash messages from persisting after API calls
       const originalJson = res.json.bind(res);
       res.json = function (body?: any): Response {
-        // Clear flash messages since they won't be displayed in API response
         flashManager.clear();
         return originalJson(body);
       };
@@ -4095,13 +3522,6 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  /**
-   * Get a specific property from the active user
-   *
-   * @param req - Express request object
-   * @param property - Property name to retrieve
-   * @returns Property value or undefined if not authenticated or property doesn't exist
-   */
   public getUserProperty<K extends keyof SessionUserAccount>(
     req: Request,
     property: K
@@ -4110,24 +3530,11 @@ export class SessionManager implements ISessionManager {
     return activeUser?.[property];
   }
 
-  /**
-   * Check if the active user has a specific role
-   *
-   * @param req - Express request object
-   * @param role - Role to check
-   * @returns True if user has the role, false otherwise
-   */
   public hasRole(req: Request, role: string): boolean {
     const roles = this.getUserProperty(req, 'roles');
     return roles ? roles.includes(role) : false;
   }
 
-  /**
-   * Check if the active user is an admin
-   *
-   * @param req - Express request object
-   * @returns True if user is admin, false otherwise
-   */
   public isAdmin(req: Request): boolean {
     return this.getUserProperty(req, 'is_admin') === true;
   }

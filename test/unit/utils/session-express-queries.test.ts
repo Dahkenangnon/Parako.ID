@@ -12,14 +12,12 @@ vi.mock('inversify', () => ({
   unmanaged: () => () => undefined,
 }));
 
-// Mock connect-mongodb-session
-vi.mock('connect-mongodb-session', () => {
+// Mock connect-mongo
+vi.mock('connect-mongo', () => {
   return {
-    default: vi.fn(() => {
-      return vi.fn().mockImplementation(() => ({
-        on: vi.fn(),
-      }));
-    }),
+    default: {
+      create: vi.fn(() => ({ on: vi.fn() })),
+    },
   };
 });
 

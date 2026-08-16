@@ -8,7 +8,7 @@ import type { ISessionManager } from '../di/interfaces/session-manager.interface
 import type { IOIDCUtils } from '../di/interfaces/oidc-utils.interface.js';
 import type { IActivityService } from '../di/interfaces/activity-service.interface.js';
 import { TYPES } from '../di/types.js';
-import { UAParser } from 'ua-parser-js';
+import { parseUserAgent } from '../utils/user-agent.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IActivityActor } from '../types/activity.js';
@@ -464,9 +464,6 @@ export class OIDCUtils implements IOIDCUtils {
     return accounts;
   }
 
-  /**
-   * Validate login credentials
-   */
   public validateLoginCredentials(req: Request): {
     isValid: boolean;
     identifier?: string;
@@ -584,9 +581,6 @@ export class OIDCUtils implements IOIDCUtils {
     return (ciConfig.fields ?? []).filter((f: any) => f.usable_for_login);
   }
 
-  /**
-   * Validate MFA code
-   */
   public validateMfaCode(req: Request): { isValid: boolean; code?: string } {
     const code = (req.body.code as string | undefined)?.trim();
 
@@ -598,9 +592,6 @@ export class OIDCUtils implements IOIDCUtils {
     return { isValid: true, code };
   }
 
-  /**
-   * Validate account selection
-   */
   public validateAccountSelection(req: Request): {
     isValid: boolean;
     accountId?: string;
@@ -673,8 +664,7 @@ export class OIDCUtils implements IOIDCUtils {
     if (!userAgent)
       return { browser: 'Unknown', os: 'Unknown', device: 'Unknown' };
 
-    const parser = new UAParser(userAgent);
-    const result = parser.getResult();
+    const result = parseUserAgent(userAgent);
 
     const browser = result.browser.name || 'Unknown';
     const os = result.os.name || 'Unknown';

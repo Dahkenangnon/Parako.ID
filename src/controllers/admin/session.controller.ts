@@ -1,7 +1,7 @@
 import { type Request, type Response } from 'express';
 import { injectable, inject } from 'inversify';
 import { randomUUID } from 'node:crypto';
-import { UAParser } from 'ua-parser-js';
+import { parseUserAgent } from '../../utils/user-agent.js';
 import type { IOIDCAdapterBridge } from '../../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { ISessionManager } from '../../di/interfaces/session-manager.interface.js';
@@ -535,8 +535,7 @@ export class AdminSessionsController implements IAdminSessionsController {
         browser = metadata.browser.name;
         os = metadata.os?.name || 'Unknown';
       } else if (sessData.userAgent) {
-        const parser = new UAParser(sessData.userAgent);
-        const result = parser.getResult();
+        const result = parseUserAgent(sessData.userAgent);
         browser = result.browser.name || 'Unknown';
         os = result.os.name || 'Unknown';
       }

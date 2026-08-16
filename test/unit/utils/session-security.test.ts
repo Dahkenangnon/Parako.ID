@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import crypto from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import MongoDBStore from 'connect-mongodb-session';
+import MongoStore from 'connect-mongo';
 import { RedisStore } from 'connect-redis';
 import { Redis } from 'ioredis';
 import { UAParser } from 'ua-parser-js';
@@ -12,8 +12,8 @@ vi.mock('inversify', () => ({
   unmanaged: () => () => undefined,
 }));
 
-vi.mock('connect-mongodb-session', () => ({
-  default: vi.fn(() => vi.fn()),
+vi.mock('connect-mongo', () => ({
+  default: { create: vi.fn() },
 }));
 
 vi.mock('connect-redis', () => ({ RedisStore: vi.fn() }));
@@ -482,42 +482,29 @@ describe('SessionManager configuration and initialization', () => {
       idle_timeout_minutes: 15,
     });
     const eventHandlers = new Map<string, (...args: any[]) => void>();
-    const clientHandlers = new Map<string, (...args: any[]) => void>();
     const store = {
       on: vi.fn((event: string, handler: (...args: any[]) => void) => {
         eventHandlers.set(event, handler);
       }),
-      client: {
-        on: vi.fn((event: string, handler: (...args: any[]) => void) => {
-          clientHandlers.set(event, handler);
-        }),
-      },
     };
-    const MongoStore = vi.fn(function MockMongoStore() {
-      return store;
-    });
-    vi.mocked(MongoDBStore).mockReturnValue(MongoStore as never);
+    vi.mocked(MongoStore.create).mockReturnValue(store as never);
     manager.setOidcAdapterBridge({
       effectiveOidcAdapter: vi.fn(() => 'mongodb'),
     } as never);
 
     manager.initialize({ use: vi.fn() } as never);
 
-    expect(MongoStore).toHaveBeenCalledWith(
+    expect(MongoStore.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        uri: 'mongodb://database.example/parako',
-        collection: 'application_session',
-        expires: 1209600,
+        mongoUrl: 'mongodb://database.example/parako',
+        collectionName: 'application_session',
+        ttl: 1209600,
         touchAfter: 900,
       })
     );
     eventHandlers.get('error')?.(new Error('store disconnected'));
-    clientHandlers.get('reconnect')?.();
     expect(logger.warn).toHaveBeenCalledWith(
       'MongoDB session store disconnected. Attempting to reconnect...'
-    );
-    expect(logger.info).toHaveBeenCalledWith(
-      'Session store successfully reconnected'
     );
   });
 
@@ -530,19 +517,16 @@ describe('SessionManager configuration and initialization', () => {
     });
     (manager as any).options.collection = '';
     const store = { on: vi.fn() };
-    const MongoStore = vi.fn(function MockMongoStore() {
-      return store;
-    });
-    vi.mocked(MongoDBStore).mockReturnValue(MongoStore as never);
+    vi.mocked(MongoStore.create).mockReturnValue(store as never);
     manager.setOidcAdapterBridge({
       effectiveOidcAdapter: vi.fn(() => 'mongodb'),
     } as never);
 
     manager.initialize({ use: vi.fn() } as never);
 
-    expect(MongoStore).toHaveBeenCalledWith(
+    expect(MongoStore.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        collection: 'sessions',
+        collectionName: 'sessions',
         touchAfter: 1800,
       })
     );
