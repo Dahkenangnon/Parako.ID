@@ -25,7 +25,7 @@ export function getPackageInfo(): any {
   } catch {
     packageInfo = {
       name: 'parako.id',
-      version: '0.0.1',
+      version: '0.0.0',
       description: 'Modern, secure, and easy-to-use OIDC/OAuth2 Provider',
       homepage: 'https://parako.id',
       repository: { url: 'https://github.com/Dahkenangnon/Parako.ID' },

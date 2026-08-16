@@ -10,47 +10,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Parse command line arguments
 VERSION=""
 DRY_RUN="false"
 VERBOSE="false"
 RELEASE_ARCH=""
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --dry-run)
-            DRY_RUN="true"
-            shift
-            ;;
-        --verbose)
-            VERBOSE="true"
-            shift
-            ;;
-        --help|-h)
-            show_help
-            exit 0
-            ;;
-        -*)
-            log_error "Unknown option: $1"
-            exit 1
-            ;;
-        *)
-            if [[ -z "$VERSION" ]]; then
-                VERSION="$1"
-            else
-                log_error "Unexpected argument: $1"
-                exit 1
-            fi
-            shift
-            ;;
-    esac
-done
-
-if [[ -z "$VERSION" ]]; then
-    log_error "Version is required"
-    show_help
-    exit 1
-fi
 
 # Colors for output
 RED='\033[0;31m'
@@ -115,14 +78,6 @@ EOF
 
 # Parse command line arguments
 parse_arguments() {
-    if [[ $# -eq 0 ]] || [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-        show_help
-        exit 0
-    fi
-
-    VERSION="$1"
-    shift
-
     while [[ $# -gt 0 ]]; do
         case $1 in
             --dry-run)
@@ -133,10 +88,23 @@ parse_arguments() {
                 VERBOSE="true"
                 shift
                 ;;
-            *)
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            -*)
                 log_error "Unknown option: $1"
                 show_help
-                exit 1
+                exit 2
+                ;;
+            *)
+                if [[ -n "$VERSION" ]]; then
+                    log_error "Unexpected argument: $1"
+                    show_help
+                    exit 2
+                fi
+                VERSION="$1"
+                shift
                 ;;
         esac
     done
@@ -144,7 +112,7 @@ parse_arguments() {
     if [[ -z "$VERSION" ]]; then
         log_error "Version is required"
         show_help
-        exit 1
+        exit 2
     fi
 }
 
@@ -393,10 +361,7 @@ create_production_package() {
     cp -r prisma "$release_dir/"
     cp prisma.config.ts prisma.config.pg.ts "$release_dir/"
     cp release-manifest.schema.json "$release_dir/"
-    # ecosystem.config.cjs now lives under runtime/ and is copied along with the
-    # rest of the runtime tree below (no separate cp needed).
     cp README.md "$release_dir/"
-    cp THIRD_PARTY_LICENSES.txt "$release_dir/" 2>/dev/null || log_warning "THIRD_PARTY_LICENSES.txt not found"
     
     # Copy runtime directory and sanitize it. The installer's minimal-deployer
     # model (docs/installer.md) preserves operator-owned runtime/ wholesale and
@@ -415,6 +380,9 @@ create_production_package() {
         # their contents from the source checkout.
         mkdir -p "$release_dir/runtime/locales" \
                  "$release_dir/runtime/views"
+        # .merged is a generated runtime cache. Shipping it makes source-tree
+        # state part of the release and can leave stale translations in place.
+        rm -rf "$release_dir/runtime/locales/.merged"
         log_info "Sanitized release_dir/runtime/ (kept: locales, views)"
     else
         log_error "runtime/ directory not found — artifact will be broken"
@@ -426,7 +394,8 @@ create_production_package() {
     # so they cannot be mistaken for operator-owned files; the installer's
     # next-steps card points operators to contrib/ for the copy-edit step.
     # NOTE: this is the deliberate exception to "no installer/ files inside
-    # the tarball" — only parako.sh ships, never install.sh.
+    # the tarball" — only the runtime operator and its Docker module ship;
+    # network-facing installer entrypoints never enter the application archive.
     mkdir -p "$release_dir/contrib"
     if [[ -f "installer/parako.sh" ]]; then
         cp installer/parako.sh "$release_dir/contrib/parako.sh"
@@ -434,6 +403,16 @@ create_production_package() {
         log_info "Shipped installer/parako.sh at contrib/parako.sh"
     else
         log_error "installer/parako.sh not found — tarball would not include the parako operator binary"
+        exit 1
+    fi
+    if [[ -f "installer/parako-docker.sh" && -d "deployment/docker" ]]; then
+        cp installer/parako-docker.sh "$release_dir/contrib/parako-docker.sh"
+        chmod 0755 "$release_dir/contrib/parako-docker.sh"
+        mkdir -p "$release_dir/contrib/docker"
+        cp deployment/docker/compose*.yaml "$release_dir/contrib/docker/"
+        log_info "Shipped Docker operator module and Compose definitions under contrib/"
+    else
+        log_error "Docker operator module or deployment/docker definitions are missing"
         exit 1
     fi
     if [[ -f ".env.example" ]]; then
@@ -446,22 +425,14 @@ create_production_package() {
     if [[ -f "parako-rp.example.json" ]]; then
         cp parako-rp.example.json "$release_dir/contrib/parako-rp.sample.jsonc"
         log_info "Shipped parako-rp.example.json at contrib/parako-rp.sample.jsonc"
-    elif [[ -f "parako.sample.jsonc" ]]; then
-        cp parako.sample.jsonc "$release_dir/contrib/parako-rp.sample.jsonc"
-        log_info "Shipped parako.sample.jsonc at contrib/parako-rp.sample.jsonc"
     else
-        log_warning "no parako-rp.example.json or parako.sample.jsonc found; operators will have to assemble parako-rp.jsonc by hand"
+        log_error "parako-rp.example.json not found — refusing to substitute the unrelated server configuration sample"
+        exit 1
     fi
-    if [[ -f "runtime/ecosystem.config.cjs" ]]; then
-        cp runtime/ecosystem.config.cjs "$release_dir/contrib/ecosystem.config.cjs.sample"
-        log_info "Shipped runtime/ecosystem.config.cjs at contrib/ecosystem.config.cjs.sample"
-    else
-        log_warning "no runtime/ecosystem.config.cjs found; operators must write their own process-manager config"
-    fi
-
     # Copy essential documentation. Repo paths are canonical lowercase.
     mkdir -p "$release_dir/docs"
     cp docs/deployment.md "$release_dir/docs/" 2>/dev/null || log_warning "docs/deployment.md not found"
+    cp docs/docker.md "$release_dir/docs/" 2>/dev/null || log_warning "docs/docker.md not found"
     cp docs/quickstart.md "$release_dir/docs/" 2>/dev/null || log_warning "docs/quickstart.md not found"
     
     # Create production package.json with ONLY production dependencies
@@ -470,6 +441,7 @@ create_production_package() {
         const prodPkg = {
             name: pkg.name,
             version: pkg.version,
+            private: true,
             description: pkg.description,
             author: pkg.author,
             license: pkg.license,
@@ -480,11 +452,17 @@ create_production_package() {
             // Keep Corepack on the same verified pnpm release after this
             // manifest is moved into the isolated staging directory.
             packageManager: pkg.packageManager,
-            main: pkg.main,
-            bin: pkg.bin,
+            main: 'dist/src/index.js',
+            bin: {
+                admin: './dist/scripts/manage/admin.js',
+                client: './dist/scripts/manage/client.js',
+                database: './dist/scripts/manage/database.js',
+                diagnostics: './dist/scripts/manage/diagnostics.js',
+                keys: './dist/scripts/manage/keys.js',
+                systemd: './dist/scripts/manage/systemd.js'
+            },
             engines: pkg.engines,
             type: pkg.type,
-            files: pkg.files,
             keywords: pkg.keywords,
             scripts: {
                 // 'start' runs node directly; operators wire their own
@@ -648,9 +626,14 @@ install_production_dependencies() {
     fi
     log_success "Production dependencies installed successfully"
 
-    # Generate third-party licenses summary (best-effort; not release-blocking).
+    node "$PROJECT_ROOT/scripts/check-production-licenses.mjs" "$PROJECT_ROOT/parako-id-release" || {
+        log_error "Production dependency license policy failed"
+        exit 1
+    }
+
+    # The artifact must carry its complete third-party attribution record.
     pnpm licenses list --prod > THIRD_PARTY_LICENSES.txt 2>/dev/null \
-        || log_warning "Could not generate third-party licenses summary"
+        || { log_error "Could not generate third-party licenses summary"; exit 1; }
     
     cd "$PROJECT_ROOT"
 }
@@ -708,6 +691,12 @@ validate_production_package() {
     [[ ! -d "parako-id-release/runtime/locales" ]]                && missing=1
     [[ ! -d "parako-id-release/runtime/views" ]]                  && missing=1
     [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && missing=1
+    [[ ! -f "parako-id-release/contrib/parako-docker.sh" ]]       && missing=1
+    [[ ! -f "parako-id-release/contrib/docker/compose.yaml" ]]    && missing=1
+    [[ ! -f "parako-id-release/contrib/docker/compose.tools.yaml" ]] && missing=1
+    [[ ! -f "parako-id-release/contrib/docker/compose.redis.yaml" ]] && missing=1
+    [[ ! -f "parako-id-release/contrib/docker/compose.postgresql.yaml" ]] && missing=1
+    [[ ! -f "parako-id-release/contrib/docker/compose.mongodb.yaml" ]] && missing=1
     [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && missing=1
     [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && missing=1
     [[ ! -f "parako-id-release/prisma.config.ts" ]]               && missing=1
@@ -717,8 +706,10 @@ validate_production_package() {
     [[ ! -f "parako-id-release/prisma/generated/postgresql/index.js" ]] && missing=1
     [[ ! -x "parako-id-release/node/bin/node" ]]                   && missing=1
     [[ ! -x "parako-id-release/tools/age/age" ]]                   && missing=1
+    [[ ! -x "parako-id-release/tools/age/age-keygen" ]]            && missing=1
     [[ ! -f "parako-id-release/release-manifest.json" ]]          && missing=1
     [[ ! -f "parako-id-release/SBOM.spdx.json" ]]                 && missing=1
+    [[ ! -f "parako-id-release/THIRD_PARTY_LICENSES.txt" ]]       && missing=1
     if [[ "$missing" -eq 1 ]]; then
         log_error "Production package validation failed"
         log_error "Missing:"
@@ -730,6 +721,12 @@ validate_production_package() {
         [[ ! -d "parako-id-release/runtime/locales" ]]                && log_error "  - runtime/locales directory"
         [[ ! -d "parako-id-release/runtime/views" ]]                  && log_error "  - runtime/views directory"
         [[ ! -f "parako-id-release/contrib/parako.sh" ]]              && log_error "  - contrib/parako.sh (parako operator binary)"
+        [[ ! -f "parako-id-release/contrib/parako-docker.sh" ]]       && log_error "  - contrib/parako-docker.sh (Docker operator module)"
+        [[ ! -f "parako-id-release/contrib/docker/compose.yaml" ]]    && log_error "  - contrib/docker/compose.yaml"
+        [[ ! -f "parako-id-release/contrib/docker/compose.tools.yaml" ]] && log_error "  - contrib/docker/compose.tools.yaml"
+        [[ ! -f "parako-id-release/contrib/docker/compose.redis.yaml" ]] && log_error "  - contrib/docker/compose.redis.yaml"
+        [[ ! -f "parako-id-release/contrib/docker/compose.postgresql.yaml" ]] && log_error "  - contrib/docker/compose.postgresql.yaml"
+        [[ ! -f "parako-id-release/contrib/docker/compose.mongodb.yaml" ]] && log_error "  - contrib/docker/compose.mongodb.yaml"
         [[ ! -f "parako-id-release/contrib/.env.sample" ]]            && log_error "  - contrib/.env.sample (operator env sample)"
         [[ ! -f "parako-id-release/contrib/parako-rp.sample.jsonc" ]] && log_error "  - contrib/parako-rp.sample.jsonc (operator RP sample)"
         [[ ! -f "parako-id-release/prisma.config.ts" ]]               && log_error "  - prisma.config.ts"
@@ -739,8 +736,10 @@ validate_production_package() {
         [[ ! -f "parako-id-release/prisma/generated/postgresql/index.js" ]] && log_error "  - PostgreSQL Prisma client"
         [[ ! -x "parako-id-release/node/bin/node" ]]                   && log_error "  - bundled Node.js runtime"
         [[ ! -x "parako-id-release/tools/age/age" ]]                   && log_error "  - bundled age runtime"
+        [[ ! -x "parako-id-release/tools/age/age-keygen" ]]            && log_error "  - bundled age-keygen runtime"
         [[ ! -f "parako-id-release/release-manifest.json" ]]          && log_error "  - release-manifest.json"
         [[ ! -f "parako-id-release/SBOM.spdx.json" ]]                 && log_error "  - SBOM.spdx.json"
+        [[ ! -f "parako-id-release/THIRD_PARTY_LICENSES.txt" ]]       && log_error "  - THIRD_PARTY_LICENSES.txt"
         exit 1
     fi
 
@@ -969,5 +968,6 @@ main() {
 
 # Script entry point
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    parse_arguments "$@"
     main
 fi

@@ -113,14 +113,14 @@ describe('shared management CLI constants', () => {
   });
 
   it('maps every advertised management module to a packaged executable', () => {
-    const packageJson = JSON.parse(
-      readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')
-    ) as { bin: Record<string, string> };
-    const packagedExecutables = new Set(Object.values(packageJson.bin));
+    const releaseScript = readFileSync(
+      new URL('../../../scripts/release.sh', import.meta.url),
+      'utf8'
+    );
 
     for (const config of Object.values(SUB_CLIS)) {
-      expect(packagedExecutables).toContain(
-        `./dist/scripts/manage/${config.script}`
+      expect(releaseScript).toContain(
+        `'./dist/scripts/manage/${config.script}'`
       );
     }
   });

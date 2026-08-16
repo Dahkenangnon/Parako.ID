@@ -1,6 +1,11 @@
-# Defense in depth for npm packaging. The package.json `files` allowlist is
-# authoritative; these rules prevent mutable operator data from being shipped
-# if that allowlist is broadened later.
+# The source package is private and production releases are built by
+# scripts/release.sh. Keep accidental `npm pack` output free of local planning,
+# test artifacts, and mutable operator data as a defense-in-depth boundary.
+dont-git/
+coverage/
+playwright-report/
+test-results/
+
 runtime/.env
 runtime/.tmp-uploads/
 runtime/config-backups/

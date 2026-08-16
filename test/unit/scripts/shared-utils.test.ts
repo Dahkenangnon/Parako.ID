@@ -40,7 +40,7 @@ describe('shared management CLI utilities', () => {
 
       expect(getPackageInfo()).toMatchObject({
         name: 'parako.id',
-        version: '0.0.1',
+        version: '0.0.0',
         homepage: 'https://parako.id',
         repository: { url: 'https://github.com/Dahkenangnon/Parako.ID' },
       });

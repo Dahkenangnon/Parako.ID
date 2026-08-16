@@ -8,7 +8,7 @@
     "email": "dah.kenangnon@gmail.com",
     "url": "https://github.com/Dahkenangnon"
   },
-  "private": false,
+  "private": true,
   "license": "MIT",
   "homepage": "https://parako.id",
   "repository": {
@@ -21,36 +21,12 @@
   "maintainers": [
     "Justin Dah-kenangnon <dah.kenangnon@gmail.com>"
   ],
-  "files": [
-    "dist",
-    "public",
-    "runtime/ecosystem.config.cjs",
-    "runtime/locales",
-    "prisma/migrations",
-    "prisma/schema.sqlite.prisma",
-    "prisma/schema.postgresql.prisma",
-    "prisma.config.ts",
-    "prisma.config.pg.ts",
-    ".env.example",
-    "parako-rp.example.json",
-    "README.md",
-    "LICENSE"
-  ],
-  "bin": {
-    "admin": "./dist/scripts/manage/admin.js",
-    "client": "./dist/scripts/manage/client.js",
-    "database": "./dist/scripts/manage/database.js",
-    "diagnostics": "./dist/scripts/manage/diagnostics.js",
-    "keys": "./dist/scripts/manage/keys.js",
-    "systemd": "./dist/scripts/manage/systemd.js"
-  },
   "directories": {
     "lib": "dist/src",
     "bin": "dist/scripts/manage",
     "test": "test"
   },
   "type": "module",
-  "main": "dist/src/index.js",
   "packageManager": "pnpm@11.4.0",
   "engines": {
     "node": ">=24.0.0",
@@ -108,6 +84,7 @@
     "postinstall": "prisma generate --config=prisma.config.ts && prisma generate --config=prisma.config.pg.ts",
     "prepare": "husky",
     "release": "node scripts/release.mjs",
+    "release:licenses": "node scripts/check-production-licenses.mjs",
     "release:tag": "node scripts/tag-release.mjs"
   },
   "keywords": [
