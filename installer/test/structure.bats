@@ -61,6 +61,14 @@ load helpers
   grep -qE '^install_main\(\)' "${INSTALLER_SH}"
 }
 
+@test "install.sh defines the verified Docker installer path" {
+  for fn in docker_install_main resolve_verified_docker_image write_docker_install_state; do
+    grep -qE "^${fn}\(\)" "${INSTALLER_SH}" \
+      || { echo "missing ${fn} in install.sh"; return 1; }
+  done
+  grep -q -- '--docker' "${INSTALLER_SH}"
+}
+
 @test "install.sh defines update_main" {
   grep -qE '^update_main\(\)' "${INSTALLER_SH}"
 }
@@ -199,6 +207,18 @@ load helpers
 @test "install.sh acquires flock around mutating modes" {
   grep -qE '^acquire_lock\(\)' "${INSTALLER_SH}"
   grep -q 'flock --nonblock --exclusive 9' "${INSTALLER_SH}"
+}
+
+@test "Docker operator module has valid syntax and a fixed signing trust policy" {
+  run assert_syntax "${PARAKO_DOCKER_SH}"
+  [ "${status}" -eq 0 ]
+  run assert_no_eval "${PARAKO_DOCKER_SH}"
+  [ "${status}" -eq 0 ]
+  grep -q "^readonly PARAKO_DOCKER_REPOSITORY='ghcr.io/dahkenangnon/parako-id'" \
+    "${PARAKO_DOCKER_SH}"
+  grep -q "^readonly PARAKO_COSIGN_OIDC_ISSUER='https://token.actions.githubusercontent.com'" \
+    "${PARAKO_DOCKER_SH}"
+  ! grep -Fq 'PARAKO_DOCKER_REPOSITORY=${' "${PARAKO_DOCKER_SH}"
 }
 
 # -----------------------------------------------------------------------------

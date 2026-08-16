@@ -141,6 +141,7 @@ FLAG_UNINSTALL=0
 FLAG_PURGE=0
 FLAG_KEEP_BIN=0
 FLAG_CLEAN_STALE=0
+FLAG_DOCKER=0
 
 # Runtime state.
 DOWNLOAD_CMD=""
@@ -304,6 +305,7 @@ Mode modifiers:
   --purge                      (--uninstall) Also remove runtime/ (operator data)
   --keep-bin                   (--uninstall) Preserve /usr/local/bin/parako helper
   --clean-stale                Auto-remove stale current.tmp.* symlinks left by a crashed run
+  --docker                     Install the signed Docker operator bundle
 
 Source resolution:
   --version <vX.Y.Z>           Pin a release version (default: latest stable)
@@ -368,6 +370,7 @@ parse_args() {
       --purge)     FLAG_PURGE=1 ;;
       --keep-bin)  FLAG_KEEP_BIN=1 ;;
       --clean-stale) FLAG_CLEAN_STALE=1 ;;
+      --docker) FLAG_DOCKER=1 ;;
       --keep)
         [ $# -lt 2 ] && die "--keep requires N"
         case "$2" in ''|*[!0-9]*) die "--keep must be a non-negative integer" ;; esac
@@ -423,6 +426,12 @@ parse_args() {
     die "--update, --rollback, --doctor, --gc, --uninstall are mutually exclusive"
   fi
 
+  if [ "${FLAG_DOCKER}" -eq 1 ] && { [ "${FLAG_UPDATE}" -eq 1 ] || [ "${FLAG_ROLLBACK}" -eq 1 ]; }; then
+    die "use parako docker update or rollback for an existing Docker installation"
+  fi
+  if [ "${FLAG_DOCKER}" -eq 1 ] && [ "${FLAG_OFFLINE}" -eq 1 ]; then
+    die "Docker installation does not yet support --offline image verification"
+  fi
   if [ "${FLAG_INSECURE_NO_SIGNATURE}" -eq 1 ] && [ -z "${FLAG_INSECURE_REASON}" ]; then
     die "--insecure-no-signature requires --reason \"<text>\""
   fi
@@ -556,6 +565,15 @@ preflight() {
   check_openssl
   check_tar
   check_disk_space
+  if [ "${FLAG_DOCKER}" -eq 1 ]; then
+    if command -v docker >/dev/null 2>&1 \
+        && docker info >/dev/null 2>&1 \
+        && docker compose version >/dev/null 2>&1; then
+      _pf_ok "Docker" "Engine and Compose v2 available"
+    else
+      _pf_fail "Docker" "Docker Engine and Compose v2 must be installed and reachable"
+    fi
+  fi
 
   if [ "${PREFLIGHT_FAIL_COUNT}" -gt 0 ]; then
     printf '\n'
@@ -1533,10 +1551,137 @@ uninstall_main() {
 }
 
 # -----------------------------------------------------------------------------
+docker_install_operator_binary() {
+  local source=$1 destination=""
+  PARAKO_BIN_RESOLVED=""
+  [ "${FLAG_NO_BIN}" -eq 0 ] || return 0
+  if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
+    destination=/usr/local/bin/parako
+    write_root_file "${source}" "${destination}" 0755 root:root \
+      || die "could not install ${destination}"
+  else
+    mkdir -p "${DEFAULT_BIN_DIR}"
+    destination="${DEFAULT_BIN_DIR}/parako"
+    install -m 0755 "${source}" "${destination}"
+  fi
+  PARAKO_BIN_RESOLVED=${destination}
+  log_ok "installed Docker-aware parako operator at ${destination}"
+}
+
+resolve_verified_docker_image() {
+  local version=$1 repository="ghcr.io/dahkenangnon/parako-id" tag digest
+  tag="${repository}:${version}"
+  ensure_cosign
+  docker pull "${tag}"
+  digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "${tag}")
+  case "${digest}" in "${repository}"@sha256:*) ;; *) die "image did not resolve to the expected repository digest" ;; esac
+  cosign verify \
+    --certificate-identity-regexp "${COSIGN_CERT_IDENTITY_REGEX}" \
+    --certificate-oidc-issuer "${COSIGN_OIDC_ISSUER}" \
+    "${digest}" >/dev/null \
+    || die "Docker image signature verification failed"
+  printf '%s' "${digest}"
+}
+
+write_docker_install_state() {
+  local version=$1 image=$2 bin_path=$3 state_file state_tmp
+  state_file="${RESOLVED_INSTALL_DIR}/.parako-state"
+  state_tmp="${state_file}.tmp.$$"
+  {
+    printf '# Parako.ID Docker installer state — no secrets.\n'
+    printf 'INSTALL_MODE=docker\n'
+    printf 'INSTALL_DIR=%s\n' "${RESOLVED_INSTALL_DIR}"
+    printf 'VERSION=%s\n' "${version}"
+    printf 'PREVIOUS_VERSION=\n'
+    printf 'DOCKER_IMAGE=%s\n' "${image}"
+    printf 'INSTALLED_AT=%s\n' "${RUN_TIMESTAMP}"
+    printf 'INSTALLER_VERSION=%s\n' "${INSTALLER_VERSION}"
+    [ -z "${bin_path}" ] || printf 'PARAKO_BIN_PATH=%s\n' "${bin_path}"
+  } >"${state_tmp}"
+  chmod 0644 "${state_tmp}"
+  mv -f "${state_tmp}" "${state_file}"
+}
+
+docker_install_main() {
+  local version image extracted
+  preflight
+  fetch_latest_version
+  fetch_release_artifacts
+  verify_checksum
+  verify_release_signature
+  version=${TAG#v}
+  image=$(resolve_verified_docker_image "${version}")
+  if [ "${FLAG_DRY_RUN}" -eq 1 ]; then
+    log_ok "--dry-run: release archive and Docker image verification passed"
+    return
+  fi
+  [ ! -e "${RESOLVED_INSTALL_DIR}/.parako-state" ] \
+    || die "installation state already exists; use parako docker update"
+  mkdir -p "${RESOLVED_INSTALL_DIR}"
+  [ -w "${RESOLVED_INSTALL_DIR}" ] \
+    || die "${RESOLVED_INSTALL_DIR} is not writable by $(id -un)"
+  acquire_lock
+  if [ "${FLAG_FORCE}" -eq 0 ]; then
+    print_header "Docker installation plan"
+    print_label "Version" "${version}"
+    print_label "Image" "${image}"
+    print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
+    prompt_yn_timeout "Install the verified Docker operator bundle?" "no" 60 \
+      || { log_info "aborted by operator"; return; }
+  fi
+
+  extracted="${TMPDIR_PATH}/docker-release"
+  mkdir -p "${extracted}"
+  tar -xzf "${TARBALL_FILE}" -C "${extracted}" --strip-components=1
+  [ -f "${extracted}/contrib/parako.sh" ] \
+    || die "release archive is missing the parako operator"
+  [ -f "${extracted}/contrib/parako-docker.sh" ] \
+    || die "release archive is missing the Docker operator module"
+  [ -f "${extracted}/contrib/docker/compose.yaml" ] \
+    || die "release archive is missing Docker Compose definitions"
+  [ -f "${extracted}/contrib/.env.sample" ] \
+    || die "release archive is missing the bootstrap environment sample"
+  [ -x "${extracted}/tools/age/age" ] && [ -x "${extracted}/tools/age/age-keygen" ] \
+    || die "release archive is missing bundled age tools"
+
+  mkdir -p "${RESOLVED_INSTALL_DIR}/docker/tools" \
+    "${RESOLVED_INSTALL_DIR}/runtime/data" \
+    "${RESOLVED_INSTALL_DIR}/runtime/logs" \
+    "${RESOLVED_INSTALL_DIR}/runtime/uploads" \
+    "${RESOLVED_INSTALL_DIR}/runtime/backups"
+  cp "${extracted}/contrib/docker/"*.yaml "${RESOLVED_INSTALL_DIR}/docker/"
+  install -m 0755 "${extracted}/contrib/parako-docker.sh" \
+    "${RESOLVED_INSTALL_DIR}/docker/parako-docker.sh"
+  install -m 0600 "${extracted}/contrib/.env.sample" \
+    "${RESOLVED_INSTALL_DIR}/docker/.env.sample"
+  cp -a "${extracted}/tools/age" "${RESOLVED_INSTALL_DIR}/docker/tools/age"
+  docker_install_operator_binary "${extracted}/contrib/parako.sh"
+  write_docker_install_state "${version}" "${image}" "${PARAKO_BIN_RESOLVED}"
+
+  print_header "Parako.ID Docker operator installed"
+  print_label "Verified image" "${image}"
+  print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
+  printf '\nNext: create configuration, provision external HTTPS ingress, and deploy:\n\n'
+  printf '  parako backup-keygen /secure/path/parako-backup.agekey\n'
+  printf '  parako docker config init --url https://id.example.com --adapter sqlite \\\n'
+  printf '    --redis managed --tenancy single --backup-recipient age1...\n'
+  printf '  parako docker deploy\n\n'
+}
+
 # §19  --plan (pure preview; no network, no INSTALL_DIR writes)
 # -----------------------------------------------------------------------------
 plan_main() {
   local mode=${1:-install}
+  if [ "${FLAG_DOCKER}" -eq 1 ]; then
+    RESOLVED_INSTALL_DIR=${INSTALL_DIR}
+    print_header "--plan (no network, no mutations)"
+    print_label "Operation" "Docker operator install"
+    print_label "Target version" "${FLAG_VERSION:-<latest>}"
+    print_label "Install dir" "${RESOLVED_INSTALL_DIR}"
+    printf '\n  Would verify the signed release archive and immutable GHCR image digest,\n'
+    printf '  then install Compose definitions, bundled age tools, and parako.\n'
+    return
+  fi
   RESOLVED_INSTALL_DIR=${INSTALL_DIR}
   local target=${FLAG_VERSION:-<latest>}
   print_header "--plan (no network, no mutations)"
@@ -1573,6 +1718,7 @@ main() {
     exit 0
   fi
 
+  if [ "${FLAG_DOCKER}" -eq 1 ]; then docker_install_main; exit 0; fi
   if [ "${FLAG_UNINSTALL}" -eq 1 ]; then uninstall_main; exit 0; fi
   if [ "${FLAG_DOCTOR}" -eq 1 ]; then doctor_main; exit 0; fi
   if [ "${FLAG_GC}"     -eq 1 ]; then gc_main;     exit 0; fi

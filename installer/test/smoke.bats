@@ -23,7 +23,7 @@ teardown() {
 @test "install.sh --help advertises only the surviving flags" {
   run bash "${INSTALLER_SH}" --help
   [ "${status}" -eq 0 ]
-  for flag in --version --dir --update --rollback --doctor --gc --plan --dry-run --offline --insecure-no-signature --no-bin --force --json; do
+  for flag in --version --dir --update --rollback --doctor --gc --plan --dry-run --offline --insecure-no-signature --no-bin --force --json --docker; do
     echo "${output}" | grep -q -- "${flag}" \
       || { echo "expected flag ${flag} missing from --help"; return 1; }
   done
@@ -47,6 +47,24 @@ teardown() {
   # Run with all network commands shadowed to false; --plan must still succeed.
   run env PATH="/tmp/no-net-$$:${PATH}" bash "${INSTALLER_SH}" --dir "${INSTALL_DIR}" --plan --no-color
   [ "${status}" -eq 0 ]
+}
+
+@test "install.sh --docker --plan is mutation-free and describes image verification" {
+  run bash "${INSTALLER_SH}" --docker --dir "${INSTALL_DIR}" --plan --no-color
+  [ "${status}" -eq 0 ]
+  test ! -d "${INSTALL_DIR}"
+  echo "${output}" | grep -q 'immutable GHCR image digest'
+}
+
+@test "install.sh rejects unsupported Docker mode combinations" {
+  run bash "${INSTALLER_SH}" --docker --offline --version v0.3.5 \
+    --tarball /tmp/release.tar.gz --checksum /tmp/SHA256SUMS
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q 'Docker installation does not yet support --offline image verification'
+
+  run bash "${INSTALLER_SH}" --docker --update
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q 'parako docker update'
 }
 
 @test "install.sh rejects --insecure-no-signature without --reason" {

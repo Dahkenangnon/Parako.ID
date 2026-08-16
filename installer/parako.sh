@@ -69,6 +69,10 @@ find_install_dir() {
 read_pkg_version() {
   local install_dir=$1
   local pkg="${install_dir}/current/package.json"
+  if [ "$(install_mode "${install_dir}")" = docker ]; then
+    read_state_field "${install_dir}" VERSION 2>/dev/null || printf 'unknown'
+    return
+  fi
   [ -r "${pkg}" ] || { printf 'unknown'; return; }
   if command -v jq >/dev/null 2>&1; then
     jq -r '.version // "unknown"' "${pkg}"
@@ -89,7 +93,7 @@ install_mode() {
   local install_dir=$1 mode
   mode=$(read_state_field "${install_dir}" INSTALL_MODE 2>/dev/null || printf native)
   case "${mode}" in
-    native|git) printf '%s' "${mode}" ;;
+    native|git|docker) printf '%s' "${mode}" ;;
     *) die "unsupported INSTALL_MODE in ${install_dir}/.parako-state: ${mode}" ;;
   esac
 }
@@ -111,7 +115,19 @@ require_install_dir() {
   local install_dir
   install_dir=$(find_install_dir 2>/dev/null) \
     || die "no Parako.ID install dir found; set PARAKO_INSTALL_DIR or install first"
-  [ -L "${install_dir}/current" ] || die "${install_dir}/current is not installed"
+  if [ "$(install_mode "${install_dir}")" != "docker" ]; then
+    [ -L "${install_dir}/current" ] || die "${install_dir}/current is not installed"
+  fi
+  printf '%s' "${install_dir}"
+}
+
+require_docker_install_dir() {
+  local install_dir
+  install_dir=$(require_install_dir)
+  [ "$(install_mode "${install_dir}")" = "docker" ] \
+    || die "${install_dir} is not a Docker-mode Parako.ID installation"
+  [ -d "${install_dir}/docker" ] \
+    || die "Docker operator bundle is missing: ${install_dir}/docker"
   printf '%s' "${install_dir}"
 }
 
@@ -165,6 +181,32 @@ set_env_value() {
       else lines.push(prefix + value);
       fs.writeFileSync(file, lines.join("\n").replace(/\n*$/, "\n"), { mode: 0o600 });
     '
+}
+
+set_env_value_portable() {
+  local file=$1 key=$2 value=$3 temporary found=0 line
+  case "${key}" in
+    ''|*[!A-Z0-9_]*) die "invalid environment key: ${key}" ;;
+  esac
+  case "${value}" in
+    *$'\n'*|*$'\r'*) die "environment values must not contain line breaks" ;;
+  esac
+  temporary=$(mktemp "${file}.tmp.XXXXXXXX") \
+    || die "could not create temporary environment file"
+  chmod 0600 "${temporary}"
+  while IFS= read -r line || [ -n "${line}" ]; do
+    case "${line}" in
+      "${key}="*)
+        printf '%s=%s\n' "${key}" "${value}" >>"${temporary}"
+        found=1 ;;
+      *) printf '%s\n' "${line}" >>"${temporary}" ;;
+    esac
+  done <"${file}"
+  if [ "${found}" -eq 0 ]; then
+    printf '%s=%s\n' "${key}" "${value}" >>"${temporary}"
+  fi
+  mv -f "${temporary}" "${file}"
+  chmod 0600 "${file}"
 }
 
 require_root() {
@@ -288,19 +330,32 @@ cmd_paths() {
     || die "no Parako.ID install dir found; set PARAKO_INSTALL_DIR or run the installer first"
   print_header "Parako.ID paths"
   print_kv "install dir"       "${install_dir}"
-  print_kv "install mode"      "$(install_mode "${install_dir}")"
-  print_kv "current symlink"   "${install_dir}/current"
-  if [ -L "${install_dir}/current" ]; then
-    print_kv "current target"  "$(readlink -f "${install_dir}/current")"
+  local mode
+  mode=$(install_mode "${install_dir}")
+  print_kv "install mode"      "${mode}"
+  if [ "${mode}" = docker ]; then
+    print_kv "Docker bundle"   "${install_dir}/docker"
+    print_kv "Docker image"    "$(read_state_field "${install_dir}" DOCKER_IMAGE 2>/dev/null || printf '<not recorded>')"
+  else
+    print_kv "current symlink" "${install_dir}/current"
+    if [ -L "${install_dir}/current" ]; then
+      print_kv "current target" "$(readlink -f "${install_dir}/current")"
+    fi
   fi
   print_kv "runtime"           "${install_dir}/runtime"
   print_kv "env file"          "${install_dir}/runtime/.env"
   print_kv "jwks dir"          "${install_dir}/runtime/jwks"
   print_kv "logs dir"          "${install_dir}/runtime/logs"
-  print_kv "releases dir"      "${install_dir}/releases"
+  if [ "${mode}" != docker ]; then
+    print_kv "releases dir"    "${install_dir}/releases"
+  fi
   print_kv "state file"        "${install_dir}/.parako-state"
   print_kv "install log dir"   "/var/log (or \$XDG_STATE_HOME/parako for non-root)"
-  printf '\n  Native systemd units execute the immutable release at %s/current.\n\n' "${install_dir}"
+  if [ "${mode}" = docker ]; then
+    printf "\n  Docker Compose executes the verified image recorded in the state file.\n\n"
+  else
+    printf "\n  Native systemd units execute the immutable release at %s/current.\n\n" "${install_dir}"
+  fi
 }
 
 cmd_doctor() {
@@ -439,25 +494,33 @@ cmd_config_check() {
 }
 
 age_binary() {
-  local install_dir=$1 binary="$1/current/tools/age/age"
-  if [ "$(install_mode "${install_dir}")" = "native" ]; then
-    [ -x "${binary}" ] || die "bundled age binary is missing: ${binary}"
-    printf '%s' "${binary}"
-  else
-    command -v age >/dev/null 2>&1 || die "Git installations require host age"
-    command -v age
-  fi
+  local install_dir=$1 mode binary
+  mode=$(install_mode "${install_dir}")
+  case "${mode}" in
+    native) binary="${install_dir}/current/tools/age/age" ;;
+    docker) binary="${install_dir}/docker/tools/age/age" ;;
+    git)
+      command -v age >/dev/null 2>&1 || die "Git installations require host age"
+      command -v age
+      return ;;
+  esac
+  [ -x "${binary}" ] || die "bundled age binary is missing: ${binary}"
+  printf '%s' "${binary}"
 }
 
 age_keygen_binary() {
-  local install_dir=$1 binary="$1/current/tools/age/age-keygen"
-  if [ "$(install_mode "${install_dir}")" = "native" ]; then
-    [ -x "${binary}" ] || die "bundled age-keygen binary is missing: ${binary}"
-    printf '%s' "${binary}"
-  else
-    command -v age-keygen >/dev/null 2>&1 || die "Git installations require host age-keygen"
-    command -v age-keygen
-  fi
+  local install_dir=$1 mode binary
+  mode=$(install_mode "${install_dir}")
+  case "${mode}" in
+    native) binary="${install_dir}/current/tools/age/age-keygen" ;;
+    docker) binary="${install_dir}/docker/tools/age/age-keygen" ;;
+    git)
+      command -v age-keygen >/dev/null 2>&1 || die "Git installations require host age-keygen"
+      command -v age-keygen
+      return ;;
+  esac
+  [ -x "${binary}" ] || die "bundled age-keygen binary is missing: ${binary}"
+  printf '%s' "${binary}"
 }
 
 cmd_backup_keygen() {
@@ -957,6 +1020,11 @@ cmd_gc() {
 }
 
 cmd_uninstall() {
+  local install_dir
+  install_dir=$(require_install_dir)
+  if [ "$(install_mode "${install_dir}")" = docker ]; then
+    die "Docker uninstall requires an encrypted backup and explicit volume handling. Run 'parako docker down', verify the backup off-host, then follow docs/docker.md."
+  fi
   local pass=()
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1081,6 +1149,30 @@ cmd_self_update() {
   TEMP_WORKDIR=""
 }
 
+load_docker_operator() {
+  local install_dir candidate
+  candidate="$(dirname "${BASH_SOURCE[0]}")/parako-docker.sh"
+  if [ -r "${candidate}" ]; then
+    # shellcheck source=parako-docker.sh
+    source "${candidate}"
+    return
+  fi
+  if install_dir=$(find_install_dir 2>/dev/null); then
+    candidate="${install_dir}/docker/parako-docker.sh"
+    if [ -r "${candidate}" ]; then
+      # shellcheck source=/dev/null
+      source "${candidate}"
+      return
+    fi
+  fi
+  die "Docker operator module is missing"
+}
+
+cmd_docker() {
+  load_docker_operator
+  docker_operator_main "$@"
+}
+
 cmd_help() {
   cat <<HELPEOF
 parako — Parako.ID operator binary v${PARAKO_VERSION}
@@ -1091,6 +1183,8 @@ Usage:
 Commands:
   version                       Show parako, installer, and app versions
   paths                         Print resolved Parako.ID paths
+  docker <command>              Manage a Docker-mode Parako.ID installation
+                                Run 'parako docker help' for Docker commands
   config init --url URL [options]
                                 Create bootstrap-only production environment
   config check|path             Validate or locate runtime/.env
@@ -1118,7 +1212,8 @@ Commands:
   help, --help, -h              Show this message
 
 Scope:
-  The CLI manages releases, bootstrap environment, migrations, and systemd.
+  The CLI manages releases, bootstrap environment, migrations, encrypted
+  backups, and either native systemd or Docker lifecycle operations.
   Application and OIDC configuration stays in the admin panel. Reverse proxy
   and TLS termination remain external and are never modified by this command.
 
@@ -1136,6 +1231,7 @@ main() {
   case "${cmd}" in
     version|--version|-v) cmd_version "$@" ;;
     paths)                cmd_paths "$@" ;;
+    docker)               cmd_docker "$@" ;;
     uninstall)            cmd_uninstall "$@" ;;
     self-update)          cmd_self_update "$@" ;;
     clean-stale)          cmd_clean_stale "$@" ;;

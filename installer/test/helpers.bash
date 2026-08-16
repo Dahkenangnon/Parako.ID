@@ -6,6 +6,7 @@ INSTALLER_DIR=${INSTALLER_DIR:-$(cd "$(dirname "${BATS_TEST_FILENAME}")/.." && p
 INSTALLER_SH="${INSTALLER_DIR}/install.sh"
 GIT_INSTALLER_SH="${INSTALLER_DIR}/install-git.sh"
 PARAKO_SH="${INSTALLER_DIR}/parako.sh"
+PARAKO_DOCKER_SH="${INSTALLER_DIR}/parako-docker.sh"
 
 assert_syntax() {
   local file=$1
