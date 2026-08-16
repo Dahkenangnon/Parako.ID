@@ -218,6 +218,7 @@ test('a terminal worker failure exhausts retries and becomes visible to the admi
   });
   const queue = createE2eBackgroundQueue();
   const importUrl = `${IDP_ORIGIN}/admin/data-transfer/users/import`;
+  const progressUrlPattern = `${importUrl}/*/progress`;
   let job: Job | undefined;
 
   try {
@@ -254,6 +255,11 @@ test('a terminal worker failure exhausts retries and becomes visible to the admi
       { times: 1 }
     );
 
+    // Force the polling fallback that exposed the timing-sensitive EventSource
+    // cancellation in the full MongoDB multi-tenant matrix run.
+    await page.route(progressUrlPattern, route => route.abort('aborted'), {
+      times: 1,
+    });
     await page.getByRole('button', { name: 'Confirm Import' }).click();
     await expect(page.locator('#result-summary h3')).toHaveText(
       'Import Failed'
@@ -265,9 +271,19 @@ test('a terminal worker failure exhausts retries and becomes visible to the admi
     expect(persistedJob).not.toBeNull();
     await expect(persistedJob!.getState()).resolves.toBe('failed');
     expect(persistedJob!.attemptsMade).toBe(3);
-    expectNoBrowserFailures(failures);
+    expectNoBrowserFailures(failures, {
+      allowedFailedRequests: [
+        {
+          method: 'GET',
+          url: `${IDP_ORIGIN}/admin/data-transfer/users/import/${job!.id}/progress`,
+          resourceType: 'eventsource',
+          errorText: 'net::ERR_ABORTED',
+        },
+      ],
+    });
   } finally {
     await page.unroute(importUrl);
+    await page.unroute(progressUrlPattern);
     await queue.close();
   }
 });
