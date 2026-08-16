@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { applyTestingEnvironment } from './scripts/testing/environment.js';
 
 import {
   E2E_PROFILES,
@@ -7,6 +8,8 @@ import {
   resolveE2eCell,
   SELF_STARTING_SPECS,
 } from './test/e2e/config/matrix.js';
+
+applyTestingEnvironment(import.meta.dirname);
 
 const selectedProfile = parseE2eProfile(process.env.PARAKO_E2E_PROFILE);
 const selfStarting = selectedProfile === 'self-starting';

@@ -12,6 +12,7 @@ import {
   type RedisDiagnosticConfig,
 } from '../manage/shared/redis-config.ts';
 import { assertDevelopmentRuntimeVersions } from '../setup-development.ts';
+import { loadTestingEnvironment } from './environment.ts';
 
 export interface PrerequisiteInputs {
   root: string;
@@ -151,13 +152,14 @@ export async function runPrerequisiteCli(
   argv = process.argv.slice(2)
 ): Promise<number> {
   const root = fileURLToPath(new URL('../../', import.meta.url));
+  const environment = loadTestingEnvironment(root);
   const failures = await collectPrerequisiteFailures({
     root,
     nodeVersion: process.versions.node,
     pnpmVersion: installedPnpmVersion(),
     full: argv.includes('--full'),
-    postgresqlUrl: process.env.PARAKO_E2E_POSTGRESQL_URL,
-    redisEnvironment: process.env,
+    postgresqlUrl: environment.PARAKO_E2E_POSTGRESQL_URL,
+    redisEnvironment: environment,
   });
 
   if (failures.length > 0) {

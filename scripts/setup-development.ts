@@ -11,10 +11,18 @@ import {
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  createLocalDevelopmentInfrastructureAdapter,
+  ensureDevelopmentTestInfrastructure,
+  type DevelopmentInfrastructureAdapter,
+} from './testing/development-infrastructure.ts';
+import { loadTestingEnvironment } from './testing/environment.ts';
+
 interface Command {
   command: string;
   args: string[];
   captureOutput?: boolean;
+  failureHint?: string;
 }
 
 interface CommandResult {
@@ -28,6 +36,8 @@ export interface DevelopmentSetupOptions {
   root?: string;
   nodeVersion?: string;
   execute?: SetupCommandExecutor;
+  environment?: NodeJS.ProcessEnv;
+  infrastructureAdapter?: DevelopmentInfrastructureAdapter;
   randomSecret?: () => string;
 }
 
@@ -98,6 +108,48 @@ export function renderDevelopmentEnvironment(
   );
 }
 
+/**
+ * Create the operator-owned development environment without replacing an
+ * existing file. Keeping this operation separate lets contributors generate
+ * secrets without provisioning databases or installing browser dependencies.
+ */
+export function generateDevelopmentEnvironmentFile(
+  root: string,
+  randomSecret?: () => string
+): 'runtime/.env' {
+  const relativePath = 'runtime/.env';
+  const environmentPath = resolve(root, relativePath);
+  if (existsSync(environmentPath)) {
+    throw new Error(`${relativePath} already exists; refusing to overwrite it`);
+  }
+
+  mkdirSync(dirname(environmentPath), { recursive: true });
+  const template = readFileSync(resolve(root, '.env.example'), 'utf8');
+  writeFileSync(
+    environmentPath,
+    renderDevelopmentEnvironment(template, randomSecret),
+    {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    }
+  );
+  return relativePath;
+}
+
+export function prepareDevelopmentEnvironment(
+  root: string,
+  randomSecret?: () => string
+): DevelopmentSetupResult {
+  if (existsSync(resolve(root, 'runtime/.env'))) {
+    return { created: [], preserved: ['runtime/.env'] };
+  }
+  return {
+    created: [generateDevelopmentEnvironmentFile(root, randomSecret)],
+    preserved: [],
+  };
+}
+
 export function prepareDevelopmentFiles(
   root: string,
   randomSecret?: () => string
@@ -109,18 +161,9 @@ export function prepareDevelopmentFiles(
     mkdirSync(resolve(root, directory), { recursive: true });
   }
 
-  const environmentPath = resolve(root, 'runtime/.env');
-  if (existsSync(environmentPath)) {
-    preserved.push('runtime/.env');
-  } else {
-    const template = readFileSync(resolve(root, '.env.example'), 'utf8');
-    writeFileSync(
-      environmentPath,
-      renderDevelopmentEnvironment(template, randomSecret),
-      { encoding: 'utf8', flag: 'wx', mode: 0o600 }
-    );
-    created.push('runtime/.env');
-  }
+  const environment = prepareDevelopmentEnvironment(root, randomSecret);
+  created.push(...environment.created);
+  preserved.push(...environment.preserved);
 
   const configurationPath = resolve(root, 'runtime/parako.jsonc');
   if (existsSync(configurationPath)) {
@@ -156,18 +199,22 @@ function requireSuccessfulCommand(
   const result = execute(command);
   if (result.status !== 0) {
     throw new Error(
-      `Development setup command failed: ${command.command} ${command.args.join(' ')}`
+      `Development setup command failed: ${command.command} ${command.args.join(' ')}.${
+        command.failureHint ? ` ${command.failureHint}` : ''
+      }`
     );
   }
   return result;
 }
 
-export function runDevelopmentSetup({
+export async function runDevelopmentSetup({
   root = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   nodeVersion = process.versions.node,
   execute = executeCommand,
   randomSecret,
-}: DevelopmentSetupOptions = {}): DevelopmentSetupResult {
+  environment = process.env,
+  infrastructureAdapter = createLocalDevelopmentInfrastructureAdapter(),
+}: DevelopmentSetupOptions = {}): Promise<DevelopmentSetupResult> {
   const pnpm = requireSuccessfulCommand(execute, {
     command: 'pnpm',
     args: ['--version'],
@@ -177,6 +224,16 @@ export function runDevelopmentSetup({
 
   const result = prepareDevelopmentFiles(root, randomSecret);
   requireSuccessfulCommand(execute, {
+    command: 'script',
+    args: ['--version'],
+    failureHint: 'Install GNU util-linux and rerun pnpm setup:dev.',
+  });
+  requireSuccessfulCommand(execute, {
+    command: 'pnpm',
+    args: ['exec', 'playwright', 'install', 'chrome'],
+    failureHint: 'Allow network access so Playwright can install Chrome.',
+  });
+  requireSuccessfulCommand(execute, {
     command: 'pnpm',
     args: ['exec', 'prisma', 'generate', '--config=prisma.config.ts'],
   });
@@ -184,15 +241,28 @@ export function runDevelopmentSetup({
     command: 'pnpm',
     args: ['exec', 'prisma', 'migrate', 'deploy', '--config=prisma.config.ts'],
   });
+  await ensureDevelopmentTestInfrastructure({
+    root,
+    environment: loadTestingEnvironment(root, environment),
+    adapter: infrastructureAdapter,
+  });
   return result;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    const result = runDevelopmentSetup();
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const environmentOnly = process.argv.slice(2).includes('--env-only');
+    const result = environmentOnly
+      ? prepareDevelopmentEnvironment(root)
+      : await runDevelopmentSetup({ root });
     for (const file of result.created) console.log(`Created ${file}`);
     for (const file of result.preserved) console.log(`Preserved ${file}`);
-    console.log('Development setup completed successfully.');
+    console.log(
+      environmentOnly
+        ? 'Development environment is ready.'
+        : 'Development setup completed successfully.'
+    );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

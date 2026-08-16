@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+import { loadTestingEnvironment } from './environment.ts';
+
 import {
   E2E_CELL_IDS,
   E2E_PROFILE_IDS,
@@ -96,7 +98,9 @@ function executeCommand({
 }
 
 export function runMatrixInfrastructureCli(
-  environment: MatrixEnvironment = process.env,
+  environment: MatrixEnvironment = loadTestingEnvironment(
+    fileURLToPath(new URL('../../', import.meta.url))
+  ),
   execute: MatrixCommandExecutor = executeCommand
 ): number {
   try {

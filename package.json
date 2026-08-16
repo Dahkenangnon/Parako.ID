@@ -62,6 +62,7 @@
     "dev:worker": "node --watch-path=dist/src dist/src/worker.js",
     "dev:all": "node scripts/dev.js --with-worker",
     "setup:dev": "node scripts/setup-development.ts",
+    "setup:env": "node scripts/setup-development.ts --env-only",
     "start": "cross-env NODE_ENV=production pm2 start runtime/ecosystem.config.cjs && pm2 save",
     "restart": "cross-env NODE_ENV=production pm2 startOrRestart runtime/ecosystem.config.cjs && pm2 save",
     "prod:worker": "cross-env NODE_ENV=production pm2 start runtime/ecosystem.config.cjs --only parako-id-worker && pm2 save",

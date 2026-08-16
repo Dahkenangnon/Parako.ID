@@ -1,4 +1,7 @@
+import { resolve } from 'node:path';
+
 import type { TestProject } from 'vitest/node';
+import { applyTestingEnvironment } from '../../../scripts/testing/environment.js';
 
 import { resolvePostgresqlTestUrl } from '../../../scripts/testing/postgresql-test-url.js';
 import {
@@ -13,6 +16,7 @@ declare module 'vitest' {
 }
 
 export default async function setup(project: TestProject) {
+  applyTestingEnvironment(resolve(import.meta.dirname, '../../..'));
   const administrativeUrl = resolvePostgresqlTestUrl(process.env);
   if (!administrativeUrl) {
     throw new Error(
