@@ -118,7 +118,14 @@ Install the latest release on a Linux host:
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-The installer places a verified self-contained release and installs the `parako` production operator. A separate [commit-pinned Git distribution](./docs/installer-from-source.md) provides the same immutable layout and lifecycle for source-build environments. The signed native release remains the recommended default. Follow the [quickstart](./docs/quickstart.md), [installer](./docs/installer.md), and [deployment](./docs/deployment.md) runbooks to configure dependencies, deploy systemd services, and create the first administrator.
+The installer places a verified self-contained release and installs the `parako` production operator. Docker operators can install the signed Compose bundle and immutable GHCR image instead:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
+  | sudo bash -s -- --docker
+```
+
+A separate [commit-pinned Git distribution](./docs/installer-from-source.md) provides the native immutable layout for source-build environments. Follow the [quickstart](./docs/quickstart.md), [native deployment](./docs/deployment.md), or [Docker deployment](./docs/docker.md) runbook to configure dependencies, deploy, and create the first administrator.
 
 For local development:
 
@@ -130,10 +137,13 @@ pnpm setup:dev
 pnpm dev
 ```
 
-`setup:dev` creates local runtime files with fresh secrets and applies the
-SQLite migrations without overwriting existing operator configuration. Open
-`http://localhost:9007/auth/register`, create the first user, then visit
-`/admin` to register your first OIDC client. See the
+`setup:dev` creates local runtime files with fresh secrets, installs the
+Playwright browser, applies the SQLite migrations, and provisions private
+loopback PostgreSQL and Redis services for the complete test suite. Existing
+operator configuration and explicit service settings are preserved. Use
+`pnpm setup:env` when you only want to render `runtime/.env` from the canonical
+`.env.example`. Open `http://localhost:9007/auth/register`, create the first
+user, then visit `/admin` to register your first OIDC client. See the
 [contributor guide](./CONTRIBUTING.md) for the unit, integration, and browser
 test commands.
 
@@ -142,7 +152,7 @@ test commands.
 - Debian 12/13 or Ubuntu 24.04/26.04 on x86_64 or AArch64.
 - Node.js >= 24 and pnpm >= 11 for source checkouts; releases bundle Node.js.
 - SQLite by default, or a complete working MongoDB/PostgreSQL URI supplied by the operator.
-- Operator-managed Redis, defaulting to `127.0.0.1:6379`.
+- Redis supplied by the operator, or managed by the supported Docker bundle.
 - An external HTTPS reverse proxy or load balancer for public deployments.
 - Optional SMTP/Twilio/social-provider credentials depending on enabled features.
 

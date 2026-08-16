@@ -12,6 +12,10 @@ Requirements:
 - pnpm 11 or newer.
 - Git.
 - GNU util-linux `script` for real-terminal CLI integration tests.
+- PostgreSQL server tools (`pg_config`, `initdb`, and `pg_ctl`) for the full
+  adapter matrix, unless a reachable test URL is explicitly configured.
+- `redis-server` for the full test suite, unless a reachable Redis service is
+  explicitly configured.
 
 SQLite is the default development database and requires no database server.
 MongoDB and PostgreSQL are needed only when working on those adapters or the
@@ -26,13 +30,25 @@ pnpm setup:dev
 pnpm dev
 ```
 
-`pnpm setup:dev` creates the runtime directories, generates fresh local
-secrets in `runtime/.env`, copies `parako.sample.jsonc` to
-`runtime/parako.jsonc`, generates the SQLite Prisma client, and applies
-migrations. It never overwrites an existing environment or JSONC file.
+`pnpm setup:dev` creates the runtime directories, renders the canonical root
+`.env.example` to `runtime/.env` with fresh local secrets, copies
+`parako.sample.jsonc` to `runtime/parako.jsonc`, installs Chrome for
+Playwright, generates the SQLite Prisma client, applies migrations, and
+prepares private loopback PostgreSQL and Redis services for the test suites.
+It never overwrites an existing environment, JSONC file, or explicit service
+setting. If no service is configured, reusable local state is kept beneath
+the ignored `runtime/data` directory. Rerunning setup restarts managed services
+when needed.
+
+Generate only `runtime/.env` without installing or starting prerequisites:
+
+```bash
+pnpm setup:env
+```
 
 The app listens on `http://localhost:9007`. Runtime files are local state and
-must not be committed.
+must not be committed. Setup exits with an actionable failure when a required
+executable, browser download, or configured service is unavailable.
 
 ## Test suites
 
@@ -76,14 +92,18 @@ multi-tenancy. The feature profiles are `default`, `database-configuration`,
 `sms-recovery`, `social`, `social-policy-max`, `social-policy-restricted`,
 `background-jobs`, `worker-drain`, `operations`, and `webauthn`.
 
-The complete local matrix requires a PostgreSQL URL whose disposable test role
-can create and drop isolated databases. Never point it at production:
+`setup:dev` records reusable local test settings, so the complete local matrix
+requires no manual exports. Never point the suite at production:
 
 ```bash
-export PARAKO_E2E_POSTGRESQL_URL='postgresql://parako:password@127.0.0.1:5432/parako_e2e'
 pnpm test:prerequisites:full
 pnpm test:e2e:matrix
 ```
+
+CI and custom environments may explicitly set `PARAKO_E2E_POSTGRESQL_URL` and
+the `PARAKO_E2E_REDIS_*` variables. Shell values take precedence over
+`runtime/.env`. The PostgreSQL role must be allowed to create and drop isolated
+test databases.
 
 Missing prerequisites are failures, not skipped coverage.
 
@@ -117,7 +137,13 @@ pnpm typecheck:scripts
 pnpm typecheck:test
 pnpm typecheck:e2e
 pnpm build
+bash -n installer/parako-docker.sh
+bash installer/test/docker-topology-smoke.sh sqlite parako-id:test
 ```
+
+The Docker topology smoke command requires a locally built image and a
+reachable Docker Engine. CI runs it independently for SQLite, PostgreSQL, and
+MongoDB; local runs should use a non-production Docker context.
 
 ## Test quality
 

@@ -7,8 +7,10 @@ order: 2
 
 ## Local development
 
-Prerequisites are Node.js 24 or later, pnpm 11 or later, and GNU util-linux
-`script` for real-terminal CLI integration tests.
+Prerequisites are Node.js 24 or later, pnpm 11 or later, GNU util-linux
+`script` for real-terminal CLI integration tests, PostgreSQL server tools, and
+`redis-server`. A reachable externally managed PostgreSQL or Redis service can
+be supplied instead of its local server binary.
 
 ```bash
 git clone https://github.com/Dahkenangnon/Parako.ID.git
@@ -18,13 +20,26 @@ pnpm setup:dev
 pnpm dev
 ```
 
-`pnpm setup:dev` creates `runtime/.env` with fresh local secrets, copies the
-sample JSONC configuration, and applies the SQLite migrations. It preserves
-both files when they already exist. The development server listens on
-`http://localhost:9007`; the default app process needs no external database.
-Redis is required when developing worker, queue, distributed cache, pub/sub,
-or Redis-backed session/OIDC behavior. Do not reuse development secrets in
-production.
+`pnpm setup:dev` creates `runtime/.env` from the repository's canonical
+`.env.example`, generates fresh local secrets, copies the sample JSONC
+configuration, installs Chrome for Playwright, applies the SQLite migrations,
+and prepares PostgreSQL and Redis for the complete test suite. It preserves
+existing files and explicit service settings. When no reachable service is
+configured, it creates a private PostgreSQL cluster and Redis configuration
+under the ignored `runtime/data` directory, binds them to loopback, and records
+their reusable test settings in `runtime/.env`. Rerun the command to restart
+the managed services after a reboot.
+
+To generate only the private environment file, run:
+
+```bash
+pnpm setup:env
+```
+
+The development server listens on `http://localhost:9007`. Do not reuse
+development secrets or the disposable test databases in production. Setup
+fails with an actionable message when a required executable, network download,
+or configured external service is unavailable.
 
 Before opening a pull request, run the repository quality gate:
 
@@ -32,14 +47,17 @@ Before opening a pull request, run the repository quality gate:
 pnpm verify
 ```
 
-The complete adapter and browser matrix additionally needs Chrome and a
-disposable PostgreSQL service whose role may create and drop test databases:
+After `setup:dev`, the complete adapter and browser matrix can run without
+manually exporting local service variables:
 
 ```bash
-pnpm exec playwright install chrome
-export PARAKO_E2E_POSTGRESQL_URL='postgresql://parako:password@127.0.0.1:5432/parako_e2e'
 pnpm verify:all
 ```
+
+CI and custom environments may provide `PARAKO_E2E_POSTGRESQL_URL` and the
+`PARAKO_E2E_REDIS_*` variables explicitly. Shell values take precedence over
+the generated local settings. The PostgreSQL role is disposable and must be
+allowed to create and drop isolated test databases.
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for narrower test commands and the
 five supported storage/tenancy cells.
@@ -47,11 +65,9 @@ five supported storage/tenancy cells.
 ## Production host
 
 Supported hosts are Debian 12/13 or Ubuntu 24.04/26.04 on x86_64 or AArch64.
-Install and secure local Redis before deployment; Parako.ID expects it at
-`127.0.0.1:6379` by default but does not manage it. SQLite is the default
-database and needs no database server. Provision PostgreSQL or MongoDB only
-when you choose one and have a complete working URI. DNS and an external HTTPS
-reverse proxy remain operator-owned.
+Choose either the native systemd release or the supported Docker Compose
+release for an installation. DNS and an external HTTPS reverse proxy remain
+operator-owned in both modes.
 
 Install the signed release:
 
@@ -59,9 +75,19 @@ Install the signed release:
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
 ```
 
-This verified native path is recommended. Operators who require local source
+This installs the verified native release. Operators who require local source
 builds can instead use the [commit-pinned Git installer](installer-from-source.md).
-Both methods use the same `parako` deployment and lifecycle commands.
+For a signed Docker image with managed or external database and Redis choices,
+use:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
+  | sudo bash -s -- --docker
+```
+
+Continue with the [Docker deployment runbook](docker.md); Docker lifecycle
+commands are namespaced under `parako docker`. The remaining production commands
+in this quickstart apply to the native systemd installation.
 
 Create an offline backup identity and keep a second protected copy away from
 the server:
@@ -110,7 +136,8 @@ the CLI only maintains the bootstrap environment and production lifecycle.
 ## See also
 
 - [Installer](installer.md)
-- [Production deployment](deployment.md)
+- [Native production deployment](deployment.md)
+- [Docker production deployment](docker.md)
 - [parako CLI](parako-cli.md)
 - [Upgrades and rollback](upgrades.md)
 - [Integrating Your App](integrating-your-app.md)

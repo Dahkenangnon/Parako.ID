@@ -5,10 +5,13 @@ category: 'DevOps'
 order: 1
 ---
 
-The supported release deployment uses the verified installer, the `parako`
-operator CLI, and native systemd services. The CLI owns release files,
-bootstrap secrets, migrations, encrypted backup/restore, app and worker
-lifecycle, and local dependency checks.
+This runbook covers the verified native systemd deployment. For the supported
+Docker Compose peer, including managed dependency topologies, see
+[Docker deployment](docker.md).
+
+The native deployment uses the verified installer and the `parako` operator
+CLI. The CLI owns release files, bootstrap secrets, migrations, encrypted
+backup/restore, app and worker lifecycle, and local dependency checks.
 
 The operator still owns the database and Redis servers, DNS, HTTPS ingress,
 certificates, monitoring, off-host backup storage, and incident response.
@@ -219,6 +222,7 @@ window closes.
 ## See also
 
 - [Installer](installer.md)
+- [Docker deployment](docker.md)
 - [parako CLI](parako-cli.md)
 - [Upgrades and rollback](upgrades.md)
 - [Configuration](configuration.md)

@@ -47,7 +47,7 @@ Each release of Parako.ID publishes the SHA256 of `install.sh` in the release no
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/install.sh
 
 # Get the expected SHA256 from the release notes
-# (look for: "Native installer SHA256: <value>" in the v0.3.0 release on GitHub)
+# (look for: "Native installer SHA256: <value>" in the release you selected)
 EXPECTED="<value from release notes>"
 
 # Compare
@@ -103,17 +103,19 @@ workflow on a stable semantic-version tag. Branch and pull-request identities ar
 You can verify a Parako.ID release independently:
 
 ```bash
-gh release download v0.3.0 \
-  -p 'parako-id-v0.3.0-linux-x64.tar.gz' \
-  -p 'parako-id-v0.3.0-linux-x64.tar.gz.sig' \
-  -p 'parako-id-v0.3.0-linux-x64.tar.gz.pem'
+PARAKO_VERSION=vX.Y.Z # replace with the stable release tag you verified
+PARAKO_ARTIFACT="parako-id-${PARAKO_VERSION}-linux-x64.tar.gz"
+gh release download "$PARAKO_VERSION" \
+  -p "$PARAKO_ARTIFACT" \
+  -p "$PARAKO_ARTIFACT.sig" \
+  -p "$PARAKO_ARTIFACT.pem"
 
 cosign verify-blob \
-  --signature parako-id-v0.3.0-linux-x64.tar.gz.sig \
-  --certificate parako-id-v0.3.0-linux-x64.tar.gz.pem \
-  --certificate-identity 'https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@refs/tags/v0.3.0' \
+  --signature "$PARAKO_ARTIFACT.sig" \
+  --certificate "$PARAKO_ARTIFACT.pem" \
+  --certificate-identity "https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@refs/tags/${PARAKO_VERSION}" \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
-  parako-id-v0.3.0-linux-x64.tar.gz
+  "$PARAKO_ARTIFACT"
 ```
 
 Expected output: `Verified OK`.

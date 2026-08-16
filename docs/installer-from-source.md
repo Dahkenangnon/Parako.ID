@@ -48,9 +48,10 @@ Use `--plan` first; it performs no network calls and writes nothing:
 
 ```bash
 BUILD_OWNER=$(id -un)
+PARAKO_REF=vX.Y.Z # replace with the stable release tag you verified
 sudo bash ./install-git.sh \
   --repository https://github.com/Dahkenangnon/Parako.ID.git \
-  --ref v0.3.0 \
+  --ref "$PARAKO_REF" \
   --owner "$BUILD_OWNER" \
   --dir /opt/parako-id \
   --plan
@@ -61,7 +62,7 @@ Install the exact stable tag:
 ```bash
 sudo bash ./install-git.sh \
   --repository https://github.com/Dahkenangnon/Parako.ID.git \
-  --ref v0.3.0 \
+  --ref "$PARAKO_REF" \
   --owner "$BUILD_OWNER" \
   --dir /opt/parako-id \
   --non-interactive
