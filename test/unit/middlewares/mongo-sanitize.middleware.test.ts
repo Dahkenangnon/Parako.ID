@@ -2,7 +2,6 @@ import type { NextFunction, Request, Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import mongoSanitize, {
   MongoSanitizer,
-  mongoSanitizeDefault,
 } from '../../../src/middlewares/mongo-sanitize.middleware.js';
 
 describe('mongoSanitize', () => {
@@ -219,15 +218,5 @@ describe('mongoSanitize', () => {
 
     expect(() => middleware(req, {} as Response, next)).not.toThrow();
     expect(next).toHaveBeenCalledWith(error);
-  });
-
-  it('uses replacement mode in the exported default middleware', () => {
-    const req = { body: { $where: 'return true' } } as Request;
-    const next = vi.fn() as NextFunction;
-
-    mongoSanitizeDefault(req, {} as Response, next);
-
-    expect(req.body).toEqual({ _where: 'return true' });
-    expect(next).toHaveBeenCalledOnce();
   });
 });

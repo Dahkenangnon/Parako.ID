@@ -209,14 +209,6 @@ mongoSanitize.sanitize = MongoSanitizer.sanitize;
 mongoSanitize.has = MongoSanitizer.has;
 
 /**
- * Default middleware instance with standard configuration
- * Note: Sanitization happens silently without logging to avoid noise
- */
-export const mongoSanitizeDefault = MongoSanitizer.middleware({
-  replaceWith: '_',
-});
-
-/**
  * Export the main function as default
  */
 export default mongoSanitize;
