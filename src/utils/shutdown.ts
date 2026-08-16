@@ -2,8 +2,7 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 
 /**
  * Aligned shutdown ceiling for both the web process and the worker. Must remain
- * below the PM2 `kill_timeout` (see ecosystem.config.cjs) so the in-app forced
- * exit triggers before PM2 sends SIGKILL.
+ * below the process supervisor's forced-kill timeout.
  */
 export const SHUTDOWN_TIMEOUT_MS = 10_000;
 

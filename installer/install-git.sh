@@ -289,7 +289,6 @@ build_release() {
     run_as_owner pnpm prune --prod --ignore-scripts
   )
   [ -f "${STAGING_DIR}/dist/src/index.js" ] || die "build output is missing dist/src/index.js"
-  [ -f "${STAGING_DIR}/runtime/ecosystem.config.cjs" ] || die "runtime manifest is missing"
   mkdir -p "${STAGING_DIR}/contrib"
   cp "${STAGING_DIR}/installer/parako.sh" "${STAGING_DIR}/contrib/parako.sh"
   cp "${STAGING_DIR}/installer/install-git.sh" "${STAGING_DIR}/contrib/install-git.sh"

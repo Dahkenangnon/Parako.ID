@@ -41,7 +41,6 @@ const port = bootstrapConfig.deployment.server.port;
 
 // SQLite single-process safety guard: FATAL if cluster mode is detected.
 // SQLite does not support concurrent writes from multiple processes.
-// See ecosystem.config.cjs for the PM2_INSTANCES setting.
 if (
   bootstrapConfig.storage?.adapter === 'sqlite' &&
   process.env.PM2_INSTANCES &&

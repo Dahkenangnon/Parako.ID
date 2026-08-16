@@ -165,15 +165,6 @@ export function classifyProductionArtifact(
     };
   }
 
-  if (filePath === 'runtime/ecosystem.config.cjs') {
-    return {
-      kind: 'configuration',
-      owner: 'deployment',
-      risk: 'critical',
-      requiredTests: ['parse', 'schema', 'deployment-smoke'],
-    };
-  }
-
   if (/^prisma\.config(?:\.pg)?\.ts$/.test(filePath)) {
     return {
       kind: 'configuration',

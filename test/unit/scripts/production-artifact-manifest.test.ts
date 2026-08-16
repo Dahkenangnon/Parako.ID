@@ -115,15 +115,6 @@ describe('production artifact manifest', () => {
     });
   });
 
-  it('classifies the PM2 runtime configuration as critical', () => {
-    expect(classifyProductionArtifact('runtime/ecosystem.config.cjs')).toEqual({
-      kind: 'configuration',
-      owner: 'deployment',
-      risk: 'critical',
-      requiredTests: ['parse', 'schema', 'deployment-smoke'],
-    });
-  });
-
   it('classifies Prisma generator configuration per adapter', () => {
     expect(classifyProductionArtifact('prisma.config.ts')).toEqual({
       kind: 'configuration',

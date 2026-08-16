@@ -16,7 +16,6 @@ setup() {
   chmod 0755 "${FIXTURE_REPOSITORY}/installer/"*.sh
   printf '{"name":"parako-fixture","version":"0.3.0"}\n' >"${FIXTURE_REPOSITORY}/package.json"
   printf 'fixture=true\n' >"${FIXTURE_REPOSITORY}/.env.example"
-  printf 'module.exports = {};\n' >"${FIXTURE_REPOSITORY}/runtime/ecosystem.config.cjs"
 
   cat >"${FAKE_BIN}/pnpm" <<'SH'
 #!/usr/bin/env bash

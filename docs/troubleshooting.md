@@ -202,9 +202,8 @@ pm2 list
 # View startup errors
 pm2 logs parako-id --err --lines 50
 
-# Delete and restart
-pm2 delete runtime/ecosystem.config.cjs
-pnpm start
+# Restart the processes defined in your operator-owned PM2 configuration
+pm2 restart parako-id parako-id-worker
 ```
 
 ## Systemd Issues
