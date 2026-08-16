@@ -5,11 +5,33 @@ on:
     branches: [main]
     paths:
       - 'installer/**'
+      - 'deployment/docker/**'
+      - '.dockerignore'
+      - '.env.example'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'prisma/**'
+      - 'runtime/locales/**'
+      - 'runtime/views/**'
+      - 'src/**'
+      - 'scripts/build.js'
       - 'scripts/release.sh'
       - '.github/workflows/installer-ci.yml'
   pull_request:
     paths:
       - 'installer/**'
+      - 'deployment/docker/**'
+      - '.dockerignore'
+      - '.env.example'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'prisma/**'
+      - 'runtime/locales/**'
+      - 'runtime/views/**'
+      - 'src/**'
+      - 'scripts/build.js'
       - 'scripts/release.sh'
       - '.github/workflows/installer-ci.yml'
   workflow_dispatch: {}
@@ -35,12 +57,14 @@ jobs:
           bash -n installer/install.sh
           bash -n installer/install-git.sh
           bash -n installer/parako.sh
+          bash -n installer/parako-docker.sh
 
       - name: ShellCheck warning level fatal
         run: |
           shellcheck -S warning installer/install.sh
           shellcheck -S warning installer/install-git.sh
           shellcheck -S warning installer/parako.sh
+          shellcheck -S warning installer/parako-docker.sh
 
       - name: Checkbashisms informational
         continue-on-error: true
@@ -48,6 +72,7 @@ jobs:
           checkbashisms installer/install.sh || true
           checkbashisms installer/install-git.sh || true
           checkbashisms installer/parako.sh || true
+          checkbashisms installer/parako-docker.sh || true
 
       - name: Acceptance grep — low-level installer does not operate services or databases
         run: |
@@ -86,6 +111,37 @@ jobs:
         run: bats installer/test/structure.bats
       - name: Operator lifecycle regression
         run: bash installer/test/operator-lifecycle.sh
+      - name: Docker operator regression
+        run: bats installer/test/docker-operator.bats
+
+      - name: Validate Docker Compose topology files
+        run: bash installer/test/validate-docker-compose.sh
+
+  docker-topology-smoke:
+    name: Docker topology (${{ matrix.adapter }})
+    runs-on: ubuntu-24.04
+    needs: lint
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        adapter: [sqlite, postgresql, mongodb]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Build production image
+        env:
+          IMAGE: parako-id:ci-${{ matrix.adapter }}
+        run: docker build --file deployment/docker/Dockerfile --tag "$IMAGE" .
+
+      - name: Exercise managed topology
+        env:
+          ADAPTER: ${{ matrix.adapter }}
+          IMAGE: parako-id:ci-${{ matrix.adapter }}
+        run: bash installer/test/docker-topology-smoke.sh "$ADAPTER" "$IMAGE"
 
   git-source:
     name: Git source lifecycle

@@ -55,6 +55,9 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit --audit-level=high --prod
 
+      - name: Check production dependency licenses
+        run: pnpm run release:licenses
+
       - name: Run ESLint
         run: pnpm run lint:check
 
@@ -460,9 +463,101 @@ jobs:
             parako-id-v*-linux-${{ matrix.arch }}.zip.sig
             parako-id-v*-linux-${{ matrix.arch }}.zip.pem
 
+  container-release:
+    name: Publish signed multi-platform image
+    needs: release-build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image: ${{ steps.sign.outputs.reference }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Resolve release image
+        id: image
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${REF_NAME#v}"
+          printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "::error::Invalid release version: $VERSION"
+            exit 1
+          }
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          [ "$VERSION" = "$PACKAGE_VERSION" ] || {
+            echo "::error::Tag v$VERSION does not match package.json $PACKAGE_VERSION"
+            exit 1
+          }
+          IMAGE="ghcr.io/dahkenangnon/parako-id"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: deployment/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}:${{ steps.image.outputs.version }}
+            ${{ steps.image.outputs.image }}:v${{ steps.image.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.image.outputs.version }}
+          sbom: true
+          provenance: mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign and verify immutable image digest
+        id: sign
+        env:
+          COSIGN_YES: 'true'
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          set -euo pipefail
+          REFERENCE="${IMAGE}@${DIGEST}"
+          cosign sign --yes "$REFERENCE"
+          cosign verify \
+            --certificate-identity "https://github.com/Dahkenangnon/Parako.ID/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+            "$REFERENCE"
+          echo "reference=$REFERENCE" >> "$GITHUB_OUTPUT"
+
   release:
     name: Publish immutable release
-    needs: release-build
+    needs: [release-build, container-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -566,6 +661,21 @@ jobs:
             printf 'Native installer SHA256: %s  install.sh\n' "$NATIVE_INSTALLER_SHA"
             printf 'Git installer SHA256:    %s  install-git.sh\n' "$GIT_INSTALLER_SHA"
             printf '```\n'
+          } >> RELEASE_BODY.md
+
+      - name: Append container integrity
+        env:
+          IMAGE_REFERENCE: ${{ needs.container-release.outputs.image }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$IMAGE_REFERENCE" | grep -qE '^ghcr\.io/dahkenangnon/parako-id@sha256:[a-f0-9]{64}$' || {
+            echo "::error::Invalid signed container reference: $IMAGE_REFERENCE"
+            exit 1
+          }
+          {
+            printf '\n## Container image\n\n'
+            printf 'Signed multi-platform image (linux/amd64 and linux/arm64):\n\n'
+            printf '`%s`\n' "$IMAGE_REFERENCE"
           } >> RELEASE_BODY.md
 
       - name: Enforce immutable tag and release
