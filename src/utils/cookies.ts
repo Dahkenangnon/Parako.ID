@@ -81,9 +81,6 @@ export class CookieManager implements ICookieManager {
     this.setCookie(res, 'theme', theme, options);
   };
 
-  /**
-   * Set a session cookie
-   */
   setSessionCookie = (
     res: Response,
     sessionId: string,

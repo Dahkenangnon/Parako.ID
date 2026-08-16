@@ -515,9 +515,6 @@ ${this.getTranslation('signingIn')}
       });
     }
 
-    /**
-     * Setup input focus animations
-     */
     private setupInputFocusAnimations(): void {
       const inputs = document.querySelectorAll(
         'input[type="email"], input[type="tel"], input[type="password"]'
@@ -754,9 +751,6 @@ ${this.getTranslation('signingIn')}
       }
     }
 
-    /**
-     * Show validation error to user
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 

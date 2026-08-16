@@ -86,7 +86,7 @@ function getEncryptionKey(): Buffer {
     throw new Error(
       'ENCRYPTION_KEY environment variable is not set. ' +
         'Please set it in your .env file. ' +
-        "Generate a key using: yarn clav setup or node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+        "Generate a key using: node -e \"console.log(require('node:crypto').randomBytes(32).toString('hex'))\""
     );
   }
 

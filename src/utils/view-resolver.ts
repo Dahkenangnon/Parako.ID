@@ -11,17 +11,10 @@ import { deepMerge } from './misc.js';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 
-/**
- * View resolver configuration interface
- */
 export interface ViewResolverConfig {
-  /** Whether custom view resolution is enabled */
   enabled: boolean;
-  /** Root path for custom views */
   customViewsRoot: string;
-  /** Root path for default views */
   defaultViewsRoot: string;
-  /** File extension for view templates */
   viewExtension: string;
 }
 

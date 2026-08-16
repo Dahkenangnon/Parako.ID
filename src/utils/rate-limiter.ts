@@ -104,13 +104,11 @@ export function getRateLimitRedisClient(): Redis | null {
  * Options for creating a rate limiter
  */
 interface RateLimiterOptions {
-  /** Unique name for this limiter (used in key generation) */
   name: string;
   /** Time window in milliseconds */
   windowMs: number;
   /** Maximum requests allowed in the window (production value) */
   max: number;
-  /** Message to return when rate limited */
   message: string;
   /** Multiplier for max in development mode (default: 10) */
   devMultiplier?: number;

@@ -159,9 +159,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     return this.providers.get(provider);
   }
 
-  /**
-   * Get all available providers
-   */
   public getAvailableProviders(): SocialProvider[] {
     return Array.from(this.providers.keys());
   }

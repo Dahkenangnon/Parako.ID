@@ -183,7 +183,7 @@ describe('FileKeyStore', () => {
     await expect(store.initialize()).rejects.toMatchObject({
       cause: failure,
       message:
-        'Failed to read JWKS file at /test/project/runtime/jwks/jwks.json. Generate keys with: yarn keys generate --file',
+        'Failed to read JWKS file at /test/project/runtime/jwks/jwks.json. Generate keys with: pnpm keys generate --file',
     });
   });
 
@@ -205,7 +205,7 @@ describe('FileKeyStore', () => {
     );
 
     await expect(store.initialize()).rejects.toThrow(
-      'JWKS file contains no keys. Generate keys with: yarn keys generate --file'
+      'JWKS file contains no keys. Generate keys with: pnpm keys generate --file'
     );
   });
 

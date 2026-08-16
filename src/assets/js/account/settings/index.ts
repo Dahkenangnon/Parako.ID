@@ -91,9 +91,6 @@ export class SettingsCoordinator {
     this.log('All settings modules initialized');
   }
 
-  /**
-   * Initialize confirmation handlers
-   */
   private initializeConfirmationHandlers(): void {
     // Access confirm handler from window (loaded via script tag)
     const setupConfirmationHandlers = (window as any).accountSettingsUtils
@@ -119,9 +116,6 @@ export class SettingsCoordinator {
     this.log('Confirmation handlers initialized');
   }
 
-  /**
-   * Initialize Avatar Manager
-   */
   private initializeAvatarManager(): void {
     const AvatarManager = (window as any).AvatarManager;
 
@@ -148,9 +142,6 @@ export class SettingsCoordinator {
     this.log('AvatarManager initialized');
   }
 
-  /**
-   * Initialize Password Validator
-   */
   private initializePasswordValidator(): void {
     const PasswordValidator = (window as any).PasswordValidator;
 
@@ -175,9 +166,6 @@ export class SettingsCoordinator {
     this.log('PasswordValidator initialized');
   }
 
-  /**
-   * Initialize Language Selector
-   */
   private initializeLanguageSelector(): void {
     const LanguageSelector = (window as any).LanguageSelector;
 
@@ -203,9 +191,6 @@ export class SettingsCoordinator {
     this.log('LanguageSelector initialized');
   }
 
-  /**
-   * Initialize MFA Manager
-   */
   private initializeMfaManager(): void {
     const MfaManager = (window as any).MfaManager;
 
@@ -233,9 +218,6 @@ export class SettingsCoordinator {
     this.log('MfaManager initialized');
   }
 
-  /**
-   * Initialize Password Visibility Toggle
-   */
   private initializePasswordVisibilityToggle(): void {
     const PasswordVisibilityToggle = (window as any).PasswordVisibilityToggle;
 

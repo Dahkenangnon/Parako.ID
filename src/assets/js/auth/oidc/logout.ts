@@ -317,9 +317,6 @@
       this.logoutForm!.classList.remove('form-disabled');
     }
 
-    /**
-     * Show validation error to user
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 

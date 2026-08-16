@@ -70,18 +70,11 @@ export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
  */
 export const MANAGEMENT_API_RESOURCE_URI = 'urn:parako:api:v1';
 
-// Scope definitions with human-readable labels and descriptions
-
 export interface ScopeDefinition {
-  /** The full scope string, e.g. `parako:clients:read`. */
   value: string;
-  /** Short human-readable label for UI display. */
   label: string;
-  /** Longer description explaining what the scope grants. */
   description: string;
-  /** Domain grouping for UI sections. */
   domain: string;
-  /** Risk classification. */
   classification: ScopeClassification;
 }
 

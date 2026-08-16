@@ -369,9 +369,6 @@
       window.location.href = this.config.registerUrl;
     }
 
-    /**
-     * Open the rename modal
-     */
     private openRenameModal(credentialId: string, currentName: string): void {
       this.currentRenameId = credentialId;
 
@@ -420,9 +417,6 @@
       }
     }
 
-    /**
-     * Close the rename modal
-     */
     private closeRenameModal(): void {
       this.currentRenameId = null;
 
@@ -449,9 +443,6 @@
       this.closeRenameModal();
     }
 
-    /**
-     * Rename a credential
-     */
     private async renameCredential(
       credentialId: string,
       newName: string
@@ -496,9 +487,6 @@
       }
     }
 
-    /**
-     * Delete a credential
-     */
     private async deleteCredential(
       credentialId: string,
       friendlyName: string
@@ -582,9 +570,6 @@
       }
     }
 
-    /**
-     * Show empty state
-     */
     private showEmptyState(): void {
       if (this.emptyStateEl) {
         this.emptyStateEl.classList.remove('hidden');
@@ -592,9 +577,6 @@
       this.listEl!.classList.add('hidden');
     }
 
-    /**
-     * Hide empty state
-     */
     private hideEmptyState(): void {
       if (this.emptyStateEl) {
         this.emptyStateEl.classList.add('hidden');

@@ -25,17 +25,13 @@ export interface WebAuthnCredential {
   credential_public_key: string;
   /** Signature counter for replay protection - must increment on each use */
   counter: number;
-  /** Available transports for this credential */
   transports?: AuthenticatorTransportType[];
   /** Whether this is a single-device or multi-device (synced) credential */
   device_type: CredentialDeviceType;
   /** Whether the credential is backed up (synced across devices) */
   backed_up: boolean;
-  /** When the credential was registered */
   created_at: Date;
-  /** When the credential was last used for authentication */
   last_used_at?: Date;
-  /** User-assigned friendly name for this passkey */
   friendly_name: string;
 }
 
@@ -46,11 +42,8 @@ export interface WebAuthnCredential {
 export interface WebAuthnChallenge {
   /** Base64URL encoded challenge */
   challenge: string;
-  /** User identifier (username) */
   userId: string;
-  /** Type of WebAuthn operation */
   type: 'registration' | 'authentication';
-  /** Challenge expiration timestamp */
   expiresAt: Date;
 }
 

@@ -55,9 +55,6 @@ export interface IAdminSettingsController {
    */
   removeLogoIconDark(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Upload favicon
-   */
   uploadFavicon(req: Request, res: Response): Promise<void>;
 
   /**

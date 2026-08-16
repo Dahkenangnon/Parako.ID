@@ -38,7 +38,7 @@ export class FileKeyStore implements IKeyStore {
       // Preserve the underlying filesystem error via Error.cause so failures
       // (ENOENT vs EACCES vs others) remain diagnosable in production logs.
       throw new Error(
-        `Failed to read JWKS file at ${jwksPath}. Generate keys with: yarn keys generate --file`,
+        `Failed to read JWKS file at ${jwksPath}. Generate keys with: pnpm keys generate --file`,
         { cause: err }
       );
     }
@@ -57,7 +57,7 @@ export class FileKeyStore implements IKeyStore {
       parsed.keys.length === 0
     ) {
       throw new Error(
-        'JWKS file contains no keys. Generate keys with: yarn keys generate --file'
+        'JWKS file contains no keys. Generate keys with: pnpm keys generate --file'
       );
     }
 

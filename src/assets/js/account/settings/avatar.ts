@@ -171,9 +171,6 @@ export class AvatarManager {
     reader.readAsDataURL(file);
   }
 
-  /**
-   * Handle avatar removal
-   */
   private async handleAvatarRemoval(): Promise<void> {
     this.log('Remove button clicked');
 

@@ -268,9 +268,6 @@
       }
     }
 
-    /**
-     * Setup password validation
-     */
     private setupPasswordValidation(): void {
       if (!this.passwordInput) return;
 
@@ -315,9 +312,6 @@
       }
     }
 
-    /**
-     * Validate password confirmation
-     */
     private validatePasswordConfirmation(): void {
       const password = this.passwordInput!.value;
       const confirmPassword = this.confirmPasswordInput!.value;
@@ -392,9 +386,6 @@
       });
     }
 
-    /**
-     * Setup input focus animations
-     */
     private setupInputFocusAnimations(): void {
       const inputs = document.querySelectorAll('input[type="password"]');
       inputs.forEach(input => {
@@ -487,9 +478,6 @@
       this.form!.classList.remove('form-disabled');
     }
 
-    /**
-     * Show validation error to user
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 

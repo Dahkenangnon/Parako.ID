@@ -45,9 +45,6 @@
       ) as HTMLSelectElement | null;
     }
 
-    /**
-     * Setup form validation
-     */
     private setupFormValidation(): void {
       if (!this.form) return;
 

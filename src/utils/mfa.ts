@@ -168,9 +168,6 @@ export class MfaUtils implements IMfaUtils {
     }
   }
 
-  /**
-   * Verify TOTP code
-   */
   verifyTotpCode(code: string, secret: string): TotpVerificationResult {
     try {
       if (!code || !secret) {
@@ -209,9 +206,6 @@ export class MfaUtils implements IMfaUtils {
     }
   }
 
-  /**
-   * Validate TOTP code format
-   */
   validateTotpCodeFormat(code: string): {
     valid: boolean;
     sanitized?: string;

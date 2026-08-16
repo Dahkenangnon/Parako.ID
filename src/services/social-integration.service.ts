@@ -248,9 +248,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Update integration tokens
-   */
   public async updateIntegrationTokens(
     integrationId: string,
     tokens: TokenData
@@ -258,9 +255,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     return this.updateTokens(integrationId, tokens);
   }
 
-  /**
-   * Update integration provider data
-   */
   public async updateIntegrationProviderData(
     integrationId: string,
     providerData: Partial<ProviderUserData>
@@ -268,27 +262,18 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     return this.updateProviderData(integrationId, providerData);
   }
 
-  /**
-   * Mark integration as used
-   */
   public async markIntegrationAsUsed(
     integrationId: string
   ): Promise<ISocialIntegration> {
     return this.markAsUsed(integrationId);
   }
 
-  /**
-   * Deactivate integration
-   */
   public async deactivateIntegration(
     integrationId: string
   ): Promise<ISocialIntegration> {
     return this.deactivate(integrationId);
   }
 
-  /**
-   * Activate integration
-   */
   public async activateIntegration(
     integrationId: string
   ): Promise<ISocialIntegration> {
@@ -359,9 +344,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get integration statistics
-   */
   public async getIntegrationStatistics(): Promise<{
     totalIntegrations: number;
     activeIntegrations: number;
@@ -581,9 +563,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get recently used integrations
-   */
   public async getRecentlyUsedIntegrations(
     days: number = 7,
     limit: number = 10
@@ -819,9 +798,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Update provider data
-   */
   public async updateProviderData(
     integrationId: string,
     data: Partial<ProviderUserData>

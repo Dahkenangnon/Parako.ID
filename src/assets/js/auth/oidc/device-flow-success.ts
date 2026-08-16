@@ -287,9 +287,6 @@
       });
     }
 
-    /**
-     * Update countdown display
-     */
     private updateCountdownDisplay(): void {
       if (this.countdownElement) {
         this.countdownElement.textContent = this.timeLeft.toString();
@@ -299,9 +296,6 @@
       }
     }
 
-    /**
-     * Update countdown message
-     */
     private updateCountdownMessage(message: string): void {
       if (this.countdownElement) {
         this.countdownElement.textContent = message;
@@ -329,9 +323,6 @@
       this.log('Close button event listener added');
     }
 
-    /**
-     * Setup back button prevention
-     */
     private setupBackButtonPrevention(): void {
       if (!this.config.enableBackButtonPrevention) {
         this.log(
@@ -356,9 +347,6 @@
       this.log('Back button prevention enabled');
     }
 
-    /**
-     * Setup form resubmission prevention
-     */
     private setupFormResubmissionPrevention(): void {
       if (!this.config.enableFormResubmissionPrevention) {
         this.log(
@@ -411,9 +399,6 @@
       this.log('Visibility change handling enabled');
     }
 
-    /**
-     * Setup error recovery
-     */
     private setupErrorRecovery(): void {
       this.errorRecoveryTimer = window.setTimeout(() => {
         this.log('Error recovery timeout triggered', null, 'warn');
@@ -503,9 +488,6 @@
       }
     }
 
-    /**
-     * Clear all timers
-     */
     private clearTimers(): void {
       if (this.timer) {
         clearInterval(this.timer);

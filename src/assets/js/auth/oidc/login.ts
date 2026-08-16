@@ -451,9 +451,6 @@
       });
     }
 
-    /**
-     * Setup input focus animations
-     */
     private setupInputFocusAnimations(): void {
       const inputs = document.querySelectorAll(
         'input[type="text"], input[type="email"], input[type="tel"], input[type="password"]'
@@ -745,9 +742,6 @@
       this.form!.classList.remove('form-disabled');
     }
 
-    /**
-     * Show validation error to user
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 

@@ -344,9 +344,6 @@
       `;
     }
 
-    /**
-     * Setup back button prevention
-     */
     private setupBackButtonPrevention(): void {
       if (!this.config.enableBackButtonPrevention) {
         this.log(
@@ -371,9 +368,6 @@
       this.log('Back button prevention enabled');
     }
 
-    /**
-     * Setup form resubmission prevention
-     */
     private setupFormResubmissionPrevention(): void {
       if (!this.config.enableFormResubmissionPrevention) {
         this.log(
@@ -396,9 +390,6 @@
       }
     }
 
-    /**
-     * Setup error recovery
-     */
     private setupErrorRecovery(): void {
       if (!this.config.enableErrorRecovery) {
         this.log('Error recovery disabled by configuration', null, 'log');
@@ -482,9 +473,6 @@
       this.log('All buttons enabled');
     }
 
-    /**
-     * Show error recovery message to user
-     */
     private showErrorRecoveryMessage(): void {
       this.log('Showing error recovery message', null, 'warn');
 

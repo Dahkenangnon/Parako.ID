@@ -6045,9 +6045,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Process social password setup
-   */
   public processSocialPasswordSetup = async (
     req: Request,
     res: Response

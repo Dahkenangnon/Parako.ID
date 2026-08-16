@@ -38,9 +38,6 @@ export interface ISmsProvider {
     defaultCountry?: string
   ): PhoneValidationResult;
 
-  /**
-   * Get the provider name
-   */
   getProviderName(): string;
 
   /**

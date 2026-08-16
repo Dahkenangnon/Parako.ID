@@ -13,13 +13,8 @@
 
 import { BOOTSTRAP_ONLY_FIELDS } from '../types.js';
 
-/**
- * Result of bootstrap field validation
- */
 export interface BootstrapValidationResult {
-  /** Whether the config is valid (contains no bootstrap fields) */
   isValid: boolean;
-  /** List of bootstrap field paths found in the config */
   bootstrapFieldsFound: string[];
 }
 

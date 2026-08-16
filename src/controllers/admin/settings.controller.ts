@@ -917,9 +917,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Upload favicon
-   */
   uploadFavicon = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();

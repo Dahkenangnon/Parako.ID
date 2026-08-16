@@ -239,9 +239,6 @@
       });
     }
 
-    /**
-     * Handle logo file change
-     */
     private async handleLogoFileChange(): Promise<void> {
       if (!this.logoUpload?.files?.[0] || !this.previewLogo) return;
 
@@ -852,9 +849,6 @@
       });
     }
 
-    /**
-     * Handle favicon file change
-     */
     private async handleFaviconFileChange(): Promise<void> {
       if (!this.faviconUpload?.files?.[0] || !this.previewFavicon) return;
 
@@ -905,9 +899,6 @@
       });
     }
 
-    /**
-     * Handle favicon removal
-     */
     private async handleFaviconRemoval(): Promise<void> {
       const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
 
@@ -1348,9 +1339,6 @@
       }
     }
 
-    /**
-     * Handle logo removal
-     */
     private async handleLogoRemoval(): Promise<void> {
       const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
 
@@ -1406,9 +1394,6 @@
       }
     }
 
-    /**
-     * Setup form validation
-     */
     private setupFormValidation(): void {
       if (!this.form) return;
 

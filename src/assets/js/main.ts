@@ -432,9 +432,6 @@
       }
     }
 
-    /**
-     * Setup global error handling
-     */
     private setupGlobalErrorHandling(): void {
       window.addEventListener('unhandledrejection', event => {
         this.log(

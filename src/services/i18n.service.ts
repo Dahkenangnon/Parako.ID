@@ -244,9 +244,6 @@ export class I18nService implements II18nService {
     this.isConfigured = true;
   }
 
-  /**
-   * Get the current locale
-   */
   getLocale(req?: Request): string {
     if (req) {
       return i18n.getLocale(req);

@@ -345,9 +345,6 @@ export class ResetPasswordManager {
     });
   }
 
-  /**
-   * Setup password strength validation
-   */
   private setupPasswordStrengthValidation(): void {
     if (
       !this.config.enableStrengthMeter ||
@@ -523,9 +520,6 @@ export class ResetPasswordManager {
     });
   }
 
-  /**
-   * Validate password requirements
-   */
   private validatePasswordRequirements(password: string): string[] {
     const errors: string[] = [];
 
@@ -560,9 +554,6 @@ export class ResetPasswordManager {
     return errors;
   }
 
-  /**
-   * Setup input focus animations
-   */
   private setupInputFocusAnimations(): void {
     const inputs = document.querySelectorAll(
       'input[type="password"], input[type="text"]'
@@ -605,9 +596,6 @@ export class ResetPasswordManager {
     this.submitButton!.innerHTML = this.getTranslation('resetPassword');
   }
 
-  /**
-   * Show validation error to user
-   */
   private showValidationError(message: string): void {
     this.log('Validation error', { message }, 'warn');
 

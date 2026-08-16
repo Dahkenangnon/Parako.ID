@@ -166,9 +166,6 @@
       });
     }
 
-    /**
-     * Handle password generation toggle
-     */
     private handlePasswordGenerationToggle(generate: boolean): void {
       const passwordField = document.getElementById(
         'password'
@@ -242,9 +239,6 @@
       return passwordArray.join('');
     }
 
-    /**
-     * Setup password match validation
-     */
     private setupPasswordMatchValidation(): void {
       const passwordField = document.getElementById(
         'password'
@@ -296,9 +290,6 @@
       }
     }
 
-    /**
-     * Setup create form validation
-     */
     private setupCreateFormValidation(): void {
       const form = document.getElementById(
         'createUserForm'
@@ -313,9 +304,6 @@
       });
     }
 
-    /**
-     * Validate create user form
-     */
     private async validateCreateForm(): Promise<boolean> {
       const email =
         (document.getElementById('email') as HTMLInputElement | null)?.value ||
@@ -388,9 +376,6 @@
       return true;
     }
 
-    /**
-     * Setup edit form validation
-     */
     private setupEditFormValidation(): void {
       const form = document.querySelector('form') as HTMLFormElement | null;
       if (!form) return;
@@ -403,9 +388,6 @@
       });
     }
 
-    /**
-     * Validate edit user form
-     */
     private async validateEditForm(): Promise<boolean> {
       const email =
         (document.getElementById('email') as HTMLInputElement | null)?.value ||
@@ -465,9 +447,6 @@
       }
     }
 
-    /**
-     * Setup textarea auto-resize
-     */
     private setupTextareaAutoResize(): void {
       const textareas = document.querySelectorAll(
         'textarea'

@@ -192,9 +192,6 @@
       this.emailInput = document.getElementById('email') as HTMLInputElement;
     }
 
-    /**
-     * Setup email validation
-     */
     private setupEmailValidation(): void {
       if (!this.config.enableEmailValidation) return;
 
@@ -283,9 +280,6 @@
       });
     }
 
-    /**
-     * Setup input focus animations
-     */
     private setupInputFocusAnimations(): void {
       const emailInput = this.emailInput!;
 
@@ -298,9 +292,6 @@
       });
     }
 
-    /**
-     * Show validation error
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 
@@ -318,9 +309,6 @@
       );
     }
 
-    /**
-     * Clear validation error
-     */
     private clearValidationError(): void {
       const existingError = document.getElementById('email-error-message');
       if (existingError) {

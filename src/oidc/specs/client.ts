@@ -35,7 +35,7 @@ export default function Client(clientMerger: IOIDCClientMerger) {
    */
   const staticClients: Partial<OidcClient>[] = [
     // You can hardcoded clients here which is not recommended.
-    // Instead, you can use the CLI (`yarn client:add`) to add clients to the parako-rp.jsonc file.
+    // Instead, use the CLI (`pnpm client add`) to add clients to parako-rp.jsonc.
     // This is the preferred way to add clients to the OIDC Provider.
     // Note: This is only for sample purposes.
     // {

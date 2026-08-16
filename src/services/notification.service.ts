@@ -540,9 +540,6 @@ export class NotificationService implements INotificationService {
     return channels;
   }
 
-  /**
-   * Create a success result
-   */
   private createSuccessResult(
     channel: NotificationChannel
   ): NotificationResult {
@@ -552,9 +549,6 @@ export class NotificationService implements INotificationService {
     };
   }
 
-  /**
-   * Create a failure result
-   */
   private createFailureResult(
     channel: NotificationChannel,
     error: string

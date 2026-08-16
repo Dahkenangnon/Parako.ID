@@ -103,9 +103,6 @@ class AdminSettingsManager {
     this.resetInactivityTimer();
   }
 
-  /**
-   * Reset the inactivity timer
-   */
   private resetInactivityTimer(): void {
     if (this.inactivityTimer) {
       clearTimeout(this.inactivityTimer);

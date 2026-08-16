@@ -360,9 +360,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     });
   };
 
-  /**
-   * Revoke a specific grant
-   */
   public revokeGrant = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
@@ -471,9 +468,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     }
   };
 
-  /**
-   * Revoke all grants for a specific user
-   */
   public revokeUserGrants = async (
     req: Request,
     res: Response

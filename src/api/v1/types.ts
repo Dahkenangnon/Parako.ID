@@ -54,19 +54,10 @@ export interface ProblemDetail {
   /** URN identifying the error type, e.g. `"urn:parako:error:not-found"`. */
   type: string;
 
-  /** Short human-readable summary. */
   title: string;
-
-  /** HTTP status code. */
   status: number;
-
-  /** Human-readable explanation specific to this occurrence. */
   detail: string;
-
-  /** The request path that generated this error. */
   instance?: string;
-
-  /** Extension members. */
   [key: string]: unknown;
 }
 

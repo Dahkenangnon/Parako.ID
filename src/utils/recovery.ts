@@ -518,9 +518,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     }
   }
 
-  /**
-   * Generate SMS verification code
-   */
   generateSmsVerificationCode(): {
     code: string;
     hash: string;
@@ -883,9 +880,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return methods;
   }
 
-  /**
-   * Validate backup code format
-   */
   validateBackupCodeFormat(code: string): {
     valid: boolean;
     sanitized?: string;

@@ -225,9 +225,6 @@ export class SmsService {
     return this.provider !== null && this.provider.isConfigured();
   }
 
-  /**
-   * Get the current provider name
-   */
   getProviderName(): string | null {
     return this.provider?.getProviderName() || null;
   }

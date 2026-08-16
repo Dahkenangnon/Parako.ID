@@ -486,9 +486,6 @@
       });
     }
 
-    /**
-     * Setup input focus animations
-     */
     private setupInputFocusAnimations(): void {
       this.otpInputs!.forEach(input => {
         input.addEventListener('focus', () => {
@@ -614,9 +611,6 @@
       this.form!.classList.remove('form-disabled');
     }
 
-    /**
-     * Show validation error to user
-     */
     private showValidationError(message: string): void {
       this.log('Validation error', { message }, 'warn');
 

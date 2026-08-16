@@ -41,36 +41,10 @@ function getClientTtlOverride(
   return getPositiveFiniteTtl(ttl?.[key]);
 }
 
-/**
- * Factory function to create TTL configuration
- * @param configManager - Configuration manager instance
- * @param logger - Logger instance
- * @returns TTL configuration object
- */
 export default function TTL(configManager: IConfigManager, logger: ILogger) {
   const config = configManager.getConfig();
 
-  /**
-   * Token and Session Time-to-Live (TTL) Configuration
-   *
-   * This configuration defines the expiration times for various tokens and sessions
-   * used by the OpenID Provider. Each value can be either:
-   * - A number (in seconds)
-   * - A synchronous function that dynamically returns a value based on the context
-   *
-   * @see {@link https://github.com/panva/node-oidc-provider/tree/main/docs#ttl}
-   *
-   * @type {Object}
-   */
   return {
-    /**
-     * Access Token TTL configuration
-     *
-     * @param {KoaContextWithOIDC} ctx - The Koa request context
-     * @param {Object} token - The token object
-     * @param {Client} client - The client requesting the token
-     * @returns {number} TTL in seconds
-     */
     AccessToken: function AccessTokenTTL(
       _ctx: KoaContextWithOIDC,
       token: AccessToken,
@@ -95,17 +69,8 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
       }
     } as TTLFunction<AccessToken>,
 
-    /** Authorization Code TTL: 10 minutes in seconds */
     AuthorizationCode: config.oidc.token_ttl.authorization_code,
 
-    /**
-     * Backchannel Authentication Request TTL configuration
-     *
-     * @param {KoaContextWithOIDC} ctx - The Koa request context
-     * @param {object} request - The authentication request
-     * @param {object} client - The client making the request
-     * @returns {number} TTL in seconds
-     */
     BackchannelAuthenticationRequest:
       function BackchannelAuthenticationRequestTTL(
         ctx: KoaContextWithOIDC,
@@ -140,14 +105,6 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
         }
       } as TTLFunction<BackchannelAuthenticationRequest>,
 
-    /**
-     * Client Credentials TTL configuration
-     *
-     * @param {KoaContextWithOIDC} ctx - The Koa request context
-     * @param {object} token - The token object
-     * @param {object} client - The client requesting the token
-     * @returns {number} TTL in seconds
-     */
     ClientCredentials: function ClientCredentialsTTL(
       _ctx: KoaContextWithOIDC,
       token: ClientCredentials,
@@ -172,26 +129,11 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
       }
     } as TTLFunction<ClientCredentials>,
 
-    /** Device Code TTL: 10 minutes in seconds */
     DeviceCode: config.oidc.token_ttl.device_code,
-
-    /** Grant TTL: 1 hour in seconds */
     Grant: config.oidc.token_ttl.grant,
-
-    /** ID Token TTL: 1 hour in seconds */
     IdToken: config.oidc.token_ttl.id_token,
-
-    /** Interaction TTL: 1 hour in seconds */
     Interaction: config.oidc.token_ttl.interaction,
 
-    /**
-     * Refresh Token TTL configuration
-     *
-     * @param {KoaContextWithOIDC} ctx - The Koa request context
-     * @param {object} token - The token object
-     * @param {object} client - The client requesting the token
-     * @returns {number} TTL in seconds
-     */
     RefreshToken: function RefreshTokenTTL(
       ctx: KoaContextWithOIDC,
       token: RefreshToken,
@@ -226,7 +168,6 @@ export default function TTL(configManager: IConfigManager, logger: ILogger) {
       }
     } as TTLFunction<RefreshToken>,
 
-    /** Session TTL: 24 hours in seconds */
     Session: config.oidc.token_ttl.session,
   };
 }

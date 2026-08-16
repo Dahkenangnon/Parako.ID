@@ -201,9 +201,6 @@
       });
     }
 
-    /**
-     * Handle logo file change
-     */
     private async handleLogoFileChange(): Promise<void> {
       if (!this.logoUpload?.files?.[0] || !this.previewLogo) return;
 
@@ -293,9 +290,6 @@
       });
     }
 
-    /**
-     * Handle logo removal
-     */
     private async handleLogoRemoval(): Promise<void> {
       const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
 
@@ -375,9 +369,6 @@
       }
     }
 
-    /**
-     * Setup textarea auto-resize
-     */
     private setupTextareaAutoResize(): void {
       const textareas = document.querySelectorAll(
         'textarea'

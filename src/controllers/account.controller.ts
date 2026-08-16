@@ -3084,9 +3084,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Link a social account to the current user
-   */
   public linkSocialAccount = async (
     req: Request,
     res: Response
@@ -3127,9 +3124,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Unlink a social account from the current user
-   */
   public unlinkSocialAccount = async (
     req: Request,
     res: Response
@@ -3999,9 +3993,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Regenerate backup codes
-   */
   public regenerateBackupCodes = async (
     req: Request,
     res: Response
@@ -4350,9 +4341,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Save security questions
-   */
   public saveSecurityQuestions = async (
     req: Request,
     res: Response

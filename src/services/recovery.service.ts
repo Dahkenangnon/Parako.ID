@@ -196,9 +196,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Verify security questions
-   */
   async verifySecurityQuestions(
     user: IUser,
     answers: Map<string, string>,
@@ -608,9 +605,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Setup security questions
-   */
   async setupSecurityQuestions(
     userId: string,
     questionsWithAnswers: Array<{ question_key: string; answer: string }>
@@ -650,9 +644,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Remove a recovery method
-   */
   async removeRecoveryMethod(
     userId: string,
     method: RecoveryMethod
@@ -713,9 +704,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Send recovery notification
-   */
   async sendRecoveryNotification(
     user: IUser,
     method: RecoveryMethod,
@@ -742,9 +730,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Send backup code warning
-   */
   async sendBackupCodeWarning(
     user: IUser,
     remainingCodes: number
@@ -785,9 +770,6 @@ export class RecoveryService implements IRecoveryService {
     return (await this.userService.findByUsername(identifier)) ?? null;
   }
 
-  /**
-   * Save user recovery state
-   */
   private async saveUserRecoveryState(user: IUser): Promise<void> {
     if (user._id && user.recovery) {
       await this.userService.updateById(user._id.toString(), {

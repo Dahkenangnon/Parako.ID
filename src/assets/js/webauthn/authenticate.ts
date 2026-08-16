@@ -189,9 +189,6 @@
       }
     }
 
-    /**
-     * Update the timer display
-     */
     private updateTimerDisplay(): void {
       if (this.timerEl) {
         const minutes = Math.floor(this.remainingSeconds / 60);

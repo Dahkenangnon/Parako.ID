@@ -45,6 +45,9 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 
+const TEST_ACCESS_KEY_ID = 'AKIAFAKEKEY1234567890'; // gitleaks:allow
+const TEST_SECRET_ACCESS_KEY = 'fake-secret-key-for-testing-only-not-real-0'; // gitleaks:allow
+
 function createProvider(
   s3Overrides: Record<string, unknown> = {},
   fileStorageOverrides: Record<string, unknown> = {}
@@ -75,8 +78,8 @@ function createProvider(
           s3: {
             region: 'us-east-1',
             bucket: 'test-bucket',
-            access_key_id: 'AKIAFAKEKEY1234567890',
-            secret_access_key: 'fake-secret-key-for-testing-only-not-real-0',
+            access_key_id: TEST_ACCESS_KEY_ID,
+            secret_access_key: TEST_SECRET_ACCESS_KEY,
             ...s3Overrides,
           },
         },
@@ -159,8 +162,8 @@ describe('S3StorageProvider', () => {
 
       expect(S3Client).toHaveBeenCalledWith({
         credentials: {
-          accessKeyId: 'AKIAFAKEKEY1234567890',
-          secretAccessKey: 'fake-secret-key-for-testing-only-not-real-0',
+          accessKeyId: TEST_ACCESS_KEY_ID,
+          secretAccessKey: TEST_SECRET_ACCESS_KEY,
         },
         region: 'us-east-1',
       });

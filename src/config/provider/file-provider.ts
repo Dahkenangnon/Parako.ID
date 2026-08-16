@@ -114,9 +114,6 @@ export class FileConfigProvider extends AbstractConfigProvider {
     );
   }
 
-  /**
-   * Clear cache
-   */
   clearCache(): void {
     this.cache = null;
     this.isInitialized = false;
