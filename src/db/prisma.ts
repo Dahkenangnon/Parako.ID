@@ -158,9 +158,10 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
   }
 
   if (adapter === 'postgresql') {
-    // Default to strict SSL in production (rejectUnauthorized: true).
-    // Opt out via PG_SSL_REJECT_UNAUTHORIZED=false for self-signed certs.
+    // Production defaults to strict TLS. Private, trusted networks may disable
+    // transport TLS explicitly; certificate verification can be relaxed separately.
     const isProduction = process.env.NODE_ENV === 'production';
+    const tlsEnabled = isProduction && process.env.PG_SSL_ENABLED !== 'false';
     const rejectUnauthorized =
       process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false';
     const pgAdapter = new PrismaPg({
@@ -169,7 +170,7 @@ export function createPrismaClient(config: BootstrapConfig): PrismaClient {
       // Adjust for your DB limits (e.g. max: 5 with 4 workers = 20).
       max: 10,
       idleTimeoutMillis: 30000,
-      ssl: isProduction ? { rejectUnauthorized } : false,
+      ssl: tlsEnabled ? { rejectUnauthorized } : false,
     });
     const { PrismaClient: PostgresqlPrismaClient, Prisma: PostgresqlPrisma } =
       loadPostgresqlPrismaClient();

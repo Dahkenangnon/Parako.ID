@@ -67,6 +67,7 @@ const originalEnvironment = {
   NODE_ENV: process.env.NODE_ENV,
   PARAKO_ROOT: process.env.PARAKO_ROOT,
   PG_SSL_REJECT_UNAUTHORIZED: process.env.PG_SSL_REJECT_UNAUTHORIZED,
+  PG_SSL_ENABLED: process.env.PG_SSL_ENABLED,
 };
 
 const deferred = () => {
@@ -90,6 +91,7 @@ describe.sequential('createPrismaClient', () => {
     process.env.NODE_ENV = 'development';
     process.env.PARAKO_ROOT = '/srv/parako';
     delete process.env.PG_SSL_REJECT_UNAUTHORIZED;
+    delete process.env.PG_SSL_ENABLED;
     mocks.existsSync.mockReturnValue(true);
     mocks.createRequire.mockReturnValue(mocks.moduleLoader);
     mocks.moduleLoader.mockReturnValue({
@@ -330,6 +332,23 @@ describe.sequential('createPrismaClient', () => {
 
     expect(mocks.prismaPg).toHaveBeenCalledWith(
       expect.objectContaining({ ssl: { rejectUnauthorized: false } })
+    );
+  });
+
+  it('allows PostgreSQL TLS to be disabled explicitly in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.PG_SSL_ENABLED = 'false';
+    const { createPrismaClient } = await import('../../../src/db/prisma.js');
+
+    createPrismaClient({
+      storage: {
+        adapter: 'postgresql',
+        postgresql: { url: 'postgresql://db/parako' },
+      },
+    } as never);
+
+    expect(mocks.prismaPg).toHaveBeenCalledWith(
+      expect.objectContaining({ ssl: false })
     );
   });
 
