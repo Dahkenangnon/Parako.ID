@@ -106,3 +106,4 @@ overrides:
   piscina: '>=4.9.3 <5'
   body-parser: '>=2.3.0 <3'
   valibot: '>=1.4.2 <2'
+  deepmerge-ts: '>=8.0.0 <9'

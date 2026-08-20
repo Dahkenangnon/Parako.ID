@@ -170,6 +170,7 @@ describe('local OIDC client registry', () => {
       JSON.stringify({ version: '1.0.0', clients: [] })
     );
     const write = vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'chmodSync').mockImplementation(() => {});
 
     const client = addClient({ client_name: 'Demo' });
 
@@ -201,6 +202,7 @@ describe('local OIDC client registry', () => {
       JSON.stringify({ version: '1.0.0', clients: [] })
     );
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'chmodSync').mockImplementation(() => {});
 
     const client = addClient({
       client_id: 'public-client',

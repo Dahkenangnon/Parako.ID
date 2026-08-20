@@ -229,7 +229,7 @@ jobs:
     timeout-minutes: 20
     env:
       # gitleaks:allow -- deterministic non-production test encryption key.
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -270,7 +270,7 @@ jobs:
     env:
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
       # gitleaks:allow -- deterministic non-production test encryption key.
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -299,6 +299,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
       redis:
         image: redis:7-alpine
         ports:
@@ -309,9 +318,10 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
+      CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
       # gitleaks:allow -- deterministic non-production test encryption key.
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -343,6 +353,30 @@ jobs:
     name: Coverage — cumulative source policy
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      mongodb:
+        image: mongo:8
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      # gitleaks:allow -- deterministic non-production test encryption key.
+      ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -409,7 +443,7 @@ jobs:
       DATABASE_URL: postgresql://parako:parako@127.0.0.1:5432/parako_test
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
       # gitleaks:allow -- deterministic non-production test encryption key.
-      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

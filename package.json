@@ -69,7 +69,7 @@
     "test:integration:oidc": "vitest run test/integration/oidc",
     "test:integration:application": "vitest run test/integration/api test/integration/config test/integration/health test/integration/routes test/integration/scripts test/integration/security test/integration/testing test/integration/utils",
     "test:integration:postgresql": "pnpm run db:generate:pg && vitest run --config=test/integration/config/vitest.postgresql.config.ts",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "pnpm run build && vitest run --coverage",
     "test:architecture": "node scripts/testing/check-architecture.ts",
     "test:prerequisites": "node scripts/testing/check-prerequisites.ts",
     "test:prerequisites:full": "node scripts/testing/check-prerequisites.ts --full",

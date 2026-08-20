@@ -96,6 +96,29 @@ describe('GitHub Actions workflow policy', () => {
     expect(RELEASE_WORKFLOW).not.toContain('coverage-fragment-');
   });
 
+  it('provides deterministic external fixtures and preserves the encryption key as text', () => {
+    const applicationIntegration = readJob(
+      RELEASE_WORKFLOW,
+      'integration-application'
+    );
+    const coverage = readJob(RELEASE_WORKFLOW, 'coverage');
+
+    for (const job of [applicationIntegration, coverage]) {
+      expect(job).toContain('image: mongo:8');
+      expect(job).toContain('image: redis:7-alpine');
+      expect(job).toContain('CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/');
+    }
+
+    const encryptionKeyDeclarations = RELEASE_WORKFLOW.match(
+      /^\s*ENCRYPTION_KEY:.*$/gmu
+    );
+    expect(encryptionKeyDeclarations).not.toBeNull();
+    for (const declaration of encryptionKeyDeclarations ?? []) {
+      expect(declaration).toMatch(/ENCRYPTION_KEY: '[0-9a-f]{64}'$/u);
+    }
+    expect(PACKAGE_SCRIPTS['test:coverage']).toContain('pnpm run build');
+  });
+
   it('assigns every non-PostgreSQL integration directory to exactly one CI shard script', () => {
     const integrationScripts = [
       'test:integration:persistence',
