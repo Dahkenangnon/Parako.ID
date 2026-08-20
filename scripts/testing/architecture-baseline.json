@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "sourceRoot": "src",
+  "allowedCycles": [],
+  "allowedDirectEnvironmentModules": [
+    "src/config/bootstrap-environment.ts",
+    "src/config/constants.ts",
+    "src/config/hardening-defaults.ts",
+    "src/config/index.ts",
+    "src/config/provider/bootstrap-provider.ts",
+    "src/db/prisma.ts",
+    "src/index.ts",
+    "src/observability/logs/logger.ts",
+    "src/utils/env-interpolation.ts",
+    "src/utils/env-validator.ts",
+    "src/utils/filesystem.ts",
+    "src/worker.ts"
+  ],
+  "maximumTypeEscapes": {
+    "explicitAny": 896,
+    "anyAssertions": 198,
+    "nonNullAssertions": 460,
+    "typescriptSuppressions": 4
+  }
+}

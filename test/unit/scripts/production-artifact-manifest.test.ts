@@ -46,6 +46,17 @@ describe('production artifact manifest', () => {
     });
   });
 
+  it('classifies the architecture baseline as tested build configuration', () => {
+    expect(
+      classifyProductionArtifact('scripts/testing/architecture-baseline.json')
+    ).toEqual({
+      kind: 'configuration',
+      owner: 'build-release',
+      risk: 'medium',
+      requiredTests: ['unit', 'integration', 'architecture'],
+    });
+  });
+
   it('classifies declaration-only source with typecheck proof', () => {
     expect(classifyProductionArtifact('src/types/mongoose.d.ts')).toEqual({
       kind: 'declaration',
@@ -108,6 +119,23 @@ describe('production artifact manifest', () => {
 
   it('classifies deployment configuration with parse and smoke proofs', () => {
     expect(classifyProductionArtifact('deployment/nginx.conf')).toEqual({
+      kind: 'configuration',
+      owner: 'deployment',
+      risk: 'high',
+      requiredTests: ['parse', 'schema', 'deployment-smoke'],
+    });
+  });
+
+  it('classifies Docker build and Compose definitions as deployment configuration', () => {
+    expect(classifyProductionArtifact('deployment/docker/Dockerfile')).toEqual({
+      kind: 'configuration',
+      owner: 'deployment',
+      risk: 'critical',
+      requiredTests: ['parse', 'build', 'container-smoke', 'security-scan'],
+    });
+    expect(
+      classifyProductionArtifact('deployment/docker/compose.postgresql.yaml')
+    ).toEqual({
       kind: 'configuration',
       owner: 'deployment',
       risk: 'high',

@@ -102,6 +102,10 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_' },
       ],
+      '@typescript-eslint/no-empty-object-type': [
+        'error',
+        { allowInterfaces: 'with-single-extends' },
+      ],
 
       // Static-analysis safety nets — no runtime eval/Function constructor.
       'no-eval': 'error',
@@ -171,10 +175,13 @@ export default tseslint.config(
         Blob: 'readonly',
         FileReader: 'readonly',
         File: 'readonly',
+        FormData: 'readonly',
         Event: 'readonly',
         EventSource: 'readonly',
         KeyboardEvent: 'readonly',
+        MouseEvent: 'readonly',
         MessageEvent: 'readonly',
+        ParentNode: 'readonly',
         ClipboardEvent: 'readonly',
         PageTransitionEvent: 'readonly',
         MutationObserver: 'readonly',
@@ -200,6 +207,13 @@ export default tseslint.config(
       'no-case-declarations': 'off',
       'no-dupe-keys': 'error',
       'no-undef': 'error',
+    },
+  },
+  {
+    // TypeScript resolves DOM value and type names; core no-undef cannot distinguish them.
+    files: ['src/assets/**/*.ts'],
+    rules: {
+      'no-undef': 'off',
     },
   },
   {

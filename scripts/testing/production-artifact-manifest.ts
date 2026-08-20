@@ -100,6 +100,15 @@ export function classifyProductionArtifact(
     };
   }
 
+  if (filePath === 'scripts/testing/architecture-baseline.json') {
+    return {
+      kind: 'configuration',
+      owner: 'build-release',
+      risk: 'medium',
+      requiredTests: ['unit', 'integration', 'architecture'],
+    };
+  }
+
   if (filePath.startsWith('src/') && filePath.endsWith('.d.ts')) {
     return {
       kind: 'declaration',
@@ -153,6 +162,24 @@ export function classifyProductionArtifact(
         'migration',
         'adapter-contract',
       ],
+    };
+  }
+
+  if (filePath === 'deployment/docker/Dockerfile') {
+    return {
+      kind: 'configuration',
+      owner: 'deployment',
+      risk: 'critical',
+      requiredTests: ['parse', 'build', 'container-smoke', 'security-scan'],
+    };
+  }
+
+  if (filePath.startsWith('deployment/docker/') && /\.ya?ml$/.test(filePath)) {
+    return {
+      kind: 'configuration',
+      owner: 'deployment',
+      risk: 'high',
+      requiredTests: ['parse', 'schema', 'deployment-smoke'],
     };
   }
 
