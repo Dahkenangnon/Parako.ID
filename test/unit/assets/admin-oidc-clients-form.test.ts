@@ -295,6 +295,7 @@ describe('admin OIDC clients form manager', () => {
         presets: {
           web: PRESETS.web,
           device: { ...PRESETS.device, grant_types: [42] },
+          scalar: 'not-a-preset',
         },
       }),
     });
@@ -538,37 +539,40 @@ describe('admin OIDC clients form manager', () => {
     expect(toggleText.textContent).toBe('Reveal');
   });
 
-  it('rejects a malformed secret response without revealing it', async () => {
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    const dom = setupDom();
-    const toggle = addField(dom.elements, 'toggleSensitiveFields');
-    const secret = addField(dom.elements, 'client-secret');
-    secret.classList.add('hidden');
-    addField(dom.elements, 'client-secret-hidden');
-    const client = new ElementFixture();
-    client.dataset.clientId = 'client-123';
-    dom.singleResults.set('[data-client-id]', client);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: vi.fn().mockResolvedValue({ client_secret: 42 }),
-      })
-    );
+  it.each([{ client_secret: 42 }, 'not-a-secret-record'])(
+    'rejects malformed secret response %# without revealing it',
+    async secretResponse => {
+      const error = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined);
+      const dom = setupDom();
+      const toggle = addField(dom.elements, 'toggleSensitiveFields');
+      const secret = addField(dom.elements, 'client-secret');
+      secret.classList.add('hidden');
+      addField(dom.elements, 'client-secret-hidden');
+      const client = new ElementFixture();
+      client.dataset.clientId = 'client-123';
+      dom.singleResults.set('[data-client-id]', client);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: vi.fn().mockResolvedValue(secretResponse),
+        })
+      );
 
-    initializeAdminOidcClientsForm(dom.clipboard);
-    toggle.trigger('click');
+      initializeAdminOidcClientsForm(dom.clipboard);
+      toggle.trigger('click');
 
-    await vi.waitFor(() =>
-      expect(error).toHaveBeenCalledWith(
-        '[AdminOidcClientsFormManager] Failed to reveal secret'
-      )
-    );
-    expect(secret.textContent).toBe('');
-    expect(secret.classList.contains('hidden')).toBe(true);
-  });
+      await vi.waitFor(() =>
+        expect(error).toHaveBeenCalledWith(
+          '[AdminOidcClientsFormManager] Failed to reveal secret'
+        )
+      );
+      expect(secret.textContent).toBe('');
+      expect(secret.classList.contains('hidden')).toBe(true);
+    }
+  );
 
   it('contains failed secret reveal requests without exposing the field', async () => {
     const error = vi
@@ -658,6 +662,11 @@ describe('admin OIDC clients form manager', () => {
 
     const empty = setupDom({ stateText: '' });
     expect(() => initializeAdminOidcClientsForm(empty.clipboard)).not.toThrow();
+
+    const nonRecord = setupDom({ stateText: '[]' });
+    expect(() =>
+      initializeAdminOidcClientsForm(nonRecord.clipboard)
+    ).not.toThrow();
   });
 
   it('recovers from malformed embedded state', () => {

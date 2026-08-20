@@ -47,6 +47,10 @@ class ElementFixture {
     this.parentNode?.removeChild(this);
   }
 
+  public querySelector(): ElementFixture | null {
+    return null;
+  }
+
   public removeChild(child: ElementFixture): ElementFixture {
     const index = this.children.indexOf(child);
     if (index >= 0) this.children.splice(index, 1);
@@ -235,6 +239,26 @@ describe('admin integrations settings manager', () => {
     await Promise.all([pending, ...duplicate]);
     expect(confirmCriticalChange).toHaveBeenCalledOnce();
     expect(confirmCriticalChange).toHaveBeenCalledWith(event);
+  });
+
+  it('uses the production critical-change prompt before submitting', async () => {
+    const context = setupDom({ elements: makeValidIntegrationElements() });
+    initializeIntegrationsSettingsPage();
+    const event = { preventDefault: vi.fn(), target: context.form };
+
+    const pending = context.form.triggerAsync('submit', event);
+    let cancel: ElementFixture | undefined;
+    await vi.waitFor(() => {
+      cancel = context.created.find(
+        element =>
+          element.tagName === 'button' && element.textContent === 'Cancel'
+      );
+      expect(cancel).toBeDefined();
+    });
+    cancel?.trigger('click');
+    await pending;
+
+    expect(event.preventDefault).toHaveBeenCalled();
   });
 
   it('contains critical-change confirmation failures', async () => {

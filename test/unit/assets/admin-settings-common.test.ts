@@ -243,7 +243,10 @@ describe('admin settings common manager', () => {
       .mockReturnValueOnce({ valid: false, error: 'Bad image' })
       .mockReturnValueOnce({ valid: false })
       .mockReturnValue({ valid: true });
-    const createImagePreview = vi.fn().mockResolvedValue({ success: true });
+    const createImagePreview = vi
+      .fn()
+      .mockResolvedValueOnce({ success: false })
+      .mockResolvedValue({ success: true });
     const showAlert = vi.fn().mockResolvedValue(undefined);
 
     await loadModule({
@@ -287,6 +290,9 @@ describe('admin settings common manager', () => {
       preview,
       placeholder
     );
+    expect(form.submit).not.toHaveBeenCalled();
+
+    await logoUpload.listeners.change?.();
     expect(form.submit).toHaveBeenCalledOnce();
   });
 

@@ -123,11 +123,12 @@ describe('admin JWKS controls', () => {
     targetCopy.dataset.jwksCopyTarget = 'public-jwk';
     const missingCopy = new ElementFixture();
     missingCopy.dataset.jwksCopyTarget = 'missing';
+    const emptyCopy = new ElementFixture();
     const publicJwk = new ElementFixture();
     publicJwk.textContent = '{"kty":"RSA"}';
     setupDom({
       confirmationForms: [rotate, retire, unsupported],
-      copyTriggers: [inlineCopy, targetCopy, missingCopy],
+      copyTriggers: [inlineCopy, targetCopy, missingCopy, emptyCopy],
       elementsById: { 'public-jwk': publicJwk },
     });
     const dependencies = createDependencies(false);
@@ -141,7 +142,7 @@ describe('admin JWKS controls', () => {
     for (const form of [rotate, retire, unsupported]) {
       form.trigger('submit', { preventDefault });
     }
-    for (const trigger of [inlineCopy, targetCopy, missingCopy]) {
+    for (const trigger of [inlineCopy, targetCopy, missingCopy, emptyCopy]) {
       trigger.trigger('click');
     }
 

@@ -139,6 +139,16 @@ describe('account settings coordinator', () => {
     );
   });
 
+  it('uses the production module composition when optional controls are absent', () => {
+    vi.stubGlobal('document', {
+      getElementById: vi.fn(() => null),
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+
+    expect(() => new SettingsCoordinator(config()).initialize()).not.toThrow();
+  });
+
   it('auto-initializes from serialized page state', async () => {
     const settings = config();
     const { dependencies, documentRoot, managers, setupConfirmationHandlers } =

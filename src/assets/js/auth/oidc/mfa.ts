@@ -255,8 +255,7 @@ class MFAManager {
   }
 
   private setupOTPInputs(): void {
-    const otpInputs = this.otpInputs;
-    if (!otpInputs) return;
+    const otpInputs = this.otpInputs!;
 
     this.otpInputController = new OtpInputController({
       inputs: otpInputs,

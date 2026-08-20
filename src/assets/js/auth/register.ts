@@ -773,10 +773,6 @@ export class RegisterManager {
     this.submissionLifecycle.begin();
   }
 
-  private enableAllButtons(): void {
-    this.submissionLifecycle.release();
-  }
-
   private setSubmissionControlsDisabled(disabled: boolean): void {
     setInteractiveButtonDisabled(this.submitButton, disabled, {
       inlineStyles: true,

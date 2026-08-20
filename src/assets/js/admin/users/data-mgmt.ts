@@ -188,14 +188,13 @@ export class UserDataManagementManager {
   private showExportLoadingState(): void {
     if (!this.exportButton) return;
 
-    this.exportButton.disabled = true;
-    this.exportButton.innerHTML = `${this.getLoadingSpinner()}Exporting...`;
+    const exportButton = this.exportButton;
+    exportButton.disabled = true;
+    exportButton.innerHTML = `${this.getLoadingSpinner()}Exporting...`;
 
     setTimeout(() => {
-      if (!this.exportButton) return;
-
-      this.exportButton.disabled = false;
-      this.exportButton.innerHTML =
+      exportButton.disabled = false;
+      exportButton.innerHTML =
         '<i data-lucide="download" class="h-4 w-4 mr-2"></i>Export to CSV';
       window.lucide?.createIcons();
     }, 2000);

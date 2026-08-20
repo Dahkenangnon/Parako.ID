@@ -55,16 +55,14 @@ export class LanguageSelector {
       return;
     }
 
-    this.setupChangeHandler();
+    this.setupChangeHandler(this.languageSelector);
   }
 
   /**
    * Setup change event handler for language selector
    */
-  private setupChangeHandler(): void {
-    if (!this.languageSelector) return;
-
-    this.languageSelector.addEventListener('change', async e => {
+  private setupChangeHandler(languageSelector: HTMLSelectElement): void {
+    languageSelector.addEventListener('change', async e => {
       await this.handleLanguageChange(e);
     });
 
