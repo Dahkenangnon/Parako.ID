@@ -30,12 +30,10 @@ function sanitizePath(rawPath: string): string | null {
  *
  * @param uploadsBasePath - Absolute path to the uploads directory
  * @param signingSecret - HMAC signing secret
- * @param isProduction - Whether running in production (uses X-Accel-Redirect)
  */
 export function createMediaFileRoutes(
   uploadsBasePath: string,
-  signingSecret: string,
-  isProduction: boolean
+  signingSecret: string
 ): Router {
   const router = Router();
   const normalizedUploadsBasePath = path.resolve(uploadsBasePath);
@@ -100,23 +98,13 @@ export function createMediaFileRoutes(
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=3600');
 
-    if (isProduction) {
-      // In production with nginx, use X-Accel-Redirect for efficient serving
-      // nginx must have an internal location /_internal_uploads/ aliased to the
-      // configured upload_dir (default runtime/uploads/)
-      res.setHeader('X-Accel-Redirect', `/_internal_uploads/${filePath}`);
-      res.end();
-    } else {
-      // Development: serve directly
-      res.sendFile(absolutePath, err => {
-        if (err) {
-          // File not found or other error
-          if (!res.headersSent) {
-            res.status(404).json({ error: 'File not found' });
-          }
+    res.sendFile(absolutePath, err => {
+      if (err) {
+        if (!res.headersSent) {
+          res.status(404).json({ error: 'File not found' });
         }
-      });
-    }
+      }
+    });
   });
 
   return router;

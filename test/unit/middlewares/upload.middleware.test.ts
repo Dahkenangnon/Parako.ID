@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     memoryStorage,
     existsSync: vi.fn(),
     mkdirSync: vi.fn(),
+    mkdir: vi.fn(),
     readFile: vi.fn(),
     unlink: vi.fn(),
   };
@@ -30,6 +31,7 @@ vi.mock('node:fs', () => ({
     existsSync: mocks.existsSync,
     mkdirSync: mocks.mkdirSync,
     promises: {
+      mkdir: mocks.mkdir,
       readFile: mocks.readFile,
       unlink: mocks.unlink,
     },
@@ -61,6 +63,7 @@ describe('UploadMiddleware', () => {
     vi.clearAllMocks();
     mocks.multerConfigs.length = 0;
     mocks.existsSync.mockReturnValue(false);
+    mocks.mkdir.mockResolvedValue(undefined);
     mocks.readFile.mockResolvedValue(Buffer.from('file contents'));
     mocks.unlink.mockResolvedValue(undefined);
     logger = {
@@ -286,7 +289,13 @@ describe('UploadMiddleware', () => {
       expect(result).toBe(
         path.resolve(rootDir, 'runtime/.tmp-uploads/acme', category)
       );
-      expect(mocks.mkdirSync).toHaveBeenCalledWith(result, { recursive: true });
+      expect(mocks.mkdir).toHaveBeenCalledWith(result, { recursive: true });
+    });
+
+    it('reports tenant destination preparation failures', async () => {
+      mocks.mkdir.mockRejectedValueOnce(new Error('permission denied'));
+
+      await expect(destination(0, 'acme')).rejects.toThrow('permission denied');
     });
 
     it('names avatars with the active user ID, timestamp, and extension', async () => {

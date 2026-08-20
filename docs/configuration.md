@@ -314,7 +314,7 @@ External service connections.
 | `fingerprintjs`                                                                  | object | `{enabled: false}`               | Browser fingerprinting     |
 | `file_storage`                                                                   | object | `{provider: "local"}`            | File storage (local or S3) |
 
-> **Note:** `file_storage.upload_dir` defaults to `./runtime/uploads`, keeping mutable data under `runtime/` for clean Docker mounts and backups. Set an absolute path (e.g. `/var/lib/parako/uploads`) to use a dedicated volume. For nginx X-Accel-Redirect deployments, the internal location `/_internal_uploads/` must `alias` this directory.
+> **Note:** `file_storage.upload_dir` defaults to `./runtime/uploads`, keeping mutable data under `runtime/` for clean Docker mounts and backups. Set an absolute path (e.g. `/var/lib/parako/uploads`) to use a dedicated volume. Parako serves local objects through signed `/media/file/...` URLs, so no reverse-proxy-specific file mapping is required.
 
 ### `notifications`
 

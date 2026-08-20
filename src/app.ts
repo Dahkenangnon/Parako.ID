@@ -602,7 +602,7 @@ export class Application implements IApplication {
     const signingSecret = config.security.secrets.cookie_secrets[0];
     this.app.use(
       '/media/file',
-      createMediaFileRoutes(uploadsBasePath, signingSecret, this.isProduction)
+      createMediaFileRoutes(uploadsBasePath, signingSecret)
     );
 
     this.app.use(this.localsMiddleware.configLocals);

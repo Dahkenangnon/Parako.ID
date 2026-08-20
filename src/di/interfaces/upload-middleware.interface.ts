@@ -1,8 +1,5 @@
 import multer from 'multer';
 
-/**
- * Interface for UploadMiddleware - handles file upload functionality
- */
 export interface IUploadMiddleware {
   /**
    * Multer instance for avatar uploads

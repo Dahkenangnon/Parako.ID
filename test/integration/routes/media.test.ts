@@ -22,7 +22,7 @@ describe('Media file routes', () => {
     fs.writeFileSync(path.join(testDir, 'test.png'), 'fake png data');
 
     app = express();
-    const router = createMediaFileRoutes(tmpDir, SECRET, false);
+    const router = createMediaFileRoutes(tmpDir, SECRET);
     app.use('/media/file', router);
   });
 
@@ -99,17 +99,17 @@ describe('Media file routes', () => {
     expect(res.status).toBe(404);
   });
 
-  it('should use X-Accel-Redirect in production mode', async () => {
+  it('should serve the file body in production without depending on nginx', async () => {
     const prodApp = express();
-    const router = createMediaFileRoutes(tmpDir, SECRET, true);
+    const router = createMediaFileRoutes(tmpDir, SECRET);
     prodApp.use('/media/file', router);
 
     const signedUrl = signLocalUrl('default/avatars/test.png', SECRET, 3600);
     const res = await request(prodApp).get(signedUrl);
 
     expect(res.status).toBe(200);
-    expect(res.headers['x-accel-redirect']).toBe(
-      '/_internal_uploads/default/avatars/test.png'
-    );
+    const body = res.text || res.body?.toString?.() || '';
+    expect(body).toContain('fake png data');
+    expect(res.headers['x-accel-redirect']).toBeUndefined();
   });
 });

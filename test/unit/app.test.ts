@@ -49,7 +49,6 @@ const boundaryState = vi.hoisted(() => ({
   mediaCalls: [] as Array<{
     basePath: string;
     secret: string;
-    production: boolean;
   }>,
   mongoSanitizeOptions: [] as Array<{
     onSanitize?: (event: { req: Request; key: string }) => void;
@@ -88,12 +87,10 @@ vi.mock('../../src/middlewares/precompressed-static.middleware.js', () => ({
 }));
 
 vi.mock('../../src/routes/media.js', () => ({
-  createMediaFileRoutes: vi.fn(
-    (basePath: string, secret: string, production: boolean) => {
-      boundaryState.mediaCalls.push({ basePath, secret, production });
-      return (_req: Request, _res: Response, next: NextFunction) => next();
-    }
-  ),
+  createMediaFileRoutes: vi.fn((basePath: string, secret: string) => {
+    boundaryState.mediaCalls.push({ basePath, secret });
+    return (_req: Request, _res: Response, next: NextFunction) => next();
+  }),
 }));
 
 vi.mock('../../src/middlewares/mongo-sanitize.middleware.js', () => ({
@@ -755,7 +752,6 @@ describe('Application', () => {
     expect(forwarded.status).toBe(200);
     expect(forwarded.text).toBe('ok');
     expect(app.get('view cache')).toBe(true);
-    expect(boundaryState.mediaCalls.at(-1)?.production).toBe(true);
     expect(logger.warn).toHaveBeenCalledWith(
       'CORS allowlist is empty in production — cross-origin browser callers will be rejected'
     );
@@ -862,7 +858,6 @@ describe('Application', () => {
       expect(boundaryState.mediaCalls.at(-1)).toMatchObject({
         basePath: resolve(process.cwd(), 'runtime/uploads'),
         secret: 'unit-test-cookie-secret',
-        production: false,
       });
 
       const production = createApplication({
@@ -878,7 +873,6 @@ describe('Application', () => {
       });
       expect(boundaryState.mediaCalls.at(-1)).toMatchObject({
         basePath: '/srv/parako/uploads',
-        production: true,
       });
 
       const setHeaders = productionCall?.[1]?.setHeaders;

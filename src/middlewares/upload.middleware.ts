@@ -123,8 +123,10 @@ export class UploadMiddleware implements IUploadMiddleware {
     const avatarStorage = multer.diskStorage({
       destination: (_req, _file, cb) => {
         const dir = getTenantTempDir(rootDir, 'avatars');
-        fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
+        void fs.promises.mkdir(dir, { recursive: true }).then(
+          () => cb(null, dir),
+          error => cb(error as Error, dir)
+        );
       },
       filename: (req, file, cb) => {
         const userId =
@@ -182,8 +184,10 @@ export class UploadMiddleware implements IUploadMiddleware {
     const logoStorage = multer.diskStorage({
       destination: (_req, _file, cb) => {
         const dir = getTenantTempDir(rootDir, 'logos');
-        fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
+        void fs.promises.mkdir(dir, { recursive: true }).then(
+          () => cb(null, dir),
+          error => cb(error as Error, dir)
+        );
       },
       filename: (_req, file, cb) => {
         const timestamp = Date.now();
@@ -225,8 +229,10 @@ export class UploadMiddleware implements IUploadMiddleware {
     const faviconStorage = multer.diskStorage({
       destination: (_req, _file, cb) => {
         const dir = getTenantTempDir(rootDir, 'favicons');
-        fs.mkdirSync(dir, { recursive: true });
-        cb(null, dir);
+        void fs.promises.mkdir(dir, { recursive: true }).then(
+          () => cb(null, dir),
+          error => cb(error as Error, dir)
+        );
       },
       filename: (_req, file, cb) => {
         const timestamp = Date.now();
@@ -280,10 +286,7 @@ export class UploadMiddleware implements IUploadMiddleware {
     try {
       await this.storageProvider.store(buffer, key, file.mimetype);
 
-      // Raster image inputs get scaled WebP, AVIF, and JPEG variants written
-      // alongside the source. Variant generation failures are not fatal: the
-      // source is already stored and the view layer falls back to it when a
-      // variant is missing.
+      // Variant generation is best-effort because views can use the stored source.
       if (this.imageProcessor.isRasterImage(file.mimetype)) {
         try {
           await this.imageProcessor.generateVariants(
