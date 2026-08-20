@@ -56,6 +56,15 @@ describe('TenantSettingsOverride Mongoose model', () => {
     expect(typeof Overrides.paginate).toBe('function');
   });
 
+  it('can compile an isolated model registry for concurrent database harnesses', () => {
+    const isolatedMongoose = new mongoose.Mongoose();
+
+    expect(createTenantSettingsOverrideModel(isolatedMongoose)).not.toBe(
+      Overrides
+    );
+    expect(isolatedMongoose.models.TenantSettingsOverride).toBeDefined();
+  });
+
   it('persists only whitelisted override sections and serializes public ids', () => {
     const override = new Overrides({
       application: { title: 'Tenant application' },

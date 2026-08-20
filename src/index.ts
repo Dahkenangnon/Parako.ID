@@ -184,9 +184,8 @@ class ParakoServer {
 
           const basePrefix = config.deployment?.redis_prefix || 'parako';
 
-          await pubsubService.connect(redisUrl);
-
-          // Wire config invalidation across workers
+          // Register subscriptions before connecting so connect() can await
+          // Redis acknowledgement before another worker publishes an event.
           configManager.setPubSub(pubsubService);
 
           // Subscribe to OIDC client invalidation — sync adapter state across workers.
@@ -218,6 +217,7 @@ class ParakoServer {
             }
           );
 
+          await pubsubService.connect(redisUrl);
           await initRateLimitRedis(redisUrl, basePrefix, logger);
 
           logger.info('Redis Pub/Sub event bus initialized');

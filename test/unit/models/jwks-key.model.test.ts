@@ -31,4 +31,13 @@ describe('JWKS key model', () => {
 
     expect(createJwksKeyModel()).toBe(first);
   });
+
+  it('can compile an isolated model registry for concurrent database harnesses', () => {
+    const isolatedMongoose = new mongoose.Mongoose();
+
+    expect(createJwksKeyModel(isolatedMongoose)).not.toBe(
+      mongoose.models.JwksKey
+    );
+    expect(isolatedMongoose.models.JwksKey).toBeDefined();
+  });
 });

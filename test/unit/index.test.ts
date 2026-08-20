@@ -437,6 +437,19 @@ describe('server process entrypoint', () => {
     expect(harness.application.initialize).not.toHaveBeenCalled();
   });
 
+  it('fails startup when healing multiple active configurations is incomplete', async () => {
+    harness.settingsService.validateAndFixActiveConfigs.mockResolvedValue({
+      multipleActiveFound: true,
+      isValid: false,
+      details: 'multiple active configurations remain',
+    });
+
+    await importUntilExit();
+
+    expect(harness.application.initialize).not.toHaveBeenCalled();
+    expect(harness.configManager.reload).not.toHaveBeenCalled();
+  });
+
   it('fails startup when configuration validation throws', async () => {
     harness.settingsService.validateAndFixActiveConfigs.mockRejectedValue(
       new Error('validation offline')
@@ -513,6 +526,9 @@ describe('server process entrypoint', () => {
     expect(harness.configManager.setPubSub).toHaveBeenCalledWith(
       harness.pubsubService
     );
+    expect(
+      harness.configManager.setPubSub.mock.invocationCallOrder[0]
+    ).toBeLessThan(harness.pubsubService.connect.mock.invocationCallOrder[0]);
     expect(harness.initRateLimitRedis).toHaveBeenCalledWith(
       redisUrl,
       'tenant-prefix',
@@ -522,6 +538,9 @@ describe('server process entrypoint', () => {
       'tenant-prefix:oidc:client:invalidated',
       expect.any(Function)
     );
+    expect(
+      harness.pubsubService.subscribe.mock.invocationCallOrder[0]
+    ).toBeLessThan(harness.pubsubService.connect.mock.invocationCallOrder[0]);
 
     const invalidate = harness.pubsubService.subscribe.mock.calls[0][1];
     invalidate({});

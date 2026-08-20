@@ -249,16 +249,15 @@ describe('ConfigManager Redis invalidation integration', () => {
       application: { title: 'Globex' },
     });
 
+    await Promise.all([firstManager.load(), secondManager.load()]);
+    firstManager.setPubSub(firstBus);
+    secondManager.setPubSub(secondBus);
     await Promise.all([
-      firstManager.load(),
-      secondManager.load(),
       firstBus.connect(REDIS_URL),
       secondBus.connect(REDIS_URL),
     ]);
     expect(firstBus.isConnected()).toBe(true);
     expect(secondBus.isConnected()).toBe(true);
-    firstManager.setPubSub(firstBus);
-    secondManager.setPubSub(secondBus);
 
     await secondManager.ensureTenantConfig(acmeTenant);
     await secondManager.ensureTenantConfig(globexTenant);
@@ -370,16 +369,15 @@ describe('ConfigManager Redis invalidation integration', () => {
         'Seed cross-process reload test'
       );
 
+      await Promise.all([firstManager.load(), secondManager.load()]);
+      firstManager.setPubSub(firstBus);
+      secondManager.setPubSub(secondBus);
       await Promise.all([
-        firstManager.load(),
-        secondManager.load(),
         firstBus.connect(REDIS_URL),
         secondBus.connect(REDIS_URL),
       ]);
       expect(firstBus.isConnected()).toBe(true);
       expect(secondBus.isConnected()).toBe(true);
-      firstManager.setPubSub(firstBus);
-      secondManager.setPubSub(secondBus);
       if (hasTenantCache) {
         await secondManager.ensureTenantConfig(tenantId);
       }

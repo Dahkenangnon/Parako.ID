@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose, { type Mongoose } from 'mongoose';
 import { TypedModel } from './base.model.js';
 
 export interface IJwksKey {
@@ -19,7 +19,9 @@ export interface IJwksKeyMethods {}
 
 export type JwksKeyModel = TypedModel<IJwksKey, IJwksKeyMethods>;
 
-export const createJwksKeyModel = (): JwksKeyModel => {
+export const createJwksKeyModel = (
+  modelRegistry: Mongoose = mongoose
+): JwksKeyModel => {
   const jwksKeySchema = new mongoose.Schema(
     {
       kid: { type: String, required: true },
@@ -56,8 +58,8 @@ export const createJwksKeyModel = (): JwksKeyModel => {
 
   // Avoid OverwriteModelError in tests / hot-reload
   return (
-    (mongoose.models.JwksKey as JwksKeyModel) ||
-    (mongoose.model<IJwksKey>(
+    (modelRegistry.models.JwksKey as JwksKeyModel) ||
+    (modelRegistry.model<IJwksKey>(
       'JwksKey',
       jwksKeySchema
     ) as unknown as JwksKeyModel)

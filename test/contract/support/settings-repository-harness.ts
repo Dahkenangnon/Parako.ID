@@ -186,11 +186,12 @@ async function createMongoHarness(): Promise<SettingsRepositoryHarness> {
   const uri = new URL(configuredUri);
   uri.pathname = `/${databaseName}`;
 
-  await mongoose.connect(uri.toString());
+  const isolatedMongoose = new mongoose.Mongoose();
+  await isolatedMongoose.connect(uri.toString());
 
-  const model = createSettingsModel();
-  const tenantModel = createTenantSettingsOverrideModel();
-  const jwksModel = createJwksKeyModel();
+  const model = createSettingsModel(isolatedMongoose);
+  const tenantModel = createTenantSettingsOverrideModel(isolatedMongoose);
+  const jwksModel = createJwksKeyModel(isolatedMongoose);
   await model.syncIndexes();
   await tenantModel.syncIndexes();
   await jwksModel.syncIndexes();
@@ -249,14 +250,14 @@ async function createMongoHarness(): Promise<SettingsRepositoryHarness> {
       await jwksModel.deleteMany({ tenant_id: tenantId }).exec();
     },
     async close() {
-      if (mongoose.connection.name !== databaseName) {
+      if (isolatedMongoose.connection.name !== databaseName) {
         throw new Error(
           'Refusing to drop an unexpected MongoDB contract database'
         );
       }
 
-      await mongoose.connection.dropDatabase();
-      await mongoose.disconnect();
+      await isolatedMongoose.connection.dropDatabase();
+      await isolatedMongoose.disconnect();
     },
   };
 }

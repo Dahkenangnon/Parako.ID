@@ -65,6 +65,13 @@ describe('Settings Mongoose model', () => {
     expect(settings.toJSON()).not.toHaveProperty('_id');
   });
 
+  it('can compile an isolated model registry for concurrent database harnesses', () => {
+    const isolatedMongoose = new mongoose.Mongoose();
+
+    expect(createSettingsModel(isolatedMongoose)).not.toBe(Settings);
+    expect(isolatedMongoose.models.Settings).toBeDefined();
+  });
+
   it('compares a persisted update timestamp strictly', () => {
     const settings = new Settings({
       key: 'parako_config',

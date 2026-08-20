@@ -1,4 +1,4 @@
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Schema, type Mongoose } from 'mongoose';
 import { type TypedModel } from './base.model.js';
 import toJSON from '../db/plugins/to-json.plugin.js';
 import paginate from '../db/plugins/paginate.plugin.js';
@@ -19,7 +19,9 @@ export type SettingsModel = TypedModel<ISettings, ISettingsMethods>;
 /**
  * Factory function to create Settings model with DI dependencies
  */
-export const createSettingsModel = (): SettingsModel => {
+export const createSettingsModel = (
+  modelRegistry: Mongoose = mongoose
+): SettingsModel => {
   const settingsSchema = new Schema<ISettings, SettingsModel, ISettingsMethods>(
     {
       // Note: key is NOT unique by itself to support versioning
@@ -185,8 +187,8 @@ export const createSettingsModel = (): SettingsModel => {
   settingsSchema.plugin(paginate);
 
   const Settings =
-    mongoose.models.Settings ||
-    mongoose.model<ISettings, SettingsModel>('Settings', settingsSchema);
+    modelRegistry.models.Settings ||
+    modelRegistry.model<ISettings, SettingsModel>('Settings', settingsSchema);
 
   return Settings;
 };
