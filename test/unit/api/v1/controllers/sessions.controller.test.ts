@@ -199,7 +199,7 @@ describe('api/v1/controllers/SessionsController', () => {
           id: 'session-id',
           payload: { accountId: 'known-row', jti: '' },
         },
-        { _id: 'legacy-session', payload: 'legacy-payload' },
+        { _id: 'legacy-session', payload: 'legacy-payload' as never },
       ]);
       const res = createMockResponse();
 

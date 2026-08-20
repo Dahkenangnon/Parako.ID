@@ -233,6 +233,25 @@ describe('misc utilities', () => {
       ).toBe('UTC');
     });
 
+    it('should convert metadata to an explicit non-UTC timezone', () => {
+      const result = formatDateTimeWithMetadata(
+        new Date('2024-01-15T12:00:00.000Z'),
+        {
+          timezone: 'America/New_York',
+          serverTimezone: false,
+          useRelativeTime: false,
+        }
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          isRelative: false,
+          relativeType: 'full',
+          timezone: 'America/New_York',
+        })
+      );
+    });
+
     it('should detect the server timezone in fallback metadata by default', () => {
       expect(
         formatDateTimeWithMetadata(new Date(), {

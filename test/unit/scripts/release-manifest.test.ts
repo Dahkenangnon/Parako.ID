@@ -288,6 +288,24 @@ describe('release manifest', () => {
     }
   );
 
+  it('does not run the CLI when the process has no script argument', async () => {
+    const originalArgv = process.argv;
+    const originalExitCode = process.exitCode;
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.argv = [process.execPath];
+
+    try {
+      vi.resetModules();
+      await import('../../../scripts/create-release-manifest.mjs');
+
+      expect(process.exitCode).toBe(originalExitCode);
+      expect(stdout).not.toHaveBeenCalled();
+    } finally {
+      process.argv = originalArgv;
+      process.exitCode = originalExitCode;
+    }
+  });
+
   it('runs the CLI when the module is invoked as the entrypoint', async () => {
     const root = fixture();
     const originalArgv = process.argv;
