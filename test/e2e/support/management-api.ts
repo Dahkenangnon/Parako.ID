@@ -138,25 +138,38 @@ export async function createManagedUser(
       },
       tenantFetch as CustomFetch
     );
-    const response = await tenantFetch(`${origin}/api/v1/users`, {
-      method: 'POST',
-      body: JSON.stringify({
-        email: `${prefix}-${suffix}@example.test`,
-        password,
-        username,
-        given_name: 'Browser',
-        family_name: 'User',
-        name: 'Browser User',
-        ...(options.role ? { role: options.role } : {}),
-        ...(options.accountEnabled === undefined
-          ? {}
-          : { account_enabled: options.accountEnabled }),
-      }),
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
+    const body = JSON.stringify({
+      email: `${prefix}-${suffix}@example.test`,
+      password,
+      username,
+      given_name: 'Browser',
+      family_name: 'User',
+      name: 'Browser User',
+      ...(options.role ? { role: options.role } : {}),
+      ...(options.accountEnabled === undefined
+        ? {}
+        : { account_enabled: options.accountEnabled }),
     });
+    const createUser = () =>
+      tenantFetch(`${origin}/api/v1/users`, {
+        method: 'POST',
+        body,
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+      });
+
+    let response = await createUser();
+    if (response.status === 429) {
+      const retryAfterSeconds = Number(response.headers.get('retry-after'));
+      expect(retryAfterSeconds).toBeGreaterThan(0);
+      expect(retryAfterSeconds).toBeLessThanOrEqual(60);
+      await new Promise(resolve =>
+        setTimeout(resolve, retryAfterSeconds * 1_000 + 250)
+      );
+      response = await createUser();
+    }
     expect(response.status).toBe(201);
     const envelope = await readApiJson<{
       data: { id?: string; _id?: string; email: string; username: string };
