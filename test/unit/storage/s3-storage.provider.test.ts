@@ -87,8 +87,6 @@ function createProvider(
     }),
     load: vi.fn(),
     getPlatformConfig: vi.fn(),
-    getConfigSection: vi.fn(),
-    getSectionCacheMetrics: vi.fn(),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
     getSubscribers: vi.fn(),

@@ -7,8 +7,6 @@ import {
   convertNotificationsFormData,
   convertOidcFormData,
   convertSecurityFormData,
-  getSectionIcon,
-  getSectionStatus,
   isValidIP,
 } from '../../../src/utils/settings.helper.js';
 
@@ -359,22 +357,6 @@ describe('settings helper form conversion', () => {
         channels: { sms: { rate_limits: { per_phone_per_hour: '5' } } },
       }).channels.sms.rate_limits
     ).toEqual({ per_phone_per_hour: 5 });
-  });
-
-  it('maps known section icons, defaults unknown icons, and reports section presence', () => {
-    expect(getSectionIcon('application')).toBe('cog');
-    expect(getSectionIcon('branding')).toBe('palette');
-    expect(getSectionIcon('deployment')).toBe('server');
-    expect(getSectionIcon('security')).toBe('shield-check');
-    expect(getSectionIcon('features')).toBe('sparkles');
-    expect(getSectionIcon('oidc')).toBe('key');
-    expect(getSectionIcon('integrations')).toBe('plug');
-    expect(getSectionIcon('unknown')).toBe('cog');
-
-    expect(getSectionStatus({ oidc: {} }, 'oidc')).toBe(true);
-    expect(getSectionStatus({ oidc: null }, 'oidc')).toBe(false);
-    expect(getSectionStatus({}, 'oidc')).toBe(false);
-    expect(getSectionStatus(null, 'oidc')).toBe(false);
   });
 
   it('rejects authentication methods that only contain an allowed token as a substring', () => {

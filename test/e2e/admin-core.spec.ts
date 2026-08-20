@@ -309,20 +309,22 @@ const ADMIN_READ_PAGES: ReadonlyArray<{
 
 const MULTI_TENANT = process.env.PARAKO_E2E_MULTI_TENANCY === 'true';
 
-test('an administrator can navigate every core read-only admin page', async ({
-  page,
-}) => {
-  const failures = observeBrowserFailures(page);
-  const admin = await createManagedUser('admin-navigation', { role: 'admin' });
+for (const viewport of [
+  { name: 'desktop', width: 1280, height: 800 },
+  { name: 'narrow', width: 390, height: 844 },
+] as const) {
+  test(`an administrator can navigate every core read-only admin page at ${viewport.name} width`, async ({
+    page,
+  }) => {
+    const failures = observeBrowserFailures(page);
+    const admin = await createManagedUser(`admin-navigation-${viewport.name}`, {
+      role: 'admin',
+    });
 
-  await page.goto(`${IDP_ORIGIN}/auth/login?continue=%2Fadmin`);
-  await loginAsAdmin(page, admin);
-
-  for (const viewport of [
-    { width: 1280, height: 800 },
-    { width: 390, height: 844 },
-  ]) {
+    await page.goto(`${IDP_ORIGIN}/auth/login?continue=%2Fadmin`);
+    await loginAsAdmin(page, admin);
     await page.setViewportSize(viewport);
+
     for (const adminPage of ADMIN_READ_PAGES.filter(
       pageContract => !MULTI_TENANT || pageContract.path !== '/admin/settings'
     )) {
@@ -350,10 +352,10 @@ test('an administrator can navigate every core read-only admin page', async ({
       );
       await page.getByRole('button', { name: 'OK' }).click();
     }
-  }
 
-  expectNoBrowserFailures(failures);
-});
+    expectNoBrowserFailures(failures);
+  });
+}
 
 test('the dashboard preserves healthy statistics when activity storage is unavailable', async ({
   page,

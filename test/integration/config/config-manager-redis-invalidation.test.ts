@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -75,6 +76,7 @@ function createManager(
         server: { port: 9007 },
         url: 'https://id.example.test',
       },
+      integrations: { file_storage: { provider: 'local' } },
       multiTenancy: {
         enabled: true,
         extraction_priority: ['header'],
@@ -84,6 +86,7 @@ function createManager(
     }),
   };
   const dbProvider = {
+    initialize: vi.fn(),
     cleanup: vi.fn(),
     clearCache: vi.fn(),
     isAvailable: vi.fn().mockResolvedValue(true),
@@ -312,11 +315,13 @@ describe('ConfigManager Redis invalidation integration', () => {
       const hasTenantCache = adapter !== 'sqlite';
       const firstSettings = new SettingsService(
         createLogger(),
-        harness.repository
+        harness.repository,
+        new BootstrapEnvironment()
       );
       const secondSettings = new SettingsService(
         createLogger(),
-        harness.repository
+        harness.repository,
+        new BootstrapEnvironment()
       );
       const firstOverrides = new TenantSettingsOverrideService(
         harness.tenantRepository,

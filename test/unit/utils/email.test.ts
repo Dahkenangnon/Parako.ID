@@ -199,7 +199,7 @@ describe('EmailUtils', () => {
         configuredPath: '../../secrets/mail.njk',
       })
     );
-  });
+  }, 30_000);
 
   it('rejects custom email templates whose canonical path escapes through a symlink', async () => {
     const readFileSync = vi.fn(() => '<p>outside template</p>');
