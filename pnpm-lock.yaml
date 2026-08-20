@@ -80,6 +80,9 @@ importers:
       '@prisma/client':
         specifier: ^7.9.1
         version: 7.9.1(prisma@7.9.1(@types/react@19.2.15)(better-sqlite3@13.0.2)(magicast@0.5.3)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+      '@prisma/client-runtime-utils':
+        specifier: ^7.9.1
+        version: 7.9.1
       '@simplewebauthn/server':
         specifier: ^13.3.2
         version: 13.3.2

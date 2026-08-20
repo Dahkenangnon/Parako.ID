@@ -124,6 +124,7 @@
     "@prisma/adapter-better-sqlite3": "^7.9.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@prisma/client-runtime-utils": "^7.9.1",
     "@simplewebauthn/server": "^13.3.2",
     "argon2": "^0.45.1",
     "better-sqlite3": "^13.0.2",
