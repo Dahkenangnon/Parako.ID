@@ -23,7 +23,6 @@ function shouldSkip(path: string): boolean {
   );
 }
 
-const QUERY_PARAMETER = /([?&])([^=&#]+)=([^&#]*)/g;
 const SENSITIVE_QUERY_PARAMETERS = new Set([
   'token',
   'code',
@@ -37,21 +36,30 @@ const SAFE_REQUEST_ID = /^[A-Za-z0-9._:@/-]{1,128}$/;
 
 /** Redact bearer credentials before request URLs are written to logs. */
 export function redactSensitiveQueryParams(originalUrl: string): string {
-  return originalUrl.replace(
-    QUERY_PARAMETER,
-    (match: string, separator: string, rawParameter: string) => {
-      let parameter: string;
-      try {
-        parameter = decodeURIComponent(rawParameter.replace(/\+/g, ' '));
-      } catch {
-        return match;
-      }
+  const queryStart = originalUrl.indexOf('?');
+  if (queryStart === -1) return originalUrl;
 
-      return SENSITIVE_QUERY_PARAMETERS.has(parameter.toLowerCase())
-        ? `${separator}${rawParameter}=[REDACTED]`
-        : match;
+  const fragmentStart = originalUrl.indexOf('#', queryStart + 1);
+  const queryEnd = fragmentStart === -1 ? originalUrl.length : fragmentStart;
+  const parameters = originalUrl.slice(queryStart + 1, queryEnd).split('&');
+  const redactedParameters = parameters.map(segment => {
+    const equals = segment.indexOf('=');
+    if (equals < 1) return segment;
+
+    const rawParameter = segment.slice(0, equals);
+    let parameter: string;
+    try {
+      parameter = decodeURIComponent(rawParameter.replaceAll('+', ' '));
+    } catch {
+      return segment;
     }
-  );
+
+    return SENSITIVE_QUERY_PARAMETERS.has(parameter.toLowerCase())
+      ? `${rawParameter}=[REDACTED]`
+      : segment;
+  });
+
+  return `${originalUrl.slice(0, queryStart + 1)}${redactedParameters.join('&')}${originalUrl.slice(queryEnd)}`;
 }
 
 /**

@@ -309,6 +309,7 @@ export class Application implements IApplication {
     this.app.set('env', this.environment);
     this.app.set('strict routing', false);
     this.app.set('etag', 'weak');
+    this.app.set('json escape', true);
     this.app.set('view engine', 'njk');
     this.app.set('view cache', this.isProduction);
   }

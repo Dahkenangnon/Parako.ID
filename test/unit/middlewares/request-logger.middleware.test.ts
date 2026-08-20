@@ -43,9 +43,13 @@ describe('request logger URL redaction', () => {
   });
 
   it('leaves URLs without sensitive query parameters unchanged', () => {
+    expect(redactSensitiveQueryParams('/auth/login')).toBe('/auth/login');
     expect(redactSensitiveQueryParams('/auth/login?locale=fr')).toBe(
       '/auth/login?locale=fr'
     );
+    expect(
+      redactSensitiveQueryParams('/callback?flag&=empty#client-fragment')
+    ).toBe('/callback?flag&=empty#client-fragment');
   });
 });
 

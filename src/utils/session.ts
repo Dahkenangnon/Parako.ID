@@ -820,11 +820,9 @@ export class SessionManager implements ISessionManager {
       ttl: options.ttl || oidcSessionTtl,
       cookie: {
         secure:
-          options.cookie?.secure ??
-          (this.configManager.getConfig().deployment.environment ===
-          'production'
-            ? true // Always secure in production
-            : sessionCookieConfig.secure),
+          this.configManager.getConfig().deployment.environment === 'production'
+            ? true
+            : (options.cookie?.secure ?? sessionCookieConfig.secure),
         httpOnly: options.cookie?.httpOnly ?? sessionCookieConfig.httpOnly,
         maxAge: options.cookie?.maxAge ?? oidcSessionTtl * 1000, // Convert seconds to ms
         domain: options.cookie?.domain,
@@ -911,7 +909,7 @@ export class SessionManager implements ISessionManager {
     this.setupStore();
     this.setupMiddleware();
 
-    if (app && this.sessionMiddleware) {
+    if (this.sessionMiddleware) {
       app.use(this.sessionMiddleware);
       app.use(this.redirectAfterSessionSaveMiddleware());
       this.logger.info(

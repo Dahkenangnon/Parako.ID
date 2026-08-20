@@ -135,7 +135,7 @@ export function createActivityEntityConfig(
 
         const activities: IActivity[] = [];
         let page = 1;
-        let totalPages = 1;
+        let totalPages: number;
         do {
           const result = await activityService.queryActivities(filter, {
             page,

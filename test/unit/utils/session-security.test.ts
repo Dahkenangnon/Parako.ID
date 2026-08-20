@@ -271,6 +271,20 @@ describe('SessionManager configuration and initialization', () => {
     });
   });
 
+  it('forces secure cookies for production constructor overrides', () => {
+    const { configManager, logger, userService } = createManager();
+    const manager = new SessionManager(
+      configManager as never,
+      { views: { errors: { forbidden: 'errors/forbidden' } } } as never,
+      logger as never,
+      userService as never,
+      null,
+      { cookie: { secure: false } }
+    );
+
+    expect((manager as any).options.cookie.secure).toBe(true);
+  });
+
   it('ignores configuration notifications after its initial snapshot is cleared', () => {
     const { config, configManager, logger, manager } = createManager();
     const subscriber = configManager.subscribe.mock.calls[0]?.[1] as (

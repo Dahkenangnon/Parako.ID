@@ -357,6 +357,7 @@ describe('Application', () => {
     expect(first.get('env')).toBe('test');
     expect(first.get('strict routing')).toBe(false);
     expect(first.get('etag')).toBe('weak');
+    expect(first.get('json escape')).toBe(true);
     expect(first.get('view engine')).toBe('njk');
     expect(first.get('view cache')).toBe(false);
     expect(viewResolver.configureExpressViews).toHaveBeenCalledOnce();
