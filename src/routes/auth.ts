@@ -34,9 +34,6 @@ import {
 } from '../validators/auth/social.js';
 import { asyncHandler } from '../middlewares/async-handler.js';
 
-/**
- * Register auth routes with the DI injectable services
- */
 export const authRoutes = (
   avatarUpload: IUploadMiddleware,
   configManager: IConfigManager,

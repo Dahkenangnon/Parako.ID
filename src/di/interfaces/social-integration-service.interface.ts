@@ -5,9 +5,6 @@ import {
   type TokenData,
 } from '../../types/social-integration.js';
 
-/**
- * Interface for SocialIntegrationService - handles social integration operations
- */
 export interface ISocialIntegrationService {
   findById(id: string): Promise<ISocialIntegration | null>;
 

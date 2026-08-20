@@ -238,9 +238,6 @@ export function getUserFriendlyError(
   return includeRetry ? `${baseMessage} Please try again.` : baseMessage;
 }
 
-/**
- * Create a social login error with both technical and user-friendly messages
- */
 export class SocialLoginError extends Error {
   public readonly provider: SocialProvider;
   public readonly technicalMessage: string;

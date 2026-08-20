@@ -1,26 +1,9 @@
-/**
- * Schemas for the social-login routes
- * (`/auth/social/:provider/complete`,
- *  `/auth/social/:provider/callback`).
- *
- * `VALID_SOCIAL_PROVIDERS` is co-located here so the provider
- * allow-list lives next to its schema rather than being redefined at
- * the route mount site.
- */
-
 import { z } from 'zod';
 
+import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../../config/social-providers.js';
 import { uuidSchema } from '../base-schemas.js';
 
-export const VALID_SOCIAL_PROVIDERS = [
-  'google',
-  'github',
-  'facebook',
-  'linkedin',
-  'microsoft',
-  'apple',
-  'twitter',
-] as const;
+export const VALID_SOCIAL_PROVIDERS = CONFIGURABLE_SOCIAL_PROVIDER_IDS;
 
 export const socialProviderParamSchema = z.object({
   provider: z.enum(VALID_SOCIAL_PROVIDERS, {

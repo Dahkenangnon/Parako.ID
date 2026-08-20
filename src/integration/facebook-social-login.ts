@@ -10,7 +10,6 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { ISocialIntegrationService } from '../di/interfaces/social-integration-service.interface.js';
-import type { IFacebookSocialLogin } from '../di/interfaces/facebook-social-login.interface.js';
 import { TYPES } from '../di/types.js';
 import {
   type ProviderUserData,
@@ -22,16 +21,9 @@ import {
   getHttpStatusErrorMessage,
 } from './social-login-errors.js';
 
-/**
- * Facebook Social Login implementation (OAuth2)
- * Follows Facebook's OAuth2 flow as documented at:
- * https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow
- */
+/** Facebook OAuth2 flow: https://developers.facebook.com/docs/facebook-login/guides/advanced/manual-flow */
 @injectable()
-export class FacebookSocialLogin
-  extends BaseOAuth2SocialLogin
-  implements IFacebookSocialLogin
-{
+export class FacebookSocialLogin extends BaseOAuth2SocialLogin {
   constructor(
     @inject(TYPES.Logger) logger: ILogger,
     @inject(TYPES.ConfigManager) configManager: IConfigManager,
@@ -50,9 +42,6 @@ export class FacebookSocialLogin
     );
   }
 
-  /**
-   * Generate Facebook OAuth2 authorization URL using PKCE
-   */
   public async getAuthorizationUrl(req: Request): Promise<string> {
     // Use openid-client's built-in PKCE and state generation
     const state = client.randomState();
@@ -92,9 +81,6 @@ export class FacebookSocialLogin
     return authorizationUrl;
   }
 
-  /**
-   * Handle Facebook OAuth2 callback
-   */
   public async handleCallback(req: Request): Promise<SocialLoginResult> {
     try {
       this.logger.info('Starting Facebook OAuth2 callback handling', {
@@ -175,9 +161,6 @@ export class FacebookSocialLogin
     }
   }
 
-  /**
-   * Exchange authorization code for access tokens
-   */
   private async exchangeCodeForTokens(
     code: string,
     codeVerifier: string
@@ -231,10 +214,6 @@ export class FacebookSocialLogin
     return tokenResponse;
   }
 
-  /**
-   * Fetch user info from Facebook Graph API
-   * Uses the fields parameter to get specific user data
-   */
   private async fetchUserInfo(accessToken: string): Promise<any> {
     const providerConfig = this.getDefaultProviderConfig<OAuth2ProviderConfig>(
       this.provider
@@ -262,9 +241,6 @@ export class FacebookSocialLogin
     return response.json();
   }
 
-  /**
-   * Map Facebook user info to our standard format
-   */
   mapProviderUserData(userInfo: any): ProviderUserData {
     const providerId = userInfo?.id;
     if (
@@ -300,11 +276,7 @@ export class FacebookSocialLogin
     };
   }
 
-  /**
-   * Map Facebook token response to our standard format
-   * Note: Facebook doesn't provide refresh tokens through OAuth2
-   * For long-lived tokens, use the token exchange endpoint
-   */
+  /** Facebook OAuth2 does not issue refresh tokens; long-lived tokens require its token exchange. */
   mapTokenData(tokenResponse: any): TokenData {
     return {
       access_token: tokenResponse.access_token,
@@ -318,10 +290,7 @@ export class FacebookSocialLogin
     };
   }
 
-  /**
-   * Revoke Facebook OAuth token
-   * https://developers.facebook.com/docs/facebook-login/permissions/requesting-and-revoking
-   */
+  /** https://developers.facebook.com/docs/facebook-login/permissions/requesting-and-revoking */
   protected async revokeToken(accessToken: string): Promise<void> {
     const revokeUrl = 'https://graph.facebook.com/me/permissions';
 

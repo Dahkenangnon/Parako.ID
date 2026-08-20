@@ -3,12 +3,13 @@ import * as client from 'openid-client';
 import { injectable, inject } from 'inversify';
 import {
   BaseOidcSocialLogin,
-  OidcProviderConfig,
+  mapOidcTokenData,
+  type OidcProviderConfig,
+  type OidcTokenResponse,
 } from './base-oidc-social-login.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
-import type { IGoogleSocialLogin } from '../di/interfaces/google-social-login.interface.js';
 import { TYPES } from '../di/types.js';
 import {
   type ProviderUserData,
@@ -20,10 +21,7 @@ import type { ISocialIntegrationService } from '../di/interfaces/social-integrat
 import { getUserFriendlyError } from './social-login-errors.js';
 
 @injectable()
-export class GoogleSocialLogin
-  extends BaseOidcSocialLogin
-  implements IGoogleSocialLogin
-{
+export class GoogleSocialLogin extends BaseOidcSocialLogin {
   private remoteConfig?: client.Configuration;
 
   constructor(
@@ -44,9 +42,6 @@ export class GoogleSocialLogin
     );
   }
 
-  /**
-   * Initialize Google OpenID Connect client using the new discovery API
-   */
   private async initializeGoogleClient(): Promise<void> {
     try {
       const providerConfig = this.getDefaultProviderConfig<OidcProviderConfig>(
@@ -86,9 +81,6 @@ export class GoogleSocialLogin
     }
   }
 
-  /**
-   * Handle Google OpenID Connect callback
-   */
   public async handleCallback(req: Request): Promise<SocialLoginResult> {
     try {
       this.logger.info('Starting Google OpenID Connect callback handling', {
@@ -256,9 +248,6 @@ export class GoogleSocialLogin
     }
   }
 
-  /**
-   * Generate Google OpenID Connect authorization URL
-   */
   public async getAuthorizationUrl(req: Request): Promise<string> {
     try {
       if (!this.remoteConfig) {
@@ -314,9 +303,6 @@ export class GoogleSocialLogin
     }
   }
 
-  /**
-   * Map Google OpenID Connect user info to our standard format
-   */
   mapProviderUserData(userInfo: any): ProviderUserData {
     const rawSubject = userInfo?.sub ?? userInfo?.id;
     const subject = typeof rawSubject === 'string' ? rawSubject.trim() : '';
@@ -349,34 +335,11 @@ export class GoogleSocialLogin
     };
   }
 
-  /**
-   * Map Google OpenID Connect tokens to our standard format
-   */
-  mapTokenData(tokenSet: any): TokenData {
-    const expiresAtSeconds =
-      typeof tokenSet.expires_at === 'number' &&
-      Number.isFinite(tokenSet.expires_at) &&
-      tokenSet.expires_at >= 0
-        ? tokenSet.expires_at
-        : undefined;
-
-    return {
-      access_token: tokenSet.access_token,
-      refresh_token: tokenSet.refresh_token,
-      id_token: tokenSet.id_token,
-      token_type: tokenSet.token_type || 'Bearer',
-      expires_at:
-        expiresAtSeconds === undefined
-          ? undefined
-          : new Date(expiresAtSeconds * 1000),
-      scope: tokenSet.scope,
-    };
+  mapTokenData(tokenSet: OidcTokenResponse): TokenData {
+    return mapOidcTokenData(tokenSet);
   }
 
-  /**
-   * Refresh Google OAuth token using refresh token
-   * https://developers.google.com/identity/protocols/oauth2/web-server#offline
-   */
+  /** https://developers.google.com/identity/protocols/oauth2/web-server#offline */
   public async refreshToken(integrationId: string): Promise<TokenData | null> {
     try {
       if (!this.remoteConfig) {
@@ -423,10 +386,7 @@ export class GoogleSocialLogin
     }
   }
 
-  /**
-   * Revoke Google OAuth token
-   * https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke
-   */
+  /** https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke */
   protected async revokeToken(accessToken: string): Promise<void> {
     const revokeUrl = 'https://oauth2.googleapis.com/revoke';
     const params = new URLSearchParams({ token: accessToken });

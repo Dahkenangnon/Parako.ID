@@ -2,11 +2,6 @@ import { injectable, inject } from 'inversify';
 import { Request } from 'express';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
-import type { IGitHubSocialLogin } from '../di/interfaces/github-social-login.interface.js';
-import type { IGoogleSocialLogin } from '../di/interfaces/google-social-login.interface.js';
-import type { IMicrosoftSocialLogin } from '../di/interfaces/microsoft-social-login.interface.js';
-import type { ILinkedInSocialLogin } from '../di/interfaces/linkedin-social-login.interface.js';
-import type { IFacebookSocialLogin } from '../di/interfaces/facebook-social-login.interface.js';
 import type { ISocialLoginManager } from '../di/interfaces/social-login-manager.interface.js';
 import {
   type IBaseSocialLogin,
@@ -29,22 +24,19 @@ export class SocialLoginManager implements ISocialLoginManager {
     @inject(TYPES.Logger) private logger: ILogger,
     @inject(TYPES.ConfigManager) private configManager: IConfigManager,
     @inject(TYPES.GitHubSocialLogin)
-    private githubSocialLogin: IGitHubSocialLogin,
+    private githubSocialLogin: IBaseSocialLogin,
     @inject(TYPES.GoogleSocialLogin)
-    private googleSocialLogin: IGoogleSocialLogin,
+    private googleSocialLogin: IBaseSocialLogin,
     @inject(TYPES.MicrosoftSocialLogin)
-    private microsoftSocialLogin: IMicrosoftSocialLogin,
+    private microsoftSocialLogin: IBaseSocialLogin,
     @inject(TYPES.LinkedInSocialLogin)
-    private linkedinSocialLogin: ILinkedInSocialLogin,
+    private linkedinSocialLogin: IBaseSocialLogin,
     @inject(TYPES.FacebookSocialLogin)
-    private facebookSocialLogin: IFacebookSocialLogin
+    private facebookSocialLogin: IBaseSocialLogin
   ) {
     this.initializeProviders();
   }
 
-  /**
-   * Initialize all available social login providers based on configuration
-   */
   private initializeProviders(): void {
     try {
       const config = this.configManager.getConfig();
@@ -55,10 +47,7 @@ export class SocialLoginManager implements ISocialLoginManager {
         enabledProviders.includes('google') &&
         this.isProviderConfigured('google')
       ) {
-        this.providers.set(
-          'google',
-          this.googleSocialLogin as unknown as IBaseSocialLogin
-        );
+        this.providers.set('google', this.googleSocialLogin);
         this.logger.info(
           'Google social login provider initialized (OpenID Connect)'
         );
@@ -68,10 +57,7 @@ export class SocialLoginManager implements ISocialLoginManager {
         enabledProviders.includes('github') &&
         this.isProviderConfigured('github')
       ) {
-        this.providers.set(
-          'github',
-          this.githubSocialLogin as unknown as IBaseSocialLogin
-        );
+        this.providers.set('github', this.githubSocialLogin);
         this.logger.info('GitHub social login provider initialized');
       }
 
@@ -79,10 +65,7 @@ export class SocialLoginManager implements ISocialLoginManager {
         enabledProviders.includes('microsoft') &&
         this.isProviderConfigured('microsoft')
       ) {
-        this.providers.set(
-          'microsoft',
-          this.microsoftSocialLogin as IBaseSocialLogin
-        );
+        this.providers.set('microsoft', this.microsoftSocialLogin);
         this.logger.info(
           'Microsoft social login provider initialized (OpenID Connect)'
         );
@@ -92,10 +75,7 @@ export class SocialLoginManager implements ISocialLoginManager {
         enabledProviders.includes('linkedin') &&
         this.isProviderConfigured('linkedin')
       ) {
-        this.providers.set(
-          'linkedin',
-          this.linkedinSocialLogin as IBaseSocialLogin
-        );
+        this.providers.set('linkedin', this.linkedinSocialLogin);
         this.logger.info('LinkedIn social login provider initialized (OAuth2)');
       }
 
@@ -103,10 +83,7 @@ export class SocialLoginManager implements ISocialLoginManager {
         enabledProviders.includes('facebook') &&
         this.isProviderConfigured('facebook')
       ) {
-        this.providers.set(
-          'facebook',
-          this.facebookSocialLogin as IBaseSocialLogin
-        );
+        this.providers.set('facebook', this.facebookSocialLogin);
         this.logger.info('Facebook social login provider initialized (OAuth2)');
       }
 
@@ -124,9 +101,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     }
   }
 
-  /**
-   * Check if a provider is properly configured with required credentials
-   */
   private isProviderConfigured(provider: SocialProvider): boolean {
     try {
       const config = this.configManager.getConfig();
@@ -152,9 +126,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     }
   }
 
-  /**
-   * Get a specific social login provider
-   */
   public getProvider(provider: SocialProvider): IBaseSocialLogin | undefined {
     return this.providers.get(provider);
   }
@@ -163,16 +134,10 @@ export class SocialLoginManager implements ISocialLoginManager {
     return Array.from(this.providers.keys());
   }
 
-  /**
-   * Check if a provider is available
-   */
   public isProviderAvailable(provider: SocialProvider): boolean {
     return this.providers.has(provider);
   }
 
-  /**
-   * Get authorization URL for a provider
-   */
   public async getAuthorizationUrl(
     provider: SocialProvider,
     req: Request
@@ -185,9 +150,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     return providerInstance.getAuthorizationUrl(req);
   }
 
-  /**
-   * Handle callback for a provider
-   */
   public async handleCallback(
     provider: SocialProvider,
     req: Request
@@ -203,9 +165,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     return providerInstance.handleCallback(req);
   }
 
-  /**
-   * Link a social integration to a user
-   */
   public async linkToUser(
     provider: SocialProvider,
     userId: string,
@@ -220,9 +179,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     return providerInstance.linkToUser(userId, providerData, tokens);
   }
 
-  /**
-   * Unlink a social integration from a user
-   */
   public async unlinkFromUser(
     provider: SocialProvider,
     userId: string
@@ -235,9 +191,6 @@ export class SocialLoginManager implements ISocialLoginManager {
     return providerInstance.unlinkFromUser(userId);
   }
 
-  /**
-   * Get user's social integrations
-   */
   public async getUserIntegrations(
     provider: SocialProvider,
     userId: string

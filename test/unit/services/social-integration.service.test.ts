@@ -1,9 +1,3 @@
-/**
- * TDD — SocialIntegrationService uses ISocialIntegrationRepository for data access
- *
- * RED: SocialIntegrationService extends BaseService (Mongoose), uses socialIntegrationModel directly.
- * GREEN: After migrating to ISocialIntegrationRepository.
- */
 import 'reflect-metadata';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SocialIntegrationService } from '../../../src/services/social-integration.service.js';

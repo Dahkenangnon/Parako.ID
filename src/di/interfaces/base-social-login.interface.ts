@@ -51,9 +51,6 @@ export interface IBaseSocialLogin {
    */
   unlinkFromUser(userId: string): Promise<void>;
 
-  /**
-   * Get user's social integrations
-   */
   getSocialIntegrations(userId: string): Promise<ISocialIntegration[]>;
 
   /**

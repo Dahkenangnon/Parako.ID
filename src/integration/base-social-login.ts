@@ -21,10 +21,6 @@ import { ensureDecrypted } from '../utils/encryption.js';
 import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
 import { getUserFriendlyError } from './social-login-errors.js';
 
-/**
- * Abstract base class for all social login providers
- * Defines the common interface and shared functionality
- */
 @injectable()
 export abstract class BaseSocialLogin implements IBaseSocialLogin {
   protected readonly provider: SocialProvider;
@@ -42,9 +38,6 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     this.provider = provider;
   }
 
-  /**
-   * Get social login behavior configuration
-   */
   protected getSocialBehaviorConfig() {
     const config = this.configManager.getConfig();
     return {
@@ -69,21 +62,10 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     };
   }
 
-  /**
-   * Generate the OAuth authorization URL for the social login flow
-   * Must be implemented by subclasses
-   */
   public abstract getAuthorizationUrl(req: Request): Promise<string>;
 
-  /**
-   * Handle the OAuth callback from the social provider
-   * Must be implemented by subclasses
-   */
   public abstract handleCallback(req: Request): Promise<SocialLoginResult>;
 
-  /**
-   * Link a social integration to an existing user account
-   */
   public async linkToUser(
     userId: string,
     providerData: ProviderUserData,
@@ -151,10 +133,7 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     );
   }
 
-  /**
-   * Unlink a social integration from a user account
-   * Also attempts to revoke tokens at the provider for security
-   */
+  /** Attempts provider-side token revocation before unlinking locally. */
   public async unlinkFromUser(userId: string): Promise<void> {
     const userIntegration =
       await this.socialIntegrationService.findByUserAndMethod(
@@ -194,11 +173,7 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     });
   }
 
-  /**
-   * Revoke token at the provider
-   * Override in subclasses to implement provider-specific revocation
-   * Default implementation does nothing (provider doesn't support revocation)
-   */
+  /** Providers without a revocation endpoint intentionally inherit this no-op. */
   protected async revokeToken(_accessToken: string): Promise<void> {
     // Default: no-op, providers that support revocation should override
     this.logger.debug(`Token revocation not implemented for ${this.provider}`, {
@@ -206,9 +181,6 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     });
   }
 
-  /**
-   * Get user's social integrations
-   */
   public async getSocialIntegrations(
     userId: string
   ): Promise<ISocialIntegration[]> {
@@ -230,21 +202,10 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     return this.handleUserIntegration(providerData, tokens, req);
   }
 
-  /**
-   * Map provider user data to our standard format
-   * Must be implemented by each provider
-   */
   protected abstract mapProviderUserData(userInfo: any): ProviderUserData;
 
-  /**
-   * Map token set to our standard format
-   * Must be implemented by each provider
-   */
   protected abstract mapTokenData(tokenSet: any): TokenData;
 
-  /**
-   * Common method to handle user integration logic after successful authentication
-   */
   protected async handleUserIntegration(
     mappedProviderData: ProviderUserData,
     tokens: TokenData,
@@ -562,9 +523,6 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     };
   }
 
-  /**
-   * Common method to verify OAuth state parameter
-   */
   protected verifyOAuthState(req: Request): {
     isValid: boolean;
     error?: string;
@@ -652,10 +610,7 @@ export abstract class BaseSocialLogin implements IBaseSocialLogin {
     return providerConfig as T;
   }
 
-  /**
-   * Clean up social login session data on error or after successful authentication
-   * Prevents stale OAuth state from persisting in the session
-   */
+  /** Removes OAuth state after both success and failure so it cannot be replayed. */
   protected cleanupSocialLoginSession(req: Request): void {
     try {
       const socialLogin = this.sessionManager.get<Record<string, any>>(

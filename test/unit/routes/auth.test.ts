@@ -659,7 +659,7 @@ describe('authRoutes', () => {
     );
 
     const response = await request(app).get(
-      '/auth/social/apple/complete?ref=00000000-0000-4000-8000-000000000000'
+      '/auth/social/google/complete?ref=00000000-0000-4000-8000-000000000000'
     );
 
     expect(response.status).toBe(500);

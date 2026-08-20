@@ -10,7 +10,6 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { ISocialIntegrationService } from '../di/interfaces/social-integration-service.interface.js';
-import type { IGitHubSocialLogin } from '../di/interfaces/github-social-login.interface.js';
 import { TYPES } from '../di/types.js';
 import {
   type ProviderUserData,
@@ -22,16 +21,9 @@ import {
   getHttpStatusErrorMessage,
 } from './social-login-errors.js';
 
-/**
- * GitHub Social Login implementation (OAuth2-only)
- * Follows GitHub's OAuth2 flow as documented at:
- * https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps
- */
+/** GitHub OAuth2 flow: https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps */
 @injectable()
-export class GitHubSocialLogin
-  extends BaseOAuth2SocialLogin
-  implements IGitHubSocialLogin
-{
+export class GitHubSocialLogin extends BaseOAuth2SocialLogin {
   constructor(
     @inject(TYPES.Logger) logger: ILogger,
     @inject(TYPES.ConfigManager) configManager: IConfigManager,
@@ -50,9 +42,6 @@ export class GitHubSocialLogin
     );
   }
 
-  /**
-   * Generate GitHub OAuth2 authorization URL using openid-client utilities
-   */
   public async getAuthorizationUrl(req: Request): Promise<string> {
     // Use openid-client's built-in PKCE and state generation
     const state = client.randomState();
@@ -89,9 +78,6 @@ export class GitHubSocialLogin
     return authorizationUrl;
   }
 
-  /**
-   * Handle GitHub OAuth2 callback
-   */
   public async handleCallback(req: Request): Promise<SocialLoginResult> {
     try {
       const stateVerification = this.verifyOAuthState(req);
@@ -151,9 +137,6 @@ export class GitHubSocialLogin
     }
   }
 
-  /**
-   * Exchange authorization code for access tokens
-   */
   private async exchangeCodeForTokens(
     code: string,
     codeVerifier: string
@@ -206,9 +189,6 @@ export class GitHubSocialLogin
     return tokenResponse;
   }
 
-  /**
-   * Fetch user info from GitHub API
-   */
   private async fetchUserInfo(accessToken: string): Promise<any> {
     const providerConfig = this.getDefaultProviderConfig<OAuth2ProviderConfig>(
       this.provider
@@ -280,9 +260,6 @@ export class GitHubSocialLogin
     return userInfo;
   }
 
-  /**
-   * Map GitHub user info to our standard format
-   */
   mapProviderUserData(userInfo: any): ProviderUserData {
     const providerId = userInfo?.id;
     if (
@@ -306,9 +283,6 @@ export class GitHubSocialLogin
     };
   }
 
-  /**
-   * Map GitHub token response to our standard format
-   */
   mapTokenData(tokenResponse: any): TokenData {
     return {
       access_token: tokenResponse.access_token,
@@ -322,10 +296,7 @@ export class GitHubSocialLogin
     };
   }
 
-  /**
-   * Revoke GitHub OAuth token
-   * https://docs.github.com/en/rest/apps/oauth-applications#delete-an-app-token
-   */
+  /** https://docs.github.com/en/rest/apps/oauth-applications#delete-an-app-token */
   protected async revokeToken(accessToken: string): Promise<void> {
     const providerConfig = this.getDefaultProviderConfig<OAuth2ProviderConfig>(
       this.provider

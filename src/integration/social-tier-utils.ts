@@ -279,9 +279,6 @@ export async function exchangeTier1Code(
   return data as { access_token: string; [key: string]: unknown };
 }
 
-/**
- * Fetch a user profile from a provider's userinfo endpoint.
- */
 export async function fetchTier1UserProfile(
   accessToken: string,
   userinfoEndpoint: string,

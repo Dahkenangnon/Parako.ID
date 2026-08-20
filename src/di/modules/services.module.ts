@@ -85,11 +85,7 @@ import { ICookieManager } from '../interfaces/cookie-manager.interface.js';
 import { IClientDeviceInfoManager } from '../interfaces/client-device-info-manager.interface.js';
 import { IClientRegistryManager } from '../interfaces/client-registry-manager.interface.js';
 import { ILogger } from '../interfaces/logger.interface.js';
-import { IGitHubSocialLogin } from '../interfaces/github-social-login.interface.js';
-import { IGoogleSocialLogin } from '../interfaces/google-social-login.interface.js';
-import { IMicrosoftSocialLogin } from '../interfaces/microsoft-social-login.interface.js';
-import { ILinkedInSocialLogin } from '../interfaces/linkedin-social-login.interface.js';
-import { IFacebookSocialLogin } from '../interfaces/facebook-social-login.interface.js';
+import type { IBaseSocialLogin } from '../interfaces/base-social-login.interface.js';
 import { ISocialLoginManager } from '../interfaces/social-login-manager.interface.js';
 
 export const servicesModule: ContainerModule = new ContainerModule(
@@ -252,27 +248,27 @@ export const servicesModule: ContainerModule = new ContainerModule(
 
     // Social login services - Transient (per-request)
     options
-      .bind<IGitHubSocialLogin>(TYPES.GitHubSocialLogin)
+      .bind<IBaseSocialLogin>(TYPES.GitHubSocialLogin)
       .to(GitHubSocialLogin)
       .inTransientScope();
 
     options
-      .bind<IGoogleSocialLogin>(TYPES.GoogleSocialLogin)
+      .bind<IBaseSocialLogin>(TYPES.GoogleSocialLogin)
       .to(GoogleSocialLogin)
       .inTransientScope();
 
     options
-      .bind<IMicrosoftSocialLogin>(TYPES.MicrosoftSocialLogin)
+      .bind<IBaseSocialLogin>(TYPES.MicrosoftSocialLogin)
       .to(MicrosoftSocialLogin)
       .inTransientScope();
 
     options
-      .bind<ILinkedInSocialLogin>(TYPES.LinkedInSocialLogin)
+      .bind<IBaseSocialLogin>(TYPES.LinkedInSocialLogin)
       .to(LinkedInSocialLogin)
       .inTransientScope();
 
     options
-      .bind<IFacebookSocialLogin>(TYPES.FacebookSocialLogin)
+      .bind<IBaseSocialLogin>(TYPES.FacebookSocialLogin)
       .to(FacebookSocialLogin)
       .inTransientScope();
 

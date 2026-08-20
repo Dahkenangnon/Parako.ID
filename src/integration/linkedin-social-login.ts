@@ -10,7 +10,6 @@ import type { IConfigManager } from '../di/interfaces/config-manager.interface.j
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { ISocialIntegrationService } from '../di/interfaces/social-integration-service.interface.js';
-import type { ILinkedInSocialLogin } from '../di/interfaces/linkedin-social-login.interface.js';
 import { TYPES } from '../di/types.js';
 import {
   type ProviderUserData,
@@ -22,16 +21,9 @@ import {
   getHttpStatusErrorMessage,
 } from './social-login-errors.js';
 
-/**
- * LinkedIn Social Login implementation (OAuth2 with OIDC profile)
- * Follows LinkedIn's OAuth2 flow as documented at:
- * https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2
- */
+/** LinkedIn OAuth2/OIDC flow: https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin-v2 */
 @injectable()
-export class LinkedInSocialLogin
-  extends BaseOAuth2SocialLogin
-  implements ILinkedInSocialLogin
-{
+export class LinkedInSocialLogin extends BaseOAuth2SocialLogin {
   constructor(
     @inject(TYPES.Logger) logger: ILogger,
     @inject(TYPES.ConfigManager) configManager: IConfigManager,
@@ -50,9 +42,6 @@ export class LinkedInSocialLogin
     );
   }
 
-  /**
-   * Generate LinkedIn OAuth2 authorization URL using PKCE
-   */
   public async getAuthorizationUrl(req: Request): Promise<string> {
     // Use openid-client's built-in PKCE and state generation
     const state = client.randomState();
@@ -92,9 +81,6 @@ export class LinkedInSocialLogin
     return authorizationUrl;
   }
 
-  /**
-   * Handle LinkedIn OAuth2 callback
-   */
   public async handleCallback(req: Request): Promise<SocialLoginResult> {
     try {
       this.logger.info('Starting LinkedIn OAuth2 callback handling', {
@@ -175,9 +161,6 @@ export class LinkedInSocialLogin
     }
   }
 
-  /**
-   * Exchange authorization code for access tokens
-   */
   private async exchangeCodeForTokens(
     code: string,
     codeVerifier: string
@@ -231,9 +214,6 @@ export class LinkedInSocialLogin
     return tokenResponse;
   }
 
-  /**
-   * Fetch user info from LinkedIn userinfo endpoint
-   */
   private async fetchUserInfo(accessToken: string): Promise<any> {
     const providerConfig = this.getDefaultProviderConfig<OAuth2ProviderConfig>(
       this.provider
@@ -258,10 +238,6 @@ export class LinkedInSocialLogin
     return response.json();
   }
 
-  /**
-   * Map LinkedIn user info to our standard format
-   * LinkedIn userinfo follows OIDC standard with some LinkedIn-specific fields
-   */
   mapProviderUserData(userInfo: any): ProviderUserData {
     const subject =
       typeof userInfo?.sub === 'string' ? userInfo.sub.trim() : '';
@@ -289,9 +265,6 @@ export class LinkedInSocialLogin
     };
   }
 
-  /**
-   * Map LinkedIn token response to our standard format
-   */
   mapTokenData(tokenResponse: any): TokenData {
     const expiresIn =
       typeof tokenResponse.expires_in === 'number' &&
@@ -313,10 +286,7 @@ export class LinkedInSocialLogin
     };
   }
 
-  /**
-   * LinkedIn doesn't have a standard token revocation endpoint
-   * Users must revoke access via LinkedIn settings
-   */
+  /** LinkedIn has no revocation endpoint; users revoke access in LinkedIn settings. */
   protected async revokeToken(_accessToken: string): Promise<void> {
     this.logger.warn(
       'LinkedIn does not support programmatic token revocation. ' +

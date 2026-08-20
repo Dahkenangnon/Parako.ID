@@ -71,9 +71,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     return this.socialIntegrationRepo.findById(id);
   }
 
-  /**
-   * Find integration by user ID and method
-   */
   public async findByUserAndMethod(
     userId: string,
     method: IntegrationMethod
@@ -98,9 +95,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Find integration by provider sub and method
-   */
   public async findByProviderSub(
     providerSub: string,
     method: IntegrationMethod
@@ -125,9 +119,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Find all integrations for a user
-   */
   public async findByUser(userId: string): Promise<ISocialIntegration[]> {
     try {
       const integrations = await this.socialIntegrationRepo.findMany(
@@ -147,9 +138,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Find integrations by method
-   */
   public async findByMethod(
     method: IntegrationMethod
   ): Promise<ISocialIntegration[]> {
@@ -171,9 +159,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Create a new integration for a user
-   */
   public async createIntegration(
     userId: string,
     method: IntegrationMethod,
@@ -280,9 +265,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     return this.activate(integrationId);
   }
 
-  /**
-   * Find integration by user ID and method including inactive ones
-   */
   public async findByUserAndMethodIncludingInactive(
     userId: string,
     method: IntegrationMethod
@@ -416,9 +398,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Check if user has integration for specific method
-   */
   public async hasIntegration(
     userId: string,
     method: IntegrationMethod
@@ -438,9 +417,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get integration count for a user
-   */
   public async getSocialIntegrationCount(userId: string): Promise<number> {
     try {
       return await this.socialIntegrationRepo.count({
@@ -458,9 +434,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get all active integrations (for admin purposes)
-   */
   public async getAllActiveIntegrations(
     options: {
       sort?: Record<string, 1 | -1>;
@@ -489,9 +462,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Find integrations by provider username
-   */
   public async findByProviderUsername(
     providerUsername: string,
     method: IntegrationMethod
@@ -516,9 +486,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get integrations created within a date range
-   */
   public async getIntegrationsByDateRange(
     startDate: Date,
     endDate: Date,
@@ -832,9 +799,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Check if an integration needs token refresh
-   */
   public async checkNeedsTokenRefresh(
     integrationId: string
   ): Promise<ISocialIntegration | null> {
@@ -874,9 +838,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Refresh tokens if needed using a provided refresh function
-   */
   public async refreshTokenIfNeeded(
     integrationId: string,
     refreshFn: (integration: ISocialIntegration) => Promise<TokenData | null>
@@ -922,9 +883,6 @@ export class SocialIntegrationService implements ISocialIntegrationService {
     }
   }
 
-  /**
-   * Get integrations count by method (using individual counts)
-   */
   private async getIntegrationsByMethod(): Promise<Record<string, number>> {
     try {
       const counts = await Promise.all(
