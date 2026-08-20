@@ -133,6 +133,7 @@ async function submitBackupCode(page: Page, code: string) {
 
 async function submitRecoveryCode(page: Page, code: string) {
   expect(code).toMatch(/^\d{6}$/);
+  await page.waitForLoadState('domcontentloaded');
   const inputs = page.locator('.otp-input');
   await expect(inputs).toHaveCount(6);
   for (const [index, digit] of [...code].entries()) {

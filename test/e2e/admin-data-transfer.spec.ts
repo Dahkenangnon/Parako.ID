@@ -37,6 +37,7 @@ async function loginAsAdmin(
   await page.locator('#password').fill(admin.password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page).toHaveURL(`${IDP_ORIGIN}${continuePath}`);
+  await page.waitForLoadState('domcontentloaded');
 }
 
 async function readDownload(download: Download): Promise<string> {

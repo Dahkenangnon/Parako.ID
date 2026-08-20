@@ -40,6 +40,7 @@ function observeBrowserFailures(page: Page) {
 }
 
 async function expectStyledPage(page: Page) {
+  await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('main').first()).toBeVisible();
   await expect
     .poll(async () =>
