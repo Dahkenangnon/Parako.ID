@@ -16,7 +16,10 @@ async function loginAsAdmin(page: Page, admin: ManagedUserFixture) {
   await page.goto(`${IDP_ORIGIN}/auth/login?continue=%2Fadmin%2Fusers`);
   await page.locator('#login').fill(admin.email);
   await page.locator('#password').fill(admin.password);
-  await page.locator('#login-form button[type="submit"]').click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.locator('#login-form button[type="submit"]').click(),
+  ]);
   await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/users`);
 }
 
@@ -60,7 +63,10 @@ test('an administrator can manage a user through the HTML control panel', async 
   const password = 'Phase2-Strong!7';
 
   await loginAsAdmin(page, admin);
-  await page.locator('a[href="/admin/users/new"]').click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.locator('a[href="/admin/users/new"]').click(),
+  ]);
   await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/users/new`);
 
   const passwordToggle = page.locator('[data-password-toggle="password"]');

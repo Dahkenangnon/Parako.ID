@@ -547,12 +547,15 @@ async function runPublicAccountJourney(
     await page.goto(`${origin}/accounts/settings/profile`);
     await page.locator('#firstname').fill('Adapter');
     await page.locator('#lastname').fill('Matrix');
-    await page.locator('#profile-form button[type="submit"]').click();
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+      page.locator('#profile-form button[type="submit"]').click(),
+    ]);
     await expect(page.locator('#firstname')).toHaveValue('Adapter');
     await expect(page.locator('#lastname')).toHaveValue('Matrix');
 
     await Promise.all([
-      page.waitForNavigation(),
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
       page.locator('#avatar-upload').setInputFiles('public/favicon.png'),
     ]);
     const avatar = page.locator('#preview-avatar');

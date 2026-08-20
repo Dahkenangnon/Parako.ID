@@ -85,7 +85,10 @@ async function login(
   await page.goto(`${origin}/auth/login`);
   await page.locator('#login').fill(credentials.email);
   await page.locator('#password').fill(credentials.password);
-  await page.locator('#login-form button[type="submit"]').click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.locator('#login-form button[type="submit"]').click(),
+  ]);
 }
 
 async function logout(page: Page, origin: string): Promise<void> {

@@ -21,7 +21,10 @@ import { currentSessionId } from './support/browser-session.js';
 async function loginAsAdmin(page: Page, admin: ManagedUserFixture) {
   await page.locator('#login').fill(admin.email);
   await page.locator('#password').fill(admin.password);
-  await page.locator('#login-form button[type="submit"]').click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.locator('#login-form button[type="submit"]').click(),
+  ]);
   await expect(page).toHaveURL(`${IDP_ORIGIN}/admin`);
 }
 
@@ -195,6 +198,9 @@ test('an administrator receives a styled recoverable page for an HTML CSRF denia
       request.method() === 'POST'
     );
   });
+  const navigationPromise = page.waitForNavigation({
+    waitUntil: 'domcontentloaded',
+  });
   await page.evaluate(() => {
     const form = document.createElement('form');
     form.method = 'POST';
@@ -203,7 +209,10 @@ test('an administrator receives a styled recoverable page for an HTML CSRF denia
     form.submit();
   });
 
-  const forbiddenResponse = await forbiddenResponsePromise;
+  const [forbiddenResponse] = await Promise.all([
+    forbiddenResponsePromise,
+    navigationPromise,
+  ]);
   expect(forbiddenResponse.status()).toBe(403);
   await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/update-theme`);
   await expect(
