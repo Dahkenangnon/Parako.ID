@@ -15,11 +15,7 @@ import { encryptValue } from '../utils/encryption.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { isRoleAvailableForTenant } from '../multi-tenancy/platform-roles.js';
 import type {
-  BulkWriteResult,
-  BulkDeleteResult,
-} from '../di/interfaces/base-service.interface.js';
-import type {
-  IUserRepository,
+  IUserPersistenceRepository,
   CreateUserDto,
   UpdateUserDto,
   UserFilter,
@@ -29,7 +25,7 @@ import type {
 /**
  * Service for user-related business operations.
  *
- * All persistence is delegated to IUserRepository — no Mongoose model
+ * All persistence is delegated to IUserPersistenceRepository — no Mongoose model
  * access occurs directly in this class. This makes the service compatible
  * with MongoDB (Mongoose), SQLite, and PostgreSQL (Prisma) backends.
  */
@@ -44,7 +40,8 @@ export class UserService implements IUserService {
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager,
     @inject(TYPES.MfaUtils) private readonly mfaUtils: IMfaUtils,
     @inject(TYPES.PasswordUtils) private readonly passwordUtils: IPasswordUtils,
-    @inject(TYPES.UserRepository) private readonly userRepo: IUserRepository
+    @inject(TYPES.UserRepository)
+    private readonly userRepo: IUserPersistenceRepository
   ) {}
 
   private validateTotpCode(code: string): string {
@@ -123,16 +120,6 @@ export class UserService implements IUserService {
     }
   }
 
-  public async updateMany(
-    _filter: Record<string, unknown>,
-    _data: Partial<IUser>,
-    _options: { upsert?: boolean; runValidators?: boolean } = {}
-  ): Promise<BulkWriteResult> {
-    throw new Error(
-      'updateMany is not supported by the repository abstraction'
-    );
-  }
-
   public async deleteOne(
     filter: Record<string, unknown> | string
   ): Promise<IUser | null> {
@@ -146,14 +133,6 @@ export class UserService implements IUserService {
     if (!user) return null;
     await this.userRepo.delete(String(user._id!));
     return user;
-  }
-
-  public async deleteMany(
-    _filter: Record<string, unknown>
-  ): Promise<BulkDeleteResult> {
-    throw new Error(
-      'deleteMany is not supported by the repository abstraction'
-    );
   }
 
   public async findWithPagination(
@@ -188,10 +167,6 @@ export class UserService implements IUserService {
     filter: Record<string, unknown> = {}
   ): Promise<number> {
     return this.userRepo.count(filter as Record<string, unknown>);
-  }
-
-  public async aggregate(_pipeline: unknown[]): Promise<unknown[]> {
-    throw new Error('aggregate is not supported by the repository abstraction');
   }
 
   public async findByEmail(email: string): Promise<IUser | undefined> {

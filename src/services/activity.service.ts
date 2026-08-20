@@ -1,4 +1,7 @@
-import { type IActivity } from '../models/activity.model.js';
+import {
+  type IActivity,
+  type IActivityActor,
+} from '../models/activity.model.js';
 import { injectable, inject } from 'inversify';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
@@ -19,7 +22,7 @@ import {
   formatDateTimeForUser,
   getShortRelativeTime,
 } from '../utils/misc.js';
-import type { ClientDetails } from '../utils/client-info.js';
+import type { ClientDetails } from '../types/client-device.js';
 import {
   encryptValue,
   decryptValue,
@@ -30,10 +33,6 @@ import type {
   ActivityFilter,
   CreateActivityDto,
 } from '../db/repositories/interfaces/activity.repository.js';
-import type {
-  BulkWriteResult,
-  BulkDeleteResult,
-} from '../di/interfaces/base-service.interface.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
@@ -107,28 +106,6 @@ export class ActivityService implements IActivityService {
     return this.activityRepo.count(filter as ActivityFilter);
   }
 
-  async updateById(
-    _id: string,
-    _data: Partial<IActivity>,
-    _options?: any
-  ): Promise<IActivity | null> {
-    throw new Error('updateById is not supported — activities are append-only');
-  }
-
-  async updateMany(
-    _filter: Record<string, unknown>,
-    _data: Partial<IActivity>,
-    _options?: { upsert?: boolean; runValidators?: boolean }
-  ): Promise<BulkWriteResult> {
-    throw new Error('updateMany is not supported — activities are append-only');
-  }
-
-  async deleteMany(
-    _filter: Record<string, unknown>
-  ): Promise<BulkDeleteResult> {
-    throw new Error('Use deleteOldActivities() instead');
-  }
-
   async findMany(
     filter: Record<string, unknown> = {},
     _options: {
@@ -170,10 +147,6 @@ export class ActivityService implements IActivityService {
     return this.activityRepo.create(data as CreateActivityDto);
   }
 
-  async aggregate(_pipeline: unknown[]): Promise<unknown[]> {
-    throw new Error('aggregate is not supported by the repository abstraction');
-  }
-
   async createMany(
     data: Partial<IActivity>[],
     _options?: { ordered?: boolean }
@@ -183,19 +156,9 @@ export class ActivityService implements IActivityService {
     );
   }
 
-  async deleteOne(
-    _filter: Record<string, unknown> | string
-  ): Promise<IActivity | null> {
-    throw new Error('deleteOne is not supported — activities are append-only');
-  }
-
   private isDeviceEncryptionEnabled(): boolean {
-    try {
-      const config = this.configManager.getConfig();
-      return config.security?.protection?.encrypt_device_data ?? false;
-    } catch {
-      return false;
-    }
+    const config = this.configManager.getConfig();
+    return config.security?.protection?.encrypt_device_data ?? false;
   }
 
   private encryptSensitiveDeviceFields(
@@ -462,7 +425,10 @@ export class ActivityService implements IActivityService {
     } as any);
   }
 
-  private extractUserData(user: any): {
+  private extractUserData(
+    user: any,
+    includeUserId = true
+  ): {
     user_id?: string;
     username?: string;
     email?: string;
@@ -474,9 +440,9 @@ export class ActivityService implements IActivityService {
 
     const userData: any = {};
 
-    if (user._id) {
+    if (includeUserId && user._id) {
       userData.user_id = String(user._id);
-    } else if (user.id) {
+    } else if (includeUserId && user.id) {
       userData.user_id = String(user.id);
     }
 
@@ -569,10 +535,13 @@ export class ActivityService implements IActivityService {
       }
 
       if (actor) {
+        const actorType = (actor.actor_type ||
+          'user') as IActivityActor['actor_type'];
+        const referencesUser = actorType === 'user' || actorType === 'admin';
         dto.actor = {
-          ...this.extractUserData(actor),
-          actor_type: actor.actor_type || 'user',
-        } as IActivity['actor'];
+          ...this.extractUserData(actor, referencesUser),
+          actor_type: actorType,
+        };
       } else if (user) {
         dto.actor = {
           ...this.extractUserData(user),

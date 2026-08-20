@@ -15,7 +15,7 @@ import {
  *
  * Every job in the background-tasks queue MUST include `name` (used to
  * dispatch to the correct handler) and `type` (metadata for logging).
- * `tenantId` enables multi-tenant isolation in the future.
+ * `tenantId` scopes execution and persistence to the originating tenant.
  */
 export interface BackgroundJobData {
   type: string;
@@ -81,7 +81,7 @@ export function createBackgroundTaskWorker(
         );
       }
 
-      // (DB queries, Redis keys, etc.) execute within the correct tenant.
+      // Run the handler inside the originating tenant's async context.
       const tenantId = job.data.tenantId || DEFAULT_TENANT_ID;
       return tenantContext.run(tenantId, () =>
         handler(job.data, (progress: number) => job.updateProgress(progress))

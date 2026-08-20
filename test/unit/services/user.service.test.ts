@@ -1,19 +1,10 @@
-/**
- * TDD — UserService uses IUserRepository for data access
- *
- * These tests verify that UserService delegates data operations
- * to IUserRepository instead of using Mongoose models directly.
- *
- * RED: UserService extends BaseService (Mongoose), no repo injection.
- * GREEN: After migrating to IUserRepository.
- */
 import 'reflect-metadata';
 import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UserService } from '../../../src/services/user.service.js';
 import { encryptValue } from '../../../src/utils/encryption.js';
 import type { IUser } from '../../../src/types/user.js';
-import type { IUserRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
+import type { IUserPersistenceRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
 import type { CustomIdentifierFieldConfig } from '../../../src/di/interfaces/user/user-custom-identifier-service.interface.js';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
 
@@ -85,7 +76,7 @@ const mockPasswordUtils = {
   minKeylen: 32,
 } as any;
 
-function makeMockRepo(): IUserRepository {
+function makeMockRepo(): IUserPersistenceRepository {
   return {
     findById: vi.fn(),
     findOne: vi.fn(),
@@ -128,7 +119,7 @@ function makeUser(overrides: Partial<IUser> = {}): IUser {
   } as unknown as IUser;
 }
 
-function makeService(userRepo: IUserRepository): UserService {
+function makeService(userRepo: IUserPersistenceRepository): UserService {
   return new UserService(
     mockLogger,
     mockConfigManager,
@@ -168,7 +159,7 @@ function makeCustomIdentifierConfigManager(
 }
 
 function makeServiceWithCI(
-  userRepo: IUserRepository,
+  userRepo: IUserPersistenceRepository,
   fields: CustomIdentifierFieldConfig[],
   enabled = true
 ): UserService {
@@ -198,8 +189,8 @@ function makeFieldConfig(
   };
 }
 
-describe('UserService — IUserRepository delegation', () => {
-  let repo: IUserRepository;
+describe('UserService — IUserPersistenceRepository delegation', () => {
+  let repo: IUserPersistenceRepository;
   let service: UserService;
 
   beforeEach(() => {
@@ -351,7 +342,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('findOne (IBaseService contract)', () => {
+  describe('findOne (collection contract)', () => {
     it('delegates to repo.findById when filter is a string', async () => {
       const user = makeUser();
       vi.mocked(repo.findById).mockResolvedValue(user);
@@ -375,7 +366,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('countDocuments (IBaseService contract)', () => {
+  describe('countDocuments (collection contract)', () => {
     it('delegates to repo.count', async () => {
       vi.mocked(repo.count).mockResolvedValue(42);
 
@@ -395,7 +386,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('updateById (IBaseService contract)', () => {
+  describe('updateById (collection contract)', () => {
     it('delegates to repo.update', async () => {
       const updated = makeUser({ account_enabled: false });
       vi.mocked(repo.update).mockResolvedValue(updated);
@@ -450,7 +441,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('findWithPagination (IBaseService contract)', () => {
+  describe('findWithPagination (collection contract)', () => {
     it('delegates to repo.findMany and reshapes result', async () => {
       const users = [makeUser()];
       vi.mocked(repo.findMany).mockResolvedValue({
@@ -477,7 +468,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('createOne (IBaseService contract)', () => {
+  describe('createOne (collection contract)', () => {
     it('delegates to repo.create', async () => {
       const newUser = makeUser();
       vi.mocked(repo.create).mockResolvedValue(newUser);
@@ -510,7 +501,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('findMany (IBaseService contract)', () => {
+  describe('findMany (collection contract)', () => {
     it('delegates raw query options including an arbitrary skip', async () => {
       const users = [makeUser()];
       const findManyRaw = vi.fn().mockResolvedValue(users);
@@ -538,21 +529,7 @@ describe('UserService — IUserRepository delegation', () => {
     });
   });
 
-  describe('unsupported bulk and aggregation operations', () => {
-    it('rejects updateMany, deleteMany, and aggregate explicitly', async () => {
-      await expect(service.updateMany({}, {})).rejects.toThrow(
-        'updateMany is not supported by the repository abstraction'
-      );
-      await expect(service.deleteMany({})).rejects.toThrow(
-        'deleteMany is not supported by the repository abstraction'
-      );
-      await expect(service.aggregate([])).rejects.toThrow(
-        'aggregate is not supported by the repository abstraction'
-      );
-    });
-  });
-
-  describe('deleteOne (IBaseService contract)', () => {
+  describe('deleteOne (collection contract)', () => {
     it('returns and deletes a user found by ID', async () => {
       const user = makeUser();
       vi.mocked(repo.findById).mockResolvedValueOnce(user);
@@ -777,7 +754,7 @@ describe('UserService — IUserRepository delegation', () => {
 });
 
 describe('UserService — Custom Identifiers', () => {
-  let repo: IUserRepository;
+  let repo: IUserPersistenceRepository;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1016,7 +993,7 @@ describe('UserService — Custom Identifiers', () => {
 });
 
 describe('UserService — MFA behavior', () => {
-  let repo: IUserRepository;
+  let repo: IUserPersistenceRepository;
   let service: UserService;
   const expires = new Date('2030-01-01T00:00:00.000Z');
 
@@ -1572,7 +1549,7 @@ describe('UserService — MFA behavior', () => {
 });
 
 describe('UserService — profile and credentials', () => {
-  let repo: IUserRepository;
+  let repo: IUserPersistenceRepository;
   let service: UserService;
 
   beforeEach(() => {
@@ -2030,7 +2007,7 @@ describe('UserService — profile and credentials', () => {
 });
 
 describe('UserService — statistics, creation, and lifecycle', () => {
-  let repo: IUserRepository;
+  let repo: IUserPersistenceRepository;
   let service: UserService;
 
   beforeEach(() => {
@@ -2498,7 +2475,7 @@ describe('UserService — statistics, creation, and lifecycle', () => {
 });
 
 describe('UserService — residual defensive branches', () => {
-  let repo: IUserRepository;
+  let repo: IUserPersistenceRepository;
   let service: UserService;
 
   beforeEach(() => {

@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Request } from 'express';
 
-import ClientDeviceInfoManager, {
-  type ClientDetails,
-  type DeviceMatchConfig,
-} from '../../../src/utils/client-info.js';
+import ClientDeviceInfoManager from '../../../src/utils/client-info.js';
+import type {
+  ClientDetails,
+  DeviceMatchConfig,
+} from '../../../src/types/client-device.js';
 
 function createHarness(
   options: {

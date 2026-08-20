@@ -6,7 +6,7 @@
  * all of these for backward compatibility.
  */
 
-export type { IUserRepository } from './user-repository.interface.js';
+export type { IUserLookupService } from './user-lookup-service.interface.js';
 export type {
   IUserProfileService,
   ProfileUpdateData,

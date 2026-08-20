@@ -1,23 +1,16 @@
 import crypto from 'node:crypto';
 import { rootLogger } from '../observability/logs/logger.js';
+import type {
+  DateTimeFormatOptions,
+  FormattedDateTimeResult,
+  SupportedLanguage,
+} from '../types/date-time.js';
 
-export type SupportedLanguage = 'en' | 'fr';
-
-export interface DateTimeFormatOptions {
-  includeTime?: boolean;
-  includeYear?: boolean;
-  useRelativeTime?: boolean;
-  language?: SupportedLanguage;
-  timezone?: string; // IANA timezone identifier (e.g., 'America/New_York', 'Europe/Paris')
-  serverTimezone?: boolean; // Use server timezone (default: true)
-}
-
-export interface FormattedDateTimeResult {
-  formatted: string;
-  isRelative: boolean;
-  relativeType?: 'today' | 'yesterday' | 'recent' | 'full';
-  timezone?: string;
-}
+export type {
+  DateTimeFormatOptions,
+  FormattedDateTimeResult,
+  SupportedLanguage,
+} from '../types/date-time.js';
 
 // Language-specific text mappings
 const languageTexts = {
@@ -770,9 +763,6 @@ export function deepMerge(target: any, ...sources: any[]): any {
   return target;
 }
 
-/**
- * Check if value is a plain object (not array, date, regex, etc.)
- */
 function isObject(value: any): boolean {
   return (
     value !== null &&
@@ -788,30 +778,18 @@ function isObject(value: any): boolean {
   );
 }
 
-/**
- * Check if value is an array
- */
 function isArray(value: any): boolean {
   return Array.isArray(value);
 }
 
-/**
- * Check if value is a Date
- */
 function isDate(value: any): boolean {
   return value instanceof Date;
 }
 
-/**
- * Check if value is a RegExp
- */
 function isRegExp(value: any): boolean {
   return value instanceof RegExp;
 }
 
-/**
- * Check if value is a Buffer (Node.js)
- */
 function isBuffer(value: any): boolean {
   return (
     typeof Buffer !== 'undefined' &&
@@ -820,30 +798,18 @@ function isBuffer(value: any): boolean {
   );
 }
 
-/**
- * Check if value is a Map
- */
 function isMap(value: any): boolean {
   return value instanceof Map;
 }
 
-/**
- * Check if value is a Set
- */
 function isSet(value: any): boolean {
   return value instanceof Set;
 }
 
-/**
- * Check if value is a WeakMap
- */
 function isWeakMap(value: any): boolean {
   return value instanceof WeakMap;
 }
 
-/**
- * Check if value is a WeakSet
- */
 function isWeakSet(value: any): boolean {
   return value instanceof WeakSet;
 }

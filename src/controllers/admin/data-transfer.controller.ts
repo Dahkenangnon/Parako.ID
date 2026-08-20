@@ -16,8 +16,8 @@ import { tenantContext } from '../../multi-tenancy/tenant-context.js';
 import {
   ENTITY_IDS,
   getEntityConfigFactory,
-  type EntityConfigDeps,
 } from '../../services/data-transfer/entities/index.js';
+import type { EntityConfigDeps } from '../../services/data-transfer/entities/types.js';
 import type { EntityTransferConfig } from '../../services/data-transfer/types.js';
 import { createBackgroundTaskQueue } from '../../jobs/domains/background-tasks/queue.js';
 import {

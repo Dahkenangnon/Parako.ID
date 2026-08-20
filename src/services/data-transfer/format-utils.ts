@@ -28,9 +28,6 @@ export async function formatCsvExport(
   return Buffer.concat([bom, buffer]);
 }
 
-/**
- * Generate JSON export buffer.
- */
 export function formatJsonExport(
   items: Record<string, unknown>[],
   options?: { pretty?: boolean }
@@ -41,9 +38,6 @@ export function formatJsonExport(
   return Buffer.from(json, 'utf-8');
 }
 
-/**
- * Generate CSV import template (header row + 1 example row).
- */
 export async function generateCsvTemplate(
   columns: EntityColumnDef[]
 ): Promise<Buffer> {
@@ -62,9 +56,6 @@ export async function generateCsvTemplate(
   return Buffer.concat([bom, buffer]);
 }
 
-/**
- * Generate JSON import template (schema example).
- */
 export function generateJsonTemplate(columns: EntityColumnDef[]): Buffer {
   const example: Record<string, string> = {};
   for (const col of columns) {

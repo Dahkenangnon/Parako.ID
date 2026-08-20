@@ -6,7 +6,7 @@
  * the specific interface they need rather than the entire IUserService.
  *
  * Segregated interfaces:
- * - IUserRepository: User find/query operations
+ * - IUserLookupService: User find/query operations
  * - IUserProfileService: Profile and avatar management
  * - IUserCredentialsService: Password operations
  * - IUserMfaService: Multi-factor authentication
@@ -16,8 +16,7 @@
  */
 
 import { type IUser } from '../../types/user.js';
-import { type IBaseService } from './base-service.interface.js';
-import type { IUserRepository } from './user/user-repository.interface.js';
+import type { IUserLookupService } from './user/user-lookup-service.interface.js';
 import type { IUserProfileService } from './user/user-profile-service.interface.js';
 import type { IUserCredentialsService } from './user/user-credentials-service.interface.js';
 import type { IUserMfaService } from './user/user-mfa-service.interface.js';
@@ -46,16 +45,60 @@ export type {
  *
  * This is a composite interface that combines all user-related
  * functionality. For new code, prefer using the specific interfaces
- * (IUserRepository, IUserProfileService, etc.) when full functionality
+ * (IUserLookupService, IUserProfileService, etc.) when full functionality
  * is not needed.
  */
 export interface IUserService
   extends
-    IBaseService<IUser>,
-    IUserRepository,
+    IUserLookupService,
     IUserProfileService,
     IUserCredentialsService,
     IUserMfaService,
     IUserStatisticsService,
     IUserCustomIdentifierService,
-    IUserLifecycleService {}
+    IUserLifecycleService {
+  createOne(
+    data: Partial<IUser>,
+    options?: { ordered?: boolean }
+  ): Promise<IUser>;
+  createMany(
+    data: Partial<IUser>[],
+    options?: { ordered?: boolean }
+  ): Promise<IUser[]>;
+  findOne(
+    filter: Record<string, unknown> | string,
+    options?: {
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+      skip?: number;
+    }
+  ): Promise<IUser | null>;
+  findMany(
+    filter?: Record<string, unknown>,
+    options?: {
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+      limit?: number;
+      skip?: number;
+    }
+  ): Promise<IUser[]>;
+  updateById(
+    id: string,
+    data: Partial<IUser>,
+    options?: { upsert?: boolean; runValidators?: boolean }
+  ): Promise<IUser | null>;
+  deleteOne(filter: Record<string, unknown> | string): Promise<IUser | null>;
+  findWithPagination(
+    filter: Record<string, unknown>,
+    options: {
+      page: number;
+      limit: number;
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+    }
+  ): Promise<{
+    results: IUser[];
+    page: number;
+    limit: number;
+    totalResults: number;
+    totalPages: number;
+  }>;
+  countDocuments(filter?: Record<string, unknown>): Promise<number>;
+}

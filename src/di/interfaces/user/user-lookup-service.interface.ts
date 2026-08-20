@@ -1,10 +1,10 @@
 import { type IUser } from '../../../types/user.js';
 
 /**
- * Interface for user repository operations
- * Handles user find/query operations
+ * Consumer-facing user lookup operations
+ * Provides identity lookup and identifier availability checks
  */
-export interface IUserRepository {
+export interface IUserLookupService {
   findById(id: string): Promise<IUser | undefined>;
   findByEmail(email: string): Promise<IUser | undefined>;
   findByUsername(username: string): Promise<IUser | undefined>;

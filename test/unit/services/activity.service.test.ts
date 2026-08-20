@@ -1,9 +1,3 @@
-/**
- * TDD — ActivityService uses IActivityRepository for data access
- *
- * RED: ActivityService extends BaseService (Mongoose), uses activityModel directly.
- * GREEN: After migrating to IActivityRepository.
- */
 import 'reflect-metadata';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ActivityService } from '../../../src/services/activity.service.js';
@@ -93,7 +87,7 @@ describe('ActivityService — IActivityRepository delegation', () => {
     await service.shutdown();
   });
 
-  describe('base-service compatibility', () => {
+  describe('collection contract', () => {
     it('finds by string, _id, id, and repository filter', async () => {
       const activity = makeActivity();
       vi.mocked(repo.findById).mockResolvedValue(activity);
@@ -159,18 +153,6 @@ describe('ActivityService — IActivityRepository delegation', () => {
         activities[0]
       );
       await expect(service.createMany(activities)).resolves.toEqual(activities);
-    });
-
-    it.each([
-      ['updateById', () => service.updateById('a', {})],
-      ['updateMany', () => service.updateMany({}, {})],
-      ['deleteMany', () => service.deleteMany({})],
-      ['aggregate', () => service.aggregate([])],
-      ['deleteOne', () => service.deleteOne('a')],
-    ])('rejects unsupported %s mutations', async (_name, invoke) => {
-      await expect(invoke()).rejects.toThrow(
-        /not supported|deleteOldActivities/
-      );
     });
   });
 
@@ -253,6 +235,27 @@ describe('ActivityService — IActivityRepository delegation', () => {
         4,
         expect.objectContaining({ status: 'warning', username: 'legacy-user' })
       );
+    });
+
+    it('does not treat service actor identifiers as user references', async () => {
+      service.info('api_request', 'GET /api/v1/users 200', undefined, {
+        client_id: 'machine-client',
+        actor: {
+          actor_type: 'service',
+          id: 'machine-client',
+        },
+      });
+
+      await service.shutdown();
+
+      const persisted = vi.mocked(repo.create).mock.calls[0]?.[0];
+      expect(persisted).toEqual(
+        expect.objectContaining({
+          client_id: 'machine-client',
+          actor: { actor_type: 'service' },
+        })
+      );
+      expect(persisted?.actor).not.toHaveProperty('user_id');
     });
 
     it('builds full names from either name or individual name parts', async () => {
@@ -429,7 +432,7 @@ describe('ActivityService — IActivityRepository delegation', () => {
       expect((service as any).activityQueue).toEqual([]);
     });
 
-    it('falls back to unencrypted logging when configuration lookup fails', async () => {
+    it('fails closed when device encryption configuration is unavailable', async () => {
       const configFailureService = makeService(repo, {
         getConfig: () => {
           throw new Error('config unavailable');
@@ -441,10 +444,10 @@ describe('ActivityService — IActivityRepository delegation', () => {
       });
       await configFailureService.shutdown();
 
-      expect(repo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          device_infos: { fingerprint: 'plain-fingerprint' },
-        })
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'config unavailable' }),
+        expect.objectContaining({ context: 'error_queuing_activity' })
       );
     });
 

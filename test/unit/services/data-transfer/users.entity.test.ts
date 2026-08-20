@@ -7,7 +7,7 @@ import type { IPasswordUtils } from '../../../../src/di/interfaces/password-util
 import type { IUserService } from '../../../../src/di/interfaces/user-service.interface.js';
 import { DataTransferService } from '../../../../src/services/data-transfer/data-transfer.service.js';
 import { createUserEntityConfig } from '../../../../src/services/data-transfer/entities/users.entity.js';
-import type { EntityConfigDeps } from '../../../../src/services/data-transfer/entities/index.js';
+import type { EntityConfigDeps } from '../../../../src/services/data-transfer/entities/types.js';
 import type { ImportContext } from '../../../../src/services/data-transfer/types.js';
 
 function createLogger(): ILogger {

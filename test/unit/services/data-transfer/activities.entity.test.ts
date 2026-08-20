@@ -6,7 +6,7 @@ import type { IOIDCAdapterBridge } from '../../../../src/di/interfaces/oidc-adap
 import type { IPasswordUtils } from '../../../../src/di/interfaces/password-utils.interface.js';
 import type { IUserService } from '../../../../src/di/interfaces/user-service.interface.js';
 import { createActivityEntityConfig } from '../../../../src/services/data-transfer/entities/activities.entity.js';
-import type { EntityConfigDeps } from '../../../../src/services/data-transfer/entities/index.js';
+import type { EntityConfigDeps } from '../../../../src/services/data-transfer/entities/types.js';
 import type { ExportContext } from '../../../../src/services/data-transfer/types.js';
 
 describe('activity data-transfer entity', () => {

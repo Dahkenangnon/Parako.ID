@@ -3,10 +3,8 @@ import type { BackgroundJobData } from '../worker.js';
 import type { IDataTransferService } from '../../../../di/interfaces/data-transfer-service.interface.js';
 import type { ILogger } from '../../../../di/interfaces/logger.interface.js';
 import type { ImportContext } from '../../../../services/data-transfer/types.js';
-import {
-  getEntityConfigFactory,
-  type EntityConfigDeps,
-} from '../../../../services/data-transfer/entities/index.js';
+import { getEntityConfigFactory } from '../../../../services/data-transfer/entities/index.js';
+import type { EntityConfigDeps } from '../../../../services/data-transfer/entities/types.js';
 
 /**
  * Zod schema to validate data import job payload.

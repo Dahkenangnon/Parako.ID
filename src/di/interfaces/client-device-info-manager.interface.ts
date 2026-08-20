@@ -1,10 +1,10 @@
 import { Request } from 'express';
-import {
-  ClientDeviceInfos,
+import type {
   ClientDetails,
-  DeviceMatchResult,
+  ClientDeviceInfos,
   DeviceMatchConfig,
-} from '../../utils/client-info.js';
+  DeviceMatchResult,
+} from '../../types/client-device.js';
 
 /**
  * Interface for client device info manager service

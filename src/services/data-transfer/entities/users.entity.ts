@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import type { EntityConfigDeps } from './index.js';
+import type { EntityConfigDeps } from './types.js';
 import type {
   EntityTransferConfig,
   EntityColumnDef,

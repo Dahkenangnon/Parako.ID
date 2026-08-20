@@ -1,7 +1,6 @@
-import { DateTimeFormatOptions } from '../../utils/misc.js';
+import type { DateTimeFormatOptions } from '../../types/date-time.js';
 import { type ActivityCursor, type IActivity } from '../../types/activity.js';
-import { type IBaseService } from './base-service.interface.js';
-import type { ClientDetails } from '../../utils/client-info.js';
+import type { ClientDetails } from '../../types/client-device.js';
 
 export interface ActivityQueryOptions {
   limit?: number;
@@ -131,10 +130,36 @@ export interface ConfigAuditFilters {
   endDate?: Date; // Filter by date range end
 }
 
-/**
- * Interface for ActivityService - handles activity logging and tracking
- */
-export interface IActivityService extends IBaseService<IActivity> {
+export interface IActivityService {
+  findOne(filter: Record<string, unknown> | string): Promise<IActivity | null>;
+  countDocuments(filter?: Record<string, unknown>): Promise<number>;
+  findMany(
+    filter?: Record<string, unknown>,
+    options?: {
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+      limit?: number;
+      skip?: number;
+    }
+  ): Promise<IActivity[]>;
+  findWithPagination(
+    filter: Record<string, unknown>,
+    options: {
+      page: number;
+      limit: number;
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+    }
+  ): Promise<{
+    results: IActivity[];
+    page: number;
+    limit: number;
+    totalResults: number;
+    totalPages: number;
+  }>;
+  createOne(data: Partial<IActivity>): Promise<IActivity>;
+  createMany(
+    data: Partial<IActivity>[],
+    options?: { ordered?: boolean }
+  ): Promise<IActivity[]>;
   success(
     type: string,
     description: string,
