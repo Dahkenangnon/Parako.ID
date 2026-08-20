@@ -182,6 +182,9 @@ test('resumes Authorization Code + PKCE after required phone proof', async ({
   );
   await expect.poll(async () => (await capturedSms(request)).length).toBe(1);
 
+  // The OIDC challenge is a second delivery to the same number. Respect the
+  // production SMS cooldown exercised by this E2E profile before requesting it.
+  await page.waitForTimeout(1_100);
   await page.goto(RP_ORIGIN);
   await page.getByTestId('rp-login').click();
   await page.locator('#login').fill(email);
