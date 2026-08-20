@@ -199,6 +199,7 @@ describe('api/v1/controllers/SessionsController', () => {
           id: 'session-id',
           payload: { accountId: 'known-row', jti: '' },
         },
+        { _id: 'legacy-session', payload: 'legacy-payload' },
       ]);
       const res = createMockResponse();
 
@@ -207,6 +208,12 @@ describe('api/v1/controllers/SessionsController', () => {
       expect(vi.mocked(res.json).mock.calls[0]?.[0].data).toEqual([
         { accountId: 'anonymous-row' },
         { accountId: 'known-row', id: 'session-id', jti: 'session-id' },
+        {
+          _id: 'legacy-session',
+          payload: 'legacy-payload',
+          id: 'legacy-session',
+          jti: 'legacy-session',
+        },
       ]);
     });
 

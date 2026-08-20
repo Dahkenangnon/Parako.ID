@@ -160,6 +160,16 @@ describe('mongoSanitize', () => {
     expect(next).toHaveBeenCalledOnce();
   });
 
+  it('sanitizes request targets when no callback is configured', () => {
+    const req = { body: { $where: 'return true' } } as Request;
+    const next = vi.fn() as NextFunction;
+
+    mongoSanitize()(req, {} as Response, next);
+
+    expect(req.body).toEqual({});
+    expect(next).toHaveBeenCalledOnce();
+  });
+
   it('sanitizes and reports an inherited getter-only req.query from Express 5', () => {
     const query = { $where: 'return true' };
     const prototype = Object.create(null) as Record<string, unknown>;

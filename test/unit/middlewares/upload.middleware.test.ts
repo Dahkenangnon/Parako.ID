@@ -292,11 +292,16 @@ describe('UploadMiddleware', () => {
       expect(mocks.mkdir).toHaveBeenCalledWith(result, { recursive: true });
     });
 
-    it('reports tenant destination preparation failures', async () => {
-      mocks.mkdir.mockRejectedValueOnce(new Error('permission denied'));
+    it.each([0, 2, 3])(
+      'reports tenant destination preparation failures for storage %s',
+      async index => {
+        mocks.mkdir.mockRejectedValueOnce(new Error('permission denied'));
 
-      await expect(destination(0, 'acme')).rejects.toThrow('permission denied');
-    });
+        await expect(destination(index, 'acme')).rejects.toThrow(
+          'permission denied'
+        );
+      }
+    );
 
     it('names avatars with the active user ID, timestamp, and extension', async () => {
       vi.spyOn(Date, 'now').mockReturnValue(1234);

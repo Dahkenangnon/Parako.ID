@@ -37,6 +37,39 @@ describe('controllersModule', () => {
     }
   });
 
+  it('constructs each controller operation module from container dependencies', () => {
+    const container = new Container();
+    const dependencies = [
+      TYPES.Logger,
+      TYPES.AuthService,
+      TYPES.UserService,
+      TYPES.NotificationService,
+      TYPES.ConfigManager,
+      TYPES.OIDCAdapterBridge,
+      TYPES.SmsService,
+      TYPES.RecoveryUtils,
+      TYPES.SocialIntegrationService,
+      TYPES.SocialLoginManager,
+      TYPES.MfaUtils,
+      TYPES.UploadMiddleware,
+      TYPES.SessionManager,
+      TYPES.EmailService,
+      TYPES.SettingsService,
+    ];
+    for (const identifier of dependencies) {
+      container.bind(identifier).toConstantValue({});
+    }
+    container.load(controllersModule);
+
+    expect(container.get(TYPES.AuthControllerOperationModules)).toBeDefined();
+    expect(
+      container.get(TYPES.AccountControllerOperationModules)
+    ).toBeDefined();
+    expect(
+      container.get(TYPES.AdminSettingsControllerOperationModules)
+    ).toBeDefined();
+  });
+
   it('creates a fresh controller for each resolution', () => {
     const container = new Container();
     container.bind(TYPES.ActivityService).toConstantValue({});

@@ -802,6 +802,30 @@ describe('AdminSettingsController', () => {
   });
 
   describe('deployment()', () => {
+    it('removes populated bootstrap-only fields while preserving null values', () => {
+      const result = (controller as any).removeBootstrapFields({
+        deployment: {
+          environment: 'production',
+          url: 'https://id.example.test',
+          server: { port: 9007 },
+          redis_prefix: null,
+        },
+        storage: { adapter: 'postgresql' },
+      });
+
+      expect(result.removed).toEqual(
+        expect.arrayContaining([
+          'deployment.environment',
+          'deployment.server.port',
+          'storage.adapter',
+        ])
+      );
+      expect(result.sanitized).toMatchObject({
+        deployment: { server: {}, redis_prefix: null },
+        storage: {},
+      });
+    });
+
     it('renders deployment settings', async () => {
       const res = makeRes();
 
@@ -832,6 +856,30 @@ describe('AdminSettingsController', () => {
       expect(deps.flash.error).toHaveBeenCalledWith(
         'Failed to update deployment settings'
       );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/settings/deployment');
+    });
+
+    it('strips a nested bootstrap-only field and warns the administrator', async () => {
+      const res = makeRes();
+
+      await controller.deployment(
+        makeReq({ method: 'POST', body: { server: { port: '9999' } } }),
+        res
+      );
+
+      expect(deps.logger.warn).toHaveBeenCalledWith(
+        'Bootstrap fields detected in deployment update',
+        expect.objectContaining({
+          removedFields: ['deployment.server.port'],
+          user: 'admin@example.com',
+        })
+      );
+      expect(deps.flash.warning).toHaveBeenCalledWith(
+        expect.stringContaining('must be set in your .env file')
+      );
+      expect(deps.configManager.update).toHaveBeenCalledWith({
+        deployment: { url: 'https://id.example.com', server: {} },
+      });
       expect(res.redirect).toHaveBeenCalledWith('/admin/settings/deployment');
     });
 

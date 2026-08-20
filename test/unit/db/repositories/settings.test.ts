@@ -37,11 +37,13 @@ function prismaClient(settingsOverrides: Record<string, unknown> = {}) {
 function mongooseQuery<T>(result: T) {
   const chain = {
     sort: vi.fn(),
+    skip: vi.fn(),
     limit: vi.fn(),
     lean: vi.fn(),
     exec: vi.fn().mockResolvedValue(result),
   };
   chain.sort.mockReturnValue(chain);
+  chain.skip.mockReturnValue(chain);
   chain.limit.mockReturnValue(chain);
   chain.lean.mockReturnValue(chain);
   return chain;
@@ -558,6 +560,19 @@ describe('Prisma settings repository', () => {
 });
 
 describe('Mongoose settings repository', () => {
+  it('finds many settings through the shared query pipeline', async () => {
+    const query = mongooseQuery([{ _id: { toString: () => 'one' } }]);
+    const model = { find: vi.fn().mockReturnValue(query) };
+    const repository = new MongooseSettingsRepository(model as never);
+
+    await expect(
+      repository.findMany({ key: 'parako_config' }, { limit: 5, skip: 2 })
+    ).resolves.toEqual([expect.objectContaining({ id: 'one' })]);
+    expect(model.find).toHaveBeenCalledWith({ key: 'parako_config' });
+    expect(query.skip).toHaveBeenCalledWith(2);
+    expect(query.limit).toHaveBeenCalledWith(5);
+  });
+
   it('finds active and specific versions through lean model queries', async () => {
     const activeQuery = mongooseQuery({ _id: { toString: () => 'one' } });
     const versionQuery = mongooseQuery(null);

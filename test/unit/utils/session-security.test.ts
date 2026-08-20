@@ -482,10 +482,16 @@ describe('SessionManager configuration and initialization', () => {
       idle_timeout_minutes: 15,
     });
     const eventHandlers = new Map<string, (...args: any[]) => void>();
+    const clientEventHandlers = new Map<string, () => void>();
     const store = {
       on: vi.fn((event: string, handler: (...args: any[]) => void) => {
         eventHandlers.set(event, handler);
       }),
+      client: {
+        on: vi.fn((event: string, handler: () => void) => {
+          clientEventHandlers.set(event, handler);
+        }),
+      },
     };
     vi.mocked(MongoStore.create).mockReturnValue(store as never);
     manager.setOidcAdapterBridge({
@@ -504,8 +510,12 @@ describe('SessionManager configuration and initialization', () => {
       })
     );
     eventHandlers.get('error')?.(new Error('store disconnected'));
+    clientEventHandlers.get('reconnect')?.();
     expect(logger.warn).toHaveBeenCalledWith(
       'MongoDB session store disconnected. Attempting to reconnect...'
+    );
+    expect(logger.info).toHaveBeenCalledWith(
+      'Session store successfully reconnected'
     );
   });
 

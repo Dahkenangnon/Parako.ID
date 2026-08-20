@@ -653,6 +653,14 @@ describe('DatabaseConfigProvider core behavior', () => {
     expect([...handlers.keys()]).toEqual(['change', 'error', 'close']);
   });
 
+  it('does not query for polling updates before configuration is cached', async () => {
+    const { settings } = initializedProvider();
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(settings.getMainConfigurationLastUpdated).not.toHaveBeenCalled();
+  });
+
   it('reloads and notifies when polling detects a newer configuration', async () => {
     const oldTimestamp = new Date('2026-08-01T00:00:00.000Z');
     const newTimestamp = new Date('2026-08-01T01:00:00.000Z');
@@ -684,7 +692,7 @@ describe('DatabaseConfigProvider core behavior', () => {
 
   it('keeps cached configuration when polling has no comparable/new timestamp or timestamp lookup fails', async () => {
     const timestamp = new Date('2026-08-01T00:00:00.000Z');
-    const { provider, settings } = trackedProvider();
+    const { provider, settings } = initializedProvider();
     settings.configDocumentExists.mockResolvedValue(true);
     settings.loadAndDecryptConfiguration.mockResolvedValue(
       createStoredSettings()

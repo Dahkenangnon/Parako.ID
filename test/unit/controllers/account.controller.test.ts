@@ -478,6 +478,25 @@ describe('AccountsController read pages', () => {
       );
     });
 
+    it('renders an empty avatar when the account has no picture', async () => {
+      const harness = createHarness();
+      harness.sessionManager.getActiveUser.mockReturnValue(
+        activeUser({ picture: undefined })
+      );
+      harness.userService.findByUsername.mockResolvedValue(databaseUser());
+      const res = response();
+
+      await harness.controller.myAccount(request(), res);
+
+      expect(harness.uploadMiddleware.getFileUrl).not.toHaveBeenCalled();
+      expect(res.render).toHaveBeenCalledWith(
+        'accounts/my-account',
+        expect.objectContaining({
+          pageUser: expect.objectContaining({ picture: '' }),
+        })
+      );
+    });
+
     it('uses singular zero-safe fallbacks and preserves unresolved pictures', async () => {
       const harness = createHarness();
       harness.sessionManager.getActiveUser.mockReturnValue(
