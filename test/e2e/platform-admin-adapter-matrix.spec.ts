@@ -126,6 +126,7 @@ async function login(
   await page.locator('#login').fill(credentials.email);
   await page.locator('#password').fill(credentials.password);
   await page.locator('#login-form button[type="submit"]').click();
+  await page.waitForURL(url => url.pathname !== '/auth/login');
 }
 
 async function submitGlobalOidcSettings(page: Page): Promise<void> {
