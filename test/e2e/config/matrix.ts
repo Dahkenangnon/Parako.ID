@@ -17,6 +17,7 @@ export const SELF_STARTING_SPECS = [
 
 const FEATURE_PROFILE_SPECS = [
   'admin-configuration.spec.ts',
+  'management-api-operations.spec.ts',
   'ops-infrastructure.spec.ts',
   'account-notification-policy.spec.ts',
   'public-phone-verification.spec.ts',
@@ -228,7 +229,10 @@ export const E2E_PROFILES: Record<E2eProfileId, E2eProfile> = {
   },
   operations: {
     id: 'operations',
-    testMatch: ['ops-infrastructure.spec.ts'],
+    testMatch: [
+      'ops-infrastructure.spec.ts',
+      'management-api-operations.spec.ts',
+    ],
     environment: {
       PARAKO_E2E_OPERATIONS: 'true',
       // gitleaks:allow -- deterministic HMAC key for an isolated local E2E gateway.

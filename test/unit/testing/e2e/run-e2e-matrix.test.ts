@@ -196,7 +196,10 @@ describe('E2E deployment matrix runner', () => {
     ).toHaveLength(5);
     expect(E2E_PROFILES.operations).toEqual({
       id: 'operations',
-      testMatch: ['ops-infrastructure.spec.ts'],
+      testMatch: [
+        'ops-infrastructure.spec.ts',
+        'management-api-operations.spec.ts',
+      ],
       environment: {
         PARAKO_E2E_OPERATIONS: 'true',
         PARAKO_E2E_HMAC_SECRET: 'parako-browser-e2e-ops-hmac-secret', // gitleaks:allow -- deterministic test fixture
