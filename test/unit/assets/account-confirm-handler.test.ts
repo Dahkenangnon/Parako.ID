@@ -1,15 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-interface ConfirmUtilities {
-  handleConfirmAction(
-    button: ButtonFixture,
-    translations: Record<string, string>
-  ): Promise<boolean>;
-  setupConfirmationHandlers(
-    translations: Record<string, string>,
-    debug?: boolean
-  ): void;
-}
+import {
+  handleConfirmAction,
+  setupConfirmationHandlers,
+} from '../../../src/assets/js/account/settings/confirm-handler.js';
 
 interface ButtonFixture {
   addEventListener: ReturnType<typeof vi.fn>;
@@ -26,26 +19,34 @@ function button(overrides: Partial<ButtonFixture> = {}): ButtonFixture {
   };
 }
 
-async function loadUtilities(buttons: ButtonFixture[] = []) {
-  vi.resetModules();
+function loadUtilities(buttons: ButtonFixture[] = []) {
   const showConfirm = vi.fn();
-  const windowRoot: {
-    accountSettingsUtils?: ConfirmUtilities;
-    dialog: object;
-  } = {
-    dialog: { showConfirm },
+  const dialog = {
+    showAlert: vi.fn().mockResolvedValue(undefined),
+    showConfirm,
   };
-  vi.stubGlobal('window', windowRoot);
   vi.stubGlobal('document', {
     querySelectorAll: vi.fn(() => buttons),
   });
 
-  await import('../../../src/assets/js/account/settings/confirm-handler.js');
-
-  if (!windowRoot.accountSettingsUtils) {
-    throw new Error('Confirmation utilities were not published');
-  }
-  return { showConfirm, utilities: windowRoot.accountSettingsUtils };
+  return {
+    showConfirm,
+    utilities: {
+      handleConfirmAction: (
+        target: ButtonFixture,
+        translations: Record<string, string>
+      ) =>
+        handleConfirmAction(
+          target as unknown as HTMLButtonElement,
+          translations,
+          dialog
+        ),
+      setupConfirmationHandlers: (
+        translations: Record<string, string>,
+        debug = false
+      ) => setupConfirmationHandlers(translations, debug, dialog),
+    },
+  };
 }
 
 describe('account settings confirmation handler', () => {
@@ -66,6 +67,22 @@ describe('account settings confirmation handler', () => {
       'Confirm Action',
       'Are you sure?',
       { variant: 'warning', confirmText: 'Confirm', cancelText: 'Cancel' }
+    );
+  });
+
+  it('falls back to the warning variant for invalid DOM data', async () => {
+    const { showConfirm, utilities } = await loadUtilities();
+    showConfirm.mockResolvedValue(true);
+
+    await utilities.handleConfirmAction(
+      button({ dataset: { confirmVariant: 'not-a-dialog-variant' } }),
+      {}
+    );
+
+    expect(showConfirm).toHaveBeenCalledWith(
+      'Confirm Action',
+      'Are you sure?',
+      expect.objectContaining({ variant: 'warning' })
     );
   });
 
@@ -189,12 +206,10 @@ describe('account settings confirmation handler', () => {
     expect(target.form?.submit).not.toHaveBeenCalled();
   });
 
-  it('does not require a window global when evaluated outside a browser', async () => {
-    vi.stubGlobal('window', undefined);
-    vi.resetModules();
+  it('does not publish confirmation utilities through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    await expect(
-      import('../../../src/assets/js/account/settings/confirm-handler.js')
-    ).resolves.toBeDefined();
+    expect(browserWindow).not.toHaveProperty('accountSettingsUtils');
   });
 });

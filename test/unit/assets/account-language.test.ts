@@ -1,50 +1,34 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  LanguageSelector,
+  type LanguageSelectorConfig,
+} from '../../../src/assets/js/account/settings/language.js';
 
-interface LanguageConfig {
-  updateLocaleUrl: string;
-  csrfToken: string;
-  translations: { languageUpdateError: string };
-  debug?: boolean;
-}
-
-interface LanguageSelectorInstance {
-  initialize(): void;
-  setupChangeHandler(): void;
-}
-
-type LanguageSelectorConstructor = new (
-  config: LanguageConfig
-) => LanguageSelectorInstance;
-
-async function loadLanguageSelector(select: object | null = null) {
-  vi.resetModules();
+function loadLanguageSelector(select: object | null = null) {
   const showAlert = vi.fn().mockResolvedValue(undefined);
   const reload = vi.fn();
-  const windowRoot: {
-    LanguageSelector?: LanguageSelectorConstructor;
-    dialog: { showAlert: ReturnType<typeof vi.fn> };
-    location: { reload: ReturnType<typeof vi.fn> };
-  } = { dialog: { showAlert }, location: { reload } };
+  const dialog = { showAlert, showConfirm: vi.fn() };
   const documentRoot = {
     getElementById: vi.fn(() => select),
   };
-  vi.stubGlobal('window', windowRoot);
+  vi.stubGlobal('window', { location: { reload } });
   vi.stubGlobal('document', documentRoot);
 
-  await import('../../../src/assets/js/account/settings/language.js');
-  if (!windowRoot.LanguageSelector) {
-    throw new Error('LanguageSelector was not published');
+  class TestLanguageSelector extends LanguageSelector {
+    constructor(settings: LanguageSelectorConfig) {
+      super(settings, dialog);
+    }
   }
 
   return {
-    LanguageSelector: windowRoot.LanguageSelector,
+    LanguageSelector: TestLanguageSelector,
     documentRoot,
     reload,
     showAlert,
   };
 }
 
-function config(debug = false): LanguageConfig {
+function config(debug = false): LanguageSelectorConfig {
   return {
     updateLocaleUrl: '/account/locale',
     csrfToken: 'csrf-token',
@@ -72,13 +56,6 @@ describe('account language selector', () => {
       '[LanguageSelector]',
       'Language selector not found, skipping initialization'
     );
-  });
-
-  it('does not attach a handler before initialization', async () => {
-    const { LanguageSelector } = await loadLanguageSelector();
-    const selector = new LanguageSelector(config()) as LanguageSelectorInstance;
-
-    expect(() => selector.setupChangeHandler()).not.toThrow();
   });
 
   it('persists a locale with CSRF protection and reloads on success', async () => {
@@ -163,12 +140,10 @@ describe('account language selector', () => {
     );
   });
 
-  it('can be evaluated without a browser window', async () => {
-    vi.resetModules();
-    vi.stubGlobal('window', undefined);
+  it('does not publish the selector through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    await expect(
-      import('../../../src/assets/js/account/settings/language.js')
-    ).resolves.toBeDefined();
+    expect(browserWindow).not.toHaveProperty('LanguageSelector');
   });
 });

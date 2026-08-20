@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  AppsManager,
+  initializeAppsPage,
+} from '../../../src/assets/js/account/apps.js';
+import {
+  initializeSessionsPage,
+  SessionsManager,
+} from '../../../src/assets/js/account/sessions.js';
+import dialogService from '../../../src/assets/js/utils/dialog.js';
+
 type ManagerKind = 'apps' | 'sessions';
 type ManagerConstructor = new (config?: { debug?: boolean }) => {
   initialize(): void;
@@ -20,24 +30,18 @@ function button(overrides: Partial<ButtonFixture> = {}): ButtonFixture {
   };
 }
 
-async function loadManager(kind: ManagerKind, buttons: ButtonFixture[] = []) {
-  vi.resetModules();
-  let ready: (() => void) | undefined;
-  const showConfirm = vi.fn();
-  vi.stubGlobal('window', { dialog: { showConfirm } });
+function loadManager(kind: ManagerKind, buttons: ButtonFixture[] = []) {
+  const showConfirm = vi.spyOn(dialogService, 'showConfirm').mockReset();
   vi.stubGlobal('document', {
-    addEventListener: vi.fn(
-      (_name: string, listener: () => void) => (ready = listener)
-    ),
+    addEventListener: vi.fn(),
     querySelectorAll: vi.fn(() => buttons),
   });
 
   const Manager: ManagerConstructor =
-    kind === 'apps'
-      ? (await import('../../../src/assets/js/account/apps.js')).AppsManager
-      : (await import('../../../src/assets/js/account/sessions.js'))
-          .SessionsManager;
-  return { Manager, ready, showConfirm };
+    kind === 'apps' ? AppsManager : SessionsManager;
+  const initializePage =
+    kind === 'apps' ? initializeAppsPage : initializeSessionsPage;
+  return { Manager, initializePage, showConfirm };
 }
 
 describe.each<ManagerKind>(['apps', 'sessions'])(
@@ -56,7 +60,7 @@ describe.each<ManagerKind>(['apps', 'sessions'])(
           confirmVariant: 'danger',
         },
       });
-      const { Manager, showConfirm } = await loadManager(kind, [target]);
+      const { Manager, showConfirm } = loadManager(kind, [target]);
       const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
       showConfirm.mockResolvedValue(true);
       new Manager({ debug: true }).initialize();
@@ -86,7 +90,7 @@ describe.each<ManagerKind>(['apps', 'sessions'])(
 
     it('uses safe defaults and leaves a cancelled form untouched', async () => {
       const target = button();
-      const { Manager, showConfirm } = await loadManager(kind, [target]);
+      const { Manager, showConfirm } = loadManager(kind, [target]);
       const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
       showConfirm.mockResolvedValue(false);
       new Manager({ debug: true }).initialize();
@@ -113,7 +117,7 @@ describe.each<ManagerKind>(['apps', 'sessions'])(
 
     it('handles confirmation for a button without an associated form', async () => {
       const target = button({ form: null });
-      const { Manager, showConfirm } = await loadManager(kind, [target]);
+      const { Manager, showConfirm } = loadManager(kind, [target]);
       showConfirm.mockResolvedValue(true);
       new Manager({ debug: false }).initialize();
 
@@ -126,20 +130,13 @@ describe.each<ManagerKind>(['apps', 'sessions'])(
     });
 
     it('auto-initializes on DOM readiness and supports an empty page', async () => {
-      const { ready } = await loadManager(kind);
+      const { initializePage } = loadManager(kind);
 
-      expect(() => ready?.()).not.toThrow();
+      expect(() => initializePage()).not.toThrow();
     });
 
-    it('can be imported outside a browser document', async () => {
-      vi.resetModules();
-      vi.stubGlobal('document', undefined);
-
-      const Manager =
-        kind === 'apps'
-          ? (await import('../../../src/assets/js/account/apps.js')).AppsManager
-          : (await import('../../../src/assets/js/account/sessions.js'))
-              .SessionsManager;
+    it('is statically importable outside a browser document', () => {
+      const Manager = kind === 'apps' ? AppsManager : SessionsManager;
 
       expect(Manager).toEqual(expect.any(Function));
     });

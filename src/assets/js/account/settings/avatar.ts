@@ -14,7 +14,7 @@
  * @author Parako.ID Team
  */
 
-'use strict';
+import dialogService, { type DialogService } from '../../utils/dialog.js';
 
 /**
  * Configuration interface for AvatarManager
@@ -45,7 +45,10 @@ export class AvatarManager {
   private profileForm: HTMLFormElement | null;
   private uploadProgressWidget: HTMLElement | null;
 
-  constructor(config: AvatarConfig) {
+  constructor(
+    config: AvatarConfig,
+    private readonly dialog: DialogService = dialogService
+  ) {
     this.config = config;
     this.debug = config.debug || false;
     this.avatarUpload = null;
@@ -57,9 +60,6 @@ export class AvatarManager {
     this.uploadProgressWidget = null;
   }
 
-  /**
-   * Initialize the avatar manager
-   */
   public initialize(): void {
     this.log('Initializing AvatarManager');
 
@@ -118,9 +118,6 @@ export class AvatarManager {
     this.log('Remove button handler setup complete');
   }
 
-  /**
-   * Handle avatar file upload
-   */
   private handleAvatarUpload(): void {
     const files = this.avatarUpload?.files;
 
@@ -161,7 +158,7 @@ export class AvatarManager {
       this.log('File read error');
       this.hideUploadProgress();
 
-      await (window as any).dialog.showAlert(
+      await this.dialog.showAlert(
         'File Error',
         this.config.translations.fileReadError,
         { variant: 'error' }
@@ -174,7 +171,7 @@ export class AvatarManager {
   private async handleAvatarRemoval(): Promise<void> {
     this.log('Remove button clicked');
 
-    const confirmed = await (window as any).dialog.showConfirm(
+    const confirmed = await this.dialog.showConfirm(
       'Remove Avatar',
       this.config.translations.removeConfirm,
       { variant: 'danger', confirmText: 'Remove', cancelText: 'Cancel' }
@@ -214,7 +211,7 @@ export class AvatarManager {
       } else {
         this.log('Avatar removal failed:', response.status);
 
-        await (window as any).dialog.showAlert(
+        await this.dialog.showAlert(
           'Error',
           this.config.translations.removeError,
           { variant: 'error' }
@@ -223,7 +220,7 @@ export class AvatarManager {
     } catch (error) {
       console.error('Error removing avatar:', error);
 
-      await (window as any).dialog.showAlert(
+      await this.dialog.showAlert(
         'Error',
         this.config.translations.removeError,
         { variant: 'error' }
@@ -231,9 +228,6 @@ export class AvatarManager {
     }
   }
 
-  /**
-   * Update progress widget text
-   */
   private updateProgressText(text: string): void {
     if (!this.uploadProgressWidget) return;
 
@@ -264,18 +258,3 @@ export class AvatarManager {
     }
   }
 }
-
-export interface AvatarManagerWindow {
-  AvatarManager?: typeof AvatarManager;
-}
-
-/** Publish the constructor for templates that load this module as a script. */
-export function installAvatarManagerGlobal(
-  target: AvatarManagerWindow | undefined = typeof window === 'undefined'
-    ? undefined
-    : (window as unknown as AvatarManagerWindow)
-): void {
-  if (target) target.AvatarManager = AvatarManager;
-}
-
-installAvatarManagerGlobal();

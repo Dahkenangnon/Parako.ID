@@ -1,9 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AvatarManager,
-  installAvatarManagerGlobal,
   type AvatarConfig,
-  type AvatarManagerWindow,
 } from '../../../src/assets/js/account/settings/avatar.js';
 
 interface ElementFixture {
@@ -66,24 +64,24 @@ function loadManager(elements: Record<string, ElementFixture | null> = {}) {
   const showAlert = vi.fn().mockResolvedValue(undefined);
   const showConfirm = vi.fn();
   const reload = vi.fn();
-  const windowRoot: Record<string, unknown> & AvatarManagerWindow = {
-    dialog: { showAlert, showConfirm },
-    location: { reload },
-  };
-  vi.stubGlobal('window', windowRoot);
+  vi.stubGlobal('window', { location: { reload } });
   vi.stubGlobal('document', {
     getElementById: vi.fn((id: string) => elements[id] ?? null),
   });
   vi.stubGlobal('FileReader', FileReaderFixture);
   vi.stubGlobal('fetch', vi.fn());
 
-  installAvatarManagerGlobal(windowRoot);
+  class TestAvatarManager extends AvatarManager {
+    constructor(settings: AvatarConfig) {
+      super(settings, { showAlert, showConfirm });
+    }
+  }
+
   return {
-    Manager: AvatarManager,
+    Manager: TestAvatarManager,
     reload,
     showAlert,
     showConfirm,
-    windowRoot,
   };
 }
 
@@ -317,11 +315,10 @@ describe('account avatar manager', () => {
     expect(showAlert).toHaveBeenCalledOnce();
   });
 
-  it('publishes the manager for script-tag consumers and imports without window', async () => {
-    const { Manager, windowRoot } = await loadManager();
+  it('does not publish the manager through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    expect(windowRoot.AvatarManager).toBe(Manager);
-
-    expect(() => installAvatarManagerGlobal(undefined)).not.toThrow();
+    expect(browserWindow).not.toHaveProperty('AvatarManager');
   });
 });

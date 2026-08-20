@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  initializeRecoveryCodesPage,
+  RecoveryCodesManager,
+  type RecoveryCodesConfig,
+} from '../../../src/assets/js/account/recovery-codes.js';
+import dialogService from '../../../src/assets/js/utils/dialog.js';
+
 interface ElementFixture {
   addEventListener: ReturnType<typeof vi.fn>;
   click: ReturnType<typeof vi.fn>;
@@ -11,24 +18,6 @@ interface ElementFixture {
   style: Record<string, string>;
   value: string;
 }
-
-interface RecoveryCodesConfig {
-  codes: string[];
-  translations: {
-    fileContentTitle: string;
-    fileContentGenerated: string;
-    fileContentImportant: string;
-    fileContentTotalCodes: string;
-    downloadedFeedback: string;
-    copiedFeedback: string;
-    copyFailedError: string;
-  };
-  debug?: boolean;
-}
-
-type RecoveryCodesManagerConstructor = new (config: RecoveryCodesConfig) => {
-  initialize(): void;
-};
 
 function element(overrides: Partial<ElementFixture> = {}): ElementFixture {
   return {
@@ -63,7 +52,7 @@ function config(
   };
 }
 
-async function loadManager(
+function loadManager(
   options: {
     copyButton?: ElementFixture | null;
     downloadButton?: ElementFixture | null;
@@ -71,17 +60,15 @@ async function loadManager(
     execCommand?: ReturnType<typeof vi.fn>;
   } = {}
 ) {
-  vi.resetModules();
-  let ready: (() => void) | undefined;
   const created: ElementFixture[] = [];
   const appended: ElementFixture[] = [];
   const removed: ElementFixture[] = [];
-  const showAlert = vi.fn().mockResolvedValue(undefined);
+  const showAlert = vi
+    .spyOn(dialogService, 'showAlert')
+    .mockResolvedValue(undefined);
   const execCommand = options.execCommand ?? vi.fn(() => true);
   const documentRoot = {
-    addEventListener: vi.fn(
-      (_name: string, listener: () => void) => (ready = listener)
-    ),
+    addEventListener: vi.fn(),
     body: {
       appendChild: vi.fn((node: ElementFixture) => appended.push(node)),
       removeChild: vi.fn((node: ElementFixture) => removed.push(node)),
@@ -100,22 +87,16 @@ async function loadManager(
   };
   vi.stubGlobal('document', documentRoot);
   vi.stubGlobal('navigator', { clipboard: options.clipboard });
-  vi.stubGlobal('window', { dialog: { showAlert } });
   vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:recovery-codes');
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 
-  const loaded =
-    await import('../../../src/assets/js/account/recovery-codes.js');
-  const Manager = loaded.RecoveryCodesManager as
-    RecoveryCodesManagerConstructor | undefined;
-  if (!Manager) throw new Error('RecoveryCodesManager is not exported');
+  const Manager = RecoveryCodesManager;
   return {
     Manager,
     appended,
     created,
     documentRoot,
     execCommand,
-    ready,
     removed,
     showAlert,
   };
@@ -129,7 +110,7 @@ describe('account recovery codes manager', () => {
   });
 
   it('initializes an empty page and logs only in debug mode', async () => {
-    const { Manager } = await loadManager();
+    const { Manager } = loadManager();
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     new Manager(config()).initialize();
@@ -148,7 +129,7 @@ describe('account recovery codes manager', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-03T12:34:56.000Z'));
     const downloadButton = element({ disabled: true, innerHTML: 'Download' });
-    const { Manager, appended, created, removed } = await loadManager({
+    const { Manager, appended, created, removed } = loadManager({
       downloadButton,
     });
     new Manager(config({ debug: true })).initialize();
@@ -178,7 +159,7 @@ describe('account recovery codes manager', () => {
     vi.useFakeTimers();
     const copyButton = element({ innerHTML: 'Copy' });
     const writeText = vi.fn().mockResolvedValue(undefined);
-    const { Manager } = await loadManager({
+    const { Manager } = loadManager({
       copyButton,
       clipboard: { writeText },
     });
@@ -200,10 +181,9 @@ describe('account recovery codes manager', () => {
 
   it('uses the legacy clipboard fallback when the Clipboard API is unavailable', async () => {
     const copyButton = element();
-    const { Manager, appended, created, execCommand, removed } =
-      await loadManager({
-        copyButton,
-      });
+    const { Manager, appended, created, execCommand, removed } = loadManager({
+      copyButton,
+    });
     new Manager(config()).initialize();
 
     await copyButton.addEventListener.mock.calls[0]?.[1]();
@@ -224,7 +204,7 @@ describe('account recovery codes manager', () => {
   it('reports a failed legacy clipboard copy instead of false success', async () => {
     const copyButton = element();
     const execCommand = vi.fn(() => false);
-    const { Manager, showAlert } = await loadManager({
+    const { Manager, showAlert } = loadManager({
       copyButton,
       execCommand,
     });
@@ -244,7 +224,7 @@ describe('account recovery codes manager', () => {
   it('reports Clipboard API rejection through the application dialog', async () => {
     const copyButton = element();
     const failure = new Error('clipboard denied');
-    const { Manager, showAlert } = await loadManager({
+    const { Manager, showAlert } = loadManager({
       copyButton,
       clipboard: { writeText: vi.fn().mockRejectedValue(failure) },
     });
@@ -260,8 +240,6 @@ describe('account recovery codes manager', () => {
   });
 
   it('auto-initializes from DOM codes rather than JSON code state', async () => {
-    vi.resetModules();
-    let ready: (() => void) | undefined;
     const copyButton = element();
     const codeElements = [
       { getAttribute: vi.fn(() => 'first') },
@@ -269,11 +247,8 @@ describe('account recovery codes manager', () => {
       { getAttribute: vi.fn(() => 'second') },
     ];
     vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn() } });
-    vi.stubGlobal('window', { dialog: { showAlert: vi.fn() } });
     vi.stubGlobal('document', {
-      addEventListener: vi.fn(
-        (_name: string, listener: () => void) => (ready = listener)
-      ),
+      addEventListener: vi.fn(),
       getElementById: vi.fn((id: string) => {
         if (id === '___RECOVERY_CODES_STATE___') {
           return {
@@ -287,9 +262,7 @@ describe('account recovery codes manager', () => {
         return null;
       }),
     });
-    await import('../../../src/assets/js/account/recovery-codes.js');
-
-    ready?.();
+    initializeRecoveryCodesPage();
     await copyButton.addEventListener.mock.calls[0]?.[1]();
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('first\nsecond');
@@ -310,33 +283,21 @@ describe('account recovery codes manager', () => {
       { querySelectorAll: vi.fn(() => []) },
     ],
   ])('rejects %s during auto-initialization', async (_name, state, codes) => {
-    vi.resetModules();
-    let ready: (() => void) | undefined;
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
     vi.stubGlobal('document', {
-      addEventListener: vi.fn(
-        (_event: string, listener: () => void) => (ready = listener)
-      ),
+      addEventListener: vi.fn(),
       getElementById: vi.fn((id: string) =>
         id === '___RECOVERY_CODES_STATE___' ? state : codes
       ),
     });
-    await import('../../../src/assets/js/account/recovery-codes.js');
-
-    ready?.();
+    initializeRecoveryCodesPage();
 
     expect(consoleError).toHaveBeenCalledOnce();
   });
 
-  it('can be imported outside a browser document', async () => {
-    vi.resetModules();
-    vi.stubGlobal('document', undefined);
-
-    const loaded =
-      await import('../../../src/assets/js/account/recovery-codes.js');
-
-    expect(loaded.RecoveryCodesManager).toEqual(expect.any(Function));
+  it('is statically importable outside a browser document', () => {
+    expect(RecoveryCodesManager).toEqual(expect.any(Function));
   });
 });

@@ -11,8 +11,6 @@
  * @author Parako.ID Team
  */
 
-'use strict';
-
 /**
  * Configuration interface for PasswordVisibilityToggle
  */
@@ -43,9 +41,6 @@ export class PasswordVisibilityToggle {
     this.debug = config.debug || false;
   }
 
-  /**
-   * Initialize the password visibility toggles
-   */
   public initialize(): void {
     this.log('Initializing PasswordVisibilityToggle');
 
@@ -122,18 +117,3 @@ export class PasswordVisibilityToggle {
     }
   }
 }
-
-export interface PasswordVisibilityWindow {
-  PasswordVisibilityToggle?: typeof PasswordVisibilityToggle;
-}
-
-/** Publish the constructor for templates that load this module as a script. */
-export function installPasswordVisibilityGlobal(
-  target: PasswordVisibilityWindow | undefined = typeof window === 'undefined'
-    ? undefined
-    : (window as unknown as PasswordVisibilityWindow)
-): void {
-  if (target) target.PasswordVisibilityToggle = PasswordVisibilityToggle;
-}
-
-installPasswordVisibilityGlobal();

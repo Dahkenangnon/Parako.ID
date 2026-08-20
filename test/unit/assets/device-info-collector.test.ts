@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-interface Config {
-  csrfToken: string;
-  fingerprintJSApiKey?: string;
-  debug: boolean;
-}
-
-interface CollectorInstance {
-  destroy(): void;
-  initialize(): Promise<void>;
-}
-
-type CollectorConstructor = new (config: Config) => CollectorInstance;
+import {
+  DeviceInfoCollector,
+  initializeDeviceInfoPage,
+  registerDeviceInfoEntry,
+} from '../../../src/assets/js/user.js';
 
 interface FormFixture {
   firstChild: object | null;
@@ -49,7 +42,7 @@ class MutationObserverFixture {
   }
 }
 
-async function loadCollector(
+function loadCollector(
   options: {
     fingerprintJS?: {
       load: ReturnType<typeof vi.fn>;
@@ -61,9 +54,8 @@ async function loadCollector(
     };
   } = {}
 ) {
-  vi.resetModules();
   MutationObserverFixture.instances = [];
-  let ready: (() => void) | undefined;
+  const documentListeners = new Map<string, () => void>();
   const windowListeners = new Map<string, () => void>();
   const createdInputs: Array<Record<string, string>> = [];
   const windowRoot: Record<string, unknown> = {
@@ -74,9 +66,9 @@ async function loadCollector(
   if (options.fingerprintJS) windowRoot.FingerprintJS = options.fingerprintJS;
   vi.stubGlobal('window', windowRoot);
   vi.stubGlobal('document', {
-    addEventListener: vi.fn(
-      (_name: string, callback: () => void) => (ready = callback)
-    ),
+    addEventListener: vi.fn((name: string, callback: () => void) => {
+      documentListeners.set(name, callback);
+    }),
     body: {},
     createElement: vi.fn(() => {
       const input: Record<string, string> = {};
@@ -101,17 +93,11 @@ async function loadCollector(
   vi.stubGlobal('screen', { width: 1280, height: 720, colorDepth: 24 });
   vi.stubGlobal('MutationObserver', MutationObserverFixture);
   vi.stubGlobal('Node', { ELEMENT_NODE: 1 });
-
-  const loaded = await import('../../../src/assets/js/user.js');
-  const Collector = loaded.DeviceInfoCollector as
-    CollectorConstructor | undefined;
-  if (!Collector) throw new Error('DeviceInfoCollector is not exported');
   return {
-    Collector,
+    Collector: DeviceInfoCollector,
     createdInputs,
-    ready,
+    documentListeners,
     windowListeners,
-    windowRoot,
   };
 }
 
@@ -131,7 +117,7 @@ describe('device info collector', () => {
     const existing = { value: '' };
     const postForm = form({ method: 'post', existing });
     const fp = fingerprint();
-    const { Collector } = await loadCollector({
+    const { Collector } = loadCollector({
       fingerprintJS: fp,
       forms: [postForm],
     });
@@ -156,7 +142,7 @@ describe('device info collector', () => {
   it('passes a Pro API key and creates a hidden device field', async () => {
     const postForm = form({ method: 'POST', id: 'login' });
     const fp = fingerprint('pro-visitor');
-    const { Collector, createdInputs } = await loadCollector({
+    const { Collector, createdInputs } = loadCollector({
       fingerprintJS: fp,
       forms: [postForm],
     });
@@ -191,7 +177,7 @@ describe('device info collector', () => {
       getItem: vi.fn(() => 'stored-fallback'),
       setItem: vi.fn(),
     };
-    const { Collector } = await loadCollector({
+    const { Collector } = loadCollector({
       forms: [form({ method: 'POST', existing })],
       localStorage: storage,
     });
@@ -209,7 +195,7 @@ describe('device info collector', () => {
     const storage = { getItem: vi.fn(() => null), setItem: vi.fn() };
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const existing = { value: '' };
-    const { Collector } = await loadCollector({
+    const { Collector } = loadCollector({
       forms: [form({ method: 'POST', existing })],
       localStorage: storage,
     });
@@ -234,7 +220,7 @@ describe('device info collector', () => {
       }),
     };
     const existing = { value: '' };
-    const { Collector } = await loadCollector({
+    const { Collector } = loadCollector({
       forms: [form({ method: 'POST', existing })],
       localStorage: storage,
     });
@@ -251,7 +237,7 @@ describe('device info collector', () => {
   });
 
   it('reports an initialization failure without throwing', async () => {
-    const { Collector } = await loadCollector();
+    const { Collector } = loadCollector();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
@@ -273,7 +259,7 @@ describe('device info collector', () => {
   it('does not inject before collection or without CSRF configuration', async () => {
     const postForm = form({ method: 'POST' });
     const fp = fingerprint();
-    const { Collector } = await loadCollector({
+    const { Collector } = loadCollector({
       fingerprintJS: fp,
       forms: [postForm],
     });
@@ -287,7 +273,7 @@ describe('device info collector', () => {
 
   it('injects only dynamically-added POST forms and nested POST forms', async () => {
     const fp = fingerprint();
-    const { Collector } = await loadCollector({ fingerprintJS: fp });
+    const { Collector } = loadCollector({ fingerprintJS: fp });
     const collector = new Collector({ csrfToken: 'csrf', debug: false });
     await collector.initialize();
     const postForm = Object.assign(form({ method: 'post' }), {
@@ -334,7 +320,7 @@ describe('device info collector', () => {
 
   it('does not replace an active mutation observer and tears down idempotently', async () => {
     const fp = fingerprint();
-    const { Collector } = await loadCollector({ fingerprintJS: fp });
+    const { Collector } = loadCollector({ fingerprintJS: fp });
     const collector = new Collector({ csrfToken: 'csrf', debug: true });
     await collector.initialize();
     const observer = MutationObserverFixture.instances[0]!;
@@ -347,20 +333,33 @@ describe('device info collector', () => {
     expect(observer.disconnect).toHaveBeenCalledOnce();
   });
 
+  it('registers page initialization for DOM readiness once', () => {
+    const { documentListeners } = loadCollector();
+
+    registerDeviceInfoEntry();
+
+    expect(document.addEventListener).toHaveBeenCalledWith(
+      'DOMContentLoaded',
+      expect.any(Function),
+      { once: true }
+    );
+    expect(documentListeners.get('DOMContentLoaded')).toBeTypeOf('function');
+  });
+
   it.each([
     ['missing state', null],
     ['malformed state', { textContent: '{' }],
     ['blank state', { textContent: null }],
     ['missing CSRF', { textContent: JSON.stringify({ debug: false }) }],
-  ])('rejects %s during page bootstrap', async (_name, stateElement) => {
+  ])('rejects %s during page bootstrap', (_name, stateElement) => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { ready } = await loadCollector();
+    loadCollector();
     vi.mocked(document.getElementById).mockReturnValue(stateElement as any);
 
-    ready?.();
+    initializeDeviceInfoPage();
 
     expect(consoleError.mock.calls.length + consoleWarn.mock.calls.length).toBe(
       1
@@ -371,22 +370,15 @@ describe('device info collector', () => {
     'bootstraps valid page state with debug=%s and cleans up on lifecycle events',
     async debug => {
       const fp = fingerprint();
-      const { ready, windowListeners, windowRoot } = await loadCollector({
-        fingerprintJS: fp,
-      });
+      const { windowListeners } = loadCollector({ fingerprintJS: fp });
       vi.mocked(document.getElementById).mockReturnValue({
         textContent: JSON.stringify({ csrfToken: 'csrf', debug }),
       } as any);
-
-      ready?.();
+      const collector = initializeDeviceInfoPage();
+      expect(collector).toBeInstanceOf(DeviceInfoCollector);
       await vi.waitFor(() =>
         expect(MutationObserverFixture.instances).toHaveLength(1)
       );
-      if (debug) {
-        expect(windowRoot.deviceInfoCollector).toEqual(expect.any(Object));
-      } else {
-        expect(windowRoot.deviceInfoCollector).toBeUndefined();
-      }
 
       windowListeners.get('beforeunload')?.();
       windowListeners.get('pagehide')?.();
@@ -396,12 +388,7 @@ describe('device info collector', () => {
     }
   );
 
-  it('can be imported outside a browser document', async () => {
-    vi.resetModules();
-    vi.stubGlobal('document', undefined);
-
-    const loaded = await import('../../../src/assets/js/user.js');
-
-    expect(loaded.DeviceInfoCollector).toEqual(expect.any(Function));
+  it('is statically importable outside a browser document', () => {
+    expect(DeviceInfoCollector).toBeTypeOf('function');
   });
 });

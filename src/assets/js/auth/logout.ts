@@ -96,9 +96,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(config: LogoutConfig): LogoutConfig {
       if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
@@ -150,9 +147,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -163,9 +157,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (this.logoutForms.length === 0) {
         this.log('No logout forms found', null, 'error');
@@ -175,9 +166,6 @@
       this.setupLogoutForms();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.logoutForms = document.querySelectorAll(
         'form[action*="logout"]'
@@ -232,9 +220,6 @@
       }
     }
 
-    /**
-     * Get account count from the page
-     */
     private getAccountCount(): number {
       const accountCountElement = document.querySelector(
         '[data-account-count]'

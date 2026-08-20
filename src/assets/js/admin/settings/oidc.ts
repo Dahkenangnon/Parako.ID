@@ -1,87 +1,75 @@
-/**
- * Admin OIDC Settings Module
- *
- * Handles OIDC settings page functionality:
- * - Form reset with confirmation (via common.ts)
- * - Issuer URL and path validation
- */
-(function () {
-  'use strict';
+import dialogService from '../../utils/dialog.js';
+import {
+  bindSynchronousFormValidation,
+  type ValidationDialog,
+  type ValidationError,
+} from './validation.js';
 
-  if (typeof document === 'undefined') return;
+export class OidcSettingsManager {
+  private form: HTMLFormElement | null = null;
 
-  interface DialogApi {
-    showAlert: (
-      title: string,
-      message: string,
-      options?: { variant?: string }
-    ) => Promise<void>;
+  public constructor(
+    private readonly dialog: ValidationDialog | null = dialogService
+  ) {}
+
+  public initialize(): void {
+    this.form = document.querySelector('form');
+    if (!this.form) return;
+
+    bindSynchronousFormValidation(
+      this.form,
+      () => this.validateForm(),
+      this.dialog
+    );
   }
 
-  class OidcSettingsManager {
-    private form: HTMLFormElement | null = null;
+  private validateForm(): ValidationError | null {
+    const issuerInput = document.getElementById(
+      'oidc.issuer'
+    ) as HTMLInputElement | null;
+    const pathInput = document.getElementById(
+      'oidc.path'
+    ) as HTMLInputElement | null;
 
-    public initialize(): void {
-      this.form = document.querySelector('form');
-      this.setupFormValidation();
+    const issuer = issuerInput?.value || '';
+    const path = pathInput?.value || '';
+
+    if (!path || (issuerInput && !issuer)) {
+      return {
+        title: 'Validation Error',
+        message: 'Issuer URL and OIDC path are required fields.',
+      };
     }
 
-    private setupFormValidation(): void {
-      if (!this.form) return;
-
-      this.form.addEventListener('submit', async e => {
-        const isValid = await this.validateForm();
-        if (!isValid) {
-          e.preventDefault();
-        }
-      });
-    }
-
-    private async validateForm(): Promise<boolean> {
-      const issuerInput = document.getElementById(
-        'oidc.issuer'
-      ) as HTMLInputElement | null;
-      const pathInput = document.getElementById(
-        'oidc.path'
-      ) as HTMLInputElement | null;
-
-      const issuer = issuerInput?.value || '';
-      const path = pathInput?.value || '';
-
-      if (!path || (issuerInput && !issuer)) {
-        await this.showError(
-          'Validation Error',
-          'Issuer URL and OIDC path are required fields.'
-        );
-        return false;
-      }
-
-      if (issuerInput) {
-        try {
-          new URL(issuer);
-        } catch {
-          await this.showError(
-            'Invalid URL',
-            'Please enter a valid issuer URL.'
-          );
-          return false;
-        }
-      }
-
-      return true;
-    }
-
-    private async showError(title: string, message: string): Promise<void> {
-      const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
-      if (dialogApi?.showAlert) {
-        await dialogApi.showAlert(title, message, { variant: 'error' });
-      } else {
-        alert(message);
+    if (issuerInput) {
+      try {
+        new URL(issuer);
+      } catch {
+        return {
+          title: 'Invalid URL',
+          message: 'Please enter a valid issuer URL.',
+        };
       }
     }
+
+    return null;
   }
+}
 
-  document.addEventListener('DOMContentLoaded', () => {
-    new OidcSettingsManager().initialize();
-  });
-})();
+export function initializeOidcSettingsPage(
+  dialog: ValidationDialog | null = dialogService
+): void {
+  new OidcSettingsManager(dialog).initialize();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeOidcSettingsPage(),
+      { once: true }
+    );
+  } else {
+    initializeOidcSettingsPage();
+  }
+}

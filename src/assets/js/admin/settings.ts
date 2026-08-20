@@ -1,3 +1,5 @@
+import { confirmCriticalSettingsChange } from './settings/critical-change.js';
+
 /**
  * Admin Settings Management - Client-Side Secret Reveal Functionality
  *
@@ -17,9 +19,6 @@
  * and TypeScript already handles type checking for DOM types
  */
 
-/**
- * Interface for reveal secret API response
- */
 interface RevealSecretResponse {
   success: boolean;
   value?: string | string[];
@@ -31,9 +30,9 @@ let settingsDialogIdSequence = 0;
 /**
  * Admin Settings Manager - Handles secret reveal/mask functionality
  */
-class AdminSettingsManager {
+export class AdminSettingsManager {
   private debug: boolean;
-  private inactivityTimer: any = null;
+  private inactivityTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly INACTIVITY_TIMEOUT = 2 * 60 * 1000; // 2 minutes of inactivity
   private revealedFields: Set<string> = new Set();
 
@@ -41,6 +40,12 @@ class AdminSettingsManager {
     this.debug = debug;
     this.setupInactivityMonitoring();
     this.setupDeclarativeHandlers();
+  }
+
+  private refreshIcons(): void {
+    if (typeof window.lucide?.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
   }
 
   /**
@@ -178,13 +183,7 @@ class AdminSettingsManager {
     notificationDiv.appendChild(flexContainer);
     document.body.appendChild(notificationDiv);
 
-    const lucideWindow = window as any;
-    if (
-      lucideWindow.lucide &&
-      typeof lucideWindow.lucide.createIcons === 'function'
-    ) {
-      lucideWindow.lucide.createIcons();
-    }
+    this.refreshIcons();
 
     // Auto-remove after 5 seconds
     setTimeout(() => {
@@ -204,9 +203,6 @@ class AdminSettingsManager {
     field.style.caretColor = '#f97316'; // Orange caret for visibility when typing
   }
 
-  /**
-   * Remove invisible text style from field
-   */
   private removeInvisibleStyle(
     field: HTMLInputElement | HTMLTextAreaElement
   ): void {
@@ -274,13 +270,7 @@ class AdminSettingsManager {
     button.appendChild(textNode);
 
     // Re-initialize Lucide icons
-    const lucideWindow = window as any;
-    if (
-      lucideWindow.lucide &&
-      typeof lucideWindow.lucide.createIcons === 'function'
-    ) {
-      lucideWindow.lucide.createIcons();
-    }
+    this.refreshIcons();
   }
 
   /**
@@ -397,13 +387,7 @@ class AdminSettingsManager {
       document.body.appendChild(backdrop);
       document.addEventListener('keydown', handleKeydown);
 
-      const lucideWindow = window as any;
-      if (
-        lucideWindow.lucide &&
-        typeof lucideWindow.lucide.createIcons === 'function'
-      ) {
-        lucideWindow.lucide.createIcons();
-      }
+      this.refreshIcons();
 
       // Start on the non-destructive action for keyboard and assistive users.
       cancelButton.focus();
@@ -456,13 +440,7 @@ class AdminSettingsManager {
     document.body.appendChild(errorDiv);
 
     // Re-initialize Lucide icons
-    const lucideWindow = window as any;
-    if (
-      lucideWindow.lucide &&
-      typeof lucideWindow.lucide.createIcons === 'function'
-    ) {
-      lucideWindow.lucide.createIcons();
-    }
+    this.refreshIcons();
 
     // Auto-remove after 5 seconds
     setTimeout(() => {
@@ -658,141 +636,63 @@ class AdminSettingsManager {
    * @param event - The form submit event
    * @returns Promise<boolean> - true to allow submission, false to cancel
    */
-  public async confirmCriticalChange(event: Event): Promise<boolean> {
-    const form = event.target as HTMLFormElement;
-
-    event.preventDefault();
-
-    // Identify section from form action or data attribute
-    const formAction = form.action || '';
-    let section = 'unknown';
-    let sectionTitle = 'Configuration';
-    let warnings: string[] = [];
-
-    if (formAction.includes('/settings/security/secrets')) {
-      section = 'security-secrets';
-      sectionTitle = 'Security Secrets';
-      warnings = [
-        '• Changing JWT secrets will invalidate all existing tokens',
-        '• Changing cookie secrets will log out all users',
-        '• All users will need to re-authenticate',
-      ];
-    } else if (formAction.includes('/settings/security/mfa')) {
-      section = 'security-mfa';
-      sectionTitle = 'MFA Configuration';
-      warnings = [
-        '• Disabling MFA methods may lock out users relying on them',
-        '• WebAuthn changes affect passkey registration',
-        '• Ensure you have tested the new configuration',
-      ];
-    } else if (formAction.includes('/settings/security/sessions')) {
-      section = 'security-sessions';
-      sectionTitle = 'Session Configuration';
-      warnings = [
-        '• Session timeout changes affect active sessions',
-        '• Binding changes may invalidate current sessions',
-        '• Ensure you have tested the new configuration',
-      ];
-    } else if (formAction.includes('/settings/security/protection')) {
-      section = 'security-protection';
-      sectionTitle = 'Protection Configuration';
-      warnings = [
-        '• Rate limiting changes take effect immediately',
-        '• Device matching changes affect login verification',
-        '• Ensure you have tested the new configuration',
-      ];
-    } else if (formAction.includes('/settings/security')) {
-      section = 'security-authentication';
-      sectionTitle = 'Authentication Configuration';
-      warnings = [
-        '• Login method changes affect how users sign in',
-        '• Password policy changes apply to new passwords only',
-        '• Registration changes take effect immediately',
-      ];
-    } else if (formAction.includes('/settings/oidc')) {
-      section = 'oidc';
-      sectionTitle = 'OIDC Configuration';
-      warnings = [
-        '• Changing the OIDC issuer will break all OIDC clients',
-        '• Token TTL changes affect active tokens',
-        '• JWKS changes require client updates',
-        '• May require OIDC client reconfiguration',
-      ];
-    } else if (formAction.includes('/settings/integrations')) {
-      section = 'integrations';
-      sectionTitle = 'Integrations Configuration';
-      warnings = [
-        '• Email configuration changes affect password resets',
-        '• OAuth client changes may break social login',
-        '• Test connections before saving',
-      ];
-    }
-
-    const validationWarningsInput = form.querySelector<HTMLInputElement>(
-      'input[name="validation_warnings"]'
+  public confirmCriticalChange(event: Event): Promise<boolean> {
+    return confirmCriticalSettingsChange(
+      event,
+      (title, message, confirmText, cancelText) =>
+        this.showConfirmDialog(title, message, confirmText, cancelText),
+      (confirmed, section) => {
+        this.log(
+          confirmed
+            ? 'Critical change confirmed'
+            : 'Critical change cancelled by user',
+          { section }
+        );
+      }
     );
-    if (validationWarningsInput && validationWarningsInput.value) {
-      try {
-        const serverWarnings = JSON.parse(validationWarningsInput.value);
-        if (Array.isArray(serverWarnings)) {
-          warnings.push('', 'Server Validation Warnings:');
-          serverWarnings.forEach((warning: string) => {
-            warnings.push(`• ${warning}`);
-          });
-        }
-      } catch {}
-    }
-
-    const message =
-      `You are about to save changes to ${sectionTitle}.\n\n` +
-      `IMPORTANT: This action may have significant impact:\n\n` +
-      warnings.join('\n') +
-      '\n\n' +
-      `Are you sure you want to proceed?`;
-
-    const confirmed = await this.showConfirmDialog(
-      `Confirm ${sectionTitle} Changes`,
-      message,
-      'Yes, Save Changes',
-      'Cancel'
-    );
-
-    if (confirmed) {
-      this.log('Critical change confirmed', { section });
-
-      // Submit the form programmatically
-      form.submit();
-      return true;
-    } else {
-      this.log('Critical change cancelled by user', { section });
-      return false;
-    }
   }
 }
 
-// Auto-initialize when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  const pathname = window.location.pathname;
-  const isAdminSettings =
-    pathname === '/admin/settings' || pathname.startsWith('/admin/settings/');
+function readDebugFlag(): boolean {
+  const stateElement = document.getElementById('___MAIN_STATE___');
+  if (!stateElement) return false;
 
-  if (isAdminSettings) {
-    const dataElement = document.getElementById('___MAIN_STATE___');
-    let debug = false;
-
-    if (dataElement) {
-      try {
-        const data = JSON.parse(dataElement.textContent || '{}');
-        debug = data.debug || false;
-      } catch {
-        // Fallback: check if development environment (JSON parse failed)
-        debug =
-          document.documentElement.getAttribute('data-env') === 'development';
-      }
-    }
-
-    const adminSettingsManager = new AdminSettingsManager(debug);
-
-    (window as any).adminSettingsManager = adminSettingsManager;
+  try {
+    const parsed: unknown = JSON.parse(stateElement.textContent || '{}');
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'debug' in parsed &&
+      (parsed as { debug?: unknown }).debug === true
+    );
+  } catch {
+    return document.documentElement.getAttribute('data-env') === 'development';
   }
-});
+}
+
+export function initializeAdminSettingsPage(): AdminSettingsManager | null {
+  const root = '/admin/settings';
+  const { pathname } = window.location;
+  if (pathname !== root && !pathname.startsWith(root + '/')) {
+    return null;
+  }
+
+  return new AdminSettingsManager(readDebugFlag());
+}
+
+export function registerAdminSettingsEntry(): void {
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeAdminSettingsPage(),
+      { once: true }
+    );
+    return;
+  }
+
+  initializeAdminSettingsPage();
+}
+
+if (typeof document !== 'undefined') {
+  registerAdminSettingsEntry();
+}

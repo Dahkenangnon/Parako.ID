@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  AccountLayoutManager,
+  initializeAccountLayout,
+  type AccountLayoutConfig,
+  type AccountLayoutDialog,
+} from '../../../src/assets/js/account/layout.js';
+
 interface EventFixture {
   key?: string;
   stopPropagation: ReturnType<typeof vi.fn>;
@@ -93,7 +100,7 @@ function eventFixture(target?: ElementFixture): EventFixture {
   return { stopPropagation: vi.fn(), target };
 }
 
-const config = {
+const config: AccountLayoutConfig = {
   csrfToken: 'csrf-token',
   routes: {
     accountSwitcherData: '/accounts/data',
@@ -108,7 +115,6 @@ const config = {
 };
 
 function setupDom() {
-  let ready: (() => void) | undefined;
   const documentListeners = new Map<
     string,
     Array<(event: EventFixture) => void>
@@ -194,10 +200,6 @@ function setupDom() {
   vi.stubGlobal('document', {
     addEventListener: vi.fn(
       (name: string, listener: (event: EventFixture) => void) => {
-        if (name === 'DOMContentLoaded') {
-          ready = listener as () => void;
-          return;
-        }
         const listeners = documentListeners.get(name) ?? [];
         listeners.push(listener);
         documentListeners.set(name, listeners);
@@ -238,7 +240,6 @@ function setupDom() {
     mobileUserDropdown,
     otherAccountsListSidebar,
     otherAccountsListMobile,
-    runReady: () => ready?.(),
     sidebar,
     sidebarToggle,
     sidebarUserBtn,
@@ -252,12 +253,21 @@ function setupDom() {
   };
 }
 
-async function initializeManager(
-  managerConfig: Record<string, unknown> = config
-) {
-  await import('../../../src/assets/js/account/layout.js');
-  const Manager = (window as any).AccountLayoutManagerClass;
-  const manager = new Manager(managerConfig);
+function createDialog(
+  overrides: Partial<AccountLayoutDialog> = {}
+): AccountLayoutDialog {
+  return {
+    showAlert: vi.fn().mockResolvedValue(undefined),
+    showConfirm: vi.fn().mockResolvedValue(false),
+    ...overrides,
+  };
+}
+
+function initializeManager(
+  managerConfig: AccountLayoutConfig = config,
+  dialog: AccountLayoutDialog = createDialog()
+): AccountLayoutManager {
+  const manager = new AccountLayoutManager(managerConfig, dialog);
   manager.initialize();
   return manager;
 }
@@ -266,7 +276,6 @@ describe('account layout manager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it('optimistically expands the sidebar and persists the new state', async () => {
@@ -463,7 +472,6 @@ describe('account layout manager', () => {
       sidebar,
       sidebarUserBtn,
       sidebarUserDropdown,
-      windowFixture,
     } = setupDom();
     sidebar.classList.add('sidebar-collapsed');
     sidebarUserDropdown.classList.add('hidden');
@@ -490,10 +498,10 @@ describe('account layout manager', () => {
       }),
     });
     vi.stubGlobal('fetch', fetch);
-    windowFixture.dialog = {
+    const dialog = createDialog({
       showConfirm: vi.fn().mockResolvedValue(false),
-    };
-    await initializeManager();
+    });
+    await initializeManager(config, dialog);
 
     sidebarUserBtn.trigger('click');
     await vi.waitFor(() => {
@@ -603,12 +611,12 @@ describe('account layout manager', () => {
   });
 
   it('does not remove an account when confirmation is declined', async () => {
-    const { windowFixture } = setupDom();
+    setupDom();
     const showConfirm = vi.fn().mockResolvedValue(false);
-    windowFixture.dialog = { showConfirm };
+    const dialog = createDialog({ showConfirm });
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    const manager = await initializeManager();
+    const manager = await initializeManager(config, dialog);
 
     await manager.removeAccount('backup');
 
@@ -625,9 +633,9 @@ describe('account layout manager', () => {
   });
 
   it('removes a confirmed account and refreshes both account lists', async () => {
-    const { windowFixture } = setupDom();
+    setupDom();
     const showConfirm = vi.fn().mockResolvedValue(true);
-    windowFixture.dialog = { showAlert: vi.fn(), showConfirm };
+    const dialog = createDialog({ showConfirm });
     const fetch = vi
       .fn()
       .mockResolvedValueOnce({
@@ -637,7 +645,7 @@ describe('account layout manager', () => {
         json: vi.fn().mockResolvedValue({ accounts: [], success: true }),
       });
     vi.stubGlobal('fetch', fetch);
-    const manager = await initializeManager();
+    const manager = await initializeManager(config, dialog);
 
     await manager.removeAccount('backup');
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
@@ -653,12 +661,12 @@ describe('account layout manager', () => {
   });
 
   it('shows the server error when account removal is rejected', async () => {
-    const { windowFixture } = setupDom();
+    setupDom();
     const showAlert = vi.fn();
-    windowFixture.dialog = {
+    const dialog = createDialog({
       showAlert,
       showConfirm: vi.fn().mockResolvedValue(true),
-    };
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -668,7 +676,7 @@ describe('account layout manager', () => {
         }),
       })
     );
-    const manager = await initializeManager();
+    const manager = await initializeManager(config, dialog);
 
     await manager.removeAccount('admin');
 
@@ -683,15 +691,15 @@ describe('account layout manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { windowFixture } = setupDom();
+    setupDom();
     const showAlert = vi.fn();
-    windowFixture.dialog = {
+    const dialog = createDialog({
       showAlert,
       showConfirm: vi.fn().mockResolvedValue(true),
-    };
+    });
     const failure = new Error('network unavailable');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(failure));
-    const manager = await initializeManager();
+    const manager = await initializeManager(config, dialog);
 
     await manager.removeAccount('backup');
 
@@ -858,28 +866,27 @@ describe('account layout manager', () => {
     expect(mobileSidebarOverlay.classList.contains('invisible')).toBe(true);
   });
 
-  it('contains account removal when the dialog utility is unavailable', async () => {
-    const error = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => undefined);
-    setupDom();
+  it('uses the injected dialog instead of an application-owned global', async () => {
+    const { windowFixture } = setupDom();
+    const globalShowConfirm = vi.fn().mockResolvedValue(true);
+    windowFixture.dialog = { showConfirm: globalShowConfirm };
+    const showConfirm = vi.fn().mockResolvedValue(false);
+    const dialog = createDialog({ showConfirm });
     vi.stubGlobal('fetch', vi.fn());
-    const manager = await initializeManager();
+    const manager = initializeManager(config, dialog);
 
     await manager.removeAccount('backup');
 
-    expect(error).toHaveBeenCalledWith(
-      '[AccountLayout] Dialog utility not available'
-    );
+    expect(showConfirm).toHaveBeenCalledOnce();
+    expect(globalShowConfirm).not.toHaveBeenCalled();
   });
 
   it('warns when account layout state is absent', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { runReady } = setupDom();
+    setupDom();
     vi.stubGlobal('fetch', vi.fn());
-    await import('../../../src/assets/js/account/layout.js');
 
-    runReady();
+    initializeAccountLayout();
 
     expect(warn).toHaveBeenCalledWith(
       '[AccountLayout] State element not found'
@@ -887,14 +894,12 @@ describe('account layout manager', () => {
   });
 
   it('initializes from embedded account layout state', async () => {
-    const { elements, runReady, themeIcon } = setupDom();
+    const { elements, themeIcon } = setupDom();
     const state = new ElementFixture();
     state.textContent = JSON.stringify(config);
     elements.set('___ACCOUNT_LAYOUT_STATE___', state);
     vi.stubGlobal('fetch', vi.fn());
-    await import('../../../src/assets/js/account/layout.js');
-
-    runReady();
+    initializeAccountLayout();
 
     expect(themeIcon.getAttribute('data-lucide')).toBe('sun');
     expect((window as any).loadSidebarAccountData).toBeUndefined();
@@ -905,14 +910,12 @@ describe('account layout manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { elements, runReady } = setupDom();
+    const { elements } = setupDom();
     const state = new ElementFixture();
     state.textContent = '{bad json';
     elements.set('___ACCOUNT_LAYOUT_STATE___', state);
     vi.stubGlobal('fetch', vi.fn());
-    await import('../../../src/assets/js/account/layout.js');
-
-    expect(runReady).not.toThrow();
+    expect(initializeAccountLayout).not.toThrow();
     expect(error).toHaveBeenCalledWith(
       '[AccountLayout] Initialization failed:',
       expect.any(SyntaxError)
@@ -947,9 +950,7 @@ describe('account layout manager', () => {
     elements.clear();
     vi.stubGlobal('fetch', vi.fn());
 
-    await expect(
-      initializeManager({ ...config, userTheme: '' })
-    ).resolves.toBeDefined();
+    expect(initializeManager({ ...config, userTheme: '' })).toBeDefined();
     triggerDocument('keydown', {
       key: 'Escape',
       stopPropagation: vi.fn(),
@@ -1040,19 +1041,19 @@ describe('account layout manager', () => {
   });
 
   it('uses the unknown-error fallback for rejected account removal', async () => {
-    const { windowFixture } = setupDom();
+    setupDom();
     const showAlert = vi.fn();
-    windowFixture.dialog = {
+    const dialog = createDialog({
       showAlert,
       showConfirm: vi.fn().mockResolvedValue(true),
-    };
+    });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
         json: vi.fn().mockResolvedValue({ success: false }),
       })
     );
-    const manager = await initializeManager();
+    const manager = await initializeManager(config, dialog);
 
     await manager.removeAccount('backup');
 
@@ -1079,25 +1080,19 @@ describe('account layout manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { elements, runReady, themeIcon } = setupDom();
+    const { elements, themeIcon } = setupDom();
     const state = new ElementFixture();
     elements.set('___ACCOUNT_LAYOUT_STATE___', state);
     vi.stubGlobal('fetch', vi.fn());
-    await import('../../../src/assets/js/account/layout.js');
-
-    expect(runReady).not.toThrow();
+    expect(initializeAccountLayout).not.toThrow();
     expect(error).not.toHaveBeenCalled();
     expect(themeIcon.getAttribute('data-lucide')).toBe('sun');
   });
 
-  it('does not expose the class when window is unavailable', async () => {
-    const { runReady } = setupDom();
-    vi.stubGlobal('window', undefined);
+  it('does not expose the class through an application-owned global', () => {
+    const { windowFixture } = setupDom();
 
-    await expect(
-      import('../../../src/assets/js/account/layout.js')
-    ).resolves.toBeDefined();
-    expect(runReady).not.toThrow();
+    expect(windowFixture.AccountLayoutManagerClass).toBeUndefined();
   });
 
   it('updates the sidebar without optional logos or logo sources', async () => {
@@ -1113,7 +1108,6 @@ describe('account layout manager', () => {
     await initializeManager();
     first.sidebarToggle.trigger('click');
 
-    vi.resetModules();
     const second = setupDom();
     delete second.lightLogo.dataset.rect;
     delete second.darkLogo.dataset.rect;

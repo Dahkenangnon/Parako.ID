@@ -8,554 +8,547 @@
  * - Image preview generation
  * - JSONC/JSON parsing
  */
-(function () {
-  'use strict';
+import dialogService, { type DialogService } from './dialog.js';
 
-  // Type Definitions
+// Type Definitions
 
-  interface FileValidationOptions {
-    maxSize?: number; // Maximum file size in bytes
-    allowedTypes?: string[]; // MIME types (e.g., 'image/jpeg', 'application/json')
-    allowedExtensions?: string[]; // File extensions (e.g., '.jpg', '.json')
+export interface FileValidationOptions {
+  maxSize?: number; // Maximum file size in bytes
+  allowedTypes?: string[]; // MIME types (e.g., 'image/jpeg', 'application/json')
+  allowedExtensions?: string[]; // File extensions (e.g., '.jpg', '.json')
+}
+
+export interface FileValidationResult {
+  valid: boolean;
+  error?: string;
+  file?: File;
+}
+
+export interface FileReadResult<T = string> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+const IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+];
+
+const JSON_TYPES = ['application/json', 'text/plain'];
+
+const DEFAULT_MAX_SIZE = 5 * 1024 * 1024; // 5MB
+
+// File Validation
+
+function getFileExtension(filename: string): string {
+  const lastDot = filename.lastIndexOf('.');
+  return lastDot !== -1 ? filename.substring(lastDot).toLowerCase() : '';
+}
+
+/**
+ * Validate a file against specified constraints
+ *
+ * @param file - File to validate
+ * @param options - Validation options
+ * @returns Validation result
+ */
+function validateFile(
+  file: File | null | undefined,
+  options: FileValidationOptions = {}
+): FileValidationResult {
+  if (!file) {
+    return { valid: false, error: 'No file selected' };
   }
 
-  interface FileValidationResult {
-    valid: boolean;
-    error?: string;
-    file?: File;
+  const {
+    maxSize = DEFAULT_MAX_SIZE,
+    allowedTypes,
+    allowedExtensions,
+  } = options;
+
+  if (file.size > maxSize) {
+    const maxSizeMB = maxSize / (1024 * 1024);
+    const sizeLabel = Number.isInteger(maxSizeMB)
+      ? String(maxSizeMB)
+      : maxSizeMB.toFixed(1);
+    return {
+      valid: false,
+      error: `File size must be less than ${sizeLabel}MB`,
+    };
   }
 
-  interface FileReadResult<T = string> {
-    success: boolean;
-    data?: T;
-    error?: string;
-  }
-
-  const IMAGE_TYPES = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/svg+xml',
-  ];
-
-  const JSON_TYPES = ['application/json', 'text/plain'];
-
-  const DEFAULT_MAX_SIZE = 5 * 1024 * 1024; // 5MB
-
-  // File Validation
-
-  /**
-   * Get file extension from filename
-   */
-  function getFileExtension(filename: string): string {
-    const lastDot = filename.lastIndexOf('.');
-    return lastDot !== -1 ? filename.substring(lastDot).toLowerCase() : '';
-  }
-
-  /**
-   * Validate a file against specified constraints
-   *
-   * @param file - File to validate
-   * @param options - Validation options
-   * @returns Validation result
-   */
-  function validateFile(
-    file: File | null | undefined,
-    options: FileValidationOptions = {}
-  ): FileValidationResult {
-    if (!file) {
-      return { valid: false, error: 'No file selected' };
-    }
-
-    const {
-      maxSize = DEFAULT_MAX_SIZE,
-      allowedTypes,
-      allowedExtensions,
-    } = options;
-
-    if (file.size > maxSize) {
-      const sizeMB = (maxSize / (1024 * 1024)).toFixed(1);
+  if (allowedTypes && allowedTypes.length > 0) {
+    if (!allowedTypes.includes(file.type)) {
       return {
         valid: false,
-        error: `File size must be less than ${sizeMB}MB`,
+        error: `Invalid file type. Allowed types: ${allowedTypes.join(', ')}`,
       };
     }
+  }
 
-    if (allowedTypes && allowedTypes.length > 0) {
-      if (!allowedTypes.includes(file.type)) {
-        return {
-          valid: false,
-          error: `Invalid file type. Allowed types: ${allowedTypes.join(', ')}`,
-        };
-      }
+  if (allowedExtensions && allowedExtensions.length > 0) {
+    const ext = getFileExtension(file.name);
+    if (!allowedExtensions.includes(ext)) {
+      return {
+        valid: false,
+        error: `Invalid file extension. Allowed extensions: ${allowedExtensions.join(', ')}`,
+      };
     }
-
-    if (allowedExtensions && allowedExtensions.length > 0) {
-      const ext = getFileExtension(file.name);
-      if (!allowedExtensions.includes(ext)) {
-        return {
-          valid: false,
-          error: `Invalid file extension. Allowed extensions: ${allowedExtensions.join(', ')}`,
-        };
-      }
-    }
-
-    return { valid: true, file };
   }
 
-  /**
-   * Validate an image file
-   *
-   * @param file - File to validate
-   * @param maxSize - Maximum file size in bytes (default: 5MB)
-   * @returns Validation result
-   */
-  function validateImageFile(
-    file: File | null | undefined,
-    maxSize: number = DEFAULT_MAX_SIZE
-  ): FileValidationResult {
-    return validateFile(file, {
-      maxSize,
-      allowedTypes: IMAGE_TYPES,
-    });
-  }
+  return { valid: true, file };
+}
 
-  /**
-   * Validate a JSON file
-   *
-   * @param file - File to validate
-   * @param maxSize - Maximum file size in bytes (default: 5MB)
-   * @returns Validation result
-   */
-  function validateJsonFile(
-    file: File | null | undefined,
-    maxSize: number = DEFAULT_MAX_SIZE
-  ): FileValidationResult {
-    return validateFile(file, {
-      maxSize,
-      allowedTypes: JSON_TYPES,
-      allowedExtensions: ['.json', '.jsonc'],
-    });
-  }
+/**
+ * Validate an image file
+ *
+ * @param file - File to validate
+ * @param maxSize - Maximum file size in bytes (default: 5MB)
+ * @returns Validation result
+ */
+function validateImageFile(
+  file: File | null | undefined,
+  maxSize: number = DEFAULT_MAX_SIZE
+): FileValidationResult {
+  return validateFile(file, {
+    maxSize,
+    allowedTypes: IMAGE_TYPES,
+  });
+}
 
-  // File Reading
+/**
+ * Validate a JSON file
+ *
+ * @param file - File to validate
+ * @param maxSize - Maximum file size in bytes (default: 5MB)
+ * @returns Validation result
+ */
+function validateJsonFile(
+  file: File | null | undefined,
+  maxSize: number = DEFAULT_MAX_SIZE
+): FileValidationResult {
+  return validateFile(file, {
+    maxSize,
+    allowedTypes: JSON_TYPES,
+    allowedExtensions: ['.json', '.jsonc'],
+  });
+}
 
-  /**
-   * Read file as text
-   *
-   * @param file - File to read
-   * @returns Promise with file content as string
-   */
-  function readFileAsText(file: File): Promise<FileReadResult<string>> {
-    return new Promise(resolve => {
-      const reader = new FileReader();
+// File Reading
 
-      reader.onload = e => {
-        const result = e.target?.result;
-        if (typeof result === 'string') {
-          resolve({ success: true, data: result });
-        } else {
-          resolve({ success: false, error: 'Failed to read file as text' });
-        }
-      };
+/**
+ * Read file as text
+ *
+ * @param file - File to read
+ * @returns Promise with file content as string
+ */
+function readFileAsText(file: File): Promise<FileReadResult<string>> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
 
-      reader.onerror = () => {
-        resolve({ success: false, error: 'Error reading file' });
-      };
-
-      reader.readAsText(file);
-    });
-  }
-
-  /**
-   * Read file as Data URL (for image previews)
-   *
-   * @param file - File to read
-   * @returns Promise with file content as data URL
-   */
-  function readFileAsDataURL(file: File): Promise<FileReadResult<string>> {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-
-      reader.onload = e => {
-        const result = e.target?.result;
-        if (typeof result === 'string') {
-          resolve({ success: true, data: result });
-        } else {
-          resolve({ success: false, error: 'Failed to read file as data URL' });
-        }
-      };
-
-      reader.onerror = () => {
-        resolve({ success: false, error: 'Error reading file' });
-      };
-
-      reader.readAsDataURL(file);
-    });
-  }
-
-  /**
-   * Read file as ArrayBuffer
-   *
-   * @param file - File to read
-   * @returns Promise with file content as ArrayBuffer
-   */
-  function readFileAsArrayBuffer(
-    file: File
-  ): Promise<FileReadResult<ArrayBuffer>> {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-
-      reader.onload = e => {
-        const result = e.target?.result;
-        if (result instanceof ArrayBuffer) {
-          resolve({ success: true, data: result });
-        } else {
-          resolve({
-            success: false,
-            error: 'Failed to read file as array buffer',
-          });
-        }
-      };
-
-      reader.onerror = () => {
-        resolve({ success: false, error: 'Error reading file' });
-      };
-
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // JSON/JSONC Parsing
-
-  /**
-   * Strip comments from JSONC content
-   * Handles single-line (//) and multi-line comments
-   *
-   * @param content - JSONC content string
-   * @returns JSON string with comments removed
-   */
-  function stripJsonComments(content: string): string {
-    let withoutComments = '';
-    let inString = false;
-    let escaped = false;
-    let inLineComment = false;
-    let inBlockComment = false;
-
-    for (let index = 0; index < content.length; index += 1) {
-      const character = content[index];
-      const nextCharacter = content[index + 1];
-
-      if (inLineComment) {
-        if (character === '\n' || character === '\r') {
-          inLineComment = false;
-          withoutComments += character;
-        }
-        continue;
-      }
-
-      if (inBlockComment) {
-        if (character === '*' && nextCharacter === '/') {
-          inBlockComment = false;
-          index += 1;
-        } else if (character === '\n' || character === '\r') {
-          withoutComments += character;
-        }
-        continue;
-      }
-
-      if (inString) {
-        withoutComments += character;
-        if (escaped) {
-          escaped = false;
-        } else if (character === '\\') {
-          escaped = true;
-        } else if (character === '"') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (character === '"') {
-        inString = true;
-        withoutComments += character;
-      } else if (character === '/' && nextCharacter === '/') {
-        inLineComment = true;
-        index += 1;
-      } else if (character === '/' && nextCharacter === '*') {
-        inBlockComment = true;
-        index += 1;
+    reader.onload = e => {
+      const result = e.target?.result;
+      if (typeof result === 'string') {
+        resolve({ success: true, data: result });
       } else {
+        resolve({ success: false, error: 'Failed to read file as text' });
+      }
+    };
+
+    reader.onerror = () => {
+      resolve({ success: false, error: 'Error reading file' });
+    };
+
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Read file as Data URL (for image previews)
+ *
+ * @param file - File to read
+ * @returns Promise with file content as data URL
+ */
+function readFileAsDataURL(file: File): Promise<FileReadResult<string>> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+
+    reader.onload = e => {
+      const result = e.target?.result;
+      if (typeof result === 'string') {
+        resolve({ success: true, data: result });
+      } else {
+        resolve({ success: false, error: 'Failed to read file as data URL' });
+      }
+    };
+
+    reader.onerror = () => {
+      resolve({ success: false, error: 'Error reading file' });
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Read file as ArrayBuffer
+ *
+ * @param file - File to read
+ * @returns Promise with file content as ArrayBuffer
+ */
+function readFileAsArrayBuffer(
+  file: File
+): Promise<FileReadResult<ArrayBuffer>> {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+
+    reader.onload = e => {
+      const result = e.target?.result;
+      if (result instanceof ArrayBuffer) {
+        resolve({ success: true, data: result });
+      } else {
+        resolve({
+          success: false,
+          error: 'Failed to read file as array buffer',
+        });
+      }
+    };
+
+    reader.onerror = () => {
+      resolve({ success: false, error: 'Error reading file' });
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// JSON/JSONC Parsing
+
+/**
+ * Strip comments from JSONC content
+ * Handles single-line (//) and multi-line comments
+ *
+ * @param content - JSONC content string
+ * @returns JSON string with comments removed
+ */
+function stripJsonComments(content: string): string {
+  let withoutComments = '';
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index];
+    const nextCharacter = content[index + 1];
+
+    if (inLineComment) {
+      if (character === '\n' || character === '\r') {
+        inLineComment = false;
         withoutComments += character;
       }
+      continue;
     }
 
-    let result = '';
-    inString = false;
-    escaped = false;
-
-    for (let index = 0; index < withoutComments.length; index += 1) {
-      const character = withoutComments[index];
-
-      if (inString) {
-        result += character;
-        if (escaped) {
-          escaped = false;
-        } else if (character === '\\') {
-          escaped = true;
-        } else if (character === '"') {
-          inString = false;
-        }
-        continue;
+    if (inBlockComment) {
+      if (character === '*' && nextCharacter === '/') {
+        inBlockComment = false;
+        index += 1;
+      } else if (character === '\n' || character === '\r') {
+        withoutComments += character;
       }
+      continue;
+    }
 
-      if (character === '"') {
-        inString = true;
-        result += character;
-        continue;
+    if (inString) {
+      withoutComments += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
       }
+      continue;
+    }
 
-      if (character === ',') {
-        let nextIndex = index + 1;
-        while (/\s/.test(withoutComments[nextIndex] || '')) {
-          nextIndex += 1;
-        }
-        if (
-          withoutComments[nextIndex] === '}' ||
-          withoutComments[nextIndex] === ']'
-        ) {
-          continue;
-        }
-      }
+    if (character === '"') {
+      inString = true;
+      withoutComments += character;
+    } else if (character === '/' && nextCharacter === '/') {
+      inLineComment = true;
+      index += 1;
+    } else if (character === '/' && nextCharacter === '*') {
+      inBlockComment = true;
+      index += 1;
+    } else {
+      withoutComments += character;
+    }
+  }
 
+  let result = '';
+  inString = false;
+  escaped = false;
+
+  for (let index = 0; index < withoutComments.length; index += 1) {
+    const character = withoutComments[index];
+
+    if (inString) {
       result += character;
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
     }
 
-    return result;
-  }
+    if (character === '"') {
+      inString = true;
+      result += character;
+      continue;
+    }
 
-  /**
-   * Parse JSON or JSONC content
-   *
-   * @param content - JSON or JSONC string
-   * @returns Parsed object or null if invalid
-   */
-  function parseJsonContent<T = unknown>(content: string): FileReadResult<T> {
-    try {
-      // First try parsing as regular JSON
-      const parsed = JSON.parse(content) as T;
-      return { success: true, data: parsed };
-    } catch {
-      try {
-        const strippedContent = stripJsonComments(content);
-        const parsed = JSON.parse(strippedContent) as T;
-        return { success: true, data: parsed };
-      } catch (error) {
-        return {
-          success: false,
-          error: `Invalid JSON: ${error instanceof Error ? error.message : 'Parse error'}`,
-        };
+    if (character === ',') {
+      let nextIndex = index + 1;
+      while (/\s/.test(withoutComments[nextIndex] || '')) {
+        nextIndex += 1;
+      }
+      if (
+        withoutComments[nextIndex] === '}' ||
+        withoutComments[nextIndex] === ']'
+      ) {
+        continue;
       }
     }
+
+    result += character;
   }
 
-  /**
-   * Read and parse a JSON/JSONC file
-   *
-   * @param file - File to read and parse
-   * @returns Promise with parsed JSON object
-   */
-  async function readJsonFile<T = unknown>(
-    file: File
-  ): Promise<FileReadResult<T>> {
-    const textResult = await readFileAsText(file);
+  return result;
+}
 
-    if (!textResult.success || !textResult.data) {
+/**
+ * Parse JSON or JSONC content
+ *
+ * @param content - JSON or JSONC string
+ * @returns Parsed object or null if invalid
+ */
+function parseJsonContent<T = unknown>(content: string): FileReadResult<T> {
+  try {
+    // First try parsing as regular JSON
+    const parsed = JSON.parse(content) as T;
+    return { success: true, data: parsed };
+  } catch {
+    try {
+      const strippedContent = stripJsonComments(content);
+      const parsed = JSON.parse(strippedContent) as T;
+      return { success: true, data: parsed };
+    } catch (error) {
       return {
         success: false,
-        error: textResult.error || 'Failed to read file',
+        error: `Invalid JSON: ${error instanceof Error ? error.message : 'Parse error'}`,
       };
     }
+  }
+}
 
-    return parseJsonContent<T>(textResult.data);
+/**
+ * Read and parse a JSON/JSONC file
+ *
+ * @param file - File to read and parse
+ * @returns Promise with parsed JSON object
+ */
+async function readJsonFile<T = unknown>(
+  file: File
+): Promise<FileReadResult<T>> {
+  const textResult = await readFileAsText(file);
+
+  if (!textResult.success || !textResult.data) {
+    return {
+      success: false,
+      error: textResult.error || 'Failed to read file',
+    };
   }
 
-  // Image Preview
+  return parseJsonContent<T>(textResult.data);
+}
 
-  /**
-   * Create image preview from file
-   *
-   * @param file - Image file
-   * @param targetElement - IMG element to display preview
-   * @param placeholderElement - Optional element to hide when showing preview
-   * @returns Promise that resolves when preview is ready
-   */
-  async function createImagePreview(
-    file: File,
-    targetElement: HTMLImageElement,
-    placeholderElement?: HTMLElement | null
-  ): Promise<FileReadResult<string>> {
-    const result = await readFileAsDataURL(file);
+// Image Preview
 
-    if (result.success && result.data) {
-      targetElement.src = result.data;
-      targetElement.classList.remove('hidden');
+/**
+ * Create image preview from file
+ *
+ * @param file - Image file
+ * @param targetElement - IMG element to display preview
+ * @param placeholderElement - Optional element to hide when showing preview
+ * @returns Promise that resolves when preview is ready
+ */
+async function createImagePreview(
+  file: File,
+  targetElement: HTMLImageElement,
+  placeholderElement?: HTMLElement | null
+): Promise<FileReadResult<string>> {
+  const result = await readFileAsDataURL(file);
 
-      if (placeholderElement) {
-        placeholderElement.classList.add('hidden');
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Clear image preview
-   *
-   * @param targetElement - IMG element showing preview
-   * @param placeholderElement - Optional element to show when clearing preview
-   */
-  function clearImagePreview(
-    targetElement: HTMLImageElement,
-    placeholderElement?: HTMLElement | null
-  ): void {
-    targetElement.src = '';
-    targetElement.classList.add('hidden');
+  if (result.success && result.data) {
+    targetElement.src = result.data;
+    targetElement.classList.remove('hidden');
 
     if (placeholderElement) {
-      placeholderElement.classList.remove('hidden');
+      placeholderElement.classList.add('hidden');
     }
   }
 
-  // File Input Helpers
+  return result;
+}
 
-  /**
-   * Get file from input element
-   *
-   * @param inputId - ID of the file input element
-   * @returns File or null if no file selected
-   */
-  function getFileFromInput(inputId: string): File | null {
-    const input = document.getElementById(inputId) as HTMLInputElement | null;
-    return input?.files?.[0] || null;
+/**
+ * Clear image preview
+ *
+ * @param targetElement - IMG element showing preview
+ * @param placeholderElement - Optional element to show when clearing preview
+ */
+function clearImagePreview(
+  targetElement: HTMLImageElement,
+  placeholderElement?: HTMLElement | null
+): void {
+  targetElement.src = '';
+  targetElement.classList.add('hidden');
+
+  if (placeholderElement) {
+    placeholderElement.classList.remove('hidden');
+  }
+}
+
+// File Input Helpers
+
+/**
+ * Get file from input element
+ *
+ * @param inputId - ID of the file input element
+ * @returns File or null if no file selected
+ */
+function getFileFromInput(inputId: string): File | null {
+  const input = document.getElementById(inputId) as HTMLInputElement | null;
+  return input?.files?.[0] || null;
+}
+
+/**
+ * Clear file input
+ *
+ * @param inputId - ID of the file input element
+ */
+function clearFileInput(inputId: string): void {
+  const input = document.getElementById(inputId) as HTMLInputElement | null;
+  if (input) {
+    input.value = '';
+  }
+}
+
+/**
+ * Setup file input with validation and preview
+ *
+ * @param inputId - ID of the file input element
+ * @param options - Configuration options
+ */
+function setupFileInput(
+  inputId: string,
+  options: {
+    validation?: FileValidationOptions;
+    previewElement?: HTMLImageElement | string;
+    placeholderElement?: HTMLElement | string;
+    onValidFile?: (file: File) => void;
+    onInvalidFile?: (error: string) => void;
+    autoSubmitForm?: boolean;
+  } = {},
+  dialog: Pick<DialogService, 'showAlert'> = dialogService
+): void {
+  const input = document.getElementById(inputId) as HTMLInputElement | null;
+  if (!input) {
+    console.warn(`[FileUpload] Input element '${inputId}' not found`);
+    return;
   }
 
-  /**
-   * Clear file input
-   *
-   * @param inputId - ID of the file input element
-   */
-  function clearFileInput(inputId: string): void {
-    const input = document.getElementById(inputId) as HTMLInputElement | null;
-    if (input) {
-      input.value = '';
-    }
-  }
+  input.addEventListener('change', async function () {
+    const file = this.files?.[0];
 
-  /**
-   * Setup file input with validation and preview
-   *
-   * @param inputId - ID of the file input element
-   * @param options - Configuration options
-   */
-  function setupFileInput(
-    inputId: string,
-    options: {
-      validation?: FileValidationOptions;
-      previewElement?: HTMLImageElement | string;
-      placeholderElement?: HTMLElement | string;
-      onValidFile?: (file: File) => void;
-      onInvalidFile?: (error: string) => void;
-      autoSubmitForm?: boolean;
-    } = {}
-  ): void {
-    const input = document.getElementById(inputId) as HTMLInputElement | null;
-    if (!input) {
-      console.warn(`[FileUpload] Input element '${inputId}' not found`);
+    const validation = validateFile(file, options.validation);
+
+    if (!validation.valid) {
+      this.value = ''; // Clear the input
+
+      if (options.onInvalidFile) {
+        options.onInvalidFile(validation.error!);
+      } else {
+        await dialog.showAlert('Invalid File', validation.error!, {
+          variant: 'error',
+        });
+      }
       return;
     }
 
-    input.addEventListener('change', async function () {
-      const file = this.files?.[0];
+    if (options.previewElement && validation.file) {
+      const previewEl =
+        typeof options.previewElement === 'string'
+          ? (document.getElementById(
+              options.previewElement
+            ) as HTMLImageElement | null)
+          : options.previewElement;
 
-      const validation = validateFile(file, options.validation);
+      const placeholderEl =
+        typeof options.placeholderElement === 'string'
+          ? document.getElementById(options.placeholderElement)
+          : options.placeholderElement;
 
-      if (!validation.valid) {
-        this.value = ''; // Clear the input
-
-        if (options.onInvalidFile) {
-          options.onInvalidFile(validation.error!);
-        } else if (typeof (window as any).dialog?.showAlert === 'function') {
-          await (window as any).dialog.showAlert(
-            'Invalid File',
-            validation.error!,
-            { variant: 'error' }
-          );
-        }
-        return;
+      if (previewEl) {
+        await createImagePreview(validation.file, previewEl, placeholderEl);
       }
+    }
 
-      if (options.previewElement && validation.file) {
-        const previewEl =
-          typeof options.previewElement === 'string'
-            ? (document.getElementById(
-                options.previewElement
-              ) as HTMLImageElement | null)
-            : options.previewElement;
+    if (options.onValidFile && validation.file) {
+      options.onValidFile(validation.file);
+    }
 
-        const placeholderEl =
-          typeof options.placeholderElement === 'string'
-            ? document.getElementById(options.placeholderElement)
-            : options.placeholderElement;
-
-        if (previewEl) {
-          await createImagePreview(validation.file, previewEl, placeholderEl);
-        }
+    // Auto-submit form if configured
+    if (options.autoSubmitForm) {
+      const form = input.closest('form');
+      if (form) {
+        form.submit();
       }
+    }
+  });
+}
 
-      if (options.onValidFile && validation.file) {
-        options.onValidFile(validation.file);
-      }
+export const FileUpload = {
+  validateFile,
+  validateImageFile,
+  validateJsonFile,
+  getFileExtension,
 
-      // Auto-submit form if configured
-      if (options.autoSubmitForm) {
-        const form = input.closest('form');
-        if (form) {
-          form.submit();
-        }
-      }
-    });
-  }
+  readFileAsText,
+  readFileAsDataURL,
+  readFileAsArrayBuffer,
 
-  const FileUpload = {
-    validateFile,
-    validateImageFile,
-    validateJsonFile,
-    getFileExtension,
+  // JSON handling
+  parseJsonContent,
+  readJsonFile,
+  stripJsonComments,
 
-    readFileAsText,
-    readFileAsDataURL,
-    readFileAsArrayBuffer,
+  createImagePreview,
+  clearImagePreview,
 
-    // JSON handling
-    parseJsonContent,
-    readJsonFile,
-    stripJsonComments,
+  getFileFromInput,
+  clearFileInput,
+  setupFileInput,
 
-    createImagePreview,
-    clearImagePreview,
-
-    getFileFromInput,
-    clearFileInput,
-    setupFileInput,
-
-    IMAGE_TYPES,
-    JSON_TYPES,
-    DEFAULT_MAX_SIZE,
-  };
-
-  if (typeof window !== 'undefined') {
-    (window as any).FileUpload = FileUpload;
-  }
-})();
+  IMAGE_TYPES,
+  JSON_TYPES,
+  DEFAULT_MAX_SIZE,
+};

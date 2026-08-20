@@ -1,86 +1,52 @@
-/**
- * Declarative controls for administrator grant revocation.
- *
- * Templates own mutation routes and CSRF values. This module adds localized
- * confirmation without inline handlers and preserves native form submission
- * when the shared dialog service is unavailable.
- */
+import dialogService from '../../utils/dialog.js';
+import {
+  ConfirmedFormManager,
+  type ConfirmedActionDialog,
+  type ConfirmedFormTranslations,
+} from '../../utils/confirmed-action.js';
 
-interface GrantsConfig {
-  translations: TranslationStrings;
-}
-
-interface TranslationStrings {
+type TranslationStrings = {
   revokeTitle: string;
   revokeMessage: string;
   revokeConfirm: string;
   revokeCancel: string;
-}
+};
 
 type GrantsConfigInput = {
   translations?: Partial<TranslationStrings>;
 };
 
-const DEFAULT_CONFIG: GrantsConfig = {
-  translations: {
-    revokeTitle: 'Revoke Authorization',
-    revokeMessage:
-      'Are you sure you want to revoke this authorization? This action cannot be undone.',
-    revokeConfirm: 'Revoke',
-    revokeCancel: 'Cancel',
-  },
+const DEFAULT_TRANSLATIONS: TranslationStrings = {
+  revokeTitle: 'Revoke Authorization',
+  revokeMessage:
+    'Are you sure you want to revoke this authorization? This action cannot be undone.',
+  revokeConfirm: 'Revoke',
+  revokeCancel: 'Cancel',
 };
 
-export class AdminGrantsManager {
-  private readonly config: GrantsConfig;
-
-  public constructor(config: GrantsConfigInput = {}) {
-    this.config = {
-      translations: {
-        ...DEFAULT_CONFIG.translations,
-        ...config.translations,
-      },
+export class AdminGrantsManager extends ConfirmedFormManager {
+  public constructor(
+    config: GrantsConfigInput = {},
+    dialog: ConfirmedActionDialog | null = dialogService
+  ) {
+    const translations = {
+      ...DEFAULT_TRANSLATIONS,
+      ...config.translations,
     };
-  }
-
-  public initialize(): void {
-    const revokeForms = document.querySelectorAll<HTMLFormElement>(
-      '[data-grant-revoke]'
+    const formTranslations: ConfirmedFormTranslations = {
+      cancelText: translations.revokeCancel,
+      confirmText: translations.revokeConfirm,
+      message: translations.revokeMessage,
+      title: translations.revokeTitle,
+    };
+    super(
+      {
+        messageDataKey: 'grantRevokeMessage',
+        selector: '[data-grant-revoke]',
+        translations: formTranslations,
+      },
+      dialog
     );
-
-    revokeForms.forEach(form => {
-      form.addEventListener('submit', async event => {
-        const showConfirm = (
-          window as typeof window & {
-            dialog?: {
-              showConfirm?: (
-                title: string,
-                message: string,
-                options: Record<string, string>
-              ) => Promise<boolean>;
-            };
-          }
-        ).dialog?.showConfirm;
-
-        if (!showConfirm) return;
-
-        event.preventDefault();
-        const message =
-          form.dataset.grantRevokeMessage ||
-          this.config.translations.revokeMessage;
-        const confirmed = await showConfirm(
-          this.config.translations.revokeTitle,
-          message,
-          {
-            variant: 'danger',
-            confirmText: this.config.translations.revokeConfirm,
-            cancelText: this.config.translations.revokeCancel,
-          }
-        );
-
-        if (confirmed) form.submit();
-      });
-    });
   }
 }
 
@@ -96,18 +62,22 @@ function readConfig(): GrantsConfigInput {
   }
 }
 
-function bootstrap(): void {
-  new AdminGrantsManager(readConfig()).initialize();
+export function initializeAdminGrantsPage(
+  dialog: ConfirmedActionDialog | null = dialogService
+): void {
+  new AdminGrantsManager(readConfig(), dialog).initialize();
 }
 
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeAdminGrantsPage(),
+      {
+        once: true,
+      }
+    );
   } else {
-    bootstrap();
+    initializeAdminGrantsPage();
   }
-}
-
-if (typeof window !== 'undefined') {
-  Object.assign(window, { AdminGrantsManager });
 }

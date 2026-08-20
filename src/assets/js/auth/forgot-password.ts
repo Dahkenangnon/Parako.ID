@@ -96,9 +96,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(config: ForgotPasswordConfig): ForgotPasswordConfig {
       if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
@@ -155,9 +152,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -168,9 +162,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (!this.form || !this.submitButton || !this.emailInput) {
         this.log('Required form elements not found', null, 'error');
@@ -182,9 +173,6 @@
       this.setupInputFocusAnimations();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.querySelector('form');
       this.submitButton =
@@ -216,9 +204,6 @@
       });
     }
 
-    /**
-     * Validate email input
-     */
     private validateEmail(): void {
       const emailInput = this.emailInput!;
 

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { SettingsOverviewManager } from '../../../src/assets/js/admin/settings/overview.js';
+
 interface ElementFixture {
   action: string;
   appendChild: ReturnType<typeof vi.fn>;
@@ -97,18 +99,12 @@ async function loadOverview(
   elements: Record<string, ElementFixture>,
   windowRoot: Record<string, unknown> = {}
 ) {
-  let ready: (() => void) | undefined;
   const listeners: Record<string, (event: DocumentEventFixture) => void> = {};
   const body = makeElement();
   vi.stubGlobal('document', {
     addEventListener: vi.fn(
-      (
-        name: string,
-        listener: ((event: DocumentEventFixture) => void) | (() => void)
-      ) => {
-        if (name === 'DOMContentLoaded') ready = listener as () => void;
-        else
-          listeners[name] = listener as (event: DocumentEventFixture) => void;
+      (name: string, listener: (event: DocumentEventFixture) => void) => {
+        listeners[name] = listener;
       }
     ),
     removeEventListener: vi.fn((name: string) => {
@@ -126,15 +122,14 @@ async function loadOverview(
   });
   vi.stubGlobal('window', windowRoot);
 
-  await import('../../../src/assets/js/admin/settings/overview.js');
-  ready?.();
-  return { body, listeners, windowRoot };
+  const manager = new SettingsOverviewManager();
+  manager.initialize();
+  return { body, listeners, manager, windowRoot };
 }
 
 describe('admin settings overview manager', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it('shows an error when the health endpoint returns a non-success status', async () => {
@@ -155,7 +150,7 @@ describe('admin settings overview manager', () => {
       })
     );
     const windowRoot: Record<string, unknown> = {};
-    await loadOverview(
+    const { manager } = await loadOverview(
       {
         healthCheckSection: section,
         healthCheckResults: results,
@@ -164,7 +159,7 @@ describe('admin settings overview manager', () => {
       windowRoot
     );
 
-    await (windowRoot.checkHealth as () => Promise<void>)();
+    await manager.checkHealth();
 
     expect(badge.innerHTML).toContain('Error');
     expect(results.innerHTML).toContain('Failed to perform health check');
@@ -178,7 +173,7 @@ describe('admin settings overview manager', () => {
     const windowRoot: Record<string, unknown> = {
       lucide: { createIcons },
     };
-    await loadOverview(
+    const { manager } = await loadOverview(
       {
         versionHistory: history,
         historyToggleText: toggleText,
@@ -187,30 +182,28 @@ describe('admin settings overview manager', () => {
       windowRoot
     );
 
-    (windowRoot.toggleVersionHistory as () => void)();
+    manager.toggleVersionHistory();
     expect(history.style.display).toBe('none');
     expect(toggleText.textContent).toBe('History');
 
-    (windowRoot.toggleVersionHistory as () => void)();
+    manager.toggleVersionHistory();
     expect(history.style.display).toBe('block');
     expect(toggleText.textContent).toBe('Hide');
     expect(createIcons).toHaveBeenCalledOnce();
 
-    (windowRoot.hideHealthCheck as () => void)();
+    manager.hideHealthCheck();
     expect(health.style.display).toBe('none');
   });
 
   it('safely handles absent optional overview elements', async () => {
     const windowRoot: Record<string, unknown> = {};
-    await loadOverview({}, windowRoot);
+    const { manager } = await loadOverview({}, windowRoot);
 
     expect(() => {
-      (windowRoot.toggleVersionHistory as () => void)();
-      (windowRoot.hideHealthCheck as () => void)();
+      manager.toggleVersionHistory();
+      manager.hideHealthCheck();
     }).not.toThrow();
-    await expect(
-      (windowRoot.checkHealth as () => Promise<void>)()
-    ).resolves.toBeUndefined();
+    await expect(manager.checkHealth()).resolves.toBeUndefined();
   });
 
   it('supports history without label text and forms with optional CSRF metadata', async () => {
@@ -221,14 +214,14 @@ describe('admin settings overview manager', () => {
       __csrfMeta: emptyMeta,
     };
     const windowRoot: Record<string, unknown> = {};
-    const { body } = await loadOverview(elements, windowRoot);
+    const { body, manager } = await loadOverview(elements, windowRoot);
 
     expect(() => {
-      (windowRoot.toggleVersionHistory as () => void)();
-      (windowRoot.toggleVersionHistory as () => void)();
+      manager.toggleVersionHistory();
+      manager.toggleVersionHistory();
     }).not.toThrow();
 
-    const withEmptyCsrf = (windowRoot.reloadConfig as () => Promise<void>)();
+    const withEmptyCsrf = manager.reloadConfig();
     body.children.at(-1)?.children[0]?.children[2]?.children[1]?.onclick?.();
     await withEmptyCsrf;
     expect(body.children.at(-1)?.children[0]).toMatchObject({
@@ -237,7 +230,7 @@ describe('admin settings overview manager', () => {
     });
 
     delete elements.__csrfMeta;
-    const withoutCsrf = (windowRoot.reloadConfig as () => Promise<void>)();
+    const withoutCsrf = manager.reloadConfig();
     body.children.at(-1)?.children[0]?.children[2]?.children[1]?.onclick?.();
     await withoutCsrf;
     expect(body.children.at(-1)?.children).toHaveLength(0);
@@ -247,12 +240,12 @@ describe('admin settings overview manager', () => {
     const meta = makeElement({ content: 'csrf-token' });
     const trigger = makeElement();
     const windowRoot: Record<string, unknown> = {};
-    const { body } = await loadOverview(
+    const { body, manager } = await loadOverview(
       { __csrfMeta: meta, __activeElement: trigger },
       windowRoot
     );
 
-    const reload = (windowRoot.reloadConfig as () => Promise<void>)();
+    const reload = manager.reloadConfig();
     const reloadBackdrop = body.children[0];
     const reloadDialog = reloadBackdrop?.children[0];
     const reloadTitle = reloadDialog?.children[0]?.children[0];
@@ -286,12 +279,7 @@ describe('admin settings overview manager', () => {
     });
     expect(reloadForm?.submit).toHaveBeenCalledOnce();
 
-    const rollback = (
-      windowRoot.confirmRollback as (
-        versionId: string,
-        versionNumber: string
-      ) => Promise<void>
-    )('version-id', '7');
+    const rollback = manager.confirmRollback('version-id', '7');
     const rollbackBackdrop = body.children.at(-1);
     expect(
       rollbackBackdrop?.children[0]?.children[0]?.children[0]?.textContent
@@ -311,31 +299,26 @@ describe('admin settings overview manager', () => {
   it('supports every confirmation dismissal and export outcome', async () => {
     const location = { href: '' };
     const windowRoot: Record<string, unknown> = { location };
-    const { body, listeners } = await loadOverview({}, windowRoot);
+    const { body, listeners, manager } = await loadOverview({}, windowRoot);
 
-    const cancelledReload = (windowRoot.reloadConfig as () => Promise<void>)();
+    const cancelledReload = manager.reloadConfig();
     body.children[0]?.children[0]?.children[2]?.children[0]?.onclick?.();
     await cancelledReload;
     expect(body.children).toHaveLength(0);
 
-    const closedRollback = (
-      windowRoot.confirmRollback as (
-        id: string,
-        version: string
-      ) => Promise<void>
-    )('ignored', '1');
+    const closedRollback = manager.confirmRollback('ignored', '1');
     body.children[0]?.children[0]?.children[0]?.children[1]?.onclick?.();
     await closedRollback;
     expect(body.children).toHaveLength(0);
 
-    const escapedExport = (windowRoot.exportConfig as () => Promise<void>)();
+    const escapedExport = manager.exportConfig();
     listeners.keydown?.({ key: 'Enter' });
     expect(body.children).toHaveLength(1);
     listeners.keydown?.({ key: 'Escape' });
     await escapedExport;
     expect(location.href).toBe('');
 
-    const confirmedExport = (windowRoot.exportConfig as () => Promise<void>)();
+    const confirmedExport = manager.exportConfig();
     body.children[0]?.children[0]?.children[2]?.children[1]?.onclick?.();
     await confirmedExport;
     expect(location.href).toBe('/admin/settings/export');
@@ -443,7 +426,7 @@ describe('admin settings overview manager', () => {
     const windowRoot: Record<string, unknown> = {
       lucide: { createIcons },
     };
-    await loadOverview(
+    const { manager } = await loadOverview(
       {
         healthCheckSection: section,
         healthCheckResults: results,
@@ -452,7 +435,7 @@ describe('admin settings overview manager', () => {
       windowRoot
     );
 
-    await (windowRoot.checkHealth as () => Promise<void>)();
+    await manager.checkHealth();
     expect(section.style.display).toBe('block');
     expect(badge.innerHTML).toContain('Healthy');
     expect(results.innerHTML).toContain('Configuration loaded');
@@ -466,7 +449,7 @@ describe('admin settings overview manager', () => {
     );
     expect(results.innerHTML).not.toContain('<script>');
 
-    await (windowRoot.checkHealth as () => Promise<void>)();
+    await manager.checkHealth();
     expect(badge.innerHTML).toContain('Unhealthy');
     expect(createIcons).toHaveBeenCalled();
   });
@@ -478,7 +461,7 @@ describe('admin settings overview manager', () => {
     const windowRoot: Record<string, unknown> = {
       lucide: { createIcons: 'not a function' },
     };
-    await loadOverview(
+    const { manager } = await loadOverview(
       {
         healthCheckSection: makeElement(),
         healthCheckResults: results,
@@ -487,7 +470,7 @@ describe('admin settings overview manager', () => {
       windowRoot
     );
 
-    await (windowRoot.checkHealth as () => Promise<void>)();
+    await manager.checkHealth();
 
     expect(results.innerHTML).toContain('An unknown error occurred');
   });

@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  initializeAdminSettingsPage,
+  type DialogPort,
+} from '../../../src/assets/js/admin/settings/common.js';
+import { FileUpload } from '../../../src/assets/js/utils/file-upload.js';
 
 interface ElementFixture {
   addEventListener: ReturnType<typeof vi.fn>;
@@ -61,7 +66,9 @@ function makeForm(): FormFixture {
 
 async function loadModule(
   options: {
+    dialog?: DialogPort | null;
     elements?: Record<string, ElementFixture>;
+    fileUpload?: Partial<typeof FileUpload>;
     form?: FormFixture | null;
     includeState?: boolean;
     state?: string;
@@ -79,11 +86,8 @@ async function loadModule(
     elements.___ADMIN_SETTINGS_STATE___ = state;
   }
 
-  let ready: (() => void) | undefined;
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((name: string, listener: () => void) => {
-      if (name === 'DOMContentLoaded') ready = listener;
-    }),
+    addEventListener: vi.fn(),
     getElementById: vi.fn((id: string) => elements[id] ?? null),
     querySelector: vi.fn((selector: string) => {
       if (selector === 'form') return form ?? null;
@@ -101,6 +105,17 @@ async function loadModule(
     }),
   });
   const windowRoot = options.window ?? {};
+  const fileUpload = options.fileUpload;
+  if (fileUpload?.validateImageFile) {
+    vi.spyOn(FileUpload, 'validateImageFile').mockImplementation(
+      fileUpload.validateImageFile
+    );
+  }
+  if (fileUpload?.createImagePreview) {
+    vi.spyOn(FileUpload, 'createImagePreview').mockImplementation(
+      fileUpload.createImagePreview
+    );
+  }
   vi.stubGlobal('window', windowRoot);
   vi.stubGlobal(
     'confirm',
@@ -108,16 +123,15 @@ async function loadModule(
   );
   vi.stubGlobal('alert', vi.fn());
 
-  await import('../../../src/assets/js/admin/settings/common.js');
-  ready?.();
+  initializeAdminSettingsPage(options.dialog ?? null);
 
   return { elements, form, windowRoot };
 }
 
 describe('admin settings common manager', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it('falls back to the native alert when the dialog rejects', async () => {
@@ -131,7 +145,7 @@ describe('admin settings common manager', () => {
         'logo-upload': logoUpload,
         'preview-logo': preview,
       },
-      window: { dialog: { showAlert } },
+      dialog: { showAlert },
     });
 
     await expect(logoUpload.listeners.change?.()).resolves.toBeUndefined();
@@ -145,7 +159,7 @@ describe('admin settings common manager', () => {
     const textarea = makeElement();
     textarea.scrollHeight = 73;
     const showConfirm = vi.fn().mockResolvedValue(true);
-    const windowRoot = { dialog: { showConfirm } };
+    const dialog = { showConfirm };
 
     await loadModule({
       elements: { 'branding-form': form },
@@ -161,7 +175,7 @@ describe('admin settings common manager', () => {
       }),
       resetButtons: [resetButton],
       textareas: [textarea],
-      window: windowRoot,
+      dialog,
     });
 
     textarea.listeners.input?.call(textarea);
@@ -180,7 +194,7 @@ describe('admin settings common manager', () => {
     const rejectedForm = makeForm();
     const rejectedResetButton = makeElement();
     const rejectedConfirm = vi.fn().mockRejectedValue(new Error('offline'));
-    const rejectedWindow = { dialog: { showConfirm: rejectedConfirm } };
+    const rejectedDialog = { showConfirm: rejectedConfirm };
     vi.stubGlobal(
       'confirm',
       vi.fn(() => true)
@@ -188,34 +202,28 @@ describe('admin settings common manager', () => {
     await loadModule({
       form: rejectedForm,
       resetButtons: [rejectedResetButton],
-      window: rejectedWindow,
+      dialog: rejectedDialog,
     });
     vi.mocked(confirm).mockReturnValue(true);
 
     await rejectedResetButton.listeners.click?.();
     expect(rejectedForm.reset).toHaveBeenCalledOnce();
 
-    vi.resetModules();
     const cancelledForm = makeForm();
     const cancelledResetButton = makeElement();
-    const nativeWindow: Record<string, unknown> = {};
     await loadModule({
       form: cancelledForm,
       resetButtons: [cancelledResetButton],
-      window: nativeWindow,
     });
     vi.mocked(confirm).mockReturnValue(false);
     await cancelledResetButton.listeners.click?.();
     expect(cancelledForm.reset).not.toHaveBeenCalled();
 
-    vi.resetModules();
     vi.mocked(confirm).mockReturnValue(true);
     const noFormResetButton = makeElement();
-    const noFormWindow: Record<string, unknown> = {};
     await loadModule({
       form: null,
       resetButtons: [noFormResetButton],
-      window: noFormWindow,
     });
     await expect(
       noFormResetButton.listeners.click?.()
@@ -245,10 +253,8 @@ describe('admin settings common manager', () => {
         'preview-logo': preview,
         'upload-logo-button': uploadButton,
       },
-      window: {
-        FileUpload: { validateImageFile, createImagePreview },
-        dialog: { showAlert },
-      },
+      fileUpload: { validateImageFile, createImagePreview },
+      dialog: { showAlert },
     });
 
     uploadButton.listeners.click?.();
@@ -284,56 +290,6 @@ describe('admin settings common manager', () => {
     expect(form.submit).toHaveBeenCalledOnce();
   });
 
-  it('uses manual logo validation and preview when FileUpload is unavailable', async () => {
-    const logoUpload = makeInput();
-    const preview = makeElement();
-    const placeholder = makeElement();
-    const form = makeForm();
-    preview.previousElementSibling = placeholder;
-    const readers: Array<{
-      onload?: (event: { target: { result: string | null } }) => void;
-    }> = [];
-    class Reader {
-      public onload?: (event: { target: { result: string | null } }) => void;
-      constructor() {
-        readers.push(this);
-      }
-      public readAsDataURL(): void {}
-    }
-    vi.stubGlobal('FileReader', Reader);
-
-    await loadModule({
-      elements: {
-        'branding-form': form,
-        'logo-upload': logoUpload,
-        'preview-logo': preview,
-      },
-    });
-
-    logoUpload.files = [{ size: 6 * 1024 * 1024, type: 'image/png' }];
-    await logoUpload.listeners.change?.();
-    expect(alert).toHaveBeenLastCalledWith('File size must be less than 5MB');
-
-    logoUpload.value = 'invalid';
-    logoUpload.files = [{ size: 42, type: 'text/plain' }];
-    await logoUpload.listeners.change?.();
-    expect(alert).toHaveBeenLastCalledWith(
-      'Please upload a valid image file (JPG, PNG, GIF, WebP, or SVG)'
-    );
-
-    logoUpload.files = [{ size: 42, type: 'image/svg+xml' }];
-    await logoUpload.listeners.change?.();
-    readers[0]?.onload?.({ target: { result: null } });
-    expect(form.submit).not.toHaveBeenCalled();
-    readers[0]?.onload?.({
-      target: { result: 'data:image/svg+xml;base64,AA==' },
-    });
-    expect(preview.src).toContain('data:image/svg+xml');
-    expect(preview.classList.remove).toHaveBeenCalledWith('hidden');
-    expect(placeholder.classList.add).toHaveBeenCalledWith('hidden');
-    expect(form.submit).toHaveBeenCalledOnce();
-  });
-
   it('skips logo setup when required elements or the feature are absent', async () => {
     const logoUpload = makeInput();
     const preview = makeElement();
@@ -344,14 +300,12 @@ describe('admin settings common manager', () => {
     });
     expect(logoUpload.listeners.change).toBeUndefined();
 
-    vi.resetModules();
     await loadModule({
       elements: { 'logo-upload': logoUpload, 'preview-logo': preview },
       state: JSON.stringify({ features: { hasLogoUpload: false } }),
     });
     expect(logoUpload.listeners.change).toBeUndefined();
 
-    vi.resetModules();
     const emptyUpload = makeInput();
     const emptyPreview = makeElement();
     const emptyForm = makeForm();
@@ -409,7 +363,8 @@ describe('admin settings common manager', () => {
         routes: { removeLogo: '/custom/remove-logo' },
         features: { hasLogoUpload: true },
       }),
-      window: { dialog: { showConfirm }, location: { reload } },
+      dialog: { showConfirm },
+      window: { location: { reload } },
     });
 
     await removeButton.listeners.click?.();
@@ -445,7 +400,8 @@ describe('admin settings common manager', () => {
     const reload = vi.fn();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', fetchMock);
-    const windowRoot = { dialog: { showConfirm }, location: { reload } };
+    const dialog = { showConfirm };
+    const windowRoot = { location: { reload } };
     await loadModule({
       elements: { 'remove-logo-button': cancelledButton },
       state: JSON.stringify({
@@ -453,6 +409,7 @@ describe('admin settings common manager', () => {
         features: { hasLogoUpload: true },
       }),
       csrfInput: { value: 'csrf-input' },
+      dialog,
       window: windowRoot,
     });
 
@@ -469,7 +426,6 @@ describe('admin settings common manager', () => {
     );
     expect(reload).toHaveBeenCalledOnce();
 
-    vi.resetModules();
     const nativeButton = makeElement();
     const nativeReload = vi.fn();
     vi.mocked(confirm).mockReturnValue(false);
@@ -501,10 +457,8 @@ describe('admin settings common manager', () => {
     await loadModule({
       elements: { 'remove-logo-button': removeButton },
       state: JSON.stringify({ features: { hasLogoUpload: true } }),
-      window: {
-        dialog: { showConfirm, showAlert },
-        location: { reload: vi.fn() },
-      },
+      dialog: { showConfirm, showAlert },
+      window: { location: { reload: vi.fn() } },
     });
 
     await removeButton.listeners.click?.();
@@ -547,12 +501,9 @@ describe('admin settings common manager', () => {
   it('falls back to defaults when page state is malformed', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const resetButton = makeElement();
-    const windowRoot: Record<string, unknown> = {};
-
     await loadModule({
       resetButtons: [resetButton],
       state: '{broken',
-      window: windowRoot,
     });
 
     expect(errorSpy).toHaveBeenCalledWith(
@@ -574,13 +525,10 @@ describe('admin settings common manager', () => {
     });
     expect(inferredUpload.listeners.change).toEqual(expect.any(Function));
 
-    vi.resetModules();
     const emptyResetButton = makeElement();
-    const emptyWindow: Record<string, unknown> = {};
     await loadModule({
       resetButtons: [emptyResetButton],
       state: '',
-      window: emptyWindow,
     });
     expect(emptyResetButton.listeners.click).toEqual(expect.any(Function));
   });

@@ -1,24 +1,5 @@
-/**
- * Admin Import Settings Module
- *
- * Handles configuration import page functionality:
- * - File loading and validation
- * - Configuration preview with diff
- * - Impact analysis display
- * - Configuration application
- * - Custom confirmation dialogs
- * - Notification system
- */
 (function () {
   'use strict';
-
-  interface LucideApi {
-    createIcons: () => void;
-  }
-
-  interface WindowWithLucide {
-    lucide?: LucideApi;
-  }
 
   interface DiffChange {
     field: string;
@@ -599,9 +580,8 @@
     }
 
     private refreshIcons(): void {
-      const win = window as unknown as WindowWithLucide;
-      if (win.lucide && typeof win.lucide.createIcons === 'function') {
-        win.lucide.createIcons();
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
       }
     }
   }

@@ -202,18 +202,24 @@ function readConfig(): ActivitiesConfigInput {
   }
 }
 
-function bootstrap(): void {
-  new AdminActivitiesManager(readConfig()).initialize();
+export function initializeAdminActivitiesPage(): AdminActivitiesManager {
+  const manager = new AdminActivitiesManager(readConfig());
+  manager.initialize();
+  return manager;
 }
 
-if (typeof document !== 'undefined') {
+export function registerAdminActivitiesEntry(): void {
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeAdminActivitiesPage(),
+      { once: true }
+    );
   } else {
-    bootstrap();
+    initializeAdminActivitiesPage();
   }
 }
 
-if (typeof window !== 'undefined') {
-  Object.assign(window, { AdminActivitiesManager });
+if (typeof document !== 'undefined') {
+  registerAdminActivitiesEntry();
 }

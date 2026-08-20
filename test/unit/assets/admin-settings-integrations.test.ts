@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  IntegrationsSettingsManager,
+  initializeIntegrationsSettingsPage,
+  registerIntegrationsSettingsEntry,
+} from '../../../src/assets/js/admin/settings/integrations.js';
+
 type DomEvent = {
   currentTarget?: unknown;
   key?: string;
@@ -75,6 +81,8 @@ function setupDom(
     csrf?: string;
     elements?: Record<string, ElementFixture>;
     hasForm?: boolean;
+    pathname?: string;
+    readyState?: DocumentReadyState;
     withLucide?: boolean;
   } = {}
 ) {
@@ -85,8 +93,10 @@ function setupDom(
   const resetButton = new ElementFixture('button');
   const testEmailButton = new ElementFixture('button');
   const createIcons = vi.fn();
-  const browserWindow: Record<string, unknown> =
-    options.withLucide === false ? {} : { lucide: { createIcons } };
+  const browserWindow: Record<string, unknown> = {
+    location: { pathname: options.pathname ?? '/admin/settings/integrations' },
+    ...(options.withLucide === false ? {} : { lucide: { createIcons } }),
+  };
 
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', {
@@ -122,6 +132,7 @@ function setupDom(
     removeEventListener: vi.fn((name: string, listener: DomListener) => {
       documentListeners.get(name)?.delete(listener);
     }),
+    readyState: options.readyState ?? 'complete',
   });
 
   return {
@@ -168,23 +179,19 @@ describe('admin integrations settings manager', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('can be imported when browser globals are unavailable', async () => {
+  it('can be constructed when browser globals are unavailable', () => {
     vi.stubGlobal('document', undefined);
     vi.stubGlobal('window', undefined);
 
-    await expect(
-      import('../../../src/assets/js/admin/settings/integrations.js')
-    ).resolves.toBeDefined();
+    expect(() => new IntegrationsSettingsManager()).not.toThrow();
   });
 
-  it('binds form, reset, and test-email actions without inline-handler globals', async () => {
+  it('binds form, reset, and test-email actions without inline-handler globals', () => {
     const context = setupDom();
 
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     expect(context.form.listenerCount('submit')).toBe(1);
     expect(context.resetButton.listenerCount('click')).toBe(1);
@@ -193,13 +200,29 @@ describe('admin integrations settings manager', () => {
     expect(context.browserWindow).not.toHaveProperty('testEmail');
   });
 
+  it('guards the route and registers immediately or after DOM readiness', () => {
+    const lookalike = setupDom({
+      pathname: '/admin/settings/integrations-preview',
+    });
+    expect(initializeIntegrationsSettingsPage()).toBeNull();
+    expect(lookalike.form.listenerCount('submit')).toBe(0);
+
+    const loading = setupDom({ readyState: 'loading' });
+    registerIntegrationsSettingsEntry();
+    expect(loading.form.listenerCount('submit')).toBe(0);
+    loading.runReady();
+    expect(loading.form.listenerCount('submit')).toBe(1);
+
+    const complete = setupDom({ readyState: 'complete' });
+    registerIntegrationsSettingsEntry();
+    expect(complete.form.listenerCount('submit')).toBe(1);
+  });
+
   it('prevents native submission before validation and then requests critical-change confirmation', async () => {
     const elements = makeValidIntegrationElements();
     const confirmCriticalChange = vi.fn().mockResolvedValue(false);
     const context = setupDom({ elements, withLucide: false });
-    context.browserWindow.adminSettingsManager = { confirmCriticalChange };
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage(confirmCriticalChange);
     const event = { preventDefault: vi.fn(), target: context.form };
 
     const pending = Promise.all(context.form.trigger('submit', event));
@@ -214,24 +237,8 @@ describe('admin integrations settings manager', () => {
     expect(confirmCriticalChange).toHaveBeenCalledWith(event);
   });
 
-  it('contains missing and failing critical-change confirmation services', async () => {
-    const first = setupDom({
-      elements: makeValidIntegrationElements(),
-      withLucide: false,
-    });
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    first.runReady();
-    const firstEvent = { preventDefault: vi.fn(), target: first.form };
-
-    await first.form.triggerAsync('submit', firstEvent);
-
-    expect(
-      first.created.some(element => element.textContent === 'Unable to Save')
-    ).toBe(true);
-
-    vi.resetModules();
-    vi.unstubAllGlobals();
-    const second = setupDom({
+  it('contains critical-change confirmation failures', async () => {
+    const context = setupDom({
       elements: makeValidIntegrationElements(),
       withLucide: false,
     });
@@ -239,15 +246,11 @@ describe('admin integrations settings manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    second.browserWindow.adminSettingsManager = {
-      confirmCriticalChange: vi.fn().mockRejectedValue(failure),
-    };
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    second.runReady();
+    initializeIntegrationsSettingsPage(vi.fn().mockRejectedValue(failure));
 
-    await second.form.triggerAsync('submit', {
+    await context.form.triggerAsync('submit', {
       preventDefault: vi.fn(),
-      target: second.form,
+      target: context.form,
     });
 
     expect(error).toHaveBeenCalledWith(
@@ -255,14 +258,13 @@ describe('admin integrations settings manager', () => {
       failure
     );
     expect(
-      second.created.some(element => element.textContent === 'Unable to Save')
+      context.created.some(element => element.textContent === 'Unable to Save')
     ).toBe(true);
   });
 
   it('exposes reset confirmation as an accessible dialog and Escape cancels it', async () => {
     const context = setupDom();
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     const pending = Promise.all(context.resetButton.trigger('click'));
     const dialog = context.created.find(
@@ -287,10 +289,8 @@ describe('admin integrations settings manager', () => {
   });
 
   it('removes the dialog keyboard listener when reset is cancelled', async () => {
-    const { body, created, documentListeners, form, resetButton, runReady } =
-      setupDom();
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    runReady();
+    const { body, created, documentListeners, form, resetButton } = setupDom();
+    initializeIntegrationsSettingsPage();
 
     const result = Promise.all(resetButton.trigger('click'));
     const cancel = created.find(
@@ -324,8 +324,7 @@ describe('admin integrations settings manager', () => {
       })
     );
     vi.stubGlobal('fetch', fetch);
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     const result = Promise.all(
       button.trigger('click', { currentTarget: button, target: icon })
@@ -368,8 +367,7 @@ describe('admin integrations settings manager', () => {
       withLucide: false,
     });
     const button = context.testEmailButton;
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     const result = Promise.all(
       button.trigger('click', { currentTarget: null, target: button })
@@ -404,9 +402,7 @@ describe('admin integrations settings manager', () => {
       if (missingId) elements[missingId].value = '';
       const context = setupDom({ elements, withLucide: false });
       const confirmCriticalChange = vi.fn().mockResolvedValue(false);
-      context.browserWindow.adminSettingsManager = { confirmCriticalChange };
-      await import('../../../src/assets/js/admin/settings/integrations.js');
-      context.runReady();
+      initializeIntegrationsSettingsPage(confirmCriticalChange);
       const event = { preventDefault: vi.fn(), target: context.form };
 
       await context.form.triggerAsync('submit', event);
@@ -421,11 +417,10 @@ describe('admin integrations settings manager', () => {
     }
   );
 
-  it('initializes safely when the settings form is absent', async () => {
+  it('initializes safely when the settings form is absent', () => {
     const context = setupDom({ hasForm: false });
-    await import('../../../src/assets/js/admin/settings/integrations.js');
 
-    expect(context.runReady).not.toThrow();
+    expect(initializeIntegrationsSettingsPage).not.toThrow();
     expect(context.form.listenerCount('submit')).toBe(0);
     expect(context.browserWindow).not.toHaveProperty('resetForm');
     expect(context.browserWindow).not.toHaveProperty('testEmail');
@@ -434,8 +429,7 @@ describe('admin integrations settings manager', () => {
   it('resets after confirmation and supports manual and timed notification dismissal', async () => {
     vi.useFakeTimers();
     const context = setupDom();
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     const firstReset = Promise.all(context.resetButton.trigger('click'));
     context.created
@@ -484,8 +478,7 @@ describe('admin integrations settings manager', () => {
       withLucide: false,
     });
     const button = context.testEmailButton;
-    await import('../../../src/assets/js/admin/settings/integrations.js');
-    context.runReady();
+    initializeIntegrationsSettingsPage();
 
     const backdropResult = Promise.all(
       button.trigger('click', { currentTarget: button, target: button })
@@ -535,8 +528,7 @@ describe('admin integrations settings manager', () => {
           json: vi.fn().mockResolvedValue(data),
         })
       );
-      await import('../../../src/assets/js/admin/settings/integrations.js');
-      context.runReady();
+      initializeIntegrationsSettingsPage();
 
       const result = Promise.all(
         button.trigger('click', { currentTarget: button, target: button })
@@ -582,8 +574,7 @@ describe('admin integrations settings manager', () => {
       button.innerHTML = 'Send Test';
       const fetch = vi.fn().mockRejectedValue(error);
       vi.stubGlobal('fetch', fetch);
-      await import('../../../src/assets/js/admin/settings/integrations.js');
-      context.runReady();
+      initializeIntegrationsSettingsPage();
 
       const result = Promise.all(
         button.trigger('click', { currentTarget: button, target: button })

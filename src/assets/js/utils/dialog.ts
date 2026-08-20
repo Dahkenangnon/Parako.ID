@@ -4,12 +4,6 @@
  * Replaces native browser alert() and confirm() functions
  */
 
-declare global {
-  interface Window {
-    lucide?: { createIcons: () => void };
-  }
-}
-
 export type DialogVariant = 'info' | 'warning' | 'error' | 'success' | 'danger';
 
 export interface AlertOptions {
@@ -25,11 +19,21 @@ export interface ConfirmOptions {
   icon?: string;
 }
 
+export interface DialogService {
+  showAlert(
+    title: string,
+    message: string,
+    options?: AlertOptions
+  ): Promise<void>;
+  showConfirm(
+    title: string,
+    message: string,
+    options?: ConfirmOptions
+  ): Promise<boolean>;
+}
+
 let dialogIdSequence = 0;
 
-/**
- * Get icon and colors based on dialog variant
- */
 function getVariantConfig(variant: DialogVariant = 'warning') {
   const configs = {
     info: {
@@ -62,9 +66,6 @@ function getVariantConfig(variant: DialogVariant = 'warning') {
   return configs[variant];
 }
 
-/**
- * Show an alert dialog (single button)
- */
 export async function showAlert(
   title: string,
   message: string,
@@ -188,6 +189,11 @@ export async function showConfirm(
   const dialogId = ++dialogIdSequence;
   const titleId = `dialog-title-${dialogId}`;
   const messageId = `dialog-message-${dialogId}`;
+  const activeElement = document.activeElement;
+  const previouslyFocusedElement =
+    activeElement && typeof (activeElement as HTMLElement).focus === 'function'
+      ? (activeElement as HTMLElement)
+      : null;
 
   return new Promise(resolve => {
     const backdrop = document.createElement('div');
@@ -272,6 +278,7 @@ export async function showConfirm(
     const cleanup = (result: boolean) => {
       document.removeEventListener('keydown', handleKeydown);
       backdrop.remove();
+      previouslyFocusedElement?.focus();
       resolve(result);
     };
 

@@ -1,26 +1,11 @@
-/**
- * Admin Configuration Integrations Module
- *
- * Handles integrations configuration page:
- * - Test email SMTP delivery
- */
 (function () {
   'use strict';
 
   if (typeof document === 'undefined') return;
 
-  interface LucideApi {
-    createIcons: () => void;
-  }
-
-  interface WindowWithLucide {
-    lucide?: LucideApi;
-  }
-
   function refreshIcons(): void {
-    const win = window as unknown as WindowWithLucide;
-    if (win.lucide && typeof win.lucide.createIcons === 'function') {
-      win.lucide.createIcons();
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
     }
   }
 

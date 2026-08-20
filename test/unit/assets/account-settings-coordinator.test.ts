@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type {
-  SettingsConfig,
+import {
+  initializeSettingsPage,
   SettingsCoordinator,
+  type SettingsConfig,
+  type SettingsDependencies,
 } from '../../../src/assets/js/account/settings/index.js';
-
-type SettingsCoordinatorConstructor = typeof SettingsCoordinator;
 
 function config(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
   return {
@@ -34,58 +34,39 @@ function config(overrides: Partial<SettingsConfig> = {}): SettingsConfig {
   };
 }
 
-function managerConstructor() {
+function managerFactory() {
   const initialize = vi.fn();
-  const constructor = vi.fn(function (
-    this: { initialize: typeof initialize },
-    _config: unknown
-  ) {
-    this.initialize = initialize;
-  });
-  return { constructor, initialize };
+  const factory = vi.fn(() => ({ initialize }));
+  return { factory, initialize };
 }
 
-async function loadCoordinator(
-  options: {
-    missing?: string;
-    stateElement?: { textContent: string | null } | null;
-  } = {}
+function loadCoordinator(
+  stateElement: { textContent: string | null } | null = null
 ) {
-  vi.resetModules();
-  let ready: (() => void) | undefined;
   const setupConfirmationHandlers = vi.fn();
   const managers = {
-    AvatarManager: managerConstructor(),
-    PasswordValidator: managerConstructor(),
-    LanguageSelector: managerConstructor(),
-    MfaManager: managerConstructor(),
-    PasswordVisibilityToggle: managerConstructor(),
+    AvatarManager: managerFactory(),
+    PasswordValidator: managerFactory(),
+    LanguageSelector: managerFactory(),
+    MfaManager: managerFactory(),
+    PasswordVisibilityToggle: managerFactory(),
   };
-  const windowRoot: Record<string, unknown> = {
-    accountSettingsUtils: { setupConfirmationHandlers },
+  const dependencies: SettingsDependencies = {
+    setupConfirmationHandlers,
+    createAvatarManager: managers.AvatarManager.factory,
+    createPasswordValidator: managers.PasswordValidator.factory,
+    createLanguageSelector: managers.LanguageSelector.factory,
+    createMfaManager: managers.MfaManager.factory,
+    createPasswordVisibilityToggle: managers.PasswordVisibilityToggle.factory,
   };
-  for (const [name, manager] of Object.entries(managers)) {
-    if (name !== options.missing) windowRoot[name] = manager.constructor;
-  }
-  if (options.missing === 'setupConfirmationHandlers') {
-    windowRoot.accountSettingsUtils = {};
-  }
-  vi.stubGlobal('window', windowRoot);
-  vi.stubGlobal('document', {
-    addEventListener: vi.fn(
-      (_name: string, listener: () => void) => (ready = listener)
-    ),
-    getElementById: vi.fn(() => options.stateElement ?? null),
-  });
+  const documentRoot = {
+    getElementById: vi.fn(() => stateElement),
+  };
 
-  const loaded =
-    await import('../../../src/assets/js/account/settings/index.js');
-  const Coordinator: SettingsCoordinatorConstructor =
-    loaded.SettingsCoordinator;
   return {
-    Coordinator,
+    dependencies,
+    documentRoot,
     managers,
-    ready,
     setupConfirmationHandlers,
   };
 }
@@ -97,12 +78,12 @@ describe('account settings coordinator', () => {
   });
 
   it('initializes every settings module with its narrowed configuration', async () => {
-    const { Coordinator, managers, setupConfirmationHandlers } =
-      await loadCoordinator();
+    const { dependencies, managers, setupConfirmationHandlers } =
+      loadCoordinator();
     const settings = config({ debug: true });
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    new Coordinator(settings).initialize();
+    new SettingsCoordinator(settings, dependencies).initialize();
 
     expect(setupConfirmationHandlers).toHaveBeenCalledWith(
       {
@@ -113,7 +94,7 @@ describe('account settings coordinator', () => {
       },
       true
     );
-    expect(managers.AvatarManager.constructor).toHaveBeenCalledWith({
+    expect(managers.AvatarManager.factory).toHaveBeenCalledWith({
       removeAvatarUrl: '/accounts/avatar',
       csrfToken: 'csrf-token',
       translations: {
@@ -124,18 +105,18 @@ describe('account settings coordinator', () => {
       },
       debug: true,
     });
-    expect(managers.PasswordValidator.constructor).toHaveBeenCalledWith({
+    expect(managers.PasswordValidator.factory).toHaveBeenCalledWith({
       isSpecialPasswordCase: false,
       translations: { passwordMismatch: 'Passwords do not match' },
       debug: true,
     });
-    expect(managers.LanguageSelector.constructor).toHaveBeenCalledWith({
+    expect(managers.LanguageSelector.factory).toHaveBeenCalledWith({
       updateLocaleUrl: '/accounts/locale',
       csrfToken: 'csrf-token',
       translations: { languageUpdateError: 'Language update failed' },
       debug: true,
     });
-    expect(managers.MfaManager.constructor).toHaveBeenCalledWith({
+    expect(managers.MfaManager.factory).toHaveBeenCalledWith({
       isMfaEnabled: true,
       mfaMethodsEnabled: { totp: true, email: false, webauthn: true },
       translations: {
@@ -146,7 +127,7 @@ describe('account settings coordinator', () => {
       },
       debug: true,
     });
-    expect(managers.PasswordVisibilityToggle.constructor).toHaveBeenCalledWith({
+    expect(managers.PasswordVisibilityToggle.factory).toHaveBeenCalledWith({
       debug: true,
     });
     for (const manager of Object.values(managers)) {
@@ -158,39 +139,12 @@ describe('account settings coordinator', () => {
     );
   });
 
-  it.each([
-    'setupConfirmationHandlers',
-    'AvatarManager',
-    'PasswordValidator',
-    'LanguageSelector',
-    'MfaManager',
-    'PasswordVisibilityToggle',
-  ])('reports a missing %s dependency and continues', async missing => {
-    const { Coordinator, managers } = await loadCoordinator({ missing });
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
-
-    expect(() => new Coordinator(config()).initialize()).not.toThrow();
-
-    expect(consoleError).toHaveBeenCalledWith(
-      expect.stringContaining(`${missing} not found on window`)
-    );
-    for (const [name, manager] of Object.entries(managers)) {
-      expect(manager.initialize).toHaveBeenCalledTimes(
-        name === missing ? 0 : 1
-      );
-    }
-  });
-
   it('auto-initializes from serialized page state', async () => {
     const settings = config();
-    const { managers, ready, setupConfirmationHandlers } =
-      await loadCoordinator({
-        stateElement: { textContent: JSON.stringify(settings) },
-      });
+    const { dependencies, documentRoot, managers, setupConfirmationHandlers } =
+      loadCoordinator({ textContent: JSON.stringify(settings) });
 
-    ready?.();
+    initializeSettingsPage(documentRoot as never, dependencies);
 
     expect(setupConfirmationHandlers).toHaveBeenCalledOnce();
     for (const manager of Object.values(managers)) {
@@ -206,21 +160,19 @@ describe('account settings coordinator', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    const { ready } = await loadCoordinator({ stateElement });
+    const { dependencies, documentRoot } = loadCoordinator(stateElement);
 
-    ready?.();
+    initializeSettingsPage(documentRoot as never, dependencies);
 
     expect(consoleError).toHaveBeenCalled();
   });
 
-  it('can be imported outside a browser document', async () => {
-    vi.resetModules();
-    vi.stubGlobal('document', undefined);
-    vi.stubGlobal('window', undefined);
+  it('does not expose settings modules through application globals', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    const loaded =
-      await import('../../../src/assets/js/account/settings/index.js');
-
-    expect(loaded.SettingsCoordinator).toEqual(expect.any(Function));
+    expect(browserWindow).not.toHaveProperty('SettingsCoordinator');
+    expect(browserWindow).not.toHaveProperty('AvatarManager');
+    expect(browserWindow).not.toHaveProperty('PasswordValidator');
   });
 });

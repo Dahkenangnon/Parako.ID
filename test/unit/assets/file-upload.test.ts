@@ -1,4 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FileUpload } from '../../../src/assets/js/utils/file-upload.js';
+import type { DialogService } from '../../../src/assets/js/utils/dialog.js';
+
+type ProductionSetupFileInputOptions = NonNullable<
+  Parameters<typeof FileUpload.setupFileInput>[1]
+>;
+type TestSetupFileInputOptions = Omit<
+  ProductionSetupFileInputOptions,
+  'previewElement' | 'placeholderElement'
+> & {
+  previewElement?: ImageFixture | string;
+  placeholderElement?: ElementFixture | string;
+};
 
 interface FileUploadApi {
   IMAGE_TYPES: string[];
@@ -42,7 +55,7 @@ interface FileUploadApi {
   ): void;
   getFileFromInput(id: string): File | null;
   clearFileInput(id: string): void;
-  setupFileInput(id: string, options?: Record<string, unknown>): void;
+  setupFileInput(id: string, options?: TestSetupFileInputOptions): void;
   stripJsonComments(content: string): string;
   parseJsonContent<T>(content: string): {
     success: boolean;
@@ -101,17 +114,24 @@ function file(overrides: Partial<File> = {}): File {
   } as File;
 }
 
-async function loadFileUpload(
+function loadFileUpload(
   windowRoot: Record<string, unknown> = {},
   documentRoot?: Record<string, unknown>
-): Promise<FileUploadApi> {
-  vi.resetModules();
-  vi.stubGlobal('window', windowRoot);
+): FileUploadApi {
   if (documentRoot) vi.stubGlobal('document', documentRoot);
-  await import('../../../src/assets/js/utils/file-upload.js');
-  const api = windowRoot.FileUpload as FileUploadApi | undefined;
-  if (!api) throw new Error('FileUpload API was not published');
-  return api;
+  const configuredDialog = (windowRoot.dialog ?? {
+    showAlert: vi.fn().mockResolvedValue(undefined),
+  }) as unknown as Pick<DialogService, 'showAlert'>;
+
+  return {
+    ...FileUpload,
+    setupFileInput: (id: string, options?: TestSetupFileInputOptions) =>
+      FileUpload.setupFileInput(
+        id,
+        options as unknown as ProductionSetupFileInputOptions,
+        configuredDialog
+      ),
+  } as unknown as FileUploadApi;
 }
 
 describe('file upload utility', () => {
@@ -424,14 +444,12 @@ describe('file upload utility', () => {
     parse.mockRestore();
   });
 
-  it('does not publish a browser API when window is unavailable', async () => {
-    vi.resetModules();
-    vi.stubGlobal('window', undefined);
-    await expect(
-      import('../../../src/assets/js/utils/file-upload.js')
-    ).resolves.toBeDefined();
-  });
+  it('does not publish a browser API through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
+    expect(browserWindow).not.toHaveProperty('FileUpload');
+  });
   it('parses JSONC without treating comment tokens inside strings as comments', async () => {
     const fileUpload = await loadFileUpload();
     const content = `{

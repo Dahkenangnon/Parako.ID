@@ -99,9 +99,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(config: OIDCLogoutConfig): OIDCLogoutConfig {
       if (!config || typeof config !== 'object' || Array.isArray(config)) {
         this.log('Invalid config provided, using defaults', { config }, 'warn');
@@ -166,9 +163,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -179,9 +173,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (!this.logoutForm || this.submitButtons.length === 0) {
         this.log('Required form elements not found', null, 'error');
@@ -193,9 +184,6 @@
       this.setupFormResubmissionPrevention();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.logoutForm = document.querySelector(
         'form[id="op.logoutForm"]'

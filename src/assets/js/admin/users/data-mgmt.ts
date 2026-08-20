@@ -1,288 +1,250 @@
-/**
- * Admin User Data Management Module
- *
- * Handles user data import/export page functionality:
- * - Tab navigation between import/export panels
- * - CSV file validation (size, type)
- * - Import form submission with loading state
- * - Export form submission with confirmation for sensitive data
- * - Clear import log confirmation
- */
-(function () {
-  'use strict';
+import dialogService, { type DialogService } from '../../utils/dialog.js';
 
-  if (typeof document === 'undefined') return;
+type UserDataManagementDialog = Pick<
+  DialogService,
+  'showAlert' | 'showConfirm'
+>;
 
-  interface DialogApi {
-    showAlert: (
-      title: string,
-      message: string,
-      options?: { variant?: string }
-    ) => Promise<void>;
-    showConfirm: (
-      title: string,
-      message: string,
-      options?: { variant?: string; confirmText?: string; cancelText?: string }
-    ) => Promise<boolean>;
+const MAX_CSV_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+export class UserDataManagementManager {
+  private importForm: HTMLFormElement | null = null;
+  private exportForm: HTMLFormElement | null = null;
+  private importButton: HTMLButtonElement | null = null;
+  private exportButton: HTMLButtonElement | null = null;
+  private csvFileInput: HTMLInputElement | null = null;
+  private clearLogForm: HTMLFormElement | null = null;
+  private includePasswordsCheckbox: HTMLInputElement | null = null;
+  private includeSensitiveDataCheckbox: HTMLInputElement | null = null;
+  private tabs: NodeListOf<HTMLButtonElement> | null = null;
+  private panels: NodeListOf<HTMLElement> | null = null;
+
+  public constructor(
+    private readonly dialog: UserDataManagementDialog = dialogService
+  ) {}
+
+  public initialize(): void {
+    this.cacheElements();
+    this.setupEventListeners();
+    this.setupTabs();
   }
 
-  interface LucideApi {
-    createIcons: () => void;
+  private cacheElements(): void {
+    this.importForm = document.getElementById(
+      'importForm'
+    ) as HTMLFormElement | null;
+    this.exportForm = document.getElementById(
+      'exportForm'
+    ) as HTMLFormElement | null;
+    this.importButton = document.getElementById(
+      'importBtn'
+    ) as HTMLButtonElement | null;
+    this.exportButton = document.getElementById(
+      'exportBtn'
+    ) as HTMLButtonElement | null;
+    this.csvFileInput = document.getElementById(
+      'csvFile'
+    ) as HTMLInputElement | null;
+    this.clearLogForm = document.getElementById(
+      'clear-log-form'
+    ) as HTMLFormElement | null;
+    this.includePasswordsCheckbox = document.getElementById(
+      'includePasswords'
+    ) as HTMLInputElement | null;
+    this.includeSensitiveDataCheckbox = document.getElementById(
+      'includeSensitiveData'
+    ) as HTMLInputElement | null;
+    this.tabs = document.querySelectorAll('.data-tab-btn');
+    this.panels = document.querySelectorAll('.data-tab-panel');
   }
 
-  interface WindowWithApis {
-    dialog: DialogApi;
-    lucide?: LucideApi;
-  }
+  private setupTabs(): void {
+    this.tabs?.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetTab = tab.dataset.tab;
+        if (!targetTab) return;
 
-  class UserDataManagementManager {
-    private importForm: HTMLFormElement | null = null;
-    private exportForm: HTMLFormElement | null = null;
-    private importBtn: HTMLButtonElement | null = null;
-    private exportBtn: HTMLButtonElement | null = null;
-    private csvFileInput: HTMLInputElement | null = null;
-    private clearLogForm: HTMLFormElement | null = null;
-    private includePasswordsCheckbox: HTMLInputElement | null = null;
-    private includeSensitiveDataCheckbox: HTMLInputElement | null = null;
-    private tabs!: NodeListOf<HTMLButtonElement>;
-    private panels!: NodeListOf<HTMLElement>;
+        this.tabs?.forEach(candidate => {
+          const isActive = candidate.dataset.tab === targetTab;
+          candidate.setAttribute('aria-selected', String(isActive));
+          candidate.classList.toggle('border-primary', isActive);
+          candidate.classList.toggle('text-primary', isActive);
+          candidate.classList.toggle('border-transparent', !isActive);
+          candidate.classList.toggle('text-muted-foreground', !isActive);
+        });
 
-    private readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-
-    public initialize(): void {
-      this.cacheElements();
-      this.setupEventListeners();
-      this.setupTabs();
-    }
-
-    private cacheElements(): void {
-      this.importForm = document.getElementById(
-        'importForm'
-      ) as HTMLFormElement | null;
-      this.exportForm = document.getElementById(
-        'exportForm'
-      ) as HTMLFormElement | null;
-      this.importBtn = document.getElementById(
-        'importBtn'
-      ) as HTMLButtonElement | null;
-      this.exportBtn = document.getElementById(
-        'exportBtn'
-      ) as HTMLButtonElement | null;
-      this.csvFileInput = document.getElementById(
-        'csvFile'
-      ) as HTMLInputElement | null;
-      this.clearLogForm = document.getElementById(
-        'clear-log-form'
-      ) as HTMLFormElement | null;
-      this.includePasswordsCheckbox = document.getElementById(
-        'includePasswords'
-      ) as HTMLInputElement | null;
-      this.includeSensitiveDataCheckbox = document.getElementById(
-        'includeSensitiveData'
-      ) as HTMLInputElement | null;
-      this.tabs = document.querySelectorAll('.data-tab-btn');
-      this.panels = document.querySelectorAll('.data-tab-panel');
-    }
-
-    private setupTabs(): void {
-      this.tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          const targetTab = tab.dataset.tab;
-          if (!targetTab) return;
-
-          this.tabs.forEach(t => {
-            const isActive = t.dataset.tab === targetTab;
-            t.setAttribute('aria-selected', isActive ? 'true' : 'false');
-            t.classList.toggle('border-primary', isActive);
-            t.classList.toggle('text-primary', isActive);
-            t.classList.toggle('border-transparent', !isActive);
-            t.classList.toggle('text-muted-foreground', !isActive);
-          });
-
-          this.panels.forEach(panel => {
-            const isActive = panel.id === targetTab + '-panel';
-            panel.classList.toggle('hidden', !isActive);
-          });
+        this.panels?.forEach(panel => {
+          panel.classList.toggle('hidden', panel.id !== `${targetTab}-panel`);
         });
       });
-    }
+    });
+  }
 
-    private setupEventListeners(): void {
-      // File validation on change
-      this.csvFileInput?.addEventListener('change', e =>
-        this.handleFileChange(e)
+  private setupEventListeners(): void {
+    this.csvFileInput?.addEventListener('change', event =>
+      this.handleFileChange(event)
+    );
+    this.importForm?.addEventListener('submit', event =>
+      this.handleImportSubmit(event)
+    );
+    this.exportForm?.addEventListener('submit', event =>
+      this.handleExportSubmit(event)
+    );
+    this.clearLogForm?.addEventListener('submit', event =>
+      this.handleClearLogSubmit(event)
+    );
+  }
+
+  private async handleFileChange(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (file.size > MAX_CSV_FILE_SIZE_BYTES) {
+      await this.dialog.showAlert(
+        'File Too Large',
+        `Maximum file size is 10MB.\nYour file: ${(
+          file.size /
+          1024 /
+          1024
+        ).toFixed(2)}MB`,
+        { variant: 'error' }
       );
+      input.value = '';
+      return;
+    }
 
-      this.importForm?.addEventListener('submit', e =>
-        this.handleImportSubmit(e)
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv') {
+      await this.dialog.showAlert(
+        'Invalid File Type',
+        'Please select a CSV file.\nAccepted: .csv files only',
+        { variant: 'error' }
       );
-
-      this.exportForm?.addEventListener('submit', e =>
-        this.handleExportSubmit(e)
-      );
-
-      this.clearLogForm?.addEventListener('submit', e =>
-        this.handleClearLogSubmit(e)
-      );
-    }
-
-    private async handleFileChange(e: Event): Promise<void> {
-      const input = e.target as HTMLInputElement;
-      const file = input.files?.[0];
-      if (!file) return;
-
-      const dialog = (window as unknown as WindowWithApis).dialog;
-
-      if (file.size > this.MAX_FILE_SIZE) {
-        await dialog.showAlert(
-          'File Too Large',
-          `Maximum file size is 10MB.\nYour file: ${(file.size / 1024 / 1024).toFixed(2)}MB`,
-          { variant: 'error' }
-        );
-        input.value = '';
-        return;
-      }
-
-      if (
-        !file.name.toLowerCase().endsWith('.csv') &&
-        file.type !== 'text/csv'
-      ) {
-        await dialog.showAlert(
-          'Invalid File Type',
-          'Please select a CSV file.\nAccepted: .csv files only',
-          {
-            variant: 'error',
-          }
-        );
-        input.value = '';
-        return;
-      }
-    }
-
-    private async handleImportSubmit(e: Event): Promise<void> {
-      const dialog = (window as unknown as WindowWithApis).dialog;
-
-      if (!this.csvFileInput?.files || this.csvFileInput.files.length === 0) {
-        e.preventDefault();
-        await dialog.showAlert(
-          'No File Selected',
-          'Please select a CSV file to import.',
-          { variant: 'warning' }
-        );
-        return;
-      }
-
-      const file = this.csvFileInput.files[0];
-      if (file.size > this.MAX_FILE_SIZE) {
-        e.preventDefault();
-        await dialog.showAlert('File Too Large', 'Maximum file size is 10MB.', {
-          variant: 'error',
-        });
-        return;
-      }
-
-      if (this.importBtn) {
-        this.importBtn.disabled = true;
-        this.importBtn.innerHTML = this.getLoadingSpinner() + 'Importing...';
-      }
-    }
-
-    private async handleExportSubmit(e: Event): Promise<void> {
-      const dialog = (window as unknown as WindowWithApis).dialog;
-      const includePasswords = this.includePasswordsCheckbox?.checked || false;
-      const includeSensitive =
-        this.includeSensitiveDataCheckbox?.checked || false;
-
-      if (includePasswords || includeSensitive) {
-        const warnings: string[] = [];
-        if (includePasswords) warnings.push('- Password hashes (encrypted)');
-        if (includeSensitive)
-          warnings.push('- Personal information (phone, address, etc.)');
-
-        e.preventDefault();
-
-        const confirmed = await dialog.showConfirm(
-          'Sensitive Data Export',
-          `You are about to export:\n${warnings.join('\n')}\n\nThis file will contain sensitive user data.\nPlease handle it securely and comply with data protection regulations.\n\nContinue with export?`,
-          {
-            variant: 'warning',
-            confirmText: 'Export',
-            cancelText: 'Cancel',
-          }
-        );
-
-        if (!confirmed) {
-          return;
-        }
-
-        // If confirmed, submit the form
-        this.exportForm?.submit();
-        return;
-      }
-
-      this.showExportLoadingState();
-    }
-
-    private showExportLoadingState(): void {
-      const exportBtn = this.exportBtn;
-      if (!exportBtn) return;
-
-      exportBtn.disabled = true;
-      exportBtn.innerHTML = this.getLoadingSpinner() + 'Exporting...';
-
-      // Re-enable button after download starts (file downloads don't reload page)
-      setTimeout(() => {
-        exportBtn.disabled = false;
-        exportBtn.innerHTML =
-          '<i data-lucide="download" class="h-4 w-4 mr-2"></i>Export to CSV';
-        this.refreshIcons();
-      }, 2000);
-    }
-
-    private async handleClearLogSubmit(e: Event): Promise<void> {
-      e.preventDefault();
-
-      const dialog = (window as unknown as WindowWithApis).dialog;
-      const errorCount =
-        this.clearLogForm
-          ?.closest('.bg-card')
-          ?.querySelector('.text-xs.text-muted-foreground')?.textContent ||
-        'all';
-
-      const confirmed = await dialog.showConfirm(
-        'Clear All Import Errors',
-        `This will permanently remove ${errorCount} error logs. This action cannot be undone.\n\nContinue?`,
-        {
-          variant: 'danger',
-          confirmText: 'Clear All',
-          cancelText: 'Cancel',
-        }
-      );
-
-      if (confirmed) {
-        this.clearLogForm?.submit();
-      }
-    }
-
-    private getLoadingSpinner(): string {
-      return `<svg class="animate-spin h-4 w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-      </svg>`;
-    }
-
-    private refreshIcons(): void {
-      const lucideWindow = window as unknown as WindowWithApis;
-      if (
-        lucideWindow.lucide &&
-        typeof lucideWindow.lucide.createIcons === 'function'
-      ) {
-        lucideWindow.lucide.createIcons();
-      }
+      input.value = '';
     }
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    new UserDataManagementManager().initialize();
-  });
-})();
+  private async handleImportSubmit(event: Event): Promise<void> {
+    if (!this.csvFileInput?.files?.length) {
+      event.preventDefault();
+      await this.dialog.showAlert(
+        'No File Selected',
+        'Please select a CSV file to import.',
+        { variant: 'warning' }
+      );
+      return;
+    }
+
+    if (this.csvFileInput.files[0]!.size > MAX_CSV_FILE_SIZE_BYTES) {
+      event.preventDefault();
+      await this.dialog.showAlert(
+        'File Too Large',
+        'Maximum file size is 10MB.',
+        { variant: 'error' }
+      );
+      return;
+    }
+
+    if (this.importButton) {
+      this.importButton.disabled = true;
+      this.importButton.innerHTML = `${this.getLoadingSpinner()}Importing...`;
+    }
+  }
+
+  private async handleExportSubmit(event: Event): Promise<void> {
+    const includePasswords = this.includePasswordsCheckbox?.checked ?? false;
+    const includeSensitive =
+      this.includeSensitiveDataCheckbox?.checked ?? false;
+
+    if (!includePasswords && !includeSensitive) {
+      this.showExportLoadingState();
+      return;
+    }
+
+    const warnings: string[] = [];
+    if (includePasswords) warnings.push('- Password hashes (encrypted)');
+    if (includeSensitive) {
+      warnings.push('- Personal information (phone, address, etc.)');
+    }
+
+    event.preventDefault();
+    const confirmed = await this.dialog.showConfirm(
+      'Sensitive Data Export',
+      `You are about to export:\n${warnings.join(
+        '\n'
+      )}\n\nThis file will contain sensitive user data.\nPlease handle it securely and comply with data protection regulations.\n\nContinue with export?`,
+      {
+        variant: 'warning',
+        confirmText: 'Export',
+        cancelText: 'Cancel',
+      }
+    );
+
+    if (confirmed) {
+      this.exportForm?.submit();
+    }
+  }
+
+  private showExportLoadingState(): void {
+    if (!this.exportButton) return;
+
+    this.exportButton.disabled = true;
+    this.exportButton.innerHTML = `${this.getLoadingSpinner()}Exporting...`;
+
+    setTimeout(() => {
+      if (!this.exportButton) return;
+
+      this.exportButton.disabled = false;
+      this.exportButton.innerHTML =
+        '<i data-lucide="download" class="h-4 w-4 mr-2"></i>Export to CSV';
+      window.lucide?.createIcons();
+    }, 2000);
+  }
+
+  private async handleClearLogSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+
+    const errorCount =
+      this.clearLogForm
+        ?.closest('.bg-card')
+        ?.querySelector('.text-xs.text-muted-foreground')?.textContent || 'all';
+    const confirmed = await this.dialog.showConfirm(
+      'Clear All Import Errors',
+      `This will permanently remove ${errorCount} error logs. This action cannot be undone.\n\nContinue?`,
+      {
+        variant: 'danger',
+        confirmText: 'Clear All',
+        cancelText: 'Cancel',
+      }
+    );
+
+    if (confirmed) {
+      this.clearLogForm?.submit();
+    }
+  }
+
+  private getLoadingSpinner(): string {
+    return `<svg class="animate-spin h-4 w-4 mr-2 inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>`;
+  }
+}
+
+export function initializeUserDataManagementPage(
+  dialog: UserDataManagementDialog = dialogService
+): void {
+  new UserDataManagementManager(dialog).initialize();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeUserDataManagementPage(),
+      { once: true }
+    );
+  } else {
+    initializeUserDataManagementPage();
+  }
+}

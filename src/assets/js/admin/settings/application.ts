@@ -1,119 +1,89 @@
-/**
- * Admin Application Settings Module
- *
- * Handles application settings page functionality:
- * - Form reset with confirmation (via common.ts)
- * - Locale validation (at least one locale, default in available)
- */
-(function () {
-  'use strict';
+import dialogService from '../../utils/dialog.js';
+import { showValidationError, type ValidationDialog } from './validation.js';
 
-  if (typeof document === 'undefined') return;
+export class ApplicationSettingsManager {
+  private form: HTMLFormElement | null = null;
+  private availableLocales: NodeListOf<HTMLInputElement> | null = null;
+  private defaultLocaleSelect: HTMLSelectElement | null = null;
 
-  // Type Definitions
+  public constructor(
+    private readonly dialog: ValidationDialog | null = dialogService
+  ) {}
 
-  interface DialogApi {
-    showAlert: (
-      title: string,
-      message: string,
-      options?: { variant?: string }
-    ) => Promise<void>;
-  }
+  public initialize(): void {
+    this.form = document.querySelector('form');
+    this.availableLocales = document.querySelectorAll(
+      'input[name="locales[available][]"]'
+    );
+    this.defaultLocaleSelect = document.getElementById(
+      'locales.default'
+    ) as HTMLSelectElement | null;
 
-  // Application Settings Manager Class
+    if (!this.form) return;
 
-  class ApplicationSettingsManager {
-    private form: HTMLFormElement | null = null;
-    private availableLocales: NodeListOf<HTMLInputElement> | null = null;
-    private defaultLocaleSelect: HTMLSelectElement | null = null;
+    this.form.addEventListener('submit', event => {
+      event.preventDefault();
 
-    public initialize(): void {
-      this.cacheElements();
-      this.setupFormValidation();
-    }
+      this.validateForm().then(isValid => {
+        if (!isValid || !this.form) return;
 
-    /**
-     * Cache DOM elements
-     */
-    private cacheElements(): void {
-      this.form = document.querySelector('form');
-      this.availableLocales = document.querySelectorAll(
-        'input[name="locales[available][]"]'
-      );
-      this.defaultLocaleSelect = document.getElementById(
-        'locales.default'
-      ) as HTMLSelectElement | null;
-    }
-
-    private setupFormValidation(): void {
-      if (!this.form) return;
-
-      this.form.addEventListener('submit', e => {
-        e.preventDefault();
-
-        this.validateForm().then(isValid => {
-          if (isValid && this.form) {
-            const bypassInput = document.createElement('input');
-            bypassInput.type = 'hidden';
-            bypassInput.name = '_validated';
-            bypassInput.value = '1';
-            this.form.appendChild(bypassInput);
-            this.form.submit();
-          }
-        });
+        this.form.submit();
       });
-    }
-
-    /**
-     * Validate form before submission
-     */
-    private async validateForm(): Promise<boolean> {
-      if (!this.availableLocales || !this.defaultLocaleSelect) return true;
-
-      const checkedLocales = Array.from(this.availableLocales).filter(
-        cb => cb.checked
-      );
-
-      if (checkedLocales.length === 0) {
-        await this.showValidationError(
-          'Please select at least one available locale.'
-        );
-        return false;
-      }
-
-      const defaultLocale = this.defaultLocaleSelect.value;
-      const isDefaultInAvailable = checkedLocales.some(
-        cb => cb.value === defaultLocale
-      );
-
-      if (!isDefaultInAvailable) {
-        await this.showValidationError(
-          'Default locale must be included in available locales.'
-        );
-        return false;
-      }
-
-      return true;
-    }
-
-    /**
-     * Show validation error dialog
-     */
-    private async showValidationError(message: string): Promise<void> {
-      const dialogApi = (window as unknown as { dialog: DialogApi }).dialog;
-
-      if (dialogApi && typeof dialogApi.showAlert === 'function') {
-        await dialogApi.showAlert('Validation Error', message, {
-          variant: 'error',
-        });
-      } else {
-        alert(message);
-      }
-    }
+    });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const manager = new ApplicationSettingsManager();
-    manager.initialize();
-  });
-})();
+  private async validateForm(): Promise<boolean> {
+    if (!this.availableLocales || !this.defaultLocaleSelect) return true;
+
+    const checkedLocales = Array.from(this.availableLocales).filter(
+      locale => locale.checked
+    );
+
+    if (checkedLocales.length === 0) {
+      await showValidationError(
+        {
+          title: 'Validation Error',
+          message: 'Please select at least one available locale.',
+        },
+        this.dialog
+      );
+      return false;
+    }
+
+    const defaultLocale = this.defaultLocaleSelect.value;
+    const isDefaultAvailable = checkedLocales.some(
+      locale => locale.value === defaultLocale
+    );
+
+    if (!isDefaultAvailable) {
+      await showValidationError(
+        {
+          title: 'Validation Error',
+          message: 'Default locale must be included in available locales.',
+        },
+        this.dialog
+      );
+      return false;
+    }
+
+    return true;
+  }
+}
+
+export function initializeApplicationSettingsPage(
+  dialog: ValidationDialog | null = dialogService
+): void {
+  new ApplicationSettingsManager(dialog).initialize();
+}
+
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => initializeApplicationSettingsPage(),
+      { once: true }
+    );
+  } else {
+    initializeApplicationSettingsPage();
+  }
+}

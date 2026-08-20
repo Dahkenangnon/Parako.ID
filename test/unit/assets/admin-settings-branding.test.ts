@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  initializeBrandingSettingsPage,
+  type DialogPort,
+} from '../../../src/assets/js/admin/settings/branding.js';
+import { FileUpload } from '../../../src/assets/js/utils/file-upload.js';
 
 interface DomEvent {
   preventDefault: ReturnType<typeof vi.fn>;
@@ -108,13 +113,14 @@ const destructiveActions = [
 
 interface DomOptions {
   allElements?: boolean;
-  dialog?: Record<string, unknown>;
-  fileUpload?: Record<string, unknown>;
+  dialog?: DialogPort | null;
+  fileUpload?: Partial<
+    Pick<typeof FileUpload, 'createImagePreview' | 'validateImageFile'>
+  >;
   state?: string;
 }
 
 function setupDom(options: DomOptions = {}) {
-  let ready: (() => void) | undefined;
   const elements = new Map<string, ElementFixture>();
   const upload = new ElementFixture();
   const preview = new ElementFixture();
@@ -179,22 +185,28 @@ function setupDom(options: DomOptions = {}) {
   }));
   const showAlert = vi.fn().mockResolvedValue(undefined);
 
+  const fileUpload = {
+    createImagePreview: vi.fn().mockResolvedValue({ success: true }),
+    validateImageFile,
+    ...options.fileUpload,
+  };
+  vi.spyOn(FileUpload, 'validateImageFile').mockImplementation(
+    fileUpload.validateImageFile
+  );
+  vi.spyOn(FileUpload, 'createImagePreview').mockImplementation(
+    fileUpload.createImagePreview
+  );
+
+  const dialog = options.dialog === undefined ? { showAlert } : options.dialog;
   const browserWindow = {
-    FileUpload: options.fileUpload ?? {
-      createImagePreview: vi.fn(),
-      validateImageFile,
-    },
     FormData: class {
       public append(): void {}
     },
-    dialog: options.dialog ?? { showAlert },
     location: { reload: vi.fn() },
   };
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((name: string, listener: () => void) => {
-      if (name === 'DOMContentLoaded') ready = listener;
-    }),
+    addEventListener: vi.fn(),
     getElementById: vi.fn((id: string) => elements.get(id) ?? null),
     querySelector: vi.fn((selector: string) =>
       selector === 'input[name="_csrf"]'
@@ -205,26 +217,24 @@ function setupDom(options: DomOptions = {}) {
 
   return {
     browserWindow,
+    dialog,
     elements,
     file,
     get: (id: string) => elements.get(id)!,
-    runReady: () => ready?.(),
     showAlert,
     upload,
     validateImageFile,
   };
 }
 
-async function loadBranding(dom: ReturnType<typeof setupDom>): Promise<void> {
-  await import('../../../src/assets/js/admin/settings/branding.js');
-  dom.runReady();
+function loadBranding(dom: ReturnType<typeof setupDom>): void {
+  initializeBrandingSettingsPage(dom.dialog);
 }
 
 describe('admin branding settings', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it('validates icon logos with the intended five-megabyte limit', async () => {
@@ -606,96 +616,6 @@ describe('admin branding settings', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    'logo-upload',
-    'logo-dark-upload',
-    'logo-icon-upload',
-    'logo-icon-dark-upload',
-  ] as const)(
-    'manually rejects oversized and unsupported files for %s',
-    async uploadId => {
-      const showAlert = vi.fn().mockResolvedValue(undefined);
-      const dom = setupDom({
-        allElements: true,
-        dialog: { showAlert },
-        fileUpload: {},
-      });
-      await loadBranding(dom);
-
-      dom.get(uploadId).files = [
-        { name: 'large.png', size: 5 * 1024 * 1024 + 1, type: 'image/png' },
-      ];
-      await dom.get(uploadId).trigger('change');
-      expect(showAlert).toHaveBeenCalledWith(
-        'File Too Large',
-        'File size must be less than 5MB',
-        { variant: 'error' }
-      );
-
-      dom.get(uploadId).files = [
-        { name: 'asset.txt', size: 1024, type: 'text/plain' },
-      ];
-      await dom.get(uploadId).trigger('change');
-      expect(showAlert).toHaveBeenCalledWith(
-        'Invalid File Type',
-        expect.stringContaining('valid image file'),
-        { variant: 'error' }
-      );
-      expect(dom.get(uploadId).value).toBe('');
-    }
-  );
-
-  it('previews and submits a manually validated primary logo', async () => {
-    const dom = setupDom({ allElements: true, fileUpload: {} });
-    dom.get('logo-upload').files = [
-      { name: 'logo.webp', size: 1024, type: 'image/webp' },
-    ];
-    class FileReaderFixture {
-      public onload: ((event: { target: { result: string } }) => void) | null =
-        null;
-
-      public readAsDataURL(): void {
-        this.onload?.({ target: { result: 'data:image/webp;base64,preview' } });
-      }
-    }
-    vi.stubGlobal('FileReader', FileReaderFixture);
-
-    await loadBranding(dom);
-    await dom.get('logo-upload').trigger('change');
-
-    expect(dom.get('preview-logo').src).toBe('data:image/webp;base64,preview');
-    expect(dom.get('preview-logo').classList.remove).toHaveBeenCalledWith(
-      'hidden'
-    );
-    expect(
-      dom.get('preview-logo').previousElementSibling?.classList.add
-    ).toHaveBeenCalledWith('hidden');
-    expect(dom.get('branding-form').submit).toHaveBeenCalledOnce();
-  });
-
-  it.each([
-    'logo-dark-upload',
-    'logo-icon-upload',
-    'logo-icon-dark-upload',
-  ] as const)('uploads a manually validated image for %s', async uploadId => {
-    const dom = setupDom({ allElements: true, fileUpload: {} });
-    dom.get(uploadId).files = [
-      { name: 'asset.svg', size: 1024, type: 'image/svg+xml' },
-    ];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        json: vi.fn().mockResolvedValue({ success: true, url: '/asset.svg' }),
-        ok: true,
-      })
-    );
-
-    await loadBranding(dom);
-    await dom.get(uploadId).trigger('change');
-
-    expect(dom.get(uploadId).value).toBe('');
-  });
-
   it('rejects oversized and unsupported favicons', async () => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
     const dom = setupDom({
@@ -989,24 +909,26 @@ describe('admin branding settings', () => {
     expect(dom.get('upload-logo-icon-button').listeners.size).toBe(0);
   });
 
-  it('does not submit a manual logo preview without reader output', async () => {
-    const dom = setupDom({ allElements: true, fileUpload: {} });
+  it('does not submit when the shared preview reader fails', async () => {
+    const createImagePreview = vi.fn().mockResolvedValue({
+      error: 'read failed',
+      success: false,
+    });
+    const dom = setupDom({
+      allElements: true,
+      fileUpload: {
+        createImagePreview,
+        validateImageFile: vi.fn(() => ({ valid: true })),
+      },
+    });
     dom.get('logo-upload').files = [
       { name: 'logo.webp', size: 1024, type: 'image/webp' },
     ];
-    class EmptyFileReaderFixture {
-      public onload: ((event: { target: { result: string } }) => void) | null =
-        null;
 
-      public readAsDataURL(): void {
-        this.onload?.({ target: { result: '' } });
-      }
-    }
-    vi.stubGlobal('FileReader', EmptyFileReaderFixture);
-
-    await loadBranding(dom);
+    loadBranding(dom);
     await dom.get('logo-upload').trigger('change');
 
+    expect(createImagePreview).toHaveBeenCalledOnce();
     expect(dom.get('branding-form').submit).not.toHaveBeenCalled();
   });
 

@@ -1,5 +1,78 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  initializeAdminOidcClientsForm,
+  registerAdminOidcClientsFormEntry,
+} from '../../../src/assets/js/admin/oidc-clients/form.js';
+
+const PRESETS = {
+  api_management: preset(
+    'web',
+    'client_secret_basic',
+    false,
+    ['client_credentials'],
+    [],
+    ''
+  ),
+  device: preset(
+    'native',
+    'client_secret_post',
+    false,
+    ['urn:ietf:params:oauth:grant-type:device_code'],
+    [],
+    'openid profile email offline_access'
+  ),
+  m2m: preset(
+    'web',
+    'client_secret_basic',
+    false,
+    ['client_credentials'],
+    [],
+    ''
+  ),
+  native: preset(
+    'native',
+    'none',
+    true,
+    ['authorization_code', 'refresh_token'],
+    ['code'],
+    'openid profile email'
+  ),
+  spa: preset(
+    'web',
+    'none',
+    true,
+    ['authorization_code', 'refresh_token'],
+    ['code'],
+    'openid profile email'
+  ),
+  web: preset(
+    'web',
+    'client_secret_basic',
+    false,
+    ['authorization_code', 'refresh_token'],
+    ['code'],
+    'openid profile email'
+  ),
+};
+
+function preset(
+  applicationType: string,
+  authMethod: string,
+  requirePkce: boolean,
+  grantTypes: string[],
+  responseTypes: string[],
+  scope: string
+) {
+  return {
+    application_type: applicationType,
+    grant_types: grantTypes,
+    require_pkce: requirePkce,
+    response_types: responseTypes,
+    scope,
+    token_endpoint_auth_method: authMethod,
+  };
+}
 interface DomEvent {
   currentTarget?: ElementFixture;
 }
@@ -52,7 +125,8 @@ class ElementFixture {
 interface DomOptions {
   mode?: 'create' | 'edit';
   omitForm?: boolean;
-  omitWindow?: boolean;
+  omitState?: boolean;
+  readyState?: DocumentReadyState;
   stateText?: string;
 }
 
@@ -64,15 +138,16 @@ function setupDom(options: DomOptions = {}) {
   const form = new ElementFixture();
   form.dataset.mode = options.mode ?? 'edit';
   if (!options.omitForm) elements.set('oidc-client-form', form);
-  if (options.stateText !== undefined) {
+  if (!options.omitState) {
     const state = new ElementFixture();
-    state.textContent = options.stateText;
+    state.textContent =
+      options.stateText ?? JSON.stringify({ presets: PRESETS });
     elements.set('___ADMIN_OIDC_CLIENTS_FORM_STATE___', state);
   }
 
   const copyToClipboard = vi.fn();
-  const browserWindow = { adminOidcClientsManager: { copyToClipboard } };
-  if (!options.omitWindow) vi.stubGlobal('window', browserWindow);
+  const browserWindow: Record<string, unknown> = {};
+  vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', {
     addEventListener: vi.fn((name: string, listener: () => void) => {
       if (name === 'DOMContentLoaded') ready = listener;
@@ -84,10 +159,12 @@ function setupDom(options: DomOptions = {}) {
     querySelectorAll: vi.fn(
       (selector: string) => queryResults.get(selector) ?? []
     ),
+    readyState: options.readyState ?? 'complete',
   });
 
   return {
     browserWindow,
+    clipboard: { copy: copyToClipboard },
     copyToClipboard,
     elements,
     form,
@@ -172,10 +249,9 @@ describe('admin OIDC clients form manager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('removes stale generated Management API authorization when its scopes are cleared', async () => {
+  it('removes stale generated Management API authorization when its scopes are cleared', () => {
     const dom = setupDom();
     const allowedResources = addField(dom.elements, 'allowedResources');
     allowedResources.value = 'https://api.example.test\nurn:parako:api:v1';
@@ -185,20 +261,18 @@ describe('admin OIDC clients form manager', () => {
     managementScope.value = 'parako:users:read';
     dom.queryResults.set('input[name="api_scopes"]', [managementScope]);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     dom.form.trigger('submit');
 
     expect(resourcesScopes.value).toBe('custom:read');
     expect(allowedResources.value).toBe('https://api.example.test');
   });
 
-  it('applies the safe web defaults to a new client form', async () => {
+  it('applies the safe web defaults to a new client form', () => {
     const dom = setupDom({ mode: 'create' });
     const controls = addPresetControls(dom);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     expect(controls.applicationType.value).toBe('web');
     expect(controls.preset.value).toBe('web');
@@ -214,7 +288,30 @@ describe('admin OIDC clients form manager', () => {
     expect(controls.managementSection.classList.contains('hidden')).toBe(false);
   });
 
-  it('selects quick-start cards and applies service and device presets', async () => {
+  it('ignores malformed presets while preserving valid server presets', () => {
+    const dom = setupDom({
+      mode: 'create',
+      stateText: JSON.stringify({
+        presets: {
+          web: PRESETS.web,
+          device: { ...PRESETS.device, grant_types: [42] },
+        },
+      }),
+    });
+    const controls = addPresetControls(dom);
+    const deviceCard = new ElementFixture();
+    deviceCard.dataset.preset = 'device';
+    dom.queryResults.set('.quick-start-card', [deviceCard]);
+
+    initializeAdminOidcClientsForm(dom.clipboard);
+    deviceCard.trigger('click');
+
+    expect(controls.preset.value).toBe('web');
+    expect(controls.applicationType.value).toBe('web');
+    expect(controls.authorizationCode.checked).toBe(true);
+  });
+
+  it('selects quick-start cards and applies service and device presets', () => {
     const dom = setupDom({ mode: 'create' });
     const controls = addPresetControls(dom);
     const blankCard = new ElementFixture();
@@ -238,8 +335,7 @@ describe('admin OIDC clients form manager', () => {
       unknownCard,
     ]);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     blankCard.trigger('click');
     expect(controls.preset.value).toBe('web');
@@ -267,13 +363,12 @@ describe('admin OIDC clients form manager', () => {
     expect(controls.preset.value).toBe('device');
   });
 
-  it('resets edit-form grant defaults when the application type changes', async () => {
+  it('resets edit-form grant defaults when the application type changes', () => {
     const dom = setupDom();
     const controls = addPresetControls(dom);
     controls.applicationType.tagName = 'SELECT';
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     controls.applicationType.value = 'native';
     controls.applicationType.trigger('change');
@@ -288,21 +383,19 @@ describe('admin OIDC clients form manager', () => {
     expect(controls.code.checked).toBe(false);
   });
 
-  it('ignores preset targets that are absent from incomplete create markup', async () => {
+  it('ignores preset targets that are absent from incomplete create markup', () => {
     const dom = setupDom({ mode: 'create' });
     const grant = new ElementFixture();
     const response = new ElementFixture();
     dom.queryResults.set('input[name="grant_types"]', [grant]);
     dom.queryResults.set('input[name="response_types"]', [response]);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-
-    expect(dom.runReady).not.toThrow();
+    expect(() => initializeAdminOidcClientsForm(dom.clipboard)).not.toThrow();
     expect(grant.checked).toBe(false);
     expect(response.checked).toBe(false);
   });
 
-  it('ignores missing edit-form checkboxes when applying application defaults', async () => {
+  it('ignores missing edit-form checkboxes when applying application defaults', () => {
     const dom = setupDom();
     const controls = addPresetControls(dom);
     controls.applicationType.tagName = 'SELECT';
@@ -311,8 +404,7 @@ describe('admin OIDC clients form manager', () => {
     );
     dom.singleResults.delete('input[name="response_types"][value="code"]');
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     controls.applicationType.value = 'native';
 
     expect(() => controls.applicationType.trigger('change')).not.toThrow();
@@ -321,13 +413,12 @@ describe('admin OIDC clients form manager', () => {
     expect(controls.code.checked).toBe(false);
   });
 
-  it('synchronizes Management API visibility when grant types change', async () => {
+  it('synchronizes Management API visibility when grant types change', () => {
     const dom = setupDom();
     const controls = addPresetControls(dom);
     dom.form.dataset.preset = 'm2m';
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     expect(controls.apiSection.classList.contains('hidden')).toBe(true);
 
     controls.clientCredentials.checked = true;
@@ -341,17 +432,16 @@ describe('admin OIDC clients form manager', () => {
     expect(controls.apiSection.classList.contains('hidden')).toBe(true);
   });
 
-  it('hides Management API controls when client credentials is not rendered', async () => {
+  it('hides Management API controls when client credentials is not rendered', () => {
     const dom = setupDom();
     const apiSection = addField(dom.elements, 'management-api-scopes-section');
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     expect(apiSection.classList.contains('hidden')).toBe(true);
   });
 
-  it('deduplicates custom values and merges checked Management API scopes', async () => {
+  it('deduplicates custom values and merges checked Management API scopes', () => {
     const dom = setupDom();
     const allowedResources = addField(dom.elements, 'allowedResources');
     allowedResources.value =
@@ -372,8 +462,7 @@ describe('admin OIDC clients form manager', () => {
       usersWrite,
     ]);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     dom.form.trigger('submit');
 
     expect(resourcesScopes.value).toBe('custom:read parako:users:read');
@@ -382,15 +471,14 @@ describe('admin OIDC clients form manager', () => {
     );
   });
 
-  it('submits safely when resource textareas are absent', async () => {
+  it('submits safely when resource textareas are absent', () => {
     const dom = setupDom();
     const managementScope = new ElementFixture();
     managementScope.value = 'parako:users:read';
     managementScope.checked = true;
     dom.queryResults.set('input[name="api_scopes"]', [managementScope]);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     expect(() => dom.form.trigger('submit')).not.toThrow();
   });
@@ -421,8 +509,7 @@ describe('admin OIDC clients form manager', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     toggle.trigger('click');
 
     await vi.waitFor(() => expect(secret.textContent).toBe('secret-value'));
@@ -451,6 +538,38 @@ describe('admin OIDC clients form manager', () => {
     expect(toggleText.textContent).toBe('Reveal');
   });
 
+  it('rejects a malformed secret response without revealing it', async () => {
+    const error = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const dom = setupDom();
+    const toggle = addField(dom.elements, 'toggleSensitiveFields');
+    const secret = addField(dom.elements, 'client-secret');
+    secret.classList.add('hidden');
+    addField(dom.elements, 'client-secret-hidden');
+    const client = new ElementFixture();
+    client.dataset.clientId = 'client-123';
+    dom.singleResults.set('[data-client-id]', client);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ client_secret: 42 }),
+      })
+    );
+
+    initializeAdminOidcClientsForm(dom.clipboard);
+    toggle.trigger('click');
+
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        '[AdminOidcClientsFormManager] Failed to reveal secret'
+      )
+    );
+    expect(secret.textContent).toBe('');
+    expect(secret.classList.contains('hidden')).toBe(true);
+  });
+
   it('contains failed secret reveal requests without exposing the field', async () => {
     const error = vi
       .spyOn(console, 'error')
@@ -469,8 +588,7 @@ describe('admin OIDC clients form manager', () => {
       .mockRejectedValueOnce(new Error('offline'));
     vi.stubGlobal('fetch', fetchMock);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     toggle.trigger('click');
     await vi.waitFor(() =>
       expect(error).toHaveBeenCalledWith(
@@ -487,7 +605,7 @@ describe('admin OIDC clients form manager', () => {
     expect(secret.classList.contains('hidden')).toBe(true);
   });
 
-  it('does not fetch or copy without the required secret context', async () => {
+  it('does not fetch or copy without the required secret context', () => {
     const dom = setupDom();
     const toggle = addField(dom.elements, 'toggleSensitiveFields');
     const secret = addField(dom.elements, 'client-secret');
@@ -497,8 +615,7 @@ describe('admin OIDC clients form manager', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     toggle.trigger('click');
     copy.trigger('click');
 
@@ -507,7 +624,7 @@ describe('admin OIDC clients form manager', () => {
     expect(secret.classList.contains('hidden')).toBe(true);
   });
 
-  it('toggles a preloaded secret with optional controls absent', async () => {
+  it('toggles a preloaded secret with optional controls absent', () => {
     const dom = setupDom();
     const toggle = addField(dom.elements, 'toggleSensitiveFields');
     const secret = addField(dom.elements, 'client-secret');
@@ -517,8 +634,7 @@ describe('admin OIDC clients form manager', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
     toggle.trigger('click');
     toggle.trigger('click');
 
@@ -526,36 +642,31 @@ describe('admin OIDC clients form manager', () => {
     expect(secret.classList.contains('hidden')).toBe(true);
   });
 
-  it('tolerates incomplete form and secret markup', async () => {
+  it('tolerates incomplete form and secret markup', () => {
     const dom = setupDom({ omitForm: true });
     const toggle = addField(dom.elements, 'toggleSensitiveFields');
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    expect(dom.runReady).not.toThrow();
+    expect(() => initializeAdminOidcClientsForm(dom.clipboard)).not.toThrow();
     expect(() => toggle.trigger('click')).not.toThrow();
   });
 
-  it('uses defaults for absent or empty embedded state', async () => {
-    const absent = setupDom();
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    expect(absent.runReady).not.toThrow();
-    expect(absent.browserWindow).toHaveProperty('AdminOidcClientsFormManager');
+  it('uses defaults for absent or empty embedded state', () => {
+    const absent = setupDom({ omitState: true });
+    expect(() =>
+      initializeAdminOidcClientsForm(absent.clipboard)
+    ).not.toThrow();
 
-    vi.resetModules();
-    vi.unstubAllGlobals();
     const empty = setupDom({ stateText: '' });
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    expect(empty.runReady).not.toThrow();
+    expect(() => initializeAdminOidcClientsForm(empty.clipboard)).not.toThrow();
   });
 
-  it('recovers from malformed embedded state', async () => {
+  it('recovers from malformed embedded state', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const dom = setupDom({ stateText: '{invalid' });
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
-    dom.runReady();
+    initializeAdminOidcClientsForm(dom.clipboard);
 
     expect(error).toHaveBeenCalledWith(
       '[AdminOidcClientsFormManager] Initialization failed:',
@@ -563,10 +674,28 @@ describe('admin OIDC clients form manager', () => {
     );
   });
 
-  it('does not publish the manager when no browser window exists', async () => {
-    const dom = setupDom({ omitWindow: true });
+  it('does not publish a form manager global', () => {
+    const dom = setupDom();
 
-    await import('../../../src/assets/js/admin/oidc-clients/form.js');
+    initializeAdminOidcClientsForm(dom.clipboard);
+
+    expect(dom.browserWindow).not.toHaveProperty('AdminOidcClientsFormManager');
+  });
+
+  it('defers entry registration until the document is ready', () => {
+    const dom = setupDom({ readyState: 'loading' });
+
+    registerAdminOidcClientsFormEntry();
+
+    expect(dom.form.listeners.size).toBe(0);
     expect(dom.runReady).not.toThrow();
+    expect(dom.form.listeners.has('submit')).toBe(true);
+  });
+
+  it('initializes the entry immediately after document loading', () => {
+    const dom = setupDom({ readyState: 'complete' });
+
+    expect(registerAdminOidcClientsFormEntry).not.toThrow();
+    expect(dom.form.listeners.has('submit')).toBe(true);
   });
 });

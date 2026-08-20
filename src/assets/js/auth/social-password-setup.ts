@@ -116,9 +116,6 @@
       });
     }
 
-    /**
-     * Validate password policy object
-     */
     private validatePasswordPolicy(policy: any): PasswordPolicy {
       if (!policy || typeof policy !== 'object') {
         this.log(
@@ -182,9 +179,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -195,9 +189,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       this.setupPasswordToggles();
       this.setupPasswordValidation();
@@ -205,9 +196,6 @@
       this.setupInputFocusAnimations();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.querySelector('form');
       this.submitButton =
@@ -282,9 +270,6 @@
       }
     }
 
-    /**
-     * Validate password strength and update visual indicators
-     */
     private validatePasswordStrength(): void {
       const password = this.passwordInput!.value;
 

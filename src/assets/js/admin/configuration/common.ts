@@ -1,41 +1,20 @@
-/**
- * Admin Configuration Common Module
- *
- * Shared functionality for per-tenant configuration pages:
- * - Confirm destructive configuration resets without inline event handlers
- * - Reveal/hide encrypted secret fields with CSRF protection
- * - Toggle between revealed and masked states
- * - Shoulder-surfing protection (invisible text when field not focused)
- * - Inactivity auto-remask with toast notification
- *
- * Used by every per-tenant configuration section.
- */
-(function () {
-  'use strict';
+export interface AdminConfigurationCommonController {
+  refreshIcons(): void;
+  remaskTenantSecret(inputId: string): void;
+  revealTenantSecret(fieldPath: string, inputId: string): void;
+}
 
-  if (typeof document === 'undefined' || typeof window === 'undefined') return;
-
-  interface LucideApi {
-    createIcons: () => void;
-  }
-
-  interface WindowWithLucide {
-    lucide?: LucideApi;
-  }
-
-  /** Set of currently revealed field input IDs */
+export function initializeAdminConfigurationCommon(): AdminConfigurationCommonController {
   const revealedFields: Set<string> = new Set();
 
-  /** Inactivity timer handle */
   let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Inactivity timeout: 2 minutes */
   const INACTIVITY_TIMEOUT = 2 * 60 * 1000;
 
   function refreshIcons(): void {
-    const win = window as unknown as WindowWithLucide;
-    if (win.lucide && typeof win.lucide.createIcons === 'function') {
-      win.lucide.createIcons();
+    const lucide = window.lucide;
+    if (lucide && typeof lucide.createIcons === 'function') {
+      lucide.createIcons();
     }
   }
 
@@ -162,7 +141,7 @@
   }
 
   function setupInactivityMonitoring(): void {
-    var events = [
+    const events = [
       'mousedown',
       'mousemove',
       'keypress',
@@ -327,7 +306,9 @@
   setupSecretControls();
   setupInactivityMonitoring();
 
-  (window as any).revealTenantSecret = revealTenantSecret;
-  (window as any).remaskTenantSecret = remaskTenantSecret;
-  (window as any).refreshConfigIcons = refreshIcons;
-})();
+  return { refreshIcons, remaskTenantSecret, revealTenantSecret };
+}
+
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  initializeAdminConfigurationCommon();
+}

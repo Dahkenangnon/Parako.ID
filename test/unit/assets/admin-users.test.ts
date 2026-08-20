@@ -1,23 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-interface DomEvent {
-  key?: string;
-  target?: unknown;
-}
+import {
+  AdminUsersManager,
+  initializeAdminUsersPage,
+  registerAdminUsersEntry,
+} from '../../../src/assets/js/admin/users.js';
 
-type DomListener = (event: DomEvent) => void;
-
-interface AdminUsersManagerFixture {
-  anonymizeUser(userId: string, username: string): Promise<void>;
-  toggleUserStatus(userId: string, action: 'enable' | 'disable'): Promise<void>;
-}
+type DomListener = (event: { target?: unknown }) => void;
 
 class ElementFixture {
   public readonly attributes = new Map<string, string>();
   public readonly children: ElementFixture[] = [];
   public className = '';
   public readonly dataset: Record<string, string> = {};
-  public readonly focus = vi.fn();
   public parentNode: ElementFixture | null = null;
   public textContent = '';
   public type = '';
@@ -49,19 +44,19 @@ class ElementFixture {
     this.attributes.set(name, value);
   }
 
-  public trigger(name: string, event: DomEvent = { target: this }): void {
-    this.listeners.get(name)?.forEach(listener => listener(event));
+  public trigger(name: string): void {
+    this.listeners.get(name)?.forEach(listener => listener({ target: this }));
   }
 }
 
 function setupDom(
   options: {
     csrfToken?: string;
-    activeElement?: ElementFixture;
     environment?: string;
     pathname?: string;
-    stateText?: string;
     queryElements?: Record<string, ElementFixture[]>;
+    readyState?: DocumentReadyState;
+    stateText?: string;
     withLucide?: boolean;
   } = {}
 ) {
@@ -74,15 +69,25 @@ function setupDom(
       reload: vi.fn(),
     },
   };
-  const createIcons = vi.fn();
   if (options.withLucide !== false) {
-    browserWindow.lucide = { createIcons };
+    browserWindow.lucide = { createIcons: vi.fn() };
   }
-  const csrfInput = options.csrfToken ? new ElementFixture('input') : null;
-  if (csrfInput) csrfInput.value = options.csrfToken!;
-  const stateElement =
-    options.stateText === undefined ? null : new ElementFixture('script');
-  if (stateElement) stateElement.textContent = options.stateText!;
+
+  const csrfToken = options.csrfToken;
+  let csrfInput: ElementFixture | null = null;
+  if (csrfToken) {
+    csrfInput = new ElementFixture('input');
+    csrfInput.value = csrfToken;
+  }
+  const stateText = options.stateText;
+  let stateElement: ElementFixture | null = null;
+  if (stateText !== undefined) {
+    stateElement = new ElementFixture('script');
+    stateElement.textContent = stateText;
+  }
+  const querySelectorAll = vi.fn(
+    (selector: string) => options.queryElements?.[selector] ?? []
+  );
 
   vi.stubGlobal('window', browserWindow);
   vi.stubGlobal('document', {
@@ -91,7 +96,6 @@ function setupDom(
       listeners.add(listener);
       documentListeners.set(name, listeners);
     }),
-    activeElement: options.activeElement ?? null,
     body,
     createElement: vi.fn((tagName: string) => {
       const element = new ElementFixture(tagName);
@@ -105,22 +109,16 @@ function setupDom(
       id === '___MAIN_STATE___' ? stateElement : null
     ),
     querySelector: vi.fn().mockReturnValue(csrfInput),
-    querySelectorAll: vi.fn(
-      (selector: string) => options.queryElements?.[selector] ?? []
-    ),
-    removeEventListener: vi.fn((name: string, listener: DomListener) => {
-      documentListeners.get(name)?.delete(listener);
-    }),
+    querySelectorAll,
+    readyState: options.readyState ?? 'complete',
   });
 
   return {
     body,
     browserWindow,
-    createIcons,
     created,
-    dispatchDocument: (name: string, event: DomEvent) =>
-      documentListeners.get(name)?.forEach(listener => listener(event)),
     documentListeners,
+    querySelectorAll,
     runReady: () =>
       documentListeners
         .get('DOMContentLoaded')
@@ -135,73 +133,32 @@ function findLastCreated(
   return [...created].reverse().find(predicate);
 }
 
+function createDialog(confirmed: boolean = true) {
+  const showConfirm = vi.fn().mockResolvedValue(confirmed);
+  return { dialog: { showConfirm }, showConfirm };
+}
+
 describe('admin users manager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
-    vi.resetModules();
   });
 
-  it('removes the confirmation keyboard listener when Cancel is clicked', async () => {
-    const launchButton = new ElementFixture('button');
-    const { browserWindow, created, documentListeners, runReady } = setupDom({
-      activeElement: launchButton,
-    });
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
+  it('initializes only exact admin-user routes without publishing globals', () => {
+    const { browserWindow } = setupDom({ pathname: '/admin/users-preview' });
+    const { dialog } = createDialog();
 
-    const result = (
-      browserWindow.toggleUserStatus as (
-        userId: string,
-        action: 'enable' | 'disable'
-      ) => Promise<void>
-    )('user-1', 'disable');
-    const cancel = created.find(
-      element =>
-        element.tagName === 'button' && element.textContent === 'Cancel'
-    );
-    cancel?.trigger('click');
-
-    await result;
-    expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
-    expect(launchButton.focus).toHaveBeenCalledOnce();
-  });
-
-  it('does not expose admin handlers on a sibling path with the same prefix', async () => {
-    const { browserWindow, runReady } = setupDom({
-      pathname: '/admin/users-preview',
-    });
-    await import('../../../src/assets/js/admin/users.js');
-
-    runReady();
-
+    expect(initializeAdminUsersPage(dialog)).toBeNull();
     expect(browserWindow).not.toHaveProperty('toggleUserStatus');
     expect(browserWindow).not.toHaveProperty('anonymizeUser');
     expect(browserWindow).not.toHaveProperty('adminUsersManager');
+
+    setupDom({ pathname: '/admin/users/user-1' });
+    expect(initializeAdminUsersPage(dialog)).toBeInstanceOf(AdminUsersManager);
   });
 
-  it('exposes handlers on nested user routes', async () => {
-    const { browserWindow, created, runReady } = setupDom({
-      pathname: '/admin/users/user-1',
-    });
-    await import('../../../src/assets/js/admin/users.js');
-
-    runReady();
-
-    expect(browserWindow).toHaveProperty('toggleUserStatus');
-    expect(browserWindow).toHaveProperty('anonymizeUser');
-    expect(browserWindow).toHaveProperty('adminUsersManager');
-
-    (browserWindow.anonymizeUser as (userId: string, username: string) => void)(
-      '',
-      ''
-    );
-    expect(
-      created.some(element => element.textContent === 'Invalid parameters')
-    ).toBe(true);
-  });
-  it('binds CSP-safe data attributes to user actions', async () => {
+  it('binds CSP-safe data attributes to supported user actions', async () => {
     const statusButton = new ElementFixture('button');
     statusButton.dataset.userId = 'user-1';
     statusButton.dataset.userStatusAction = 'disable';
@@ -213,100 +170,49 @@ describe('admin users manager', () => {
     invalidStatusButton.dataset.userStatusAction = 'archive';
     const invalidAnonymizeButton = new ElementFixture('button');
     invalidAnonymizeButton.dataset.userId = 'user-4';
-    const { created, runReady } = setupDom({
+    setupDom({
       queryElements: {
         '[data-user-anonymize]': [anonymizeButton, invalidAnonymizeButton],
         '[data-user-status-action]': [statusButton, invalidStatusButton],
       },
     });
-    await import('../../../src/assets/js/admin/users.js');
+    const { dialog, showConfirm } = createDialog(false);
 
-    runReady();
+    initializeAdminUsersPage(dialog);
     invalidStatusButton.trigger('click');
     invalidAnonymizeButton.trigger('click');
-    expect(created).toHaveLength(0);
-
     statusButton.trigger('click');
-
-    expect(
-      created.some(element => element.textContent === 'Disable User')
-    ).toBe(true);
-    created.find(element => element.textContent === 'Cancel')?.trigger('click');
-
     anonymizeButton.trigger('click');
-    expect(
-      created.some(
-        element => element.textContent === 'Anonymize User - Permanent Action'
-      )
-    ).toBe(true);
-    findLastCreated(
-      created,
-      element => element.textContent === 'Cancel'
-    )?.trigger('click');
+    await Promise.resolve();
+
+    expect(showConfirm).toHaveBeenCalledTimes(2);
+    expect(showConfirm).toHaveBeenNthCalledWith(
+      1,
+      'Disable User',
+      expect.stringContaining('disable this user account'),
+      {
+        cancelText: 'Cancel',
+        confirmText: 'Yes, Disable User',
+        variant: 'warning',
+      }
+    );
+    expect(showConfirm).toHaveBeenNthCalledWith(
+      2,
+      'Anonymize User - Permanent Action',
+      expect.stringContaining('Maria'),
+      {
+        cancelText: 'Cancel',
+        confirmText: 'Yes, Anonymize Permanently',
+        variant: 'danger',
+      }
+    );
   });
 
-  it('cancels dangerous confirmation through backdrop and Escape only', async () => {
-    const {
-      body,
-      browserWindow,
-      created,
-      dispatchDocument,
-      documentListeners,
-      runReady,
-    } = setupDom({ withLucide: false });
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
-
-    const backdropResult = manager.anonymizeUser('user-1', 'Maria');
-    const backdrop = body.children[0];
-    const modal = backdrop.children[0];
-    const titleElement = findLastCreated(
-      created,
-      element => element.tagName === 'h3'
-    );
-    const messageElement = findLastCreated(
-      created,
-      element => element.tagName === 'p'
-    );
-    expect(modal.attributes.get('role')).toBe('dialog');
-    expect(modal.attributes.get('aria-modal')).toBe('true');
-    expect(modal.attributes.get('aria-labelledby')).toBe(
-      titleElement?.attributes.get('id')
-    );
-    expect(modal.attributes.get('aria-describedby')).toBe(
-      messageElement?.attributes.get('id')
-    );
-    const confirm = findLastCreated(
-      created,
-      element => element.textContent === 'Yes, Anonymize Permanently'
-    );
-    expect(confirm?.className).toContain('bg-red-600');
-    expect(confirm?.focus).toHaveBeenCalledOnce();
-    backdrop.trigger('click', { target: backdrop.children[0] });
-    expect(body.children).toHaveLength(1);
-    backdrop.trigger('click', { target: backdrop });
-    await backdropResult;
-    expect(body.children).toHaveLength(0);
-    expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
-
-    const escapeResult = manager.anonymizeUser('user-1', 'Maria');
-    dispatchDocument('keydown', { key: 'Enter' });
-    expect(body.children).toHaveLength(1);
-    dispatchDocument('keydown', { key: 'Escape' });
-    await escapeResult;
-    expect(body.children).toHaveLength(0);
-    expect(documentListeners.get('keydown')?.size ?? 0).toBe(0);
-  });
-
-  it('rejects invalid action parameters and dismisses error notifications', async () => {
+  it('rejects invalid parameters and dismisses error notifications', async () => {
     vi.useFakeTimers();
-    const { body, browserWindow, created, runReady } = setupDom({
-      withLucide: false,
-    });
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
+    const { body, created } = setupDom({ withLucide: false });
+    const { dialog, showConfirm } = createDialog();
+    const manager = new AdminUsersManager(false, dialog);
 
     for (const [userId, action] of [
       ['', 'enable'],
@@ -325,13 +231,10 @@ describe('admin users manager', () => {
       await manager.anonymizeUser(userId as string, username as string);
     }
 
+    expect(showConfirm).not.toHaveBeenCalled();
     expect(
       created.filter(element => element.textContent === 'Invalid parameters')
     ).toHaveLength(8);
-    expect(
-      created.filter(element => element.className.includes('bg-red-500'))
-    ).toHaveLength(8);
-
     const close = findLastCreated(
       created,
       element =>
@@ -346,27 +249,29 @@ describe('admin users manager', () => {
     expect(body.children).toHaveLength(0);
   });
 
-  it('requires a CSRF token after either action is confirmed', async () => {
-    const { browserWindow, created, runReady } = setupDom();
+  it('stops both actions when confirmation is declined', async () => {
+    setupDom();
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
+    const { dialog, showConfirm } = createDialog(false);
+    const manager = new AdminUsersManager(false, dialog);
 
-    const toggleResult = manager.toggleUserStatus('user-1', 'enable');
-    findLastCreated(
-      created,
-      element => element.textContent === 'Yes, Enable User'
-    )?.trigger('click');
-    await toggleResult;
+    await manager.toggleUserStatus('user-1', 'enable');
+    await manager.anonymizeUser('user-1', 'Maria');
 
-    const anonymizeResult = manager.anonymizeUser('user-1', 'Maria');
-    findLastCreated(
-      created,
-      element => element.textContent === 'Yes, Anonymize Permanently'
-    )?.trigger('click');
-    await anonymizeResult;
+    expect(showConfirm).toHaveBeenCalledTimes(2);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('requires a CSRF token after either action is confirmed', async () => {
+    const { created } = setupDom();
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const { dialog } = createDialog();
+    const manager = new AdminUsersManager(false, dialog);
+
+    await manager.toggleUserStatus('user-1', 'enable');
+    await manager.anonymizeUser('user-1', 'Maria');
 
     expect(fetch).not.toHaveBeenCalled();
     expect(
@@ -378,11 +283,9 @@ describe('admin users manager', () => {
     ).toHaveLength(2);
   });
 
-  it('enables and disables users, then reloads after successful responses', async () => {
+  it('enables and disables users, then reloads after success', async () => {
     vi.useFakeTimers();
-    const { browserWindow, created, runReady } = setupDom({
-      csrfToken: 'csrf-token',
-    });
+    const { browserWindow, created } = setupDom({ csrfToken: 'csrf-token' });
     const fetch = vi
       .fn()
       .mockResolvedValueOnce({
@@ -395,20 +298,11 @@ describe('admin users manager', () => {
         json: vi.fn().mockResolvedValue({ success: true }),
       });
     vi.stubGlobal('fetch', fetch);
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
+    const { dialog } = createDialog();
+    const manager = new AdminUsersManager(false, dialog);
 
-    for (const action of ['enable', 'disable'] as const) {
-      const result = manager.toggleUserStatus('user-1', action);
-      findLastCreated(
-        created,
-        element =>
-          element.textContent ===
-          `Yes, ${action === 'enable' ? 'Enable' : 'Disable'} User`
-      )?.trigger('click');
-      await result;
-    }
+    await manager.toggleUserStatus('user-1', 'enable');
+    await manager.toggleUserStatus('user-1', 'disable');
 
     expect(fetch).toHaveBeenNthCalledWith(1, '/admin/users/user-1/enable', {
       headers: {
@@ -443,10 +337,7 @@ describe('admin users manager', () => {
 
   it('reports rejected and failed status changes without reloading', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const { browserWindow, created, runReady } = setupDom({
-      csrfToken: 'csrf-token',
-      stateText: '{"debug":true}',
-    });
+    const { browserWindow, created } = setupDom({ csrfToken: 'csrf-token' });
     const failure = new Error('network unavailable');
     const fetch = vi
       .fn()
@@ -461,20 +352,12 @@ describe('admin users manager', () => {
         json: vi.fn().mockResolvedValue({ success: false }),
       });
     vi.stubGlobal('fetch', fetch);
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
+    const { dialog } = createDialog();
+    const manager = new AdminUsersManager(true, dialog);
 
-    for (const action of ['disable', 'enable', 'disable'] as const) {
-      const result = manager.toggleUserStatus('user-1', action);
-      findLastCreated(
-        created,
-        element =>
-          element.textContent ===
-          `Yes, ${action === 'enable' ? 'Enable' : 'Disable'} User`
-      )?.trigger('click');
-      await result;
-    }
+    await manager.toggleUserStatus('user-1', 'disable');
+    await manager.toggleUserStatus('user-1', 'enable');
+    await manager.toggleUserStatus('user-1', 'disable');
 
     expect(
       created.some(element => element.textContent === 'User cannot be disabled')
@@ -490,25 +373,19 @@ describe('admin users manager', () => {
         element => element.textContent === 'Failed to update user status'
       )
     ).toBe(true);
-    expect(log).toHaveBeenCalledWith('[AdminUsers]', 'Toggling user status', {
-      action: 'disable',
-      userId: 'user-1',
-    });
     expect(log).toHaveBeenCalledWith(
       '[AdminUsers]',
       'Error toggling user status',
-      {
-        error: failure,
-      }
+      { error: failure }
     );
+    expect(
+      (browserWindow.location as { reload: ReturnType<typeof vi.fn> }).reload
+    ).not.toHaveBeenCalled();
   });
 
-  it('anonymizes a user and handles rejected or failed anonymization', async () => {
+  it('anonymizes a user and handles rejected or failed requests', async () => {
     vi.useFakeTimers();
-    const { browserWindow, created, runReady } = setupDom({
-      csrfToken: 'csrf-token',
-    });
-    const failure = new Error('network unavailable');
+    const { browserWindow, created } = setupDom({ csrfToken: 'csrf-token' });
     const fetch = vi
       .fn()
       .mockResolvedValueOnce({
@@ -517,20 +394,14 @@ describe('admin users manager', () => {
       .mockResolvedValueOnce({
         json: vi.fn().mockResolvedValue({ success: false }),
       })
-      .mockRejectedValueOnce(failure);
+      .mockRejectedValueOnce(new Error('network unavailable'));
     vi.stubGlobal('fetch', fetch);
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
+    const { dialog } = createDialog();
+    const manager = new AdminUsersManager(false, dialog);
 
-    for (let index = 0; index < 3; index += 1) {
-      const result = manager.anonymizeUser(`user-${index}`, 'Maria');
-      findLastCreated(
-        created,
-        element => element.textContent === 'Yes, Anonymize Permanently'
-      )?.trigger('click');
-      await result;
-    }
+    await manager.anonymizeUser('user-0', 'Maria');
+    await manager.anonymizeUser('user-1', 'Maria');
+    await manager.anonymizeUser('user-2', 'Maria');
 
     expect(fetch).toHaveBeenNthCalledWith(1, '/admin/users/user-0', {
       headers: {
@@ -539,22 +410,15 @@ describe('admin users manager', () => {
       },
       method: 'DELETE',
     });
-    expect(
-      created.some(
-        element => element.textContent === 'User anonymized successfully'
-      )
-    ).toBe(true);
-    expect(
-      created.some(
-        element => element.textContent === 'Failed to anonymize user'
-      )
-    ).toBe(true);
-    expect(
-      created.some(
-        element =>
-          element.textContent === 'An error occurred while anonymizing user'
-      )
-    ).toBe(true);
+    for (const message of [
+      'User anonymized successfully',
+      'Failed to anonymize user',
+      'An error occurred while anonymizing user',
+    ]) {
+      expect(created.some(element => element.textContent === message)).toBe(
+        true
+      );
+    }
 
     vi.advanceTimersByTime(1500);
     expect(
@@ -562,40 +426,53 @@ describe('admin users manager', () => {
     ).toHaveBeenCalledOnce();
   });
 
-  it('falls back to development debug mode for malformed embedded state', async () => {
+  it('derives debug mode from state or the development fallback', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const { browserWindow, created, runReady } = setupDom({
+    const { dialog } = createDialog();
+
+    setupDom({ csrfToken: 'csrf-token', stateText: '{"debug":true}' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('failed')));
+    await initializeAdminUsersPage(dialog)?.anonymizeUser('user-1', 'Maria');
+    expect(log).toHaveBeenCalledWith('[AdminUsers]', 'Anonymizing user', {
+      userId: 'user-1',
+      username: 'Maria',
+    });
+
+    log.mockClear();
+    setupDom({
       csrfToken: 'csrf-token',
       environment: 'development',
       stateText: '{invalid',
     });
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('failed')));
-    await import('../../../src/assets/js/admin/users.js');
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
-
-    const result = manager.anonymizeUser('user-1', 'Maria');
-    findLastCreated(
-      created,
-      element => element.textContent === 'Yes, Anonymize Permanently'
-    )?.trigger('click');
-    await result;
-
-    expect(log).toHaveBeenCalledWith('[AdminUsers]', 'Anonymizing user', {
+    await initializeAdminUsersPage(dialog)?.toggleUserStatus(
+      'user-1',
+      'enable'
+    );
+    expect(log).toHaveBeenCalledWith('[AdminUsers]', 'Toggling user status', {
+      action: 'enable',
       userId: 'user-1',
-      username: 'Maria',
     });
+
+    log.mockClear();
+    setupDom({ stateText: '' });
+    await initializeAdminUsersPage(dialog)?.toggleUserStatus('', 'enable');
+    expect(log).not.toHaveBeenCalled();
   });
 
-  it('uses non-debug defaults when embedded state is empty', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const { browserWindow, runReady } = setupDom({ stateText: '' });
-    await import('../../../src/assets/js/admin/users.js');
+  it('registers immediately or once after DOM readiness', () => {
+    const loading = setupDom({ readyState: 'loading' });
+    registerAdminUsersEntry();
+    expect(loading.documentListeners.get('DOMContentLoaded')?.size).toBe(1);
+    loading.runReady();
+    expect(loading.querySelectorAll).toHaveBeenCalledWith(
+      '[data-user-status-action]'
+    );
 
-    runReady();
-    const manager = browserWindow.adminUsersManager as AdminUsersManagerFixture;
-    await manager.toggleUserStatus('', 'enable');
-
-    expect(log).not.toHaveBeenCalled();
+    const ready = setupDom({ readyState: 'complete' });
+    registerAdminUsersEntry();
+    expect(ready.querySelectorAll).toHaveBeenCalledWith(
+      '[data-user-status-action]'
+    );
   });
 });

@@ -1,32 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  SecuritySettingsManager,
+  initializeSecuritySettingsPage,
+} from '../../../src/assets/js/admin/settings/security.js';
+
+interface SubmitEvent {
+  preventDefault: ReturnType<typeof vi.fn>;
+}
+
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
-  submit?: (event: {
-    preventDefault: ReturnType<typeof vi.fn>;
-  }) => Promise<void>;
+  submit?: (event: SubmitEvent) => void;
 }
 
 function setupDom(
   options: {
     backupCodes?: string;
     cookieSecrets?: string;
-    dialog?: { showAlert?: ReturnType<typeof vi.fn> };
     form?: FormFixture | null;
     jwtExpiresIn?: string;
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const form =
     options.form === undefined
       ? ({
           addEventListener: vi.fn(
-            (
-              _name: string,
-              listener: (event: {
-                preventDefault: ReturnType<typeof vi.fn>;
-              }) => Promise<void>
-            ) => {
+            (_name: string, listener: (event: SubmitEvent) => void) => {
               form!.submit = listener;
             }
           ),
@@ -46,19 +46,15 @@ function setupDom(
         ? undefined
         : { value: options.backupCodes },
   };
-  vi.stubGlobal('window', { dialog: options.dialog });
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
     getElementById: vi.fn((id: string) => elements[id] ?? null),
     querySelector: vi.fn(() => form),
   });
+
   return {
-    runReady: () => ready?.(),
-    submit: async () => {
+    submit: () => {
       const event = { preventDefault: vi.fn() };
-      await form?.submit?.(event);
+      form?.submit?.(event);
       return event;
     },
   };
@@ -67,55 +63,47 @@ function setupDom(
 describe('admin security settings', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
+    vi.restoreAllMocks();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/settings/security.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(SecuritySettingsManager).toBeTypeOf('function');
   });
 
-  it('initializes safely when the settings form is absent', async () => {
-    const { runReady } = setupDom({ form: null });
-    await import('../../../src/assets/js/admin/settings/security.js');
+  it('initializes safely when the settings form is absent', () => {
+    setupDom({ form: null });
 
-    expect(runReady).not.toThrow();
+    expect(() => initializeSecuritySettingsPage(null)).not.toThrow();
   });
 
-  it('allows submission when no page-specific fields are present', async () => {
-    const { runReady, submit } = setupDom();
-    await import('../../../src/assets/js/admin/settings/security.js');
-    runReady();
+  it('allows submission when no page-specific fields are present', () => {
+    const { submit } = setupDom();
+    initializeSecuritySettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it.each(['', '1s', '30m', '24h', '7d'])(
     'allows JWT expiration %j',
-    async jwtExpiresIn => {
-      const { runReady, submit } = setupDom({ jwtExpiresIn });
-      await import('../../../src/assets/js/admin/settings/security.js');
-      runReady();
+    jwtExpiresIn => {
+      const { submit } = setupDom({ jwtExpiresIn });
+      initializeSecuritySettingsPage(null);
 
-      const event = await submit();
+      const event = submit();
 
       expect(event.preventDefault).not.toHaveBeenCalled();
     }
   );
 
-  it('rejects malformed JWT expiration using the native alert fallback', async () => {
+  it('rejects malformed JWT expiration using the native alert fallback', () => {
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ jwtExpiresIn: '1 year' });
-    await import('../../../src/assets/js/admin/settings/security.js');
-    runReady();
+    const { submit } = setupDom({ jwtExpiresIn: '1 year' });
+    initializeSecuritySettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(alert).toHaveBeenCalledWith(
@@ -125,16 +113,12 @@ describe('admin security settings', () => {
 
   it.each(['', 'one-secret', 'one-secret\n  \n'])(
     'rejects insufficient cookie secrets %j',
-    async cookieSecrets => {
+    cookieSecrets => {
       const showAlert = vi.fn().mockResolvedValue(undefined);
-      const { runReady, submit } = setupDom({
-        cookieSecrets,
-        dialog: { showAlert },
-      });
-      await import('../../../src/assets/js/admin/settings/security.js');
-      runReady();
+      const { submit } = setupDom({ cookieSecrets });
+      initializeSecuritySettingsPage({ showAlert });
 
-      const event = await submit();
+      const event = submit();
 
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(showAlert).toHaveBeenCalledWith(
@@ -145,30 +129,25 @@ describe('admin security settings', () => {
     }
   );
 
-  it('allows two non-empty cookie secrets', async () => {
-    const { runReady, submit } = setupDom({
+  it('allows two non-empty cookie secrets', () => {
+    const { submit } = setupDom({
       cookieSecrets: 'first\n  \nsecond',
     });
-    await import('../../../src/assets/js/admin/settings/security.js');
-    runReady();
+    initializeSecuritySettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it.each(['0', '51', 'not-a-number', '1.5'])(
     'rejects invalid backup-code count %j',
-    async backupCodes => {
+    backupCodes => {
       const showAlert = vi.fn().mockResolvedValue(undefined);
-      const { runReady, submit } = setupDom({
-        backupCodes,
-        dialog: { showAlert },
-      });
-      await import('../../../src/assets/js/admin/settings/security.js');
-      runReady();
+      const { submit } = setupDom({ backupCodes });
+      initializeSecuritySettingsPage({ showAlert });
 
-      const event = await submit();
+      const event = submit();
 
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(showAlert).toHaveBeenCalledWith(
@@ -179,30 +158,22 @@ describe('admin security settings', () => {
     }
   );
 
-  it.each(['', '1', '50'])('allows backup-code count %j', async backupCodes => {
-    const { runReady, submit } = setupDom({ backupCodes });
-    await import('../../../src/assets/js/admin/settings/security.js');
-    runReady();
+  it.each(['', '1', '50'])('allows backup-code count %j', backupCodes => {
+    const { submit } = setupDom({ backupCodes });
+    initializeSecuritySettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('falls back to alert when dialog has no showAlert method', async () => {
-    const alert = vi.fn();
-    vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({
-      backupCodes: '51',
-      dialog: {},
-    });
-    await import('../../../src/assets/js/admin/settings/security.js');
-    runReady();
+  it('cancels invalid submission before an asynchronous dialog resolves', () => {
+    const showAlert = vi.fn(() => new Promise<void>(() => {}));
+    const { submit } = setupDom({ backupCodes: '51' });
+    initializeSecuritySettingsPage({ showAlert });
 
-    await submit();
+    const event = submit();
 
-    expect(alert).toHaveBeenCalledWith(
-      'Backup codes count must be between 1 and 50'
-    );
+    expect(event.preventDefault).toHaveBeenCalledOnce();
   });
 });

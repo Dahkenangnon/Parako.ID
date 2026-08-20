@@ -12,124 +12,115 @@
  * @author Parako.ID Team
  */
 
-(function () {
-  'use strict';
+import dialogService, { type DialogService } from '../../utils/dialog.js';
 
-  /**
-   * Configuration interface for LanguageSelector
-   */
-  interface LanguageSelectorConfig {
-    updateLocaleUrl: string;
-    csrfToken: string;
-    translations: {
-      languageUpdateError: string;
-    };
-    debug?: boolean;
+/**
+ * Configuration interface for LanguageSelector
+ */
+export interface LanguageSelectorConfig {
+  updateLocaleUrl: string;
+  csrfToken: string;
+  translations: {
+    languageUpdateError: string;
+  };
+  debug?: boolean;
+}
+
+/**
+ * LanguageSelector class - Handles language selection
+ */
+export class LanguageSelector {
+  private config: LanguageSelectorConfig;
+  private debug: boolean;
+  private languageSelector: HTMLSelectElement | null;
+
+  constructor(
+    config: LanguageSelectorConfig,
+    private readonly dialog: DialogService = dialogService
+  ) {
+    this.config = config;
+    this.debug = config.debug || false;
+    this.languageSelector = null;
+  }
+
+  public initialize(): void {
+    this.log('Initializing LanguageSelector');
+
+    this.languageSelector = document.getElementById(
+      'language-selector-settings'
+    ) as HTMLSelectElement;
+
+    if (!this.languageSelector) {
+      this.log('Language selector not found, skipping initialization');
+      return;
+    }
+
+    this.setupChangeHandler();
   }
 
   /**
-   * LanguageSelector class - Handles language selection
+   * Setup change event handler for language selector
    */
-  class LanguageSelector {
-    private config: LanguageSelectorConfig;
-    private debug: boolean;
-    private languageSelector: HTMLSelectElement | null;
+  private setupChangeHandler(): void {
+    if (!this.languageSelector) return;
 
-    constructor(config: LanguageSelectorConfig) {
-      this.config = config;
-      this.debug = config.debug || false;
-      this.languageSelector = null;
-    }
+    this.languageSelector.addEventListener('change', async e => {
+      await this.handleLanguageChange(e);
+    });
 
-    /**
-     * Initialize the language selector
-     */
-    public initialize(): void {
-      this.log('Initializing LanguageSelector');
+    this.log('Language selector handler setup complete');
+  }
 
-      this.languageSelector = document.getElementById(
-        'language-selector-settings'
-      ) as HTMLSelectElement;
+  private async handleLanguageChange(e: Event): Promise<void> {
+    const target = e.target as HTMLSelectElement;
+    const newLocale = target.value;
 
-      if (!this.languageSelector) {
-        this.log('Language selector not found, skipping initialization');
-        return;
-      }
+    this.log('Updating locale to:', newLocale);
 
-      this.setupChangeHandler();
-    }
-
-    /**
-     * Setup change event handler for language selector
-     */
-    private setupChangeHandler(): void {
-      if (!this.languageSelector) return;
-
-      this.languageSelector.addEventListener('change', async e => {
-        await this.handleLanguageChange(e);
+    try {
+      const response = await fetch(this.config.updateLocaleUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': this.config.csrfToken,
+        },
+        body: JSON.stringify({ locale: newLocale }),
       });
 
-      this.log('Language selector handler setup complete');
-    }
+      const data = await response.json();
 
-    /**
-     * Handle language selection change
-     */
-    private async handleLanguageChange(e: Event): Promise<void> {
-      const target = e.target as HTMLSelectElement;
-      const newLocale = target.value;
+      this.log('Locale update response:', data);
 
-      this.log('Updating locale to:', newLocale);
+      if (data.success) {
+        this.log('Locale updated successfully to:', newLocale);
 
-      try {
-        const response = await fetch(this.config.updateLocaleUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': this.config.csrfToken,
-          },
-          body: JSON.stringify({ locale: newLocale }),
-        });
+        window.location.reload();
+      } else {
+        console.error('Settings page: Failed to update locale:', data.error);
 
-        const data = await response.json();
-
-        this.log('Locale update response:', data);
-
-        if (data.success) {
-          this.log('Locale updated successfully to:', newLocale);
-
-          window.location.reload();
-        } else {
-          console.error('Settings page: Failed to update locale:', data.error);
-
-          await (window as any).dialog.showAlert(
-            'Language Update Error',
-            this.config.translations.languageUpdateError,
-            { variant: 'error' }
-          );
-        }
-      } catch (error) {
-        console.error('Settings page: Error updating locale:', error);
-
-        await (window as any).dialog.showAlert(
+        await this.dialog.showAlert(
           'Language Update Error',
           this.config.translations.languageUpdateError,
           { variant: 'error' }
         );
       }
-    }
+    } catch (error) {
+      console.error('Settings page: Error updating locale:', error);
 
-    /**
-     * Log debug messages
-     */
-    private log(...args: any[]): void {
-      if (this.debug) {
-        console.log('[LanguageSelector]', ...args);
-      }
+      await this.dialog.showAlert(
+        'Language Update Error',
+        this.config.translations.languageUpdateError,
+        { variant: 'error' }
+      );
     }
   }
 
-  if (typeof window !== 'undefined') {
-    (window as any).LanguageSelector = LanguageSelector;
+  /**
+   * Log debug messages
+   */
+  private log(...args: any[]): void {
+    if (this.debug) {
+      console.log('[LanguageSelector]', ...args);
+    }
   }
-})();
+}

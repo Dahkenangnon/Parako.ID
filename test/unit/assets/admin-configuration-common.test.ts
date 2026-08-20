@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { initializeAdminConfigurationCommon } from '../../../src/assets/js/admin/configuration/common.js';
+
 interface EventFixture {
   preventDefault: ReturnType<typeof vi.fn>;
   target: ElementFixture;
@@ -125,7 +127,6 @@ function setupDom(
     confirm,
     createdElements,
     fetch,
-    windowFixture,
   };
 }
 
@@ -138,14 +139,10 @@ async function flushPromises(): Promise<void> {
 describe('admin configuration secret controls', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
-
-  // This module installs browser listeners at import time, so each test needs
-  // a fresh module instance after installing its isolated DOM globals.
-
-  it('requires confirmation before resetting tenant configuration', async () => {
+  it('requires confirmation before resetting tenant configuration', () => {
     const form = new ElementFixture('form');
     const message =
       'Are you sure you want to reset Application configuration to defaults?';
@@ -153,7 +150,7 @@ describe('admin configuration secret controls', () => {
     const { confirm } = setupDom({ confirmationForms: [form] });
     confirm.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    initializeAdminConfigurationCommon();
 
     const cancelled = form.trigger('submit');
     const accepted = form.trigger('submit');
@@ -177,7 +174,7 @@ describe('admin configuration secret controls', () => {
       json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
     });
 
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    initializeAdminConfigurationCommon();
 
     button.trigger('click');
     await flushPromises();
@@ -189,7 +186,7 @@ describe('admin configuration secret controls', () => {
     expect(fetch).toHaveBeenCalledOnce();
   });
 
-  it('ignores malformed declarative secret controls', async () => {
+  it('ignores malformed declarative secret controls', () => {
     const missingFieldPath = new ButtonFixture('button');
     missingFieldPath.setAttribute('data-secret-input-id', 'secret');
     const missingInputId = new ButtonFixture('button');
@@ -201,30 +198,25 @@ describe('admin configuration secret controls', () => {
       secretButtons: [missingFieldPath, missingInputId],
     });
 
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    initializeAdminConfigurationCommon();
 
     missingFieldPath.trigger('click');
     missingInputId.trigger('click');
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('can be imported when browser globals are unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-    vi.stubGlobal('window', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/configuration/common.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without browser globals', () => {
+    expect(initializeAdminConfigurationCommon).toBeTypeOf('function');
   });
 
-  it('installs the public API and inactivity activity listeners', async () => {
-    const { activityListeners, windowFixture } = setupDom();
+  it('returns its controller and installs inactivity activity listeners', () => {
+    const { activityListeners } = setupDom();
 
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    const controller = initializeAdminConfigurationCommon();
 
-    expect(windowFixture.revealTenantSecret).toEqual(expect.any(Function));
-    expect(windowFixture.remaskTenantSecret).toEqual(expect.any(Function));
-    expect(windowFixture.refreshConfigIcons).toEqual(expect.any(Function));
+    expect(controller.revealTenantSecret).toEqual(expect.any(Function));
+    expect(controller.remaskTenantSecret).toEqual(expect.any(Function));
+    expect(controller.refreshIcons).toEqual(expect.any(Function));
     expect([...activityListeners.keys()]).toEqual([
       'mousedown',
       'mousemove',
@@ -236,21 +228,17 @@ describe('admin configuration secret controls', () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 
-  it('refreshes icons only when the optional icon library is available', async () => {
+  it('refreshes icons only when the optional icon library is available', () => {
     const withIcons = setupDom();
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    const withIconsController = initializeAdminConfigurationCommon();
 
-    (withIcons.windowFixture.refreshConfigIcons as () => void)();
+    withIconsController.refreshIcons();
 
     expect(withIcons.createIcons).toHaveBeenCalledOnce();
-
-    vi.resetModules();
     const withoutIcons = setupDom({ lucide: false });
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    const withoutIconsController = initializeAdminConfigurationCommon();
 
-    expect(() =>
-      (withoutIcons.windowFixture.refreshConfigIcons as () => void)()
-    ).not.toThrow();
+    expect(() => withoutIconsController.refreshIcons()).not.toThrow();
     expect(withoutIcons.createIcons).not.toHaveBeenCalled();
   });
 
@@ -261,32 +249,24 @@ describe('admin configuration secret controls', () => {
   ])('does not reveal without its required controls: %#', async scenario => {
     const inputs: Record<string, InputFixture> = {};
     if (scenario.input) inputs.secret = scenario.input;
-    const { fetch, windowFixture } = setupDom({
+    const { fetch } = setupDom({
       csrf: scenario.csrf,
       inputs,
     });
-    await import('../../../src/assets/js/admin/configuration/common.js');
-    const reveal = windowFixture.revealTenantSecret as (
-      fieldPath: string,
-      inputId: string
-    ) => void;
+    const controller = initializeAdminConfigurationCommon();
+    const reveal = controller.revealTenantSecret;
     reveal('notifications.apiKey', 'secret');
 
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('does not reveal when the secret input has no associated button', async () => {
+  it('does not reveal when the secret input has no associated button', () => {
     const input = new InputFixture('secret');
     input.parentElement = { querySelector: () => null };
-    const { fetch, windowFixture } = setupDom({ inputs: { secret: input } });
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    const { fetch } = setupDom({ inputs: { secret: input } });
+    const controller = initializeAdminConfigurationCommon();
 
-    (
-      windowFixture.revealTenantSecret as (
-        fieldPath: string,
-        inputId: string
-      ) => void
-    )('notifications.apiKey', 'secret');
+    controller.revealTenantSecret('notifications.apiKey', 'secret');
 
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -296,18 +276,13 @@ describe('admin configuration secret controls', () => {
     const input = new InputFixture('secret');
     input.setAttribute('data-field-path', 'notifications.apiKey');
     input.parentElement = { querySelector: () => button };
-    const { fetch, windowFixture } = setupDom({ inputs: { secret: input } });
+    const { fetch } = setupDom({ inputs: { secret: input } });
     fetch.mockResolvedValue({
       json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
     });
-    await import('../../../src/assets/js/admin/configuration/common.js');
-    const reveal = windowFixture.revealTenantSecret as (
-      fieldPath: string,
-      inputId: string
-    ) => void;
-    const remask = windowFixture.remaskTenantSecret as (
-      inputId: string
-    ) => void;
+    const controller = initializeAdminConfigurationCommon();
+    const reveal = controller.revealTenantSecret;
+    const remask = controller.remaskTenantSecret;
 
     reveal('notifications.apiKey', 'secret');
     await flushPromises();
@@ -361,7 +336,7 @@ describe('admin configuration secret controls', () => {
       const button = new ButtonFixture('button');
       const input = new InputFixture('secret');
       input.parentElement = { querySelector: () => button };
-      const { fetch, windowFixture } = setupDom({ inputs: { secret: input } });
+      const { fetch } = setupDom({ inputs: { secret: input } });
       if (testCase.rejects) {
         fetch.mockRejectedValue(testCase.response);
       } else {
@@ -369,14 +344,9 @@ describe('admin configuration secret controls', () => {
           json: vi.fn().mockResolvedValue(testCase.response),
         });
       }
-      await import('../../../src/assets/js/admin/configuration/common.js');
+      const controller = initializeAdminConfigurationCommon();
 
-      (
-        windowFixture.revealTenantSecret as (
-          fieldPath: string,
-          inputId: string
-        ) => void
-      )('notifications.apiKey', 'secret');
+      controller.revealTenantSecret('notifications.apiKey', 'secret');
       await flushPromises();
 
       expect(input.type).toBe('password');
@@ -393,19 +363,14 @@ describe('admin configuration secret controls', () => {
     const button = new ButtonFixture('button');
     const input = new InputFixture('secret');
     input.parentElement = { querySelector: () => button };
-    const { appendToBody, fetch, windowFixture } = setupDom({
+    const { appendToBody, fetch } = setupDom({
       inputs: { secret: input },
     });
     fetch.mockResolvedValue({
       json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
     });
-    await import('../../../src/assets/js/admin/configuration/common.js');
-    (
-      windowFixture.revealTenantSecret as (
-        fieldPath: string,
-        inputId: string
-      ) => void
-    )('notifications.apiKey', 'secret');
+    const controller = initializeAdminConfigurationCommon();
+    controller.revealTenantSecret('notifications.apiKey', 'secret');
     await flushPromises();
 
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
@@ -429,19 +394,14 @@ describe('admin configuration secret controls', () => {
     const button = new ButtonFixture('button');
     const input = new InputFixture('secret');
     input.parentElement = { querySelector: () => button };
-    const { activityListeners, fetch, windowFixture } = setupDom({
+    const { activityListeners, fetch } = setupDom({
       inputs: { secret: input },
     });
     fetch.mockResolvedValue({
       json: vi.fn().mockResolvedValue({ success: true, value: 'decrypted' }),
     });
-    await import('../../../src/assets/js/admin/configuration/common.js');
-    (
-      windowFixture.revealTenantSecret as (
-        fieldPath: string,
-        inputId: string
-      ) => void
-    )('notifications.apiKey', 'secret');
+    const controller = initializeAdminConfigurationCommon();
+    controller.revealTenantSecret('notifications.apiKey', 'secret');
     await flushPromises();
 
     await vi.advanceTimersByTimeAsync(119_000);
@@ -455,20 +415,18 @@ describe('admin configuration secret controls', () => {
 
   it('does not notify when inactivity expires without revealed secrets', async () => {
     const { appendToBody } = setupDom();
-    await import('../../../src/assets/js/admin/configuration/common.js');
+    initializeAdminConfigurationCommon();
 
     await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
 
     expect(appendToBody).not.toHaveBeenCalled();
   });
 
-  it('re-masks safely when the input or its optional button is absent', async () => {
+  it('re-masks safely when the input or its optional button is absent', () => {
     const input = new InputFixture('secret');
-    const { windowFixture } = setupDom({ inputs: { secret: input } });
-    await import('../../../src/assets/js/admin/configuration/common.js');
-    const remask = windowFixture.remaskTenantSecret as (
-      inputId: string
-    ) => void;
+    setupDom({ inputs: { secret: input } });
+    const controller = initializeAdminConfigurationCommon();
+    const remask = controller.remaskTenantSecret;
 
     expect(() => remask('missing')).not.toThrow();
     expect(() => remask('secret')).not.toThrow();

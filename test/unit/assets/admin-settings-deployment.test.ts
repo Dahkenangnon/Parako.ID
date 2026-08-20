@@ -1,32 +1,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  DeploymentSettingsManager,
+  initializeDeploymentSettingsPage,
+} from '../../../src/assets/js/admin/settings/deployment.js';
+
+interface SubmitEvent {
+  preventDefault: ReturnType<typeof vi.fn>;
+}
+
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
-  submit?: (event: {
-    preventDefault: ReturnType<typeof vi.fn>;
-  }) => Promise<void>;
+  submit?: (event: SubmitEvent) => void;
 }
 
 function setupDom(
   options: {
     allowedOrigins?: string | null;
     devAllowedOrigins?: string | null;
-    dialog?: { showAlert?: ReturnType<typeof vi.fn> };
     form?: FormFixture | null;
     trustProxyHops?: string | null;
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const form =
     options.form === undefined
       ? ({
           addEventListener: vi.fn(
-            (
-              _name: string,
-              listener: (event: {
-                preventDefault: ReturnType<typeof vi.fn>;
-              }) => Promise<void>
-            ) => {
+            (_name: string, listener: (event: SubmitEvent) => void) => {
               form!.submit = listener;
             }
           ),
@@ -42,31 +42,19 @@ function setupDom(
     'server.trust_proxy_hops':
       options.trustProxyHops === undefined ? '1' : options.trustProxyHops,
   };
-  vi.stubGlobal('window', { dialog: options.dialog });
   const getElementById = vi.fn((id: string) => {
     const value = values[id];
     return value === null || value === undefined ? null : { value };
   });
   const querySelector = vi.fn(() => form);
-  vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
-    getElementById,
-    querySelector,
-  });
+  vi.stubGlobal('document', { getElementById, querySelector });
+
   return {
     getElementById,
     querySelector,
-    runReady: () => ready?.(),
-    dispatchSubmit: () => {
+    submit: () => {
       const event = { preventDefault: vi.fn() };
-      const completion = form?.submit?.(event);
-      return { completion, event };
-    },
-    submit: async () => {
-      const event = { preventDefault: vi.fn() };
-      await form?.submit?.(event);
+      form?.submit?.(event);
       return event;
     },
   };
@@ -75,37 +63,28 @@ function setupDom(
 describe('admin deployment settings', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
+    vi.restoreAllMocks();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/settings/deployment.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(DeploymentSettingsManager).toBeTypeOf('function');
   });
 
-  it('initializes safely when the deployment form is absent', async () => {
-    const { runReady } = setupDom({ form: null });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
+  it('initializes safely when the deployment form is absent', () => {
+    setupDom({ form: null });
 
-    expect(runReady).not.toThrow();
+    expect(() => initializeDeploymentSettingsPage(null)).not.toThrow();
   });
 
   it.each([
     ['allowed origins are absent', { allowedOrigins: null }],
     ['allowed origins are blank', { allowedOrigins: '' }],
-  ])('rejects submission when %s', async (_case, options) => {
+  ])('rejects submission when %s', (_case, options) => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
-    const { runReady, submit } = setupDom({
-      ...options,
-      dialog: { showAlert },
-    });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+    const { submit } = setupDom(options);
+    initializeDeploymentSettingsPage({ showAlert });
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showAlert).toHaveBeenCalledWith(
@@ -115,14 +94,13 @@ describe('admin deployment settings', () => {
     );
   });
 
-  it('falls back to the native alert when the dialog service is unavailable', async () => {
+  it('falls back to the native alert when the dialog service is unavailable', () => {
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ allowedOrigins: 'invalid origin' });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+    const { submit } = setupDom({ allowedOrigins: 'invalid origin' });
+    initializeDeploymentSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(alert).toHaveBeenCalledWith(
@@ -130,50 +108,35 @@ describe('admin deployment settings', () => {
     );
   });
 
-  it('does not validate the read-only application URL as a form field', async () => {
-    const { getElementById, querySelector, runReady, submit } = setupDom();
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+  it('does not validate the read-only application URL as a form field', () => {
+    const { getElementById, querySelector, submit } = setupDom();
+    initializeDeploymentSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(getElementById).not.toHaveBeenCalledWith('url');
     expect(querySelector).toHaveBeenCalledWith('#deployment-form');
   });
 
-  it('cancels an invalid native submission before awaiting its dialog', async () => {
-    let resolveAlert: (() => void) | undefined;
-    const showAlert = vi.fn(
-      () =>
-        new Promise<void>(resolve => {
-          resolveAlert = resolve;
-        })
-    );
-    const { dispatchSubmit, runReady } = setupDom({
-      allowedOrigins: 'not an origin',
-      dialog: { showAlert },
-    });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+  it('cancels an invalid native submission before awaiting its dialog', () => {
+    const showAlert = vi.fn(() => new Promise<void>(() => {}));
+    const { submit } = setupDom({ allowedOrigins: 'not an origin' });
+    initializeDeploymentSettingsPage({ showAlert });
 
-    const { completion, event } = dispatchSubmit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
-    resolveAlert?.();
-    await completion;
   });
 
-  it('reports the first invalid allowed origin', async () => {
+  it('reports the first invalid allowed origin', () => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
-    const { runReady, submit } = setupDom({
+    const { submit } = setupDom({
       allowedOrigins: ' https://rp.test, ,invalid origin,also invalid ',
-      dialog: { showAlert },
     });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+    initializeDeploymentSettingsPage({ showAlert });
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showAlert).toHaveBeenCalledWith(
@@ -183,16 +146,14 @@ describe('admin deployment settings', () => {
     );
   });
 
-  it('reports the first invalid development origin', async () => {
+  it('reports the first invalid development origin', () => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
-    const { runReady, submit } = setupDom({
+    const { submit } = setupDom({
       devAllowedOrigins: 'https://dev-rp.test, bad dev origin',
-      dialog: { showAlert },
     });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+    initializeDeploymentSettingsPage({ showAlert });
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showAlert).toHaveBeenCalledWith(
@@ -204,16 +165,12 @@ describe('admin deployment settings', () => {
 
   it.each([null, '', '   ', 'Infinity', '-1', '11', '1.5', '1x'])(
     'rejects invalid trust-proxy hops %j',
-    async trustProxyHops => {
+    trustProxyHops => {
       const showAlert = vi.fn().mockResolvedValue(undefined);
-      const { runReady, submit } = setupDom({
-        dialog: { showAlert },
-        trustProxyHops,
-      });
-      await import('../../../src/assets/js/admin/settings/deployment.js');
-      runReady();
+      const { submit } = setupDom({ trustProxyHops });
+      initializeDeploymentSettingsPage({ showAlert });
 
-      const event = await submit();
+      const event = submit();
 
       expect(event.preventDefault).toHaveBeenCalledOnce();
       expect(showAlert).toHaveBeenCalledWith(
@@ -231,16 +188,15 @@ describe('admin deployment settings', () => {
       '10',
       ' https://dev-one.test, ,https://dev-two.test ',
     ],
-  ])('allows the %s', async (_case, trustProxyHops, devAllowedOrigins) => {
-    const { runReady, submit } = setupDom({
+  ])('allows the %s', (_case, trustProxyHops, devAllowedOrigins) => {
+    const { submit } = setupDom({
       allowedOrigins: ' https://one.test, ,https://two.test ',
       devAllowedOrigins,
       trustProxyHops,
     });
-    await import('../../../src/assets/js/admin/settings/deployment.js');
-    runReady();
+    initializeDeploymentSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });

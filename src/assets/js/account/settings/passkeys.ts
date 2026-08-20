@@ -2,7 +2,6 @@
  * Passkeys Management
  * Handles passkey listing, renaming, and deletion in account settings
  */
-/* eslint-disable no-undef */
 (function () {
   'use strict';
 
@@ -96,9 +95,6 @@
       this.translations = state.translations;
     }
 
-    /**
-     * Initialize the passkeys manager
-     */
     public async init(): Promise<void> {
       this.loadingEl = document.getElementById('passkeys-loading');
       this.emptyStateEl = document.getElementById('passkeys-empty');
@@ -144,9 +140,6 @@
       });
     }
 
-    /**
-     * Load credentials from the server
-     */
     private async loadCredentials(): Promise<void> {
       this.showLoading();
 
@@ -175,9 +168,6 @@
       }
     }
 
-    /**
-     * Render the credentials list
-     */
     private renderCredentials(): void {
       if (!this.listEl) return;
 
@@ -196,9 +186,6 @@
       }
     }
 
-    /**
-     * Create a credential list item element
-     */
     private createCredentialItem(credential: PasskeyCredential): HTMLElement {
       // Use template if available
       if (this.passkeyItemTemplate) {
@@ -546,9 +533,6 @@
       ) as HTMLElement | undefined;
     }
 
-    /**
-     * Show loading state
-     */
     private showLoading(): void {
       if (this.loadingEl) {
         this.loadingEl.classList.remove('hidden');
@@ -583,9 +567,6 @@
       }
     }
 
-    /**
-     * Show a toast notification
-     */
     private showToast(message: string, type: 'success' | 'error'): void {
       const toast = document.createElement('div');
       toast.className = `fixed bottom-4 right-4 px-4 py-3 border-2 shadow-lg z-50 ${

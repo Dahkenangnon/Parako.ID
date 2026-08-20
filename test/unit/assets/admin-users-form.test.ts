@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  AdminUsersFormManager,
+  initializeAdminUsersFormPage,
+} from '../../../src/assets/js/admin/users/form.js';
+
 interface DomEvent {
   preventDefault?: ReturnType<typeof vi.fn>;
 }
@@ -52,7 +57,6 @@ function setupDom(
     withLucide?: boolean;
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const elements = new Map<string, ElementFixture>();
   const createForm = new ElementFixture();
   const editForm = new ElementFixture();
@@ -64,7 +68,6 @@ function setupDom(
       getRandomValues: vi.fn((values: Uint32Array) => values.fill(0)),
     },
   };
-  if (options.withDialog !== false) browserWindow.dialog = { showAlert };
   if (options.withLucide !== false) browserWindow.lucide = { createIcons };
   if (options.isCreateForm !== false)
     elements.set('createUserForm', createForm);
@@ -78,9 +81,6 @@ function setupDom(
   const alert = vi.fn();
   vi.stubGlobal('alert', alert);
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((name: string, listener: () => void) => {
-      if (name === 'DOMContentLoaded') ready = listener;
-    }),
     getElementById: vi.fn((id: string) => elements.get(id) ?? null),
     querySelector: vi.fn((selector: string) =>
       selector === 'form' &&
@@ -102,7 +102,10 @@ function setupDom(
     editForm,
     elements,
     queryResults,
-    runReady: () => ready?.(),
+    runReady: () =>
+      initializeAdminUsersFormPage(
+        options.withDialog === false ? null : { showAlert }
+      ),
     showAlert,
   };
 }
@@ -121,16 +124,17 @@ function setField(
 }
 
 describe('admin users form manager', () => {
+  it('is statically importable without a browser document', () => {
+    expect(AdminUsersFormManager).toBeTypeOf('function');
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
-    vi.resetModules();
   });
 
   it('cancels create-form submission before asynchronous validation', async () => {
     const { createForm, runReady, showAlert } = setupDom();
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
     const event = { preventDefault: vi.fn() };
 
@@ -155,7 +159,6 @@ describe('admin users form manager', () => {
       missingTargetButton,
       buttonWithoutTarget,
     ]);
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     const click = { preventDefault: vi.fn() };
@@ -196,7 +199,6 @@ describe('admin users form manager', () => {
     button.setAttribute('data-password-toggle', 'password');
     elements.set('password_icon', icon);
     queryResults.set('[data-password-toggle]', [button]);
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     expect(() =>
@@ -217,7 +219,6 @@ describe('admin users form manager', () => {
     const matchText = new ElementFixture();
     elements.set('password_match_indicator', indicator);
     elements.set('password_match_text', matchText);
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     checkbox.checked = true;
@@ -250,7 +251,6 @@ describe('admin users form manager', () => {
     const matchText = new ElementFixture();
     elements.set('password_match_indicator', indicator);
     elements.set('password_match_text', matchText);
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     confirm.trigger('input');
@@ -281,7 +281,6 @@ describe('admin users form manager', () => {
     const familyName = setField(elements, 'family_name', 'Doe');
     const password = setField(elements, 'password', 'Strong1!');
     const confirm = setField(elements, 'confirm_password', 'Strong1!');
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     const submit = async () => {
@@ -365,7 +364,6 @@ describe('admin users form manager', () => {
     const givenName = setField(elements, 'given_name', 'Maria');
     const familyName = setField(elements, 'family_name', 'Doe');
     const newPassword = setField(elements, 'new_password', '');
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     const submit = async () => {
@@ -403,7 +401,6 @@ describe('admin users form manager', () => {
     const textarea = new ElementFixture();
     textarea.scrollHeight = 240;
     queryResults.set('textarea', [textarea]);
-    await import('../../../src/assets/js/admin/users/form.js');
     runReady();
 
     createForm.trigger('submit', { preventDefault: vi.fn() });
@@ -418,7 +415,6 @@ describe('admin users form manager', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const { runReady } = setupDom({ stateText: '{invalid' });
-    await import('../../../src/assets/js/admin/users/form.js');
 
     runReady();
 
@@ -431,34 +427,28 @@ describe('admin users form manager', () => {
   it('tolerates incomplete generation and form markup', async () => {
     const first = setupDom();
     const checkbox = setField(first.elements, 'generatePassword', '');
-    await import('../../../src/assets/js/admin/users/form.js');
     first.runReady();
     checkbox.checked = true;
     expect(() => checkbox.trigger('change')).not.toThrow();
 
-    vi.resetModules();
     vi.unstubAllGlobals();
     const createOverride = setupDom({
       isCreateForm: false,
       stateText: '{"isCreateForm":true}',
       withEditForm: false,
     });
-    await import('../../../src/assets/js/admin/users/form.js');
     expect(createOverride.runReady).not.toThrow();
 
-    vi.resetModules();
     vi.unstubAllGlobals();
     const missingEdit = setupDom({
       isCreateForm: false,
       withEditForm: false,
     });
-    await import('../../../src/assets/js/admin/users/form.js');
     expect(missingEdit.runReady).not.toThrow();
   });
 
   it('uses default configuration when embedded state is empty', async () => {
     const { createForm, runReady, showAlert } = setupDom({ stateText: '' });
-    await import('../../../src/assets/js/admin/users/form.js');
 
     runReady();
     createForm.trigger('submit', { preventDefault: vi.fn() });

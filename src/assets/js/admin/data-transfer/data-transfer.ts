@@ -6,6 +6,8 @@
  */
 import Papa from 'papaparse';
 
+import dialogService, { type DialogService } from '../../utils/dialog.js';
+
 interface EntityConfig {
   entityId: string;
   format: 'csv' | 'json';
@@ -19,31 +21,7 @@ interface EntityConfig {
   }>;
 }
 
-interface DialogApi {
-  showAlert: (
-    title: string,
-    message: string,
-    options?: { variant?: string }
-  ) => Promise<void>;
-  showConfirm: (
-    title: string,
-    message: string,
-    options?: {
-      variant?: string;
-      confirmText?: string;
-      cancelText?: string;
-    }
-  ) => Promise<boolean>;
-}
-
-interface LucideApi {
-  createIcons: () => void;
-}
-
-interface WindowWithApis {
-  dialog: DialogApi;
-  lucide?: LucideApi;
-}
+type DataTransferDialog = Pick<DialogService, 'showAlert' | 'showConfirm'>;
 
 const readEntityConfig = (): EntityConfig | null => {
   const node = document.getElementById('__ENTITY_CONFIG__');
@@ -79,14 +57,14 @@ interface ImportResult {
   durationMs: number;
 }
 
-export function initAdminDataTransfer(): void {
-  'use strict';
-
+export function initAdminDataTransfer(
+  dialog: DataTransferDialog = dialogService
+): void {
   const maybeConfig = readEntityConfig();
   if (!maybeConfig) return;
   const config: EntityConfig = maybeConfig;
 
-  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_PREVIEW_ROWS = 5;
 
   let parsedRows: ParsedRow[] = [];
@@ -192,9 +170,7 @@ export function initAdminDataTransfer(): void {
     const file = fileInput.files?.[0];
     if (!file) return;
 
-    const dialog = (window as unknown as WindowWithApis).dialog;
-
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
       await dialog.showAlert(
         'File Too Large',
         `Maximum file size is 10MB. Your file: ${(file.size / 1024 / 1024).toFixed(2)}MB`,
@@ -312,7 +288,6 @@ export function initAdminDataTransfer(): void {
   }
 
   function showParseError(message: string): void {
-    const dialog = (window as unknown as WindowWithApis).dialog;
     dialog.showAlert('Parse Error', message, { variant: 'error' });
     resetPreview();
   }
@@ -576,7 +551,6 @@ export function initAdminDataTransfer(): void {
       throw new Error('Unexpected server response');
     } catch (err) {
       confirmImportBtn.disabled = false;
-      const dialog = (window as unknown as WindowWithApis).dialog;
       await dialog.showAlert(
         'Import Error',
         err instanceof Error ? err.message : 'Failed to start import',
@@ -827,7 +801,6 @@ export function initAdminDataTransfer(): void {
   }
 
   function showImportError(message: string): void {
-    const dialog = (window as unknown as WindowWithApis).dialog;
     dialog.showAlert('Import Failed', message, { variant: 'error' });
 
     if (resultArea && resultSummary) {
@@ -848,7 +821,6 @@ export function initAdminDataTransfer(): void {
     if (!includeSecretsCheckbox?.checked) return;
 
     e.preventDefault();
-    const dialog = (window as unknown as WindowWithApis).dialog;
     const confirmed = await dialog.showConfirm(
       'Export Secrets',
       'You are about to export sensitive internal data (password hashes, client secrets).\n\nThis export will be audit logged. Handle the file securely.\n\nContinue?',

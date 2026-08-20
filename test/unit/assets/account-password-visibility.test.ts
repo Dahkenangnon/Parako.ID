@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  PasswordVisibilityToggle,
-  installPasswordVisibilityGlobal,
-  type PasswordVisibilityWindow,
-} from '../../../src/assets/js/account/settings/password-visibility.js';
+import { PasswordVisibilityToggle } from '../../../src/assets/js/account/settings/password-visibility.js';
 
 interface ToggleFixture {
   addEventListener: ReturnType<typeof vi.fn>;
@@ -26,14 +22,11 @@ function loadManager(
   buttons: ToggleFixture[] = [],
   inputs: Record<string, object | null> = {}
 ) {
-  const windowRoot: PasswordVisibilityWindow = {};
   const documentRoot = {
     getElementById: vi.fn((id: string) => inputs[id] ?? null),
     querySelectorAll: vi.fn(() => buttons),
   };
-  vi.stubGlobal('window', windowRoot);
   vi.stubGlobal('document', documentRoot);
-  installPasswordVisibilityGlobal(windowRoot);
   return { Manager: PasswordVisibilityToggle, documentRoot };
 }
 
@@ -116,16 +109,10 @@ describe('account password visibility', () => {
     expect(() => new Manager().initialize()).not.toThrow();
   });
 
-  it('can be evaluated without a browser window', async () => {
-    expect(() => installPasswordVisibilityGlobal(undefined)).not.toThrow();
-  });
+  it('does not publish the toggle through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-  it('publishes to the ambient browser window by default', () => {
-    const windowRoot: PasswordVisibilityWindow = {};
-    vi.stubGlobal('window', windowRoot);
-
-    installPasswordVisibilityGlobal();
-
-    expect(windowRoot.PasswordVisibilityToggle).toBe(PasswordVisibilityToggle);
+    expect(browserWindow).not.toHaveProperty('PasswordVisibilityToggle');
   });
 });

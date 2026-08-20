@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-interface PasswordConfig {
-  isSpecialPasswordCase: boolean;
-  translations: { passwordMismatch: string };
-  debug?: boolean;
-}
+import {
+  PasswordValidator,
+  type PasswordValidatorConfig,
+} from '../../../src/assets/js/account/settings/password.js';
 
 interface PasswordValidatorInstance {
   initialize(): void;
@@ -12,7 +10,7 @@ interface PasswordValidatorInstance {
 }
 
 type PasswordValidatorConstructor = new (
-  config: PasswordConfig
+  config: PasswordValidatorConfig
 ) => PasswordValidatorInstance;
 
 interface InputFixture {
@@ -31,21 +29,17 @@ function input(value = ''): InputFixture {
   };
 }
 
-async function loadValidator(inputs: Record<string, InputFixture | null> = {}) {
-  vi.resetModules();
-  const windowRoot: { PasswordValidator?: PasswordValidatorConstructor } = {};
-  vi.stubGlobal('window', windowRoot);
+function loadValidator(inputs: Record<string, InputFixture | null> = {}) {
   vi.stubGlobal('document', {
     getElementById: vi.fn((id: string) => inputs[id] ?? null),
   });
-  await import('../../../src/assets/js/account/settings/password.js');
-  if (!windowRoot.PasswordValidator) {
-    throw new Error('PasswordValidator was not published');
-  }
-  return windowRoot.PasswordValidator;
+  return PasswordValidator as unknown as PasswordValidatorConstructor;
 }
 
-function config(isSpecialPasswordCase: boolean, debug = false): PasswordConfig {
+function config(
+  isSpecialPasswordCase: boolean,
+  debug = false
+): PasswordValidatorConfig {
   return {
     isSpecialPasswordCase,
     translations: { passwordMismatch: 'Passwords differ' },
@@ -133,12 +127,10 @@ describe('account password validator', () => {
     expect(() => validator.validatePasswordMatch()).not.toThrow();
   });
 
-  it('can be evaluated without a browser window', async () => {
-    vi.resetModules();
-    vi.stubGlobal('window', undefined);
+  it('does not publish the validator through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    await expect(
-      import('../../../src/assets/js/account/settings/password.js')
-    ).resolves.toBeDefined();
+    expect(browserWindow).not.toHaveProperty('PasswordValidator');
   });
 });

@@ -1,13 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type NotificationManagerConstructor = new () => object;
+import {
+  initializeFlashNotifications,
+  NotificationManager,
+} from '../../../src/assets/js/flash.js';
+import type { DialogService } from '../../../src/assets/js/utils/dialog.js';
 
 interface ToastFixture {
   addEventListener: ReturnType<typeof vi.fn>;
   classList: { add: ReturnType<typeof vi.fn> };
   dataset: {
-    timeout?: string;
     dismissible?: string;
+    timeout?: string;
   };
   parentNode: object | null;
   querySelector: ReturnType<typeof vi.fn>;
@@ -16,11 +20,11 @@ interface ToastFixture {
 
 function toast(
   options: {
-    timeout?: string;
-    dismissible?: string;
-    dismissButton?: { addEventListener: ReturnType<typeof vi.fn> } | null;
-    progressBar?: { style: Record<string, string> } | null;
     attached?: boolean;
+    dismissButton?: { addEventListener: ReturnType<typeof vi.fn> } | null;
+    dismissible?: string;
+    progressBar?: { style: Record<string, string> } | null;
+    timeout?: string;
   } = {}
 ): ToastFixture {
   return {
@@ -40,34 +44,24 @@ function toast(
   };
 }
 
-async function loadManager(
+function setupDom(
   options: {
-    toasts?: ToastFixture[];
+    dialog?: Pick<DialogService, 'showAlert'>;
     errorScript?: {
-      textContent: string | null;
       remove: ReturnType<typeof vi.fn>;
+      textContent: string | null;
     } | null;
-    dialog?: { showAlert: ReturnType<typeof vi.fn> };
+    toasts?: ToastFixture[];
   } = {}
 ) {
-  vi.resetModules();
-  let ready: (() => void) | undefined;
-  const windowRoot: Record<string, unknown> = {};
-  if (options.dialog) windowRoot.dialog = options.dialog;
-  vi.stubGlobal('window', windowRoot);
   vi.stubGlobal('document', {
-    addEventListener: vi.fn(
-      (_name: string, listener: () => void) => (ready = listener)
-    ),
     getElementById: vi.fn(() => options.errorScript ?? null),
     querySelectorAll: vi.fn(() => options.toasts ?? []),
   });
 
-  const loaded = await import('../../../src/assets/js/flash.js');
-  const Manager = loaded.NotificationManager as
-    NotificationManagerConstructor | undefined;
-  if (!Manager) throw new Error('NotificationManager is not exported');
-  return { Manager, ready };
+  return {
+    createManager: () => new NotificationManager(options.dialog ?? null),
+  };
 }
 
 describe('flash notification manager', () => {
@@ -77,18 +71,22 @@ describe('flash notification manager', () => {
     vi.restoreAllMocks();
   });
 
-  it('initializes an empty page on DOM readiness', async () => {
-    const { ready } = await loadManager();
+  it('is statically importable without a browser document', () => {
+    expect(NotificationManager).toBeTypeOf('function');
+  });
 
-    expect(() => ready?.()).not.toThrow();
+  it('initializes an empty page safely', () => {
+    setupDom();
+
+    expect(() => initializeFlashNotifications(null)).not.toThrow();
   });
 
   it('dismisses an attached manual toast after its animation', async () => {
     vi.useFakeTimers();
     const dismissButton = { addEventListener: vi.fn() };
     const target = toast({ dismissButton });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
 
     dismissButton.addEventListener.mock.calls[0]?.[1]();
 
@@ -102,8 +100,8 @@ describe('flash notification manager', () => {
     vi.useFakeTimers();
     const dismissButton = { addEventListener: vi.fn() };
     const target = toast({ dismissButton, attached: false });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
 
     dismissButton.addEventListener.mock.calls[0]?.[1]();
     await vi.runAllTimersAsync();
@@ -115,8 +113,8 @@ describe('flash notification manager', () => {
     vi.useFakeTimers();
     const dismissButton = { addEventListener: vi.fn() };
     const target = toast({ dismissButton });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
 
     dismissButton.addEventListener.mock.calls[0]?.[1]();
     target.parentNode = null;
@@ -130,10 +128,10 @@ describe('flash notification manager', () => {
     const automatic = toast({ timeout: '500' });
     const disabled = toast({ timeout: '500', dismissible: 'false' });
     const permanent = toast({ timeout: '0' });
-    const { Manager } = await loadManager({
+    const { createManager } = setupDom({
       toasts: [automatic, disabled, permanent],
     });
-    new Manager();
+    createManager();
 
     await vi.advanceTimersByTimeAsync(800);
 
@@ -147,8 +145,8 @@ describe('flash notification manager', () => {
     vi.setSystemTime(1_000);
     const progressBar = { style: {} as Record<string, string> };
     const target = toast({ timeout: '1000', progressBar });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
     const mouseenter = target.addEventListener.mock.calls.find(
       call => call[0] === 'mouseenter'
     )?.[1] as () => void;
@@ -171,12 +169,12 @@ describe('flash notification manager', () => {
     mouseleave();
   });
 
-  it('does not resume a timer whose remaining duration has elapsed', async () => {
+  it('does not resume a timer whose remaining duration has elapsed', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const target = toast({ timeout: '100' });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
     const mouseenter = target.addEventListener.mock.calls[0]?.[1] as () => void;
     const mouseleave = target.addEventListener.mock.calls[1]?.[1] as () => void;
 
@@ -187,11 +185,11 @@ describe('flash notification manager', () => {
     expect(target.remove).not.toHaveBeenCalled();
   });
 
-  it('handles timer controls when no progress bar exists', async () => {
+  it('handles timer controls when no progress bar exists', () => {
     vi.useFakeTimers();
     const target = toast({ timeout: '1000' });
-    const { Manager } = await loadManager({ toasts: [target] });
-    new Manager();
+    const { createManager } = setupDom({ toasts: [target] });
+    createManager();
     const mouseenter = target.addEventListener.mock.calls[0]?.[1] as () => void;
     const mouseleave = target.addEventListener.mock.calls[1]?.[1] as () => void;
 
@@ -213,12 +211,12 @@ describe('flash notification manager', () => {
       ]),
       remove: vi.fn(),
     };
-    const { Manager } = await loadManager({
+    const { createManager } = setupDom({
       dialog: { showAlert },
       errorScript,
     });
 
-    new Manager();
+    createManager();
     await vi.waitFor(() => expect(showAlert).toHaveBeenCalledTimes(2));
 
     expect(errorScript.remove).toHaveBeenCalledOnce();
@@ -240,9 +238,9 @@ describe('flash notification manager', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    const { Manager } = await loadManager({ errorScript });
+    const { createManager } = setupDom({ errorScript });
 
-    new Manager();
+    createManager();
     await vi.waitFor(() => expect(consoleError).toHaveBeenCalledTimes(3));
 
     expect(consoleError).toHaveBeenCalledWith('[Error] Error: Default title');
@@ -257,9 +255,9 @@ describe('flash notification manager', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    const { Manager } = await loadManager({ errorScript });
+    const { createManager } = setupDom({ errorScript });
 
-    new Manager();
+    createManager();
     if (textContent === null) {
       await Promise.resolve();
       expect(consoleError).not.toHaveBeenCalled();
@@ -269,14 +267,5 @@ describe('flash notification manager', () => {
     expect(errorScript.remove).toHaveBeenCalledTimes(
       textContent === null ? 1 : 0
     );
-  });
-
-  it('can be imported outside a browser document', async () => {
-    vi.resetModules();
-    vi.stubGlobal('document', undefined);
-
-    const loaded = await import('../../../src/assets/js/flash.js');
-
-    expect(loaded.NotificationManager).toEqual(expect.any(Function));
   });
 });

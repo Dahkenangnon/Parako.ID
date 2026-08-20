@@ -10,100 +10,111 @@
  * @author Parako.ID Team
  */
 
-(function () {
-  'use strict';
+import dialogService, {
+  type DialogService,
+  type DialogVariant,
+} from '../../utils/dialog.js';
 
-  /**
-   * Translation map interface
-   */
-  interface TranslationMap {
-    [key: string]: string;
+/**
+ * Translation map interface
+ */
+export interface TranslationMap {
+  [key: string]: string;
+}
+
+const DIALOG_VARIANTS = new Set<DialogVariant>([
+  'info',
+  'warning',
+  'error',
+  'success',
+  'danger',
+]);
+
+function resolveDialogVariant(value: string | undefined): DialogVariant {
+  return value && DIALOG_VARIANTS.has(value as DialogVariant)
+    ? (value as DialogVariant)
+    : 'warning';
+}
+
+/**
+ * Handle confirmation action for a button with data attributes
+ *
+ * @param button - The button element that was clicked
+ * @param translations - Map of translation keys to translated strings
+ * @returns Promise<boolean> - true if confirmed, false if cancelled
+ */
+export async function handleConfirmAction(
+  button: HTMLButtonElement,
+  translations: TranslationMap,
+  dialog: DialogService = dialogService
+): Promise<boolean> {
+  const title = button.dataset.confirmTitle || 'Confirm Action';
+  const messageKey = button.dataset.confirmMessageKey;
+  const variant = resolveDialogVariant(button.dataset.confirmVariant);
+  const provider = button.dataset.confirmProvider;
+
+  let message =
+    messageKey && translations[messageKey]
+      ? translations[messageKey]
+      : 'Are you sure?';
+
+  // Support {{provider}} interpolation
+  if (provider && message.includes('{{provider}}')) {
+    message = message.replace(/\{\{provider\}\}/g, provider);
   }
 
-  /**
-   * Handle confirmation action for a button with data attributes
-   *
-   * @param button - The button element that was clicked
-   * @param translations - Map of translation keys to translated strings
-   * @returns Promise<boolean> - true if confirmed, false if cancelled
-   */
-  async function handleConfirmAction(
-    button: HTMLButtonElement,
-    translations: TranslationMap
-  ): Promise<boolean> {
-    const title = button.dataset.confirmTitle || 'Confirm Action';
-    const messageKey = button.dataset.confirmMessageKey;
-    const variant = button.dataset.confirmVariant || 'warning';
-    const provider = button.dataset.confirmProvider;
+  const confirmed = await dialog.showConfirm(title, message, {
+    variant,
+    confirmText: 'Confirm',
+    cancelText: 'Cancel',
+  });
 
-    let message =
-      messageKey && translations[messageKey]
-        ? translations[messageKey]
-        : 'Are you sure?';
+  return confirmed;
+}
 
-    // Support {{provider}} interpolation
-    if (provider && message.includes('{{provider}}')) {
-      message = message.replace(/\{\{provider\}\}/g, provider);
-    }
+/**
+ * Setup confirmation handlers for all buttons with .confirm-action class
+ *
+ * @param translations - Map of translation keys to translated strings
+ * @param debug - Enable debug logging
+ */
+export function setupConfirmationHandlers(
+  translations: TranslationMap,
+  debug: boolean = false,
+  dialog: DialogService = dialogService
+): void {
+  const buttons = document.querySelectorAll('.confirm-action');
 
-    const confirmed = await (window as any).dialog.showConfirm(title, message, {
-      variant,
-      confirmText: 'Confirm',
-      cancelText: 'Cancel',
-    });
-
-    return confirmed;
+  if (debug) {
+    console.log(
+      '[ConfirmHandler] Setting up',
+      buttons.length,
+      'confirmation handlers'
+    );
   }
 
-  /**
-   * Setup confirmation handlers for all buttons with .confirm-action class
-   *
-   * @param translations - Map of translation keys to translated strings
-   * @param debug - Enable debug logging
-   */
-  function setupConfirmationHandlers(
-    translations: TranslationMap,
-    debug: boolean = false
-  ): void {
-    const buttons = document.querySelectorAll('.confirm-action');
+  buttons.forEach(button => {
+    button.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    if (debug) {
-      console.log(
-        '[ConfirmHandler] Setting up',
-        buttons.length,
-        'confirmation handlers'
+      const confirmed = await handleConfirmAction(
+        button as HTMLButtonElement,
+        translations,
+        dialog
       );
-    }
 
-    buttons.forEach(button => {
-      button.addEventListener('click', async e => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const confirmed = await handleConfirmAction(
-          button as HTMLButtonElement,
-          translations
-        );
-
-        if (confirmed) {
-          const form = (button as HTMLButtonElement).form;
-          if (form) {
-            if (debug) {
-              console.log('[ConfirmHandler] User confirmed, submitting form');
-            }
-            form.submit();
+      if (confirmed) {
+        const form = (button as HTMLButtonElement).form;
+        if (form) {
+          if (debug) {
+            console.log('[ConfirmHandler] User confirmed, submitting form');
           }
-        } else if (debug) {
-          console.log('[ConfirmHandler] User cancelled action');
+          form.submit();
         }
-      });
+      } else if (debug) {
+        console.log('[ConfirmHandler] User cancelled action');
+      }
     });
-  }
-
-  if (typeof window !== 'undefined') {
-    (window as any).accountSettingsUtils = {
-      setupConfirmationHandlers,
-      handleConfirmAction,
-    };
-  }
-})();
+  });
+}

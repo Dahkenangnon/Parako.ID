@@ -107,9 +107,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: RecoveryBackupCodesConfig
     ): RecoveryBackupCodesConfig {
@@ -178,9 +175,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -191,9 +185,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (this.backupInputs.length === 0) {
         this.log('No backup code inputs found', null, 'error');
@@ -209,9 +200,6 @@
       }
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.querySelector('form');
       this.submitButton =
@@ -257,9 +245,6 @@
       });
     }
 
-    /**
-     * Handle input events
-     */
     private handleInput(e: Event, index: number): void {
       const input = e.target as HTMLInputElement;
 
@@ -289,9 +274,6 @@
       }
     }
 
-    /**
-     * Handle paste events
-     */
     private handlePaste(e: ClipboardEvent, index: number): void {
       e.preventDefault();
 
@@ -322,16 +304,10 @@
       this.updateHiddenInput();
     }
 
-    /**
-     * Handle focus events
-     */
     private handleFocus(input: HTMLInputElement): void {
       input.classList.add('ring-2', 'ring-primary/20');
     }
 
-    /**
-     * Handle blur events
-     */
     private handleBlur(input: HTMLInputElement): void {
       input.classList.remove('ring-2', 'ring-primary/20');
     }
@@ -403,9 +379,6 @@
       });
     }
 
-    /**
-     * Show validation error with visual feedback
-     */
     private showValidationError(): void {
       this.log(
         'Validation error',

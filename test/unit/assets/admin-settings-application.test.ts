@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  ApplicationSettingsManager,
+  initializeApplicationSettingsPage,
+} from '../../../src/assets/js/admin/settings/application.js';
+
 interface LocaleFixture {
   checked: boolean;
   value: string;
@@ -40,19 +45,14 @@ function makeForm(): FormFixture {
 function setupDom(
   options: {
     defaultLocale?: string | null;
-    dialog?: { showAlert?: ReturnType<typeof vi.fn> };
     form?: FormFixture | null;
     locales?: LocaleFixture[];
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const form = options.form === undefined ? makeForm() : options.form;
   const hiddenInput: HiddenInputFixture = { name: '', type: '', value: '' };
-  vi.stubGlobal('window', { dialog: options.dialog });
+
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
     createElement: vi.fn(() => hiddenInput),
     getElementById: vi.fn(() =>
       options.defaultLocale === null
@@ -62,10 +62,10 @@ function setupDom(
     querySelector: vi.fn(() => form),
     querySelectorAll: vi.fn(() => options.locales ?? []),
   });
+
   return {
     form,
     hiddenInput,
-    runReady: () => ready?.(),
     submit: async () => {
       const event = { preventDefault: vi.fn() };
       form?.onSubmit?.(event);
@@ -80,48 +80,37 @@ function setupDom(
 describe('admin application settings', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
+    vi.restoreAllMocks();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/settings/application.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(ApplicationSettingsManager).toBeTypeOf('function');
   });
 
-  it('initializes safely when the settings form is absent', async () => {
-    const { runReady } = setupDom({ form: null });
-    await import('../../../src/assets/js/admin/settings/application.js');
+  it('initializes safely when the settings form is absent', () => {
+    setupDom({ form: null });
 
-    expect(runReady).not.toThrow();
+    expect(() => initializeApplicationSettingsPage(null)).not.toThrow();
   });
 
   it('submits when the optional default-locale select is absent', async () => {
-    const { form, hiddenInput, runReady, submit } = setupDom({
+    const { form, submit } = setupDom({
       defaultLocale: null,
     });
-    await import('../../../src/assets/js/admin/settings/application.js');
-    runReady();
+    initializeApplicationSettingsPage(null);
 
     const event = await submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
-    expect(hiddenInput).toEqual({
-      name: '_validated',
-      type: 'hidden',
-      value: '1',
-    });
-    expect(form?.appendChild).toHaveBeenCalledWith(hiddenInput);
+    expect(document.createElement).not.toHaveBeenCalled();
+    expect(form?.appendChild).not.toHaveBeenCalled();
     expect(form?.nativeSubmit).toHaveBeenCalledOnce();
   });
 
   it('rejects a form with no available locale using the configured dialog', async () => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
-    const { form, runReady, submit } = setupDom({ dialog: { showAlert } });
-    await import('../../../src/assets/js/admin/settings/application.js');
-    runReady();
+    const { form, submit } = setupDom();
+    initializeApplicationSettingsPage({ showAlert });
 
     const event = await submit();
 
@@ -137,15 +126,14 @@ describe('admin application settings', () => {
   it('rejects a default locale outside the checked locales using alert', async () => {
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
-    const { form, runReady, submit } = setupDom({
+    const { form, submit } = setupDom({
       defaultLocale: 'fr',
       locales: [
         { checked: false, value: 'fr' },
         { checked: true, value: 'en' },
       ],
     });
-    await import('../../../src/assets/js/admin/settings/application.js');
-    runReady();
+    initializeApplicationSettingsPage(null);
 
     await submit();
 
@@ -155,12 +143,11 @@ describe('admin application settings', () => {
     expect(form?.nativeSubmit).not.toHaveBeenCalled();
   });
 
-  it('falls back to alert when dialog has no showAlert method', async () => {
+  it('falls back to alert when the dialog service is unavailable', async () => {
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ dialog: {} });
-    await import('../../../src/assets/js/admin/settings/application.js');
-    runReady();
+    const { submit } = setupDom();
+    initializeApplicationSettingsPage(null);
 
     await submit();
 
@@ -169,8 +156,8 @@ describe('admin application settings', () => {
     );
   });
 
-  it('appends the validation bypass and submits a valid locale selection', async () => {
-    const { form, hiddenInput, runReady, submit } = setupDom({
+  it('submits a valid locale selection without adding bypass fields', async () => {
+    const { form, submit } = setupDom({
       defaultLocale: 'fr',
       locales: [
         { checked: false, value: 'de' },
@@ -178,12 +165,12 @@ describe('admin application settings', () => {
         { checked: true, value: 'fr' },
       ],
     });
-    await import('../../../src/assets/js/admin/settings/application.js');
-    runReady();
+    initializeApplicationSettingsPage(null);
 
     await submit();
 
-    expect(form?.appendChild).toHaveBeenCalledWith(hiddenInput);
+    expect(document.createElement).not.toHaveBeenCalled();
+    expect(form?.appendChild).not.toHaveBeenCalled();
     expect(form?.nativeSubmit).toHaveBeenCalledOnce();
   });
 });

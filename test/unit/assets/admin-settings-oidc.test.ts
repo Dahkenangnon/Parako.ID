@@ -1,31 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  OidcSettingsManager,
+  initializeOidcSettingsPage,
+} from '../../../src/assets/js/admin/settings/oidc.js';
+
+interface SubmitEvent {
+  preventDefault: ReturnType<typeof vi.fn>;
+}
+
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
-  submit?: (event: {
-    preventDefault: ReturnType<typeof vi.fn>;
-  }) => Promise<void>;
+  submit?: (event: SubmitEvent) => void;
 }
 
 function setupDom(
   options: {
-    dialog?: { showAlert?: ReturnType<typeof vi.fn> };
     form?: FormFixture | null;
     issuer?: string | null;
     path?: string | null;
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const form =
     options.form === undefined
       ? ({
           addEventListener: vi.fn(
-            (
-              _name: string,
-              listener: (event: {
-                preventDefault: ReturnType<typeof vi.fn>;
-              }) => Promise<void>
-            ) => {
+            (_name: string, listener: (event: SubmitEvent) => void) => {
               form!.submit = listener;
             }
           ),
@@ -39,20 +39,15 @@ function setupDom(
     'oidc.path':
       options.path === null ? null : { value: options.path ?? '/oidc' },
   };
-  vi.stubGlobal('window', { dialog: options.dialog });
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
     getElementById: vi.fn((id: keyof typeof elements) => elements[id] ?? null),
     querySelector: vi.fn(() => form),
   });
+
   return {
-    form,
-    runReady: () => ready?.(),
-    submit: async () => {
+    submit: () => {
       const event = { preventDefault: vi.fn() };
-      await form?.submit?.(event);
+      form?.submit?.(event);
       return event;
     },
   };
@@ -61,22 +56,17 @@ function setupDom(
 describe('admin OIDC settings', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.resetModules();
+    vi.restoreAllMocks();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/settings/oidc.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(OidcSettingsManager).toBeTypeOf('function');
   });
 
-  it('initializes safely when the settings form is absent', async () => {
-    const { runReady } = setupDom({ form: null });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
+  it('initializes safely when the settings form is absent', () => {
+    setupDom({ form: null });
 
-    expect(runReady).not.toThrow();
+    expect(() => initializeOidcSettingsPage(null)).not.toThrow();
   });
 
   it.each([
@@ -84,17 +74,12 @@ describe('admin OIDC settings', () => {
     ['the issuer is blank', '', '/oidc'],
     ['the path is absent', 'https://idp.test', null],
     ['the path is blank', 'https://idp.test', ''],
-  ])('rejects submission when %s', async (_case, issuer, path) => {
+  ])('rejects submission when %s', (_case, issuer, path) => {
     const showAlert = vi.fn().mockResolvedValue(undefined);
-    const { runReady, submit } = setupDom({
-      dialog: { showAlert },
-      issuer,
-      path,
-    });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
-    runReady();
+    const { submit } = setupDom({ issuer, path });
+    initializeOidcSettingsPage({ showAlert });
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(showAlert).toHaveBeenCalledWith(
@@ -104,55 +89,48 @@ describe('admin OIDC settings', () => {
     );
   });
 
-  it('rejects an invalid issuer using the native alert fallback', async () => {
+  it('rejects an invalid issuer using the native alert fallback', () => {
     const alert = vi.fn();
     vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ issuer: 'not a URL' });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
-    runReady();
+    const { submit } = setupDom({ issuer: 'not a URL' });
+    initializeOidcSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).toHaveBeenCalledOnce();
     expect(alert).toHaveBeenCalledWith('Please enter a valid issuer URL.');
   });
 
-  it('uses the native alert when a dialog exists without showAlert', async () => {
-    const alert = vi.fn();
-    vi.stubGlobal('alert', alert);
-    const { runReady, submit } = setupDom({ dialog: {}, issuer: '' });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
-    runReady();
+  it('cancels invalid submission before an asynchronous dialog resolves', () => {
+    const showAlert = vi.fn(() => new Promise<void>(() => {}));
+    const { submit } = setupDom({ issuer: '' });
+    initializeOidcSettingsPage({ showAlert });
 
-    await submit();
+    const event = submit();
 
-    expect(alert).toHaveBeenCalledWith(
-      'Issuer URL and OIDC path are required fields.'
-    );
+    expect(event.preventDefault).toHaveBeenCalledOnce();
   });
 
-  it('allows a valid issuer and path to submit', async () => {
-    const { runReady, submit } = setupDom({
+  it('allows a valid issuer and path to submit', () => {
+    const { submit } = setupDom({
       issuer: 'https://idp.test/oidc/v1',
       path: '/oidc/v1',
     });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
-    runReady();
+    initializeOidcSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
-  it('allows submission when the issuer is computed and only the editable path is present', async () => {
-    const { runReady, submit } = setupDom({
+  it('allows submission when the issuer is computed and only the editable path is present', () => {
+    const { submit } = setupDom({
       issuer: null,
       path: '/oidc/v1',
     });
-    await import('../../../src/assets/js/admin/settings/oidc.js');
-    runReady();
+    initializeOidcSettingsPage(null);
 
-    const event = await submit();
+    const event = submit();
 
     expect(event.preventDefault).not.toHaveBeenCalled();
   });

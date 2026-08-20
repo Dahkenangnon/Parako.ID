@@ -1,12 +1,4 @@
-/**
- * DeviceInfoCollector - Lightweight device fingerprinting for form injection
- *
- * Collects only the essential device identifier (visitorId) using FingerprintJS
- * and injects it into forms for server-side device tracking.
- *
- * Payload is minimal (~80 bytes): { visitorId, visitorIdSource }
- */
-'use strict';
+/** Injects a privacy-minimized device identifier into POST forms. */
 
 export interface DeviceInfo {
   visitorId: string;
@@ -72,7 +64,7 @@ export class DeviceInfoCollector {
     // `src/assets/js/vendor/fingerprintjs.ts` and loaded in the base layout.
     // Disable its optional package monitoring request: device collection must
     // remain self-contained and compatible with Parako's same-origin CSP.
-    const FingerprintJS = (window as any).FingerprintJS;
+    const FingerprintJS = window.FingerprintJS;
     if (!FingerprintJS) {
       throw new Error('FingerprintJS not loaded');
     }
@@ -88,9 +80,6 @@ export class DeviceInfoCollector {
     return { visitorId: result.visitorId };
   }
 
-  /**
-   * Get or generate a fallback device ID stored in localStorage
-   */
   private getFallbackId(): string {
     try {
       const stored = localStorage.getItem(FALLBACK_ID_KEY);
@@ -233,37 +222,44 @@ export class DeviceInfoCollector {
   }
 }
 
-// Auto-initialize on DOM ready
+export function initializeDeviceInfoPage(): DeviceInfoCollector | null {
+  const stateElement = document.getElementById('___USER_DEVICE_INFO_STATE___');
+  if (!stateElement) {
+    console.warn('[DeviceInfoCollector] Config element not found');
+    return null;
+  }
+
+  let config: DeviceInfoConfig;
+  try {
+    config = JSON.parse(stateElement.textContent || '{}') as DeviceInfoConfig;
+  } catch {
+    console.error('[DeviceInfoCollector] Failed to parse config');
+    return null;
+  }
+
+  if (!config.csrfToken) {
+    console.warn('[DeviceInfoCollector] No CSRF token in config');
+    return null;
+  }
+
+  const collector = new DeviceInfoCollector(config);
+  void collector.initialize();
+
+  window.addEventListener('beforeunload', () => collector.destroy());
+  window.addEventListener('pagehide', () => collector.destroy());
+  return collector;
+}
+
+export function registerDeviceInfoEntry(): void {
+  document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+      initializeDeviceInfoPage();
+    },
+    { once: true }
+  );
+}
+
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    const stateEl = document.getElementById('___USER_DEVICE_INFO_STATE___');
-    if (!stateEl) {
-      console.warn('[DeviceInfoCollector] Config element not found');
-      return;
-    }
-
-    let config: DeviceInfoConfig;
-    try {
-      config = JSON.parse(stateEl.textContent || '{}');
-    } catch {
-      console.error('[DeviceInfoCollector] Failed to parse config');
-      return;
-    }
-
-    if (!config.csrfToken) {
-      console.warn('[DeviceInfoCollector] No CSRF token in config');
-      return;
-    }
-
-    const collector = new DeviceInfoCollector(config);
-    collector.initialize();
-
-    if (config.debug) {
-      (window as any).deviceInfoCollector = collector;
-    }
-
-    // Cleanup on page unload
-    window.addEventListener('beforeunload', () => collector.destroy());
-    window.addEventListener('pagehide', () => collector.destroy());
-  });
+  registerDeviceInfoEntry();
 }

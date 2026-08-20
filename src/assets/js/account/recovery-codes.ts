@@ -1,3 +1,5 @@
+import dialogService, { type DialogService } from '../utils/dialog.js';
+
 /**
  * RecoveryCodesManager - Manages backup recovery codes download and copy
  *
@@ -10,8 +12,6 @@
  * @version 1.0.0
  * @author Parako.ID Team
  */
-
-'use strict';
 
 /**
  * Configuration interface for RecoveryCodesManager
@@ -39,16 +39,16 @@ export class RecoveryCodesManager {
   private copyAllButton: HTMLElement | null;
   private downloadButton: HTMLElement | null;
 
-  constructor(config: RecoveryCodesConfig) {
+  constructor(
+    config: RecoveryCodesConfig,
+    private readonly dialog: Pick<DialogService, 'showAlert'> = dialogService
+  ) {
     this.config = config;
     this.debug = config.debug || false;
     this.copyAllButton = null;
     this.downloadButton = null;
   }
 
-  /**
-   * Initialize the recovery codes manager
-   */
   public initialize(): void {
     this.log(
       'Initializing RecoveryCodesManager with',
@@ -150,7 +150,7 @@ ${this.config.translations.fileContentTotalCodes}: ${this.config.codes.length}
     } catch (err) {
       console.error('Failed to copy codes:', err);
 
-      await (window as any).dialog.showAlert(
+      await this.dialog.showAlert(
         'Copy Failed',
         this.config.translations.copyFailedError,
         { variant: 'error' }
@@ -182,9 +182,6 @@ ${this.config.translations.fileContentTotalCodes}: ${this.config.codes.length}
     }
   }
 
-  /**
-   * Show success feedback by temporarily replacing button text
-   */
   private showSuccessFeedback(button: HTMLElement, message: string): void {
     const originalHTML = button.innerHTML;
     const originalDisabled = (button as HTMLButtonElement).disabled;
@@ -200,48 +197,53 @@ ${this.config.translations.fileContentTotalCodes}: ${this.config.codes.length}
   /**
    * Log debug messages
    */
-  private log(...args: any[]): void {
+  private log(...args: unknown[]): void {
     if (this.debug) {
       console.log('[RecoveryCodesManager]', ...args);
     }
   }
 }
 
-// Auto-initialize on DOMContentLoaded
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    const dataElement = document.getElementById('___RECOVERY_CODES_STATE___');
-    if (!dataElement) {
-      console.error('[RecoveryCodesManager] Configuration element not found');
+export function initializeRecoveryCodesPage(
+  dialog: Pick<DialogService, 'showAlert'> = dialogService
+): void {
+  const dataElement = document.getElementById('___RECOVERY_CODES_STATE___');
+  if (!dataElement) {
+    console.error('[RecoveryCodesManager] Configuration element not found');
+    return;
+  }
+
+  try {
+    const config: RecoveryCodesConfig = JSON.parse(
+      dataElement.textContent || '{}'
+    );
+
+    // Read codes from DOM elements instead of JSON state (security hardening)
+    const codesContainer = document.getElementById('recovery-codes-data');
+    if (codesContainer) {
+      const codeEls = codesContainer.querySelectorAll('[data-code]');
+      config.codes = Array.from(codeEls)
+        .map(el => el.getAttribute('data-code') || '')
+        .filter(Boolean);
+    }
+
+    if (!config.codes || config.codes.length === 0) {
+      console.error('[RecoveryCodesManager] No recovery codes found in DOM');
       return;
     }
 
-    try {
-      const config: RecoveryCodesConfig = JSON.parse(
-        dataElement.textContent || '{}'
-      );
+    const manager = new RecoveryCodesManager(config, dialog);
+    manager.initialize();
+  } catch (error) {
+    console.error(
+      '[RecoveryCodesManager] Failed to parse configuration:',
+      error
+    );
+  }
+}
 
-      // Read codes from DOM elements instead of JSON state (security hardening)
-      const codesContainer = document.getElementById('recovery-codes-data');
-      if (codesContainer) {
-        const codeEls = codesContainer.querySelectorAll('[data-code]');
-        config.codes = Array.from(codeEls)
-          .map(el => el.getAttribute('data-code') || '')
-          .filter(Boolean);
-      }
-
-      if (!config.codes || config.codes.length === 0) {
-        console.error('[RecoveryCodesManager] No recovery codes found in DOM');
-        return;
-      }
-
-      const manager = new RecoveryCodesManager(config);
-      manager.initialize();
-    } catch (error) {
-      console.error(
-        '[RecoveryCodesManager] Failed to parse configuration:',
-        error
-      );
-    }
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeRecoveryCodesPage();
   });
 }

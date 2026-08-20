@@ -19,9 +19,6 @@
     textarea.style.height = textarea.scrollHeight + 'px';
   }
 
-  /**
-   * Set up auto-resize for all textareas in the config form.
-   */
   function setupTextareaAutoResize(): void {
     const form = document.getElementById('config-form');
     if (!form) return;

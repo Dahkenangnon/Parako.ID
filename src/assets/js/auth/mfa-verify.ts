@@ -30,339 +30,215 @@
  * @version 1.0.0
  * @author Parako.ID Team
  */
-// Self-contained module to prevent type collisions
-(function () {
-  'use strict';
+import { OtpInputController } from '../utils/otp-input-controller.js';
 
-  // Local type definitions to prevent global pollution
-  interface MFAVerifyConfig {
-    codeLength: number;
-    autoFocus: boolean;
-    enablePaste: boolean;
-    enableBackspace: boolean;
-    shakeAnimationDuration: number;
-    mfaMethod: 'totp' | 'email';
-  }
+// Local type definitions to prevent global pollution
+interface MFAVerifyConfig {
+  codeLength: number;
+  autoFocus: boolean;
+  enablePaste: boolean;
+  enableBackspace: boolean;
+  shakeAnimationDuration: number;
+  mfaMethod: 'totp' | 'email';
+}
 
-  interface TranslationStrings {
-    verifyCode: string;
-    verifyingCode: string;
-    codeRequired: string;
-    codeInvalid: string;
-    errorRecovery: string;
-  }
+interface TranslationStrings {
+  verifyCode: string;
+  verifyingCode: string;
+  codeRequired: string;
+  codeInvalid: string;
+  errorRecovery: string;
+}
 
-  interface MFAVerifyManagerOptions {
-    config: MFAVerifyConfig;
-    translations?: Partial<TranslationStrings>;
-    debug: boolean;
-    errorRecoveryTimeout?: number;
-  }
+interface MFAVerifyManagerOptions {
+  config: MFAVerifyConfig;
+  translations?: Partial<TranslationStrings>;
+  debug: boolean;
+  errorRecoveryTimeout?: number;
+}
 
-  class MFAVerifyManager {
-    private config: MFAVerifyConfig;
-    private translations: TranslationStrings;
-    private debug: boolean;
-    private errorRecoveryTimeout: number;
-    private isSubmitting: boolean = false;
-    private submissionTimeout: number | null = null;
+class MFAVerifyManager {
+  private config: MFAVerifyConfig;
+  private translations: TranslationStrings;
+  private debug: boolean;
+  private errorRecoveryTimeout: number;
+  private isSubmitting: boolean = false;
+  private submissionTimeout: number | null = null;
 
-    // DOM elements
-    private form: HTMLFormElement | null = null;
-    private submitButton: HTMLButtonElement | null = null;
-    private hiddenInput: HTMLInputElement | null = null;
-    private otpContainer: HTMLElement | null = null;
-    private otpInputs!: NodeListOf<HTMLInputElement>;
+  // DOM elements
+  private form: HTMLFormElement | null = null;
+  private submitButton: HTMLButtonElement | null = null;
+  private hiddenInput: HTMLInputElement | null = null;
+  private otpContainer: HTMLElement | null = null;
+  private otpInputs!: NodeListOf<HTMLInputElement>;
 
-    // Default translations (fallback)
-    private readonly defaultTranslations: Partial<TranslationStrings> = {
-      verifyCode: 'Verify Code',
-      verifyingCode: 'Verifying...',
-      codeRequired: 'Please enter the verification code',
-      codeInvalid: 'Please enter a valid 6-digit verification code',
-      errorRecovery: 'Session timed out. Please try again.',
-    };
+  // Default translations (fallback)
+  private readonly defaultTranslations: Partial<TranslationStrings> = {
+    verifyCode: 'Verify Code',
+    verifyingCode: 'Verifying...',
+    codeRequired: 'Please enter the verification code',
+    codeInvalid: 'Please enter a valid 6-digit verification code',
+    errorRecovery: 'Session timed out. Please try again.',
+  };
 
-    constructor(options: MFAVerifyManagerOptions) {
-      this.config = this.validateConfig(options.config);
+  constructor(options: MFAVerifyManagerOptions) {
+    this.config = this.validateConfig(options.config);
 
-      this.translations = Object.assign(
-        {},
-        this.defaultTranslations,
-        Object.fromEntries(
-          Object.entries(options.translations ?? {}).filter(
-            ([_, value]) => typeof value === 'string' && value.trim().length > 0
-          )
+    this.translations = Object.assign(
+      {},
+      this.defaultTranslations,
+      Object.fromEntries(
+        Object.entries(options.translations ?? {}).filter(
+          ([_, value]) => typeof value === 'string' && value.trim().length > 0
         )
-      ) as TranslationStrings;
+      )
+    ) as TranslationStrings;
 
-      this.debug = options.debug;
-      this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
+    this.debug = options.debug;
+    this.errorRecoveryTimeout = options.errorRecoveryTimeout ?? 120000; // 2 minutes default
 
-      this.initializeElements();
+    this.initializeElements();
 
-      this.log('MFAVerifyManager initialized', {
-        config: this.config,
-        translations: this.translations,
-      });
-    }
+    this.log('MFAVerifyManager initialized', {
+      config: this.config,
+      translations: this.translations,
+    });
+  }
 
-    /**
-     * Validate configuration object
-     */
-    private validateConfig(config: MFAVerifyConfig): MFAVerifyConfig {
-      if (!config || typeof config !== 'object') {
-        this.log('Invalid config provided, using defaults', { config }, 'warn');
-        return {
-          codeLength: 6,
-          autoFocus: true,
-          enablePaste: true,
-          enableBackspace: true,
-          shakeAnimationDuration: 500,
-          mfaMethod: 'totp',
-        };
-      }
-
+  private validateConfig(config: MFAVerifyConfig): MFAVerifyConfig {
+    if (!config || typeof config !== 'object') {
+      this.log('Invalid config provided, using defaults', { config }, 'warn');
       return {
-        codeLength: Math.max(4, Math.min(10, Number(config.codeLength) || 6)),
-        autoFocus: Boolean(config.autoFocus),
-        enablePaste: Boolean(config.enablePaste),
-        enableBackspace: Boolean(config.enableBackspace),
-        shakeAnimationDuration: Math.max(
-          200,
-          Math.min(2000, Number(config.shakeAnimationDuration) || 500)
-        ),
-        mfaMethod: config.mfaMethod === 'email' ? 'email' : 'totp',
+        codeLength: 6,
+        autoFocus: true,
+        enablePaste: true,
+        enableBackspace: true,
+        shakeAnimationDuration: 500,
+        mfaMethod: 'totp',
       };
     }
 
-    /**
-     * Logging utility with debug support
-     */
-    private log(
-      message: string,
-      data?: any,
-      level: 'log' | 'warn' | 'error' = 'log'
-    ): void {
-      if (!this.debug && level === 'log') return;
+    return {
+      codeLength: Math.max(4, Math.min(10, Number(config.codeLength) || 6)),
+      autoFocus: Boolean(config.autoFocus),
+      enablePaste: Boolean(config.enablePaste),
+      enableBackspace: Boolean(config.enableBackspace),
+      shakeAnimationDuration: Math.max(
+        200,
+        Math.min(2000, Number(config.shakeAnimationDuration) || 500)
+      ),
+      mfaMethod: config.mfaMethod === 'email' ? 'email' : 'totp',
+    };
+  }
 
-      const prefix = '[MFAVerifyManager]';
-      if (data) {
-        console[level](prefix, message, data);
-      } else {
-        console[level](prefix, message);
-      }
+  /**
+   * Logging utility with debug support
+   */
+  private log(
+    message: string,
+    data?: any,
+    level: 'log' | 'warn' | 'error' = 'log'
+  ): void {
+    if (!this.debug && level === 'log') return;
+
+    const prefix = '[MFAVerifyManager]';
+    if (data) {
+      console[level](prefix, message, data);
+    } else {
+      console[level](prefix, message);
+    }
+  }
+
+  /**
+   * Get translation with fallback to English if translation key is returned
+   */
+  private getTranslation(key: keyof TranslationStrings): string {
+    const translation = this.translations[key];
+    const fallback = this.defaultTranslations[key];
+
+    // If translation looks like a key (contains dots and starts with letters), use fallback
+    if (this.isTranslationKey(translation)) {
+      this.log(
+        `Translation key detected for '${key}': '${translation}', using fallback: '${fallback}'`,
+        null,
+        'warn'
+      );
+      return fallback as string;
     }
 
-    /**
-     * Get translation with fallback to English if translation key is returned
-     */
-    private getTranslation(key: keyof TranslationStrings): string {
-      const translation = this.translations[key];
-      const fallback = this.defaultTranslations[key];
+    return translation;
+  }
 
-      // If translation looks like a key (contains dots and starts with letters), use fallback
-      if (this.isTranslationKey(translation)) {
-        this.log(
-          `Translation key detected for '${key}': '${translation}', using fallback: '${fallback}'`,
-          null,
-          'warn'
-        );
-        return fallback as string;
-      }
+  private isTranslationKey(text: string): boolean {
+    // Translation keys typically:
+    // - Start with letters
+    // - Contain dots
+    // - Are relatively short
+    // - Don't contain spaces at the beginning/end
+    const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
+    return keyPattern.test(text.trim()) && text.length < 50;
+  }
 
-      return translation;
+  public run(): void {
+    if (this.otpInputs.length === 0) {
+      this.log('No OTP inputs found', null, 'error');
+      return;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
-    private isTranslationKey(text: string): boolean {
-      // Translation keys typically:
-      // - Start with letters
-      // - Contain dots
-      // - Are relatively short
-      // - Don't contain spaces at the beginning/end
-      const keyPattern = /^[a-zA-Z][a-zA-Z0-9]*\.[a-zA-Z0-9.]+$/;
-      return keyPattern.test(text.trim()) && text.length < 50;
+    this.setupOTPInputs();
+    this.setupFormSubmission();
+  }
+
+  private initializeElements(): void {
+    this.form = document.querySelector('form');
+    this.submitButton =
+      this.form?.querySelector('button[type="submit"]') || null;
+    this.hiddenInput = document.getElementById('code') as HTMLInputElement;
+    this.otpContainer = document.getElementById('otp-container');
+    this.otpInputs = document.querySelectorAll(
+      '.otp-input'
+    ) as NodeListOf<HTMLInputElement>;
+  }
+
+  private setupOTPInputs(): void {
+    const controller = new OtpInputController({
+      inputs: this.otpInputs,
+      hiddenInput: this.hiddenInput,
+      autoFocus: this.config.autoFocus,
+      enableBackspace: this.config.enableBackspace,
+      enablePaste: this.config.enablePaste,
+    });
+    controller.attach();
+  }
+
+  /**
+   * Setup form submission handling
+   */
+  private setupFormSubmission(): void {
+    if (!this.form || !this.submitButton) {
+      return;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
-    public run(): void {
-      if (this.otpInputs.length === 0) {
-        this.log('No OTP inputs found', null, 'error');
+    this.form.addEventListener('submit', (e: Event) => {
+      if (this.isSubmitting) {
+        e.preventDefault();
+        e.stopPropagation();
         return;
       }
 
-      this.setupOTPInputs();
-      this.setupFormSubmission();
+      const code = this.hiddenInput?.value || '';
 
-      // Auto-focus first input if enabled
-      if (this.config.autoFocus && this.otpInputs[0]) {
-        this.otpInputs[0].focus();
-      }
-    }
-
-    /**
-     * Initialize DOM element references
-     */
-    private initializeElements(): void {
-      this.form = document.querySelector('form');
-      this.submitButton =
-        this.form?.querySelector('button[type="submit"]') || null;
-      this.hiddenInput = document.getElementById('code') as HTMLInputElement;
-      this.otpContainer = document.getElementById('otp-container');
-      this.otpInputs = document.querySelectorAll(
-        '.otp-input'
-      ) as NodeListOf<HTMLInputElement>;
-    }
-
-    /**
-     * Setup OTP input handling
-     */
-    private setupOTPInputs(): void {
-      this.otpInputs.forEach((input, index) => {
-        input.addEventListener('input', e => {
-          this.handleInput(e, index);
-        });
-
-        // Keydown handling (backspace navigation)
-        if (this.config.enableBackspace) {
-          input.addEventListener('keydown', e => {
-            this.handleKeydown(e, index);
-          });
-        }
-
-        if (this.config.enablePaste) {
-          input.addEventListener('paste', e => {
-            this.handlePaste(e);
-          });
-        }
-
-        input.addEventListener('focus', () => {
-          this.handleFocus(input);
-        });
-
-        input.addEventListener('blur', () => {
-          this.handleBlur(input);
-        });
-      });
-    }
-
-    /**
-     * Handle input events
-     */
-    private handleInput(e: Event, index: number): void {
-      const input = e.target as HTMLInputElement;
-
-      input.value = input.value.replace(/[^0-9]/g, '');
-
-      if (input.value.length === 1 && index < this.otpInputs!.length - 1) {
-        this.otpInputs![index + 1].focus();
+      if (!code || code.length !== this.config.codeLength) {
+        e.preventDefault();
+        this.showValidationError();
+        return;
       }
 
-      this.updateHiddenInput();
-    }
-
-    /**
-     * Handle keydown events (backspace navigation)
-     */
-    private handleKeydown(e: KeyboardEvent, index: number): void {
-      if (
-        e.key === 'Backspace' &&
-        (e.target as HTMLInputElement).value === '' &&
-        index > 0
-      ) {
-        this.otpInputs![index - 1].focus();
-      }
-    }
-
-    /**
-     * Handle paste events
-     */
-    private handlePaste(e: ClipboardEvent): void {
       e.preventDefault();
 
-      const pastedData =
-        e.clipboardData?.getData('text').replace(/[^0-9]/g, '') || '';
+      this.disableAllButtons();
 
-      this.otpInputs.forEach(input => {
-        input.value = '';
-      });
-
-      for (
-        let i = 0;
-        i < Math.min(pastedData.length, this.otpInputs.length);
-        i++
-      ) {
-        this.otpInputs[i].value = pastedData[i];
-      }
-
-      const nextEmptyIndex = Math.min(
-        pastedData.length,
-        this.otpInputs.length - 1
-      );
-      this.otpInputs[nextEmptyIndex].focus();
-
-      this.updateHiddenInput();
-    }
-
-    /**
-     * Handle focus events
-     */
-    private handleFocus(input: HTMLInputElement): void {
-      input.classList.add('ring-2', 'ring-primary/20');
-    }
-
-    /**
-     * Handle blur events
-     */
-    private handleBlur(input: HTMLInputElement): void {
-      input.classList.remove('ring-2', 'ring-primary/20');
-    }
-
-    /**
-     * Update hidden input with complete code
-     */
-    private updateHiddenInput(): void {
-      if (!this.hiddenInput) return;
-
-      const code = Array.from(this.otpInputs)
-        .map(input => input.value)
-        .join('');
-      this.hiddenInput.value = code;
-    }
-
-    /**
-     * Setup form submission handling
-     */
-    private setupFormSubmission(): void {
-      if (!this.form || !this.submitButton) {
-        return;
-      }
-
-      this.form.addEventListener('submit', (e: Event) => {
-        if (this.isSubmitting) {
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-
-        const code = this.hiddenInput?.value || '';
-
-        if (!code || code.length !== this.config.codeLength) {
-          e.preventDefault();
-          this.showValidationError();
-          return;
-        }
-
-        e.preventDefault();
-
-        this.disableAllButtons();
-
-        this.submitButton!.innerHTML = `
+      this.submitButton!.innerHTML = `
           <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -370,150 +246,124 @@
           ${this.getTranslation('verifyingCode')}
         `;
 
-        setTimeout(() => {
-          this.form!.submit();
-        }, 100);
-      });
-    }
-
-    /**
-     * Show validation error with visual feedback
-     */
-    private showValidationError(): void {
-      this.log(
-        'Validation error',
-        { codeLength: this.config.codeLength },
-        'warn'
-      );
-
-      if (this.otpContainer) {
-        const otpContainer = this.otpContainer;
-        otpContainer.classList.add('animate-pulse');
-        setTimeout(() => {
-          otpContainer.classList.remove('animate-pulse');
-        }, this.config.shakeAnimationDuration);
-      }
-
-      const firstEmpty = Array.from(this.otpInputs).find(input => !input.value);
-      if (firstEmpty) {
-        firstEmpty.focus();
-      } else {
-        this.otpInputs[0].focus();
-      }
-
-      alert(this.getTranslation('codeInvalid'));
-    }
-
-    /**
-     * Disable all interactive elements during submission
-     */
-    private disableAllButtons(): void {
-      this.isSubmitting = true;
-
-      this.submitButton!.disabled = true;
-      this.submitButton!.style.opacity = '0.6';
-      this.submitButton!.style.cursor = 'not-allowed';
-      this.submitButton!.style.pointerEvents = 'none';
-
-      this.otpInputs.forEach(input => {
-        input.disabled = true;
-        input.style.opacity = '0.6';
-        input.style.cursor = 'not-allowed';
-        input.style.pointerEvents = 'none';
-      });
-
-      // Disable the entire form to prevent any submission
-      this.form!.style.pointerEvents = 'none';
-      this.form!.classList.add('form-disabled');
-
-      // Set a timeout to re-enable buttons after configured time (error recovery)
-      this.submissionTimeout = window.setTimeout(() => {
-        this.log('Error recovery timeout triggered', null, 'warn');
-        this.enableAllButtons();
-        alert(this.getTranslation('errorRecovery'));
-      }, this.errorRecoveryTimeout);
-    }
-
-    /**
-     * Enable all interactive elements (for error recovery)
-     */
-    private enableAllButtons(): void {
-      this.isSubmitting = false;
-
-      clearTimeout(this.submissionTimeout!);
-      this.submissionTimeout = null;
-
-      // Re-enable form submit button and restore visual state
-      this.submitButton!.disabled = false;
-      this.submitButton!.innerHTML = this.getTranslation('verifyCode');
-      this.submitButton!.style.opacity = '1';
-      this.submitButton!.style.cursor = 'pointer';
-      this.submitButton!.style.pointerEvents = 'auto';
-
-      // Re-enable all OTP inputs
-      this.otpInputs.forEach(input => {
-        input.disabled = false;
-        input.style.opacity = '1';
-        input.style.cursor = 'text';
-        input.style.pointerEvents = 'auto';
-      });
-
-      // Re-enable the entire form
-      this.form!.style.pointerEvents = 'auto';
-      this.form!.classList.remove('form-disabled');
-    }
+      setTimeout(() => {
+        this.form!.submit();
+      }, 100);
+    });
   }
 
-  // Auto-initialize when DOM is ready
-  document.addEventListener('DOMContentLoaded', () => {
-    const dataElement = document.getElementById('___MFA_VERIFY_STATE___');
+  private showValidationError(): void {
+    this.log(
+      'Validation error',
+      { codeLength: this.config.codeLength },
+      'warn'
+    );
 
-    if (dataElement) {
-      try {
-        const data = JSON.parse(dataElement.textContent || '{}');
+    if (this.otpContainer) {
+      const otpContainer = this.otpContainer;
+      otpContainer.classList.add('animate-pulse');
+      setTimeout(() => {
+        otpContainer.classList.remove('animate-pulse');
+      }, this.config.shakeAnimationDuration);
+    }
 
-        const mfaVerifyManager = new MFAVerifyManager({
-          config: data.config || {
-            codeLength: 6,
-            autoFocus: true,
-            enablePaste: true,
-            enableBackspace: true,
-            shakeAnimationDuration: 500,
-            mfaMethod: 'totp',
-          },
-          translations: data.translations || {},
-          debug: data.config?.debug || false,
-          errorRecoveryTimeout: data.config?.errorRecoveryTimeout || 120000,
-        });
-
-        mfaVerifyManager.run();
-      } catch (error) {
-        console.error('[MFAVerifyManager] Failed to initialize:', error);
-
-        // Fallback initialization with minimal config
-        try {
-          const mfaVerifyManager = new MFAVerifyManager({
-            config: {
-              codeLength: 6,
-              autoFocus: true,
-              enablePaste: true,
-              enableBackspace: true,
-              shakeAnimationDuration: 500,
-              mfaMethod: 'totp',
-            },
-            debug: true,
-          });
-          mfaVerifyManager.run();
-        } catch (fallbackError) {
-          console.error(
-            '[MFAVerifyManager] Fallback initialization failed:',
-            fallbackError
-          );
-        }
-      }
+    const firstEmpty = Array.from(this.otpInputs).find(input => !input.value);
+    if (firstEmpty) {
+      firstEmpty.focus();
     } else {
-      console.error('[MFAVerifyManager] No configuration data found in DOM');
+      this.otpInputs[0].focus();
+    }
 
+    alert(this.getTranslation('codeInvalid'));
+  }
+
+  /**
+   * Disable all interactive elements during submission
+   */
+  private disableAllButtons(): void {
+    this.isSubmitting = true;
+
+    this.submitButton!.disabled = true;
+    this.submitButton!.style.opacity = '0.6';
+    this.submitButton!.style.cursor = 'not-allowed';
+    this.submitButton!.style.pointerEvents = 'none';
+
+    this.otpInputs.forEach(input => {
+      input.disabled = true;
+      input.style.opacity = '0.6';
+      input.style.cursor = 'not-allowed';
+      input.style.pointerEvents = 'none';
+    });
+
+    // Disable the entire form to prevent any submission
+    this.form!.style.pointerEvents = 'none';
+    this.form!.classList.add('form-disabled');
+
+    // Set a timeout to re-enable buttons after configured time (error recovery)
+    this.submissionTimeout = window.setTimeout(() => {
+      this.log('Error recovery timeout triggered', null, 'warn');
+      this.enableAllButtons();
+      alert(this.getTranslation('errorRecovery'));
+    }, this.errorRecoveryTimeout);
+  }
+
+  /**
+   * Enable all interactive elements (for error recovery)
+   */
+  private enableAllButtons(): void {
+    this.isSubmitting = false;
+
+    clearTimeout(this.submissionTimeout!);
+    this.submissionTimeout = null;
+
+    // Re-enable form submit button and restore visual state
+    this.submitButton!.disabled = false;
+    this.submitButton!.innerHTML = this.getTranslation('verifyCode');
+    this.submitButton!.style.opacity = '1';
+    this.submitButton!.style.cursor = 'pointer';
+    this.submitButton!.style.pointerEvents = 'auto';
+
+    // Re-enable all OTP inputs
+    this.otpInputs.forEach(input => {
+      input.disabled = false;
+      input.style.opacity = '1';
+      input.style.cursor = 'text';
+      input.style.pointerEvents = 'auto';
+    });
+
+    // Re-enable the entire form
+    this.form!.style.pointerEvents = 'auto';
+    this.form!.classList.remove('form-disabled');
+  }
+}
+
+// Auto-initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const dataElement = document.getElementById('___MFA_VERIFY_STATE___');
+
+  if (dataElement) {
+    try {
+      const data = JSON.parse(dataElement.textContent || '{}');
+
+      const mfaVerifyManager = new MFAVerifyManager({
+        config: data.config || {
+          codeLength: 6,
+          autoFocus: true,
+          enablePaste: true,
+          enableBackspace: true,
+          shakeAnimationDuration: 500,
+          mfaMethod: 'totp',
+        },
+        translations: data.translations || {},
+        debug: data.config?.debug || false,
+        errorRecoveryTimeout: data.config?.errorRecoveryTimeout || 120000,
+      });
+
+      mfaVerifyManager.run();
+    } catch (error) {
+      console.error('[MFAVerifyManager] Failed to initialize:', error);
+
+      // Fallback initialization with minimal config
       try {
         const mfaVerifyManager = new MFAVerifyManager({
           config: {
@@ -534,5 +384,27 @@
         );
       }
     }
-  });
-})();
+  } else {
+    console.error('[MFAVerifyManager] No configuration data found in DOM');
+
+    try {
+      const mfaVerifyManager = new MFAVerifyManager({
+        config: {
+          codeLength: 6,
+          autoFocus: true,
+          enablePaste: true,
+          enableBackspace: true,
+          shakeAnimationDuration: 500,
+          mfaMethod: 'totp',
+        },
+        debug: true,
+      });
+      mfaVerifyManager.run();
+    } catch (fallbackError) {
+      console.error(
+        '[MFAVerifyManager] Fallback initialization failed:',
+        fallbackError
+      );
+    }
+  }
+});

@@ -234,11 +234,10 @@ async function setup(options: SetupOptions = {}) {
   const exportButton = elements.get('export-btn');
   if (exportButton) exportButton.closestResult = exportForm;
   vi.stubGlobal('document', documentFixture);
-  vi.stubGlobal('window', { dialog: { showAlert, showConfirm } });
   vi.stubGlobal('fetch', fetchMock);
   vi.stubGlobal('EventSource', EventSourceFixture);
 
-  initAdminDataTransfer();
+  initAdminDataTransfer({ showAlert, showConfirm });
 
   return {
     elements,
@@ -292,29 +291,21 @@ describe('admin data transfer browser controller', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.resetModules();
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/data-transfer/data-transfer.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(initAdminDataTransfer).toBeTypeOf('function');
   });
 
-  it('automatically initializes when the document is available', async () => {
-    vi.resetModules();
+  it('initializes explicitly when the document is available', () => {
     const getElementById = vi.fn().mockReturnValue(null);
     vi.stubGlobal('document', {
       getElementById,
       querySelector: vi.fn().mockReturnValue(null),
       querySelectorAll: vi.fn().mockReturnValue([]),
     });
-    vi.stubGlobal('window', { dialog: {} });
 
-    await import('../../../src/assets/js/admin/data-transfer/data-transfer.js');
+    initAdminDataTransfer();
 
     expect(getElementById).toHaveBeenCalledWith('__ENTITY_CONFIG__');
   });

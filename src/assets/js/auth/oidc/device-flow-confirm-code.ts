@@ -106,9 +106,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: DeviceFlowConfirmCodeConfig
     ): DeviceFlowConfirmCodeConfig {
@@ -184,9 +181,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       if (!text || typeof text !== 'string') return false;
 
@@ -199,9 +193,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (!this.form) {
         this.log('Required form element not found', null, 'error');
@@ -215,9 +206,6 @@
       this.setupErrorRecovery();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.querySelector(
         'form[id="op.deviceConfirmForm"]'
@@ -318,9 +306,6 @@
       }
     }
 
-    /**
-     * Update continue button with loading state
-     */
     private updateContinueButtonLoading(): void {
       this.continueButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -331,9 +316,6 @@
       `;
     }
 
-    /**
-     * Update abort button with loading state
-     */
     private updateAbortButtonLoading(): void {
       this.abortButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

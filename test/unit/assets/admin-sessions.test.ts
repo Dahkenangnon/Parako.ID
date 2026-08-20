@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AdminSessionsManager } from '../../../src/assets/js/admin/sessions/index.js';
+import {
+  AdminSessionsManager,
+  initializeAdminSessionsPage,
+} from '../../../src/assets/js/admin/sessions/index.js';
+import dialogService from '../../../src/assets/js/utils/dialog.js';
 
 type SubmitEvent = {
   preventDefault: ReturnType<typeof vi.fn>;
@@ -36,8 +40,9 @@ function setupDom(
   options: { confirmed?: boolean; forms?: FormFixture[] } = {}
 ) {
   const forms = options.forms ?? [makeForm()];
-  const showConfirm = vi.fn().mockResolvedValue(options.confirmed ?? false);
-  vi.stubGlobal('window', { dialog: { showConfirm } });
+  const showConfirm = vi
+    .spyOn(dialogService, 'showConfirm')
+    .mockResolvedValue(options.confirmed ?? false);
   vi.stubGlobal('document', {
     querySelectorAll: vi.fn(() => forms),
   });
@@ -127,7 +132,7 @@ describe('AdminSessionsManager', () => {
     const form = makeForm();
     vi.stubGlobal('window', {});
     vi.stubGlobal('document', { querySelectorAll: vi.fn(() => [form]) });
-    new AdminSessionsManager().initialize();
+    new AdminSessionsManager({}, null).initialize();
 
     const event = await form.emitSubmit();
 
@@ -135,17 +140,14 @@ describe('AdminSessionsManager', () => {
     expect(form.submit).not.toHaveBeenCalled();
   });
 
-  it('bootstraps with defaults when serialized state is absent', async () => {
-    vi.resetModules();
+  it('initializes with defaults when serialized state is absent', () => {
     const form = makeForm();
-    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
       getElementById: vi.fn(() => null),
       querySelectorAll: vi.fn(() => [form]),
-      readyState: 'complete',
     });
 
-    await import('../../../src/assets/js/admin/sessions/index.js');
+    initializeAdminSessionsPage(null);
 
     expect(form.addEventListener).toHaveBeenCalledWith(
       'submit',
@@ -153,26 +155,17 @@ describe('AdminSessionsManager', () => {
     );
   });
 
-  it('waits for DOM readiness and falls back safely from malformed state', async () => {
-    vi.resetModules();
+  it('falls back safely from malformed serialized state', () => {
     const form = makeForm();
-    const listeners = new Map<string, () => void>();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
-      addEventListener: vi.fn((name: string, listener: () => void) =>
-        listeners.set(name, listener)
-      ),
       getElementById: vi.fn(() => ({ textContent: '{invalid-json' })),
       querySelectorAll: vi.fn(() => [form]),
-      readyState: 'loading',
     });
 
-    await import('../../../src/assets/js/admin/sessions/index.js');
-    expect(form.addEventListener).not.toHaveBeenCalled();
-    listeners.get('DOMContentLoaded')?.();
+    initializeAdminSessionsPage(null);
 
     expect(form.addEventListener).toHaveBeenCalledWith(
       'submit',
@@ -184,11 +177,10 @@ describe('AdminSessionsManager', () => {
     );
   });
 
-  it('bootstraps the page from its serialized state', async () => {
-    vi.resetModules();
+  it('initializes from serialized state without publishing a class global', async () => {
     const form = makeForm();
     const showConfirm = vi.fn().mockResolvedValue(false);
-    vi.stubGlobal('window', { dialog: { showConfirm } });
+    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
       getElementById: vi.fn(() => ({
         textContent: JSON.stringify({
@@ -196,10 +188,9 @@ describe('AdminSessionsManager', () => {
         }),
       })),
       querySelectorAll: vi.fn(() => [form]),
-      readyState: 'complete',
     });
 
-    await import('../../../src/assets/js/admin/sessions/index.js');
+    initializeAdminSessionsPage({ showConfirm });
     await form.emitSubmit();
 
     expect(showConfirm).toHaveBeenCalledWith(
@@ -207,9 +198,6 @@ describe('AdminSessionsManager', () => {
       expect.any(String),
       expect.any(Object)
     );
-    expect(
-      (window as typeof window & { AdminSessionsManager?: unknown })
-        .AdminSessionsManager
-    ).toBeTypeOf('function');
+    expect(window).not.toHaveProperty('AdminSessionsManager');
   });
 });

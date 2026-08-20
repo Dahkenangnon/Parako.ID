@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  initializeAdminSettingsPage,
+  registerAdminSettingsEntry,
+} from '../../../src/assets/js/admin/settings.js';
+
 interface DomEvent {
   key?: string;
   preventDefault?: ReturnType<typeof vi.fn>;
@@ -89,6 +94,7 @@ interface DomOptions {
   environment?: string | null;
   lucide?: 'callable' | 'invalid' | 'missing';
   pathname?: string;
+  readyState?: DocumentReadyState;
 }
 
 interface SettingsManagerFixture {
@@ -183,6 +189,7 @@ function setupDom(options: DomOptions | string = {}) {
       }
       return [];
     }),
+    readyState: normalized.readyState ?? 'complete',
   });
   return {
     body,
@@ -196,11 +203,8 @@ function setupDom(options: DomOptions | string = {}) {
   };
 }
 
-async function loadManager(dom: ReturnType<typeof setupDom>) {
-  await import('../../../src/assets/js/admin/settings.js');
-  dom.runReady();
-  return dom.browserWindow
-    .adminSettingsManager as unknown as SettingsManagerFixture;
+function loadManager(_dom: ReturnType<typeof setupDom>) {
+  return initializeAdminSettingsPage() as unknown as SettingsManagerFixture;
 }
 
 function addFieldWithButton(dom: ReturnType<typeof setupDom>, id: string) {
@@ -219,16 +223,25 @@ describe('admin settings manager', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
-  it('does not initialize on a lookalike route outside the settings boundary', async () => {
+  it('does not initialize on a lookalike route outside the settings boundary', () => {
     const dom = setupDom('/admin/settings-preview');
 
-    await import('../../../src/assets/js/admin/settings.js');
-    dom.runReady();
-
+    expect(initializeAdminSettingsPage()).toBeNull();
     expect(dom.browserWindow).not.toHaveProperty('adminSettingsManager');
+  });
+
+  it('registers immediately or once after DOM readiness', () => {
+    const loading = setupDom({ readyState: 'loading' });
+    registerAdminSettingsEntry();
+    expect(loading.documentListeners.size).toBe(0);
+    loading.runReady();
+    expect(loading.documentListeners.size).toBe(6);
+
+    const complete = setupDom({ readyState: 'complete' });
+    registerAdminSettingsEntry();
+    expect(complete.documentListeners.size).toBe(6);
   });
 
   it('initializes on nested settings routes and enables debug logging from page state', async () => {
@@ -274,7 +287,7 @@ describe('admin settings manager', () => {
     const manager = await loadManager(dom);
 
     expect(manager.debug).toBe(false);
-    expect(dom.browserWindow).toHaveProperty('adminSettingsManager');
+    expect(dom.browserWindow).not.toHaveProperty('adminSettingsManager');
   });
 
   it('auto-remasks secrets after the documented two minutes of inactivity', async () => {

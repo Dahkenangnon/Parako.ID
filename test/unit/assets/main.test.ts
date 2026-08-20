@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  initializeMainPage,
+  MainManager,
+} from '../../../src/assets/js/main.js';
+
 interface EventFixture {
   key?: string;
   target?: ElementFixture;
@@ -26,7 +31,6 @@ class ClassListFixture {
 }
 
 class ElementFixture {
-  public readonly children: ElementFixture[] = [];
   public readonly classList = new ClassListFixture();
   public readonly listeners = new Map<
     string,
@@ -35,10 +39,7 @@ class ElementFixture {
   public readonly style: Record<string, string> = {};
   public className = '';
   public textContent = '';
-  public type = '';
   public value = '';
-  public readonly focus = vi.fn();
-  public readonly remove = vi.fn();
   private readonly attributes = new Map<string, string>();
 
   public addEventListener(
@@ -48,11 +49,6 @@ class ElementFixture {
     const listeners = this.listeners.get(name) ?? [];
     listeners.push(listener);
     this.listeners.set(name, listeners);
-  }
-
-  public appendChild(child: ElementFixture): ElementFixture {
-    this.children.push(child);
-    return child;
   }
 
   public getAttribute(name: string): string | null {
@@ -69,7 +65,6 @@ class ElementFixture {
 }
 
 interface SetupOptions {
-  activeElement?: ElementFixture;
   bodyTheme?: string;
   debugStorage?: string | null;
   documentEnvironment?: string;
@@ -84,13 +79,7 @@ interface SetupOptions {
 
 function setupDom(options: SetupOptions = {}) {
   vi.useFakeTimers();
-  let ready: (() => void) | undefined;
   let mutationCallback: MutationCallback | undefined;
-  const created: ElementFixture[] = [];
-  const documentListeners = new Map<
-    string,
-    Array<(event: EventFixture) => void>
-  >();
   const windowListeners = new Map<
     string,
     Array<(event: Record<string, unknown>) => void>
@@ -124,29 +113,6 @@ function setupDom(options: SetupOptions = {}) {
     documentElement.setAttribute('data-env', options.documentEnvironment);
   }
 
-  const addDocumentListener = (
-    name: string,
-    listener: (event: EventFixture) => void
-  ) => {
-    if (name === 'DOMContentLoaded') {
-      ready = listener as () => void;
-      return;
-    }
-    const listeners = documentListeners.get(name) ?? [];
-    listeners.push(listener);
-    documentListeners.set(name, listeners);
-  };
-  const removeDocumentListener = (
-    name: string,
-    listener: (event: EventFixture) => void
-  ) => {
-    const listeners = documentListeners.get(name) ?? [];
-    documentListeners.set(
-      name,
-      listeners.filter(candidate => candidate !== listener)
-    );
-  };
-
   const windowFixture: Record<string, unknown> = {
     addEventListener: vi.fn(
       (name: string, listener: (event: Record<string, unknown>) => void) => {
@@ -163,15 +129,7 @@ function setupDom(options: SetupOptions = {}) {
 
   vi.stubGlobal('window', windowFixture);
   vi.stubGlobal('document', {
-    activeElement: options.activeElement ?? null,
-    addEventListener: vi.fn(addDocumentListener),
-    removeEventListener: vi.fn(removeDocumentListener),
     body,
-    createElement: vi.fn(() => {
-      const element = new ElementFixture();
-      created.push(element);
-      return element;
-    }),
     documentElement,
     getElementById: vi.fn((id: string) => {
       if (id === '___MAIN_STATE___') {
@@ -204,11 +162,9 @@ function setupDom(options: SetupOptions = {}) {
   );
 
   return {
-    created,
     createIcons,
     darkPaths,
     disconnect,
-    documentListeners,
     documentElement,
     elements,
     lightPaths,
@@ -217,11 +173,9 @@ function setupDom(options: SetupOptions = {}) {
       mutationCallback?.(records as MutationRecord[], {} as MutationObserver),
     observe,
     reload,
-    runReady: () => ready?.(),
     triggerWindow: (name: string, event: Record<string, unknown> = {}) => {
       windowListeners.get(name)?.forEach(listener => listener(event));
     },
-    windowFixture,
   };
 }
 
@@ -236,170 +190,6 @@ describe('main browser entrypoint', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
-  });
-
-  it('removes the global Escape listener when an alert closes', async () => {
-    const context = setupDom();
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    const dialog = (context.windowFixture as any).dialog;
-    const result = dialog.showAlert('Notice', 'Done');
-    const backdrop = context.created[0]!;
-    const modal = context.created[1]!;
-    const title = context.created[5]!;
-    const message = context.created[7]!;
-    const button = context.created[9]!;
-    expect(modal.getAttribute('role')).toBe('dialog');
-    expect(modal.getAttribute('aria-modal')).toBe('true');
-    expect(modal.getAttribute('aria-labelledby')).toBe(
-      title.getAttribute('id')
-    );
-    expect(modal.getAttribute('aria-describedby')).toBe(
-      message.getAttribute('id')
-    );
-    await vi.advanceTimersByTimeAsync(100);
-    expect(button.focus).toHaveBeenCalledOnce();
-    button.trigger('click');
-
-    await expect(result).resolves.toBeUndefined();
-    expect(backdrop.remove).toHaveBeenCalledOnce();
-    expect(document.removeEventListener).toHaveBeenCalledWith(
-      'keydown',
-      expect.any(Function)
-    );
-    expect(context.documentListeners.get('keydown')).toEqual([]);
-  });
-
-  it('dismisses a custom-icon alert only when its backdrop is clicked', async () => {
-    const context = setupDom({ withLucide: false });
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    const result = (context.windowFixture as any).dialog.showAlert(
-      'Security notice',
-      'Review this message',
-      { buttonText: 'Understood', icon: 'shield', variant: 'danger' }
-    );
-    const backdrop = context.created[0]!;
-    const modal = context.created[1]!;
-    const icon = context.created[4]!;
-    const button = context.created[9]!;
-    expect(icon.getAttribute('data-lucide')).toBe('shield');
-    expect(button.textContent).toBe('Understood');
-
-    backdrop.trigger('click', { target: modal });
-    expect(backdrop.remove).not.toHaveBeenCalled();
-    backdrop.trigger('click', { target: backdrop });
-
-    await expect(result).resolves.toBeUndefined();
-    expect(backdrop.remove).toHaveBeenCalledOnce();
-  });
-
-  it('resolves a custom confirmation when the user accepts it', async () => {
-    const context = setupDom();
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    const result = (context.windowFixture as any).dialog.showConfirm(
-      'Delete session',
-      'This cannot be undone',
-      {
-        cancelText: 'Keep it',
-        confirmText: 'Delete',
-        icon: 'shield-alert',
-        variant: 'danger',
-      }
-    );
-    const icon = context.created[4]!;
-    const modal = context.created[1]!;
-    const title = context.created[5]!;
-    const message = context.created[7]!;
-    const cancelButton = context.created[9]!;
-    const confirmButton = context.created[10]!;
-    expect(icon.getAttribute('data-lucide')).toBe('shield-alert');
-    expect(modal.getAttribute('role')).toBe('dialog');
-    expect(modal.getAttribute('aria-modal')).toBe('true');
-    expect(modal.getAttribute('aria-labelledby')).toBe(
-      title.getAttribute('id')
-    );
-    expect(modal.getAttribute('aria-describedby')).toBe(
-      message.getAttribute('id')
-    );
-    expect(cancelButton.textContent).toBe('Keep it');
-    expect(confirmButton.textContent).toBe('Delete');
-    await vi.advanceTimersByTimeAsync(100);
-    expect(confirmButton.focus).toHaveBeenCalledOnce();
-
-    confirmButton.trigger('click');
-
-    await expect(result).resolves.toBe(true);
-    expect(document.removeEventListener).toHaveBeenCalledWith(
-      'keydown',
-      expect.any(Function)
-    );
-  });
-
-  it('restores focus after a confirmation is cancelled', async () => {
-    const trigger = new ElementFixture();
-    const context = setupDom({ activeElement: trigger });
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    const result = (context.windowFixture as any).dialog.showConfirm(
-      'Revoke sessions',
-      'This cannot be undone'
-    );
-    const cancelButton = context.created[9]!;
-    cancelButton.trigger('click');
-
-    await expect(result).resolves.toBe(false);
-    expect(trigger.focus).toHaveBeenCalledOnce();
-  });
-
-  it('supports keyboard and backdrop confirmation cancellation without Lucide', async () => {
-    const context = setupDom({ withLucide: false });
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-    const dialog = (context.windowFixture as any).dialog;
-
-    const keyboardResult = dialog.showConfirm('Continue?', 'Review first');
-    const keydown = context.documentListeners.get('keydown')!.at(-1)!;
-    keydown({ key: 'Enter' });
-    expect(context.created[0]?.remove).not.toHaveBeenCalled();
-    keydown({ key: 'Escape' });
-    await expect(keyboardResult).resolves.toBe(false);
-
-    context.created.length = 0;
-    const backdropResult = dialog.showConfirm('Continue?', 'Review first');
-    const backdrop = context.created[0]!;
-    const modal = context.created[1]!;
-    backdrop.trigger('click', { target: modal });
-    expect(backdrop.remove).not.toHaveBeenCalled();
-    backdrop.trigger('click', { target: backdrop });
-    await expect(backdropResult).resolves.toBe(false);
-  });
-
-  it('supports legacy dialogs and Escape dismissal', async () => {
-    const context = setupDom();
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-    const dialog = (context.windowFixture as any).dialog;
-
-    const confirmResult = dialog.confirm('Continue?');
-    expect(context.created[5]?.textContent).toBe('Confirm');
-    context.created[9]!.trigger('click');
-    await expect(confirmResult).resolves.toBe(false);
-
-    context.created.length = 0;
-    const alertResult = dialog.alert('Saved');
-    expect(context.created[5]?.textContent).toBe('Notice');
-    const keydown = context.documentListeners.get('keydown')!.at(-1)!;
-    keydown({ key: 'Enter' });
-    expect(context.created[0]?.remove).not.toHaveBeenCalled();
-    keydown({ key: 'Escape' });
-    await expect(alertResult).resolves.toBeUndefined();
   });
 
   it('reconciles the server theme and toggles it locally', async () => {
@@ -420,8 +210,8 @@ describe('main browser entrypoint', () => {
       },
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    const manager = initializeMainPage();
+    expect(manager).toBeInstanceOf(MainManager);
 
     expect(context.documentElement.classList.contains('dark')).toBe(true);
     expect(document.body.classList.contains('dark')).toBe(true);
@@ -486,8 +276,7 @@ describe('main browser entrypoint', () => {
       });
       vi.stubGlobal('fetch', fetch);
 
-      await import('../../../src/assets/js/main.js');
-      context.runReady();
+      initializeMainPage();
       themeToggle.trigger('click');
       await settleAsyncUpdates();
 
@@ -523,8 +312,7 @@ describe('main browser entrypoint', () => {
       withLucide: false,
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
     const rejection = new Error('async failure');
     context.triggerWindow('unhandledrejection', { reason: rejection });
     context.triggerWindow('error', {
@@ -562,17 +350,15 @@ describe('main browser entrypoint', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
     const lucideError = new Error('invalid icon markup');
-    const context = setupDom({ lucideError });
+    setupDom({ lucideError });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
 
     expect(error).toHaveBeenCalledWith(
       '[MainManager]',
       'Failed to initialize Lucide icons',
       { error: lucideError }
     );
-    expect((context.windowFixture as any).mainManager).toBeDefined();
   });
 
   it('tolerates configured locale and timezone controls missing from the page', async () => {
@@ -580,7 +366,7 @@ describe('main browser entrypoint', () => {
       .spyOn(console, 'debug')
       .mockImplementation(() => undefined);
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const context = setupDom({
+    setupDom({
       state: {
         availableLocales: ['en', 'fr'],
         debug: true,
@@ -590,8 +376,7 @@ describe('main browser entrypoint', () => {
       },
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
 
     expect(warn).toHaveBeenCalledWith(
       '[MainManager]',
@@ -616,8 +401,7 @@ describe('main browser entrypoint', () => {
       },
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
     expect(languageSelector.value).toBe('fr');
 
     languageSelector.value = 'en';
@@ -648,8 +432,7 @@ describe('main browser entrypoint', () => {
     });
     vi.stubGlobal('fetch', fetch);
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
     languageSelector.value = 'fr';
     languageSelector.trigger('change', { target: languageSelector });
     await settleAsyncUpdates();
@@ -696,8 +479,7 @@ describe('main browser entrypoint', () => {
       });
       vi.stubGlobal('fetch', fetch);
 
-      await import('../../../src/assets/js/main.js');
-      context.runReady();
+      initializeMainPage();
       languageSelector.value = 'fr';
       languageSelector.trigger('change', { target: languageSelector });
       await settleAsyncUpdates();
@@ -722,8 +504,7 @@ describe('main browser entrypoint', () => {
     });
     vi.stubGlobal('fetch', fetch);
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
     timezoneSelector.value = 'Africa/Porto-Novo';
     timezoneSelector.trigger('change', { target: timezoneSelector });
 
@@ -764,8 +545,7 @@ describe('main browser entrypoint', () => {
     });
     vi.stubGlobal('fetch', fetch);
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
     timezoneSelector.value = 'Africa/Porto-Novo';
     timezoneSelector.trigger('change', { target: timezoneSelector });
     await settleAsyncUpdates();
@@ -781,7 +561,7 @@ describe('main browser entrypoint', () => {
     expect(context.reload).toHaveBeenCalledTimes(outcome === 'success' ? 1 : 0);
   });
 
-  it('publishes a usable global manager after malformed bootstrap state', async () => {
+  it('falls back after malformed bootstrap state', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const context = setupDom({
       bodyTheme: 'dark',
@@ -789,42 +569,31 @@ describe('main browser entrypoint', () => {
       rawState: '{malformed',
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    expect((context.windowFixture as any).mainManager).toBeDefined();
-    expect((context.windowFixture as any).dialog).toBeDefined();
+    initializeMainPage();
     expect(context.documentElement.classList.contains('dark')).toBe(true);
   });
 
   it('uses safe constructor defaults for an empty bootstrap state', async () => {
     const context = setupDom({ rawState: '' });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    expect((context.windowFixture as any).mainManager).toBeDefined();
-    expect((context.windowFixture as any).dialog).toBeDefined();
+    initializeMainPage();
     expect(context.documentElement.classList.contains('dark')).toBe(false);
     expect(document.body.getAttribute('data-theme')).toBe('light');
   });
 
   it('enables malformed-state diagnostics on localhost with no body theme', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const context = setupDom({
+    setupDom({
       bodyTheme: '',
       hostname: 'localhost',
       rawState: '{malformed',
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    expect((context.windowFixture as any).mainManager).toBeDefined();
+    initializeMainPage();
     expect(document.body.getAttribute('data-theme')).toBe('light');
   });
 
-  it('publishes fallback globals when bootstrap state is missing', async () => {
+  it('uses fallback configuration when bootstrap state is missing', async () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
@@ -834,29 +603,23 @@ describe('main browser entrypoint', () => {
       hasState: false,
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
+    initializeMainPage();
 
     expect(error).toHaveBeenCalledWith(
       '[MainManager] No configuration data found in DOM'
     );
-    expect((context.windowFixture as any).mainManager).toBeDefined();
-    expect((context.windowFixture as any).dialog).toBeDefined();
     expect(context.documentElement.classList.contains('dark')).toBe(true);
   });
 
   it('uses localhost and light-theme fallbacks when bootstrap state is missing', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const context = setupDom({
+    setupDom({
       bodyTheme: '',
       hasState: false,
       hostname: 'localhost',
     });
 
-    await import('../../../src/assets/js/main.js');
-    context.runReady();
-
-    expect((context.windowFixture as any).mainManager).toBeDefined();
+    initializeMainPage();
     expect(document.body.getAttribute('data-theme')).toBe('light');
   });
 });

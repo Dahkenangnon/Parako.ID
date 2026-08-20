@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  AdminLayoutManager,
+  initializeAdminLayout,
+  type AdminLayoutConfig,
+} from '../../../src/assets/js/admin/layout.js';
+
 interface EventFixture {
   key?: string;
   stopPropagation: ReturnType<typeof vi.fn>;
@@ -74,7 +80,7 @@ function eventFixture(target?: ElementFixture): EventFixture {
   return { stopPropagation: vi.fn(), target };
 }
 
-const config = {
+const config: AdminLayoutConfig = {
   csrfToken: 'csrf-token',
   routes: {
     updateLocale: '/admin/locale',
@@ -85,7 +91,6 @@ const config = {
 };
 
 function setupDom() {
-  let ready: (() => void) | undefined;
   const documentListeners = new Map<
     string,
     Array<(event: EventFixture) => void>
@@ -137,10 +142,6 @@ function setupDom() {
   vi.stubGlobal('document', {
     addEventListener: vi.fn(
       (name: string, listener: (event: EventFixture) => void) => {
-        if (name === 'DOMContentLoaded') {
-          ready = listener as () => void;
-          return;
-        }
         const listeners = documentListeners.get(name) ?? [];
         listeners.push(listener);
         documentListeners.set(name, listeners);
@@ -166,7 +167,6 @@ function setupDom() {
     mobileSidebarOverlay,
     mobileThemeLangDropdown,
     mobileThemeLangToggle,
-    runReady: () => ready?.(),
     sidebar,
     sidebarToggle,
     themeIcon,
@@ -178,12 +178,10 @@ function setupDom() {
   };
 }
 
-async function initializeManager(
-  managerConfig: Record<string, unknown> = config
-) {
-  await import('../../../src/assets/js/admin/layout.js');
-  const Manager = (window as any).AdminLayoutManager;
-  const manager = new Manager(managerConfig);
+function initializeManager(
+  managerConfig: AdminLayoutConfig = config
+): AdminLayoutManager {
+  const manager = new AdminLayoutManager(managerConfig);
   manager.initialize();
   return manager;
 }
@@ -192,7 +190,6 @@ describe('admin layout manager', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    vi.resetModules();
   });
 
   it('optimistically expands the sidebar and persists the new state', async () => {
@@ -518,9 +515,7 @@ describe('admin layout manager', () => {
     elements.clear();
     vi.stubGlobal('fetch', vi.fn());
 
-    await expect(
-      initializeManager({ ...config, userTheme: '' })
-    ).resolves.toBeDefined();
+    expect(initializeManager({ ...config, userTheme: '' })).toBeDefined();
     expect(() =>
       triggerDocument('keydown', {
         key: 'Escape',
@@ -680,10 +675,9 @@ describe('admin layout manager', () => {
     const warning = vi
       .spyOn(console, 'warn')
       .mockImplementation(() => undefined);
-    const { runReady } = setupDom();
-    await import('../../../src/assets/js/admin/layout.js');
+    setupDom();
 
-    runReady();
+    initializeAdminLayout();
 
     expect(warning).toHaveBeenCalledWith(
       '[AdminLayout] State element not found'
@@ -694,13 +688,11 @@ describe('admin layout manager', () => {
     const error = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined);
-    const { elements, runReady } = setupDom();
+    const { elements } = setupDom();
     const state = new ElementFixture();
     state.textContent = '{invalid';
     elements.set('___ADMIN_LAYOUT_STATE___', state);
-    await import('../../../src/assets/js/admin/layout.js');
-
-    runReady();
+    initializeAdminLayout();
 
     expect(error).toHaveBeenCalledWith(
       '[AdminLayout] Initialization failed:',
@@ -709,21 +701,16 @@ describe('admin layout manager', () => {
   });
 
   it('automatically initializes from embedded state, including empty content', async () => {
-    const { elements, runReady, themeIcon } = setupDom();
+    const { elements, themeIcon } = setupDom();
     const state = new ElementFixture();
     elements.set('___ADMIN_LAYOUT_STATE___', state);
-    await import('../../../src/assets/js/admin/layout.js');
-
-    expect(() => runReady()).not.toThrow();
+    expect(() => initializeAdminLayout()).not.toThrow();
     expect(themeIcon.getAttribute('data-lucide')).toBe('sun');
   });
 
-  it('does not expose the manager when no window global exists', async () => {
-    setupDom();
-    vi.stubGlobal('window', undefined);
+  it('does not expose the manager through an application-owned global', () => {
+    const { windowFixture } = setupDom();
 
-    await expect(
-      import('../../../src/assets/js/admin/layout.js')
-    ).resolves.toBeDefined();
+    expect(windowFixture.AdminLayoutManager).toBeUndefined();
   });
 });

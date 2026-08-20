@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  alertDialog,
+  confirmDialog,
+  showAlert,
+  showConfirm,
+} from '../../../src/assets/js/utils/dialog.js';
+
 interface ElementFixture {
   addEventListener: ReturnType<typeof vi.fn>;
   appendChild: ReturnType<typeof vi.fn>;
@@ -13,13 +20,14 @@ interface ElementFixture {
   type: string;
 }
 
-function setupDom(withLucide = true) {
+function setupDom(withLucide = true, activeElement?: ElementFixture) {
   const elements: ElementFixture[] = [];
   const bodyChildren: ElementFixture[] = [];
   const documentListeners = new Map<string, EventListener>();
   const createIcons = vi.fn();
   vi.stubGlobal('window', withLucide ? { lucide: { createIcons } } : {});
   vi.stubGlobal('document', {
+    activeElement: activeElement ?? null,
     addEventListener: vi.fn((name: string, listener: EventListener) =>
       documentListeners.set(name, listener)
     ),
@@ -74,8 +82,6 @@ describe('dialog utility', () => {
   ] as const)('renders and closes a %s alert', async (variant, icon, color) => {
     vi.useFakeTimers();
     const { bodyChildren, createIcons, elements } = setupDom();
-    const { showAlert } =
-      await import('../../../src/assets/js/utils/dialog.js');
 
     const result = showAlert('Title', 'Message', {
       variant,
@@ -124,8 +130,6 @@ describe('dialog utility', () => {
 
   it('supports a custom alert icon and backdrop dismissal without Lucide', async () => {
     const { elements } = setupDom(false);
-    const { showAlert } =
-      await import('../../../src/assets/js/utils/dialog.js');
     const result = showAlert('Title', 'Message', { icon: 'shield' });
     const backdrop = elements[0]!;
 
@@ -143,8 +147,6 @@ describe('dialog utility', () => {
 
   it('ignores unrelated keys and closes an alert on Escape', async () => {
     const { documentListeners, elements } = setupDom();
-    const { showAlert } =
-      await import('../../../src/assets/js/utils/dialog.js');
     const result = showAlert('Title', 'Message');
     const keydown = documentListeners.get('keydown')!;
 
@@ -158,8 +160,6 @@ describe('dialog utility', () => {
   it('resolves true when a confirmation is accepted', async () => {
     vi.useFakeTimers();
     const { elements } = setupDom();
-    const { showConfirm } =
-      await import('../../../src/assets/js/utils/dialog.js');
     const result = showConfirm('Confirm', 'Proceed?', {
       variant: 'danger',
       confirmText: 'Proceed',
@@ -204,8 +204,6 @@ describe('dialog utility', () => {
     'resolves false when confirmation is cancelled by %s',
     async method => {
       const { documentListeners, elements } = setupDom(false);
-      const { showConfirm } =
-        await import('../../../src/assets/js/utils/dialog.js');
       const result = showConfirm('Confirm', 'Proceed?');
 
       if (method === 'button') {
@@ -226,10 +224,19 @@ describe('dialog utility', () => {
     }
   );
 
+  it('restores focus after a confirmation closes', async () => {
+    const trigger = { focus: vi.fn() } as unknown as ElementFixture;
+    const { elements } = setupDom(true, trigger);
+    const result = showConfirm('Confirm', 'Proceed?');
+
+    listener(elements[9]!, 'click')();
+
+    await expect(result).resolves.toBe(false);
+    expect(trigger.focus).toHaveBeenCalledOnce();
+  });
+
   it('provides legacy confirm and alert wrappers', async () => {
     const { elements } = setupDom();
-    const { alertDialog, confirmDialog } =
-      await import('../../../src/assets/js/utils/dialog.js');
     const alertResult = alertDialog('Legacy alert');
     expect(elements[5]?.textContent).toBe('Notice');
     listener(elements[9]!, 'click')();

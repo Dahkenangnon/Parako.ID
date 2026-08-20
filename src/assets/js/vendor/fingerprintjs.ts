@@ -11,10 +11,4 @@
 
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 
-declare global {
-  interface Window {
-    FingerprintJS?: typeof FingerprintJS;
-  }
-}
-
 window.FingerprintJS = FingerprintJS;

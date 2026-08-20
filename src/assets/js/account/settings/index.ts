@@ -13,23 +13,23 @@
  * @author Parako.ID Team
  */
 
-'use strict';
+import {
+  setupConfirmationHandlers,
+  type TranslationMap as ConfirmTranslationMap,
+} from './confirm-handler.js';
+import { AvatarManager, type AvatarConfig } from './avatar.js';
+import { PasswordValidator, type PasswordValidatorConfig } from './password.js';
+import { LanguageSelector, type LanguageSelectorConfig } from './language.js';
+import { MfaManager, type MfaConfig, type MfaMethodsEnabled } from './mfa.js';
+import {
+  PasswordVisibilityToggle,
+  type PasswordVisibilityConfig,
+} from './password-visibility.js';
 
 /**
  * Translation map interface
  */
-export interface TranslationMap {
-  [key: string]: string;
-}
-
-/**
- * MFA methods enabled state interface
- */
-export interface MfaMethodsEnabled {
-  totp: boolean;
-  email: boolean;
-  webauthn: boolean;
-}
+export type TranslationMap = ConfirmTranslationMap;
 
 /**
  * Configuration interface for Settings page
@@ -62,6 +62,34 @@ export interface SettingsConfig {
   debug?: boolean;
 }
 
+export interface SettingsModule {
+  initialize(): void;
+}
+
+export interface SettingsDependencies {
+  setupConfirmationHandlers(
+    translations: TranslationMap,
+    debug?: boolean
+  ): void;
+  createAvatarManager(config: AvatarConfig): SettingsModule;
+  createPasswordValidator(config: PasswordValidatorConfig): SettingsModule;
+  createLanguageSelector(config: LanguageSelectorConfig): SettingsModule;
+  createMfaManager(config: MfaConfig): SettingsModule;
+  createPasswordVisibilityToggle(
+    config: PasswordVisibilityConfig
+  ): SettingsModule;
+}
+
+const defaultSettingsDependencies: SettingsDependencies = {
+  setupConfirmationHandlers,
+  createAvatarManager: config => new AvatarManager(config),
+  createPasswordValidator: config => new PasswordValidator(config),
+  createLanguageSelector: config => new LanguageSelector(config),
+  createMfaManager: config => new MfaManager(config),
+  createPasswordVisibilityToggle: config =>
+    new PasswordVisibilityToggle(config),
+};
+
 /**
  * SettingsCoordinator class - Main coordinator for settings page
  */
@@ -69,14 +97,14 @@ export class SettingsCoordinator {
   private config: SettingsConfig;
   private debug: boolean;
 
-  constructor(config: SettingsConfig) {
+  constructor(
+    config: SettingsConfig,
+    private readonly dependencies: SettingsDependencies = defaultSettingsDependencies
+  ) {
     this.config = config;
     this.debug = config.debug || false;
   }
 
-  /**
-   * Initialize all settings modules
-   */
   public initialize(): void {
     this.log('Initializing SettingsCoordinator');
 
@@ -92,17 +120,6 @@ export class SettingsCoordinator {
   }
 
   private initializeConfirmationHandlers(): void {
-    // Access confirm handler from window (loaded via script tag)
-    const setupConfirmationHandlers = (window as any).accountSettingsUtils
-      ?.setupConfirmationHandlers;
-
-    if (!setupConfirmationHandlers) {
-      console.error(
-        '[SettingsCoordinator] setupConfirmationHandlers not found on window'
-      );
-      return;
-    }
-
     const translations: TranslationMap = {
       backupCodesConfirmNew: this.config.translations.backupCodesConfirmNew,
       backupCodesConfirmRemove:
@@ -112,18 +129,11 @@ export class SettingsCoordinator {
       socialUnlinkConfirm: this.config.translations.socialUnlinkConfirm,
     };
 
-    setupConfirmationHandlers(translations, this.debug);
+    this.dependencies.setupConfirmationHandlers(translations, this.debug);
     this.log('Confirmation handlers initialized');
   }
 
   private initializeAvatarManager(): void {
-    const AvatarManager = (window as any).AvatarManager;
-
-    if (!AvatarManager) {
-      console.error('[SettingsCoordinator] AvatarManager not found on window');
-      return;
-    }
-
     const avatarConfig = {
       removeAvatarUrl: this.config.removeAvatarUrl,
       csrfToken: this.config.csrfToken,
@@ -136,22 +146,13 @@ export class SettingsCoordinator {
       debug: this.debug,
     };
 
-    const avatarManager = new AvatarManager(avatarConfig);
+    const avatarManager = this.dependencies.createAvatarManager(avatarConfig);
     avatarManager.initialize();
 
     this.log('AvatarManager initialized');
   }
 
   private initializePasswordValidator(): void {
-    const PasswordValidator = (window as any).PasswordValidator;
-
-    if (!PasswordValidator) {
-      console.error(
-        '[SettingsCoordinator] PasswordValidator not found on window'
-      );
-      return;
-    }
-
     const passwordConfig = {
       isSpecialPasswordCase: this.config.isSpecialPasswordCase,
       translations: {
@@ -160,22 +161,14 @@ export class SettingsCoordinator {
       debug: this.debug,
     };
 
-    const passwordValidator = new PasswordValidator(passwordConfig);
+    const passwordValidator =
+      this.dependencies.createPasswordValidator(passwordConfig);
     passwordValidator.initialize();
 
     this.log('PasswordValidator initialized');
   }
 
   private initializeLanguageSelector(): void {
-    const LanguageSelector = (window as any).LanguageSelector;
-
-    if (!LanguageSelector) {
-      console.error(
-        '[SettingsCoordinator] LanguageSelector not found on window'
-      );
-      return;
-    }
-
     const languageConfig = {
       updateLocaleUrl: this.config.updateLocaleUrl,
       csrfToken: this.config.csrfToken,
@@ -185,20 +178,14 @@ export class SettingsCoordinator {
       debug: this.debug,
     };
 
-    const languageSelector = new LanguageSelector(languageConfig);
+    const languageSelector =
+      this.dependencies.createLanguageSelector(languageConfig);
     languageSelector.initialize();
 
     this.log('LanguageSelector initialized');
   }
 
   private initializeMfaManager(): void {
-    const MfaManager = (window as any).MfaManager;
-
-    if (!MfaManager) {
-      console.error('[SettingsCoordinator] MfaManager not found on window');
-      return;
-    }
-
     const mfaConfig = {
       isMfaEnabled: this.config.isMfaEnabled,
       mfaMethodsEnabled: this.config.mfaMethodsEnabled,
@@ -212,25 +199,17 @@ export class SettingsCoordinator {
       debug: this.debug,
     };
 
-    const mfaManager = new MfaManager(mfaConfig);
+    const mfaManager = this.dependencies.createMfaManager(mfaConfig);
     mfaManager.initialize();
 
     this.log('MfaManager initialized');
   }
 
   private initializePasswordVisibilityToggle(): void {
-    const PasswordVisibilityToggle = (window as any).PasswordVisibilityToggle;
-
-    if (!PasswordVisibilityToggle) {
-      console.error(
-        '[SettingsCoordinator] PasswordVisibilityToggle not found on window'
-      );
-      return;
-    }
-
-    const passwordVisibilityToggle = new PasswordVisibilityToggle({
-      debug: this.debug,
-    });
+    const passwordVisibilityToggle =
+      this.dependencies.createPasswordVisibilityToggle({
+        debug: this.debug,
+      });
     passwordVisibilityToggle.initialize();
 
     this.log('PasswordVisibilityToggle initialized');
@@ -246,27 +225,33 @@ export class SettingsCoordinator {
   }
 }
 
-// Auto-initialize on DOMContentLoaded
+export function initializeSettingsPage(
+  root: Pick<Document, 'getElementById'> = document,
+  dependencies: SettingsDependencies = defaultSettingsDependencies
+): SettingsCoordinator | undefined {
+  const dataElement = root.getElementById('___SETTINGS_STATE___');
+
+  if (!dataElement) {
+    console.error('[SettingsCoordinator] Configuration element not found');
+    return undefined;
+  }
+
+  try {
+    const config: SettingsConfig = JSON.parse(dataElement.textContent || '{}');
+    const coordinator = new SettingsCoordinator(config, dependencies);
+    coordinator.initialize();
+    return coordinator;
+  } catch (error) {
+    console.error(
+      '[SettingsCoordinator] Failed to parse configuration:',
+      error
+    );
+    return undefined;
+  }
+}
+
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
-    const dataElement = document.getElementById('___SETTINGS_STATE___');
-
-    if (!dataElement) {
-      console.error('[SettingsCoordinator] Configuration element not found');
-      return;
-    }
-
-    try {
-      const config: SettingsConfig = JSON.parse(
-        dataElement.textContent || '{}'
-      );
-      const coordinator = new SettingsCoordinator(config);
-      coordinator.initialize();
-    } catch (error) {
-      console.error(
-        '[SettingsCoordinator] Failed to parse configuration:',
-        error
-      );
-    }
+    initializeSettingsPage();
   });
 }

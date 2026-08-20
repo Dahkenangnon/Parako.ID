@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AdminActivitiesManager } from '../../../src/assets/js/admin/activities/index.js';
+import {
+  AdminActivitiesManager,
+  initializeAdminActivitiesPage,
+  registerAdminActivitiesEntry,
+} from '../../../src/assets/js/admin/activities/index.js';
 
 type EventListener = (event: Record<string, unknown>) => void;
 
@@ -319,10 +323,8 @@ describe('AdminActivitiesManager', () => {
     expect(trigger.focus).toHaveBeenCalledOnce();
   });
 
-  it('bootstraps with defaults when serialized state is absent', async () => {
-    vi.resetModules();
+  it('bootstraps with defaults when serialized state is absent', () => {
     const listeners = new Map<string, EventListener>();
-    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
       activeElement: null,
       addEventListener: vi.fn((name: string, listener: EventListener) =>
@@ -332,22 +334,16 @@ describe('AdminActivitiesManager', () => {
       querySelector: vi.fn(() => null),
       readyState: 'complete',
     });
-
-    await import('../../../src/assets/js/admin/activities/index.js');
-
-    expect(
-      (window as typeof window & { AdminActivitiesManager?: unknown })
-        .AdminActivitiesManager
-    ).toBeTypeOf('function');
+    expect(initializeAdminActivitiesPage()).toBeInstanceOf(
+      AdminActivitiesManager
+    );
   });
 
-  it('waits for DOM readiness and falls back safely from malformed state', async () => {
-    vi.resetModules();
+  it('waits for DOM readiness and falls back safely from malformed state', () => {
     const listeners = new Map<string, EventListener>();
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
-    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
       activeElement: null,
       addEventListener: vi.fn((name: string, listener: EventListener) =>
@@ -362,7 +358,7 @@ describe('AdminActivitiesManager', () => {
       readyState: 'loading',
     });
 
-    await import('../../../src/assets/js/admin/activities/index.js');
+    registerAdminActivitiesEntry();
     listeners.get('DOMContentLoaded')?.({});
 
     expect(consoleError).toHaveBeenCalledWith(
@@ -371,8 +367,7 @@ describe('AdminActivitiesManager', () => {
     );
   });
 
-  it('bootstraps the page from serialized state', async () => {
-    vi.resetModules();
+  it('bootstraps the page from serialized state', () => {
     const confirm = makeElement();
     const days = makeElement({ value: '7' });
     const error = makeElement({ hidden: true });
@@ -384,7 +379,6 @@ describe('AdminActivitiesManager', () => {
       method: '',
       submit: vi.fn(),
     };
-    vi.stubGlobal('window', {});
     vi.stubGlobal('document', {
       activeElement: null,
       addEventListener: vi.fn(),
@@ -410,7 +404,7 @@ describe('AdminActivitiesManager', () => {
       readyState: 'complete',
     });
 
-    await import('../../../src/assets/js/admin/activities/index.js');
+    initializeAdminActivitiesPage();
     confirm.emit('click');
 
     expect(form.action).toBe('/serialized');

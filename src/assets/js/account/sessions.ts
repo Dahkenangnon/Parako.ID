@@ -1,98 +1,25 @@
-/**
- * SessionsManager - Manages active user sessions
- *
- * Features:
- * - Confirmation dialogs before signing out sessions
- * - Handles single session and bulk sign-out
- * - Integration with dialog utility for consistent UX
- *
- * @version 1.0.0
- * @author Parako.ID Team
- */
+import dialogService from '../utils/dialog.js';
+import {
+  ConfirmedActionManager,
+  type ConfirmedActionConfig,
+  type ConfirmedActionDialog,
+} from '../utils/confirmed-action.js';
 
-/**
- * Configuration interface for SessionsManager
- */
-interface SessionsConfig {
-  debug?: boolean;
-}
+export type SessionsConfig = ConfirmedActionConfig;
 
-/**
- * SessionsManager class - Handles confirmation dialogs for session sign-out
- */
-export class SessionsManager {
-  private debug: boolean;
-
-  constructor(config: SessionsConfig = {}) {
-    this.debug = config.debug || false;
-  }
-
-  /**
-   * Initialize the sessions manager
-   */
-  public initialize(): void {
-    this.log('Initializing SessionsManager');
-    this.setupConfirmationHandlers();
-  }
-
-  /**
-   * Setup confirmation handlers for all confirm-action buttons
-   */
-  private setupConfirmationHandlers(): void {
-    const buttons = document.querySelectorAll('.confirm-action');
-    this.log(`Found ${buttons.length} confirm-action buttons`);
-
-    buttons.forEach(button => {
-      button.addEventListener('click', async e => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        await this.handleConfirmAction(button as HTMLButtonElement);
-      });
-    });
-  }
-
-  /**
-   * Handle confirmation action for a button
-   */
-  private async handleConfirmAction(button: HTMLButtonElement): Promise<void> {
-    const title = button.dataset.confirmTitle || 'Confirm Action';
-    const message = button.dataset.confirmMessage || 'Are you sure?';
-    const variant = button.dataset.confirmVariant || 'warning';
-
-    this.log('Showing confirmation dialog:', { title, message, variant });
-
-    const confirmed = await (window as any).dialog.showConfirm(title, message, {
-      variant,
-      confirmText: 'Confirm',
-      cancelText: 'Cancel',
-    });
-
-    if (confirmed) {
-      this.log('User confirmed action, submitting form');
-      const form = button.form;
-      if (form) {
-        form.submit();
-      }
-    } else {
-      this.log('User cancelled action');
-    }
-  }
-
-  /**
-   * Log debug messages
-   */
-  private log(...args: any[]): void {
-    if (this.debug) {
-      console.log('[SessionsManager]', ...args);
-    }
+export class SessionsManager extends ConfirmedActionManager {
+  public constructor(
+    config: SessionsConfig = {},
+    dialog: ConfirmedActionDialog = dialogService
+  ) {
+    super('SessionsManager', config, dialog);
   }
 }
 
-// Auto-initialize on DOMContentLoaded
+export function initializeSessionsPage(): void {
+  new SessionsManager().initialize();
+}
+
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    const manager = new SessionsManager({ debug: false });
-    manager.initialize();
-  });
+  document.addEventListener('DOMContentLoaded', initializeSessionsPage);
 }

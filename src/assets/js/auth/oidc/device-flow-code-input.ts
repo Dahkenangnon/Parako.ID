@@ -356,9 +356,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: DeviceFlowCodeInputConfig
     ): DeviceFlowCodeInputConfig {
@@ -443,9 +440,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -456,9 +450,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (!this.form || !this.submitButton) {
         this.log('Required form elements not found', null, 'error');
@@ -472,9 +463,6 @@
       this.setupErrorRecovery();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.getElementById(
         this.config.formId
@@ -484,9 +472,6 @@
       ) as HTMLButtonElement;
     }
 
-    /**
-     * Initialize device code input component
-     */
     private initializeDeviceCodeInput(): void {
       this.deviceCodeInput = new DeviceCodeInput(
         'device-code-container',
@@ -559,9 +544,6 @@
       });
     }
 
-    /**
-     * Update submit button with loading state
-     */
     private updateSubmitButtonLoading(): void {
       this.submitButton!.innerHTML = `
         <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

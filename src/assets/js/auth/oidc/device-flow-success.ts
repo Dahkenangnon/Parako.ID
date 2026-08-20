@@ -132,9 +132,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: DeviceFlowSuccessConfig
     ): DeviceFlowSuccessConfig {
@@ -205,9 +202,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       if (typeof text !== 'string' || !text) return true;
 
@@ -220,9 +214,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (!this.countdownElement && !this.countdownTextElement) {
         this.log('No countdown elements found', null, 'error');
@@ -240,9 +231,6 @@
       this.setupErrorRecovery();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.countdownElement = document.getElementById('countdown');
       this.countdownTextElement = document.getElementById('countdown-text');
@@ -411,9 +399,6 @@
       });
     }
 
-    /**
-     * Check if window can be closed (opened by script or is a popup)
-     */
     private canCloseWindow(): boolean {
       try {
         return window.opener !== null || window.parent !== window;
@@ -503,9 +488,6 @@
       }
     }
 
-    /**
-     * Check if auto-close is likely to work
-     */
     private checkAutoCloseCompatibility(): void {
       if (!this.canCloseWindow()) {
         this.log(

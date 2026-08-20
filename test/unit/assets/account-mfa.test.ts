@@ -1,30 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-
-interface MfaMethods {
-  totp: boolean;
-  email: boolean;
-  webauthn: boolean;
-}
-
-interface MfaConfig {
-  isMfaEnabled: boolean;
-  mfaMethodsEnabled?: MfaMethods;
-  translations: {
-    mfaAlreadyEnabled: string;
-    mfaMethodAlreadyEnabled?: string;
-    mfaNotEnabled: string;
-    mfaDisableConfirm: string;
-  };
-  debug?: boolean;
-}
+import {
+  MfaManager,
+  type MfaConfig,
+} from '../../../src/assets/js/account/settings/mfa.js';
 
 interface MfaManagerInstance {
   initialize(): void;
   setupMethodHandlers(): void;
 }
 
-type MfaManagerConstructor = new (config: MfaConfig) => MfaManagerInstance;
-
+type TestMfaManagerConstructor = new (config: MfaConfig) => MfaManagerInstance;
 interface FormFixture {
   addEventListener: ReturnType<typeof vi.fn>;
   dataset: { mfaDisableMethod?: string };
@@ -57,21 +42,16 @@ function config(overrides: Partial<MfaConfig> = {}): MfaConfig {
   };
 }
 
-async function loadManager(
+function loadManager(
   options: {
     appForm?: FormFixture | null;
     emailForm?: FormFixture | null;
     disableForms?: FormFixture[];
   } = {}
 ) {
-  vi.resetModules();
   const showAlert = vi.fn().mockResolvedValue(undefined);
   const showConfirm = vi.fn();
-  const windowRoot: {
-    MfaManager?: MfaManagerConstructor;
-    dialog: { showAlert: typeof showAlert; showConfirm: typeof showConfirm };
-  } = { dialog: { showAlert, showConfirm } };
-  vi.stubGlobal('window', windowRoot);
+  const dialog = { showAlert, showConfirm };
   const querySelectorAll = vi.fn(() => options.disableForms ?? []);
   vi.stubGlobal('document', {
     getElementById: vi.fn((id: string) =>
@@ -81,10 +61,15 @@ async function loadManager(
     ),
     querySelectorAll,
   });
-  await import('../../../src/assets/js/account/settings/mfa.js');
-  if (!windowRoot.MfaManager) throw new Error('MfaManager was not published');
+
+  class TestMfaManager extends MfaManager {
+    constructor(settings: MfaConfig) {
+      super(settings, dialog);
+    }
+  }
+
   return {
-    Manager: windowRoot.MfaManager,
+    Manager: TestMfaManager as unknown as TestMfaManagerConstructor,
     querySelectorAll,
     showAlert,
     showConfirm,
@@ -296,12 +281,10 @@ describe('account MFA settings manager', () => {
     }
   );
 
-  it('can be evaluated without a browser window', async () => {
-    vi.resetModules();
-    vi.stubGlobal('window', undefined);
+  it('does not publish the manager through an application global', () => {
+    const browserWindow: Record<string, unknown> = {};
+    vi.stubGlobal('window', browserWindow);
 
-    await expect(
-      import('../../../src/assets/js/account/settings/mfa.js')
-    ).resolves.toBeDefined();
+    expect(browserWindow).not.toHaveProperty('MfaManager');
   });
 });

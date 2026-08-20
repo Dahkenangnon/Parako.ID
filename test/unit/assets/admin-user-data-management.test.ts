@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  initializeUserDataManagementPage,
+  UserDataManagementManager,
+} from '../../../src/assets/js/admin/users/data-mgmt.js';
+
 interface TestFile {
   name: string;
   size: number;
@@ -61,18 +66,13 @@ function setupDom(
     tabs?: ControlFixture[];
   } = {}
 ) {
-  let ready: (() => void) | undefined;
   const showAlert = vi.fn().mockResolvedValue(undefined);
   const showConfirm = vi.fn().mockResolvedValue(options.confirmed ?? false);
   const createIcons = vi.fn();
   vi.stubGlobal('window', {
-    dialog: { showAlert, showConfirm },
     lucide: options.lucide === false ? undefined : { createIcons },
   });
   vi.stubGlobal('document', {
-    addEventListener: vi.fn((_name: string, listener: () => void) => {
-      ready = listener;
-    }),
     getElementById: vi.fn((id: string) => options.controls?.[id] ?? null),
     querySelectorAll: vi.fn((selector: string) =>
       selector === '.data-tab-btn'
@@ -82,7 +82,8 @@ function setupDom(
   });
   return {
     createIcons,
-    runReady: () => ready?.(),
+    runReady: () =>
+      initializeUserDataManagementPage({ showAlert, showConfirm }),
     showAlert,
     showConfirm,
   };
@@ -92,20 +93,15 @@ describe('admin user data management', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
-    vi.resetModules();
+    vi.restoreAllMocks();
   });
 
-  it('can be imported when the document is unavailable', async () => {
-    vi.stubGlobal('document', undefined);
-
-    await expect(
-      import('../../../src/assets/js/admin/users/data-mgmt.js')
-    ).resolves.toBeDefined();
+  it('is statically importable without a browser document', () => {
+    expect(UserDataManagementManager).toBeTypeOf('function');
   });
 
   it('initializes safely when all optional page controls are absent', async () => {
     const { runReady } = setupDom();
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
 
     expect(runReady).not.toThrow();
   });
@@ -122,7 +118,6 @@ describe('admin user data management', () => {
       panels: [importPanel, exportPanel],
       tabs: [importTab, exportTab, unboundTab],
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await unboundTab.trigger('click');
@@ -156,7 +151,6 @@ describe('admin user data management', () => {
     const { runReady, showAlert } = setupDom({
       controls: { csvFile },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await csvFile.trigger('change');
@@ -172,7 +166,6 @@ describe('admin user data management', () => {
     ];
     csvFile.value = 'users.csv';
     const { runReady, showAlert } = setupDom({ controls: { csvFile } });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await csvFile.trigger('change');
@@ -190,7 +183,6 @@ describe('admin user data management', () => {
     csvFile.files = [{ name: 'users.txt', size: 1024, type: 'text/plain' }];
     csvFile.value = 'users.txt';
     const { runReady, showAlert } = setupDom({ controls: { csvFile } });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await csvFile.trigger('change');
@@ -211,7 +203,6 @@ describe('admin user data management', () => {
     csvFile.files = [{ ...file, size: 1024 }];
     csvFile.value = file.name;
     const { runReady, showAlert } = setupDom({ controls: { csvFile } });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await csvFile.trigger('change');
@@ -227,7 +218,6 @@ describe('admin user data management', () => {
     const { runReady, showAlert } = setupDom({
       controls: { csvFile, importForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await importForm.trigger('submit');
@@ -249,7 +239,6 @@ describe('admin user data management', () => {
     const { runReady, showAlert } = setupDom({
       controls: { csvFile, importForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await importForm.trigger('submit');
@@ -270,7 +259,6 @@ describe('admin user data management', () => {
     const { runReady, showAlert } = setupDom({
       controls: { csvFile, importBtn, importForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await importForm.trigger('submit');
@@ -287,7 +275,6 @@ describe('admin user data management', () => {
     csvFile.files = [{ name: 'users.csv', size: 1024, type: 'text/csv' }];
     const importForm = new ControlFixture();
     const { runReady } = setupDom({ controls: { csvFile, importForm } });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await importForm.trigger('submit');
@@ -302,7 +289,6 @@ describe('admin user data management', () => {
     const { createIcons, runReady, showConfirm } = setupDom({
       controls: { exportBtn, exportForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await exportForm.trigger('submit');
@@ -322,7 +308,6 @@ describe('admin user data management', () => {
   it('allows an ordinary export when its optional button is absent', async () => {
     const exportForm = new ControlFixture();
     const { runReady } = setupDom({ controls: { exportForm } });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await exportForm.trigger('submit');
@@ -338,7 +323,6 @@ describe('admin user data management', () => {
       controls: { exportBtn, exportForm },
       lucide: false,
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await exportForm.trigger('submit');
@@ -355,7 +339,6 @@ describe('admin user data management', () => {
     const { runReady, showConfirm } = setupDom({
       controls: { exportForm, includePasswords },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await exportForm.trigger('submit');
@@ -383,7 +366,6 @@ describe('admin user data management', () => {
       confirmed: true,
       controls: { exportForm, includePasswords, includeSensitiveData },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await exportForm.trigger('submit');
@@ -402,7 +384,6 @@ describe('admin user data management', () => {
     const { runReady, showConfirm } = setupDom({
       controls: { exportForm, includeSensitiveData },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await exportForm.trigger('submit');
@@ -420,7 +401,6 @@ describe('admin user data management', () => {
     const { runReady, showConfirm } = setupDom({
       controls: { 'clear-log-form': clearLogForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     const event = await clearLogForm.trigger('submit');
@@ -444,7 +424,6 @@ describe('admin user data management', () => {
       confirmed: true,
       controls: { 'clear-log-form': clearLogForm },
     });
-    await import('../../../src/assets/js/admin/users/data-mgmt.js');
     runReady();
 
     await clearLogForm.trigger('submit');

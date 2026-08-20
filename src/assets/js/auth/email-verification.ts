@@ -90,9 +90,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: EmailVerificationConfig
     ): EmailVerificationConfig {
@@ -151,9 +148,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -164,9 +158,6 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       if (this.forms.length === 0) {
         this.log('No forms found', null, 'error');
@@ -178,9 +169,6 @@
       this.setupForms();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.forms = document.querySelectorAll('form');
     }

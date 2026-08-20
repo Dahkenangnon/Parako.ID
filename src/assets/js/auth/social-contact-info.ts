@@ -112,9 +112,6 @@
       });
     }
 
-    /**
-     * Validate configuration object
-     */
     private validateConfig(
       config: SocialContactInfoConfig
     ): SocialContactInfoConfig {
@@ -180,9 +177,6 @@
       return translation;
     }
 
-    /**
-     * Check if a string looks like a translation key
-     */
     private isTranslationKey(text: string): boolean {
       // Translation keys typically:
       // - Start with letters
@@ -193,18 +187,12 @@
       return keyPattern.test(text.trim()) && text.length < 50;
     }
 
-    /**
-     * Initialize DOM elements and event listeners
-     */
     public run(): void {
       this.setupInputValidation();
       this.setupFormSubmission();
       this.setupInputFocusAnimations();
     }
 
-    /**
-     * Initialize DOM element references
-     */
     private initializeElements(): void {
       this.form = document.querySelector('form');
       this.submitButton =
@@ -232,9 +220,6 @@
       }
     }
 
-    /**
-     * Validate email input
-     */
     private validateEmail(): void {
       const emailInput = this.emailInput!;
       const email = emailInput.value.trim();
@@ -269,9 +254,6 @@
       }
     }
 
-    /**
-     * Validate phone input
-     */
     private validatePhone(): void {
       const phoneInput = this.phoneInput!;
       const phone = phoneInput.value.replace(/[\s\-\(\)]/g, '');

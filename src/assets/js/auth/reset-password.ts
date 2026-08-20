@@ -159,9 +159,6 @@ export class ResetPasswordManager {
     });
   }
 
-  /**
-   * Validate configuration object
-   */
   private validateConfig(config: ResetPasswordConfig): ResetPasswordConfig {
     if (!config || typeof config !== 'object') {
       this.log('Invalid config provided, using defaults', { config }, 'warn');
@@ -181,9 +178,6 @@ export class ResetPasswordManager {
     };
   }
 
-  /**
-   * Validate password policy object
-   */
   private validatePasswordPolicy(policy: PasswordPolicy): PasswordPolicy {
     if (!policy || typeof policy !== 'object') {
       this.log(
@@ -247,9 +241,6 @@ export class ResetPasswordManager {
     return translation;
   }
 
-  /**
-   * Check if a string looks like a translation key
-   */
   private isTranslationKey(text: string): boolean {
     // Translation keys typically:
     // - Start with letters
@@ -260,9 +251,6 @@ export class ResetPasswordManager {
     return keyPattern.test(text.trim()) && text.length < 50;
   }
 
-  /**
-   * Initialize DOM elements and event listeners
-   */
   public run(): void {
     this.setupLanguageSelector();
     this.setupPasswordToggle();
@@ -271,9 +259,6 @@ export class ResetPasswordManager {
     this.setupInputFocusAnimations();
   }
 
-  /**
-   * Initialize DOM element references
-   */
   private initializeElements(): void {
     this.form = document.getElementById(
       'reset-password-form'
