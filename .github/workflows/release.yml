@@ -1,4 +1,5 @@
-name: CI & Release
+name: CI and Release
+run-name: CI and release — ${{ github.ref_name }}
 
 on:
   push:
@@ -12,103 +13,372 @@ on:
       - dev
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
+# Superseded branch and pull-request runs are cancelled. Immutable release-tag
+# runs continue so publication cannot be interrupted midway through signing.
+concurrency:
+  group: ci-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
 jobs:
-  # Quality gates run for branches, pull requests, and release tags.
-  ci:
-    name: Quality Checks
+  # Enforce the public repository's Conventional Commit policy independently so
+  # commit failures are not hidden behind source or test output.
+  commit-policy:
+    name: Policy — commit messages
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    concurrency:
-      group: ci-${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
-    permissions:
-      contents: read
-      pull-requests: read
+    timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Check out complete Git history
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
+      - name: Set up pnpm 11.4.0
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 11.4.0
 
-      - name: Setup Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: 'pnpm'
+          cache: pnpm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Print versions
-        run: |
-          git --version
-          node --version
-          pnpm --version
-          pnpm exec commitlint --version
-          pnpm exec eslint --version
-
-      - name: Audit production dependencies
-        run: pnpm audit --audit-level=high --prod
-
-      - name: Check production dependency licenses
-        run: pnpm run release:licenses
-
-      - name: Run ESLint
-        run: pnpm run lint:check
-
-      - name: Run Prettier check
-        run: pnpm run format:check
-
-      - name: Run typecheck
-        run: |
-          pnpm run typecheck
-          pnpm run typecheck:scripts
-          pnpm run typecheck:test
-          pnpm run typecheck:e2e
-
-      - name: Run tests with coverage
-        run: pnpm run test:coverage
-
-      - name: Build
-        run: pnpm run build
-
-      - name: Validate current commit with commitlint
-        if: github.event_name == 'push'
+      - name: Validate pushed commit message
+        if: github.event_name != 'pull_request'
         run: pnpm exec commitlint --last --verbose
 
-      - name: Validate PR commits with commitlint
+      - name: Validate every pull-request commit message
         if: github.event_name == 'pull_request'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: pnpm exec commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
-  # Per-adapter integration coverage is also a release gate.
-  # The matrix uses `include` to bind an adapter-specific DATABASE_URL —
-  # Prisma's sqlite datasource requires a `file:` URL, postgres needs a
-  # `postgresql://` URL, and mongodb does not use Prisma at all.
-  adapter-matrix:
-    name: Adapter matrix (${{ matrix.adapter }})
+  # Keep dependency vulnerabilities and incompatible production licenses visible
+  # as their own policy gate.
+  dependency-policy:
+    name: Policy — dependencies and licenses
     runs-on: ubuntu-latest
-    needs: ci
-    permissions:
-      contents: read
-    timeout-minutes: 25
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies at high severity
+        run: pnpm audit --audit-level=high --prod
+
+      - name: Validate production dependency licenses
+        run: pnpm run release:licenses
+
+  # Static architecture, lint, and formatting checks are grouped because they
+  # inspect source shape without compiling or executing the application.
+  source-quality:
+    name: Source quality — architecture, lint, and format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate architecture boundaries
+        run: pnpm run test:architecture
+
+      - name: Run ESLint with zero warnings
+        run: pnpm run lint:check
+
+      - name: Check source formatting
+        run: pnpm run format:check
+
+  # Every TypeScript project is a distinct matrix run and therefore appears as
+  # a separately named check in the GitHub Actions UI.
+  typecheck:
+    name: Typecheck — ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - adapter: sqlite
-            database_url: 'file:./runtime/data/parako_ci.db'
-          - adapter: postgresql
-            database_url: 'postgresql://parako:parako@localhost:5432/parako_test'
-          - adapter: mongodb
-            database_url: 'postgresql://unused:unused@localhost:5432/unused'
+          - label: server
+            script: typecheck:server
+          - label: browser assets
+            script: typecheck:browser
+          - label: maintenance scripts
+            script: typecheck:scripts
+          - label: unit tests
+            script: typecheck:test:unit
+          - label: integration tests
+            script: typecheck:test:integration
+          - label: browser E2E tests
+            script: typecheck:e2e
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck ${{ matrix.label }}
+        run: pnpm run ${{ matrix.script }}
+
+  # Unit behavior runs independently from contracts, integrations, cumulative
+  # coverage, and browser E2E so failures identify the affected layer directly.
+  unit-tests:
+    name: Tests — unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm run test:unit
+
+  # Repository contracts are intentionally independent from unit and adapter
+  # tests so a public-interface regression has an unambiguous check.
+  contract-tests:
+    name: Tests — repository contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository contract tests
+        run: pnpm run test:contract
+
+  # Persistence integration covers repository implementations, migrations,
+  # tenancy helpers, and storage providers backed by disposable SQLite and
+  # MongoDB fixtures.
+  integration-persistence:
+    name: Integration — persistence (SQLite and MongoDB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # gitleaks:allow -- deterministic non-production test encryption key.
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run persistence integration tests
+        run: pnpm run test:integration:persistence
+
+  # OIDC adapter and key-store integration has its own Redis service and check,
+  # separate from application routes and operational behavior.
+  integration-oidc:
+    name: Integration — OIDC adapters and key storage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      # gitleaks:allow -- deterministic non-production test encryption key.
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run OIDC integration tests
+        run: pnpm run test:integration:oidc
+
+  # Application integration covers configuration propagation, health, routes,
+  # CLI processes, security behavior, manifests, and utilities.
+  integration-application:
+    name: Integration — application runtime and CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      # gitleaks:allow -- deterministic non-production test encryption key.
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production CLI entrypoints
+        run: pnpm run build
+
+      - name: Run application integration tests
+        run: pnpm run test:integration:application
+
+  # The cumulative coverage policy intentionally remains separate from test
+  # diagnostics. It runs the complete suite because Vitest's per-file coverage
+  # ratchet depends on the combined execution map.
+  coverage:
+    name: Coverage — cumulative source policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run the cumulative coverage policy
+        run: pnpm run test:coverage
+
+      - name: Upload cumulative coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cumulative-coverage-${{ github.run_id }}
+          path: test-results/coverage
+          if-no-files-found: warn
+          retention-days: 7
+
+  # PostgreSQL owns its generated client, disposable migrated database, tenant
+  # RLS coverage, CLI behavior, and Redis-backed configuration invalidation.
+  integration-postgresql:
+    name: Integration — PostgreSQL, RLS, and configuration invalidation
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -123,72 +393,95 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      mongodb:
-        image: mongo:7
+      redis:
+        image: redis:7-alpine
         ports:
-          - 27017:27017
+          - 6379:6379
         options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-cmd "redis-cli ping"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      STORAGE_ADAPTER: ${{ matrix.adapter }}
-      STORAGE_POSTGRESQL_URL: postgresql://parako:parako@localhost:5432/parako_test
-      DATABASE_URL: ${{ matrix.database_url }}
-      STORAGE_MONGODB_URI: mongodb://localhost:27017/parako_test
-      STORAGE_SQLITE_PATH: ./runtime/data/parako_ci.db
+      # gitleaks:allow -- disposable CI-only PostgreSQL service credentials.
+      STORAGE_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_test
+      # gitleaks:allow -- disposable CI-only PostgreSQL service credentials.
+      DATABASE_URL: postgresql://parako:parako@127.0.0.1:5432/parako_test
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      # gitleaks:allow -- deterministic non-production test encryption key.
       ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
     steps:
-      - name: Checkout
+      - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Setup pnpm
+      - name: Set up pnpm 11.4.0
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 11.4.0
 
-      - name: Setup Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: 'pnpm'
+          cache: pnpm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare runtime directories
-        if: matrix.adapter == 'sqlite'
-        run: mkdir -p runtime/data
+      - name: Build production CLI entrypoints
+        run: pnpm run build
 
-      - name: Apply PostgreSQL migrations
-        if: matrix.adapter == 'postgresql'
-        run: pnpm exec prisma migrate deploy --config=prisma.config.pg.ts
-
-      - name: Apply SQLite migrations
-        if: matrix.adapter == 'sqlite'
-        run: pnpm exec prisma migrate deploy --config=prisma.config.ts
-
-      - name: Run tests
-        env:
-          ADAPTER_NAME: ${{ matrix.adapter }}
-        run: |
-          echo "Running tests with STORAGE_ADAPTER=$ADAPTER_NAME"
-          pnpm run test:run
-
-      - name: Run PostgreSQL RLS integration tests
-        if: matrix.adapter == 'postgresql'
+      - name: Run PostgreSQL integration tests
         run: pnpm run test:integration:postgresql
 
-  e2e-infrastructure:
-    name: E2E infrastructure matrix
+  # Build separately from static checks and tests. This exposes packaging or
+  # manifest failures without burying them in a general-purpose job.
+  production-build:
+    name: Build — production application
     runs-on: ubuntu-latest
-    needs: ci
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up pnpm 11.4.0
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          version: 11.4.0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build production application
+        run: pnpm run build
+
+  # This E2E job verifies that the test harness can provision its application
+  # infrastructure instead of depending on a pre-started local deployment.
+  e2e-infrastructure:
+    name: Browser E2E — self-starting infrastructure
+    runs-on: ubuntu-latest
+    needs:
+      - commit-policy
+      - dependency-policy
+      - source-quality
+      - typecheck
+      - unit-tests
+      - contract-tests
+      - integration-persistence
+      - integration-oidc
+      - integration-application
+      - integration-postgresql
+      - coverage
+      - production-build
     timeout-minutes: 75
-    permissions:
-      contents: read
     services:
       redis:
         image: redis:7-alpine
@@ -217,27 +510,27 @@ jobs:
       PARAKO_E2E_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_e2e
       PARAKO_E2E_PROFILE: self-starting
     steps:
-      - name: Checkout
+      - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup pnpm
+      - name: Set up pnpm 11.4.0
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 11.4.0
 
-      - name: Setup Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: 'pnpm'
+          cache: pnpm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chrome
+      - name: Install Chrome and system dependencies
         run: pnpm exec playwright install --with-deps chrome
 
-      - name: Build
+      - name: Build production application for E2E
         run: pnpm run build
 
       - name: Run self-starting deployment matrix
@@ -254,13 +547,25 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Each cell/profile pair is an independent browser E2E job in the Actions UI,
+  # making adapter, tenancy, and configuration failures directly identifiable.
   e2e-browser-matrix:
-    name: E2E ${{ matrix.cell }} / ${{ matrix.profile }}
+    name: Browser E2E — ${{ matrix.cell }} / ${{ matrix.profile }}
     runs-on: ubuntu-latest
-    needs: ci
+    needs:
+      - commit-policy
+      - dependency-policy
+      - source-quality
+      - typecheck
+      - unit-tests
+      - contract-tests
+      - integration-persistence
+      - integration-oidc
+      - integration-application
+      - integration-postgresql
+      - coverage
+      - production-build
     timeout-minutes: 75
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -314,30 +619,30 @@ jobs:
       # gitleaks:allow -- disposable CI-only PostgreSQL service credentials.
       PARAKO_E2E_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_e2e
     steps:
-      - name: Checkout
+      - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup pnpm
+      - name: Set up pnpm 11.4.0
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           version: 11.4.0
 
-      - name: Setup Node.js
+      - name: Set up Node.js 24
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          cache: 'pnpm'
+          cache: pnpm
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chrome
+      - name: Install Chrome and system dependencies
         run: pnpm exec playwright install --with-deps chrome
 
-      - name: Build
+      - name: Build production application for E2E
         run: pnpm run build
 
-      - name: Run browser cell
+      - name: Run browser cell and profile
         run: pnpm run test:e2e:cell
 
       - name: Upload E2E failure artifacts
@@ -354,8 +659,22 @@ jobs:
   # Release builds are architecture-specific. Publishing happens only after both
   # artifacts pass the same CI and adapter gates.
   release-build:
-    name: Release build (${{ matrix.arch }})
-    needs: [ci, adapter-matrix, e2e-infrastructure, e2e-browser-matrix]
+    name: Release artifact — linux/${{ matrix.arch }}
+    needs:
+      - commit-policy
+      - dependency-policy
+      - source-quality
+      - typecheck
+      - unit-tests
+      - contract-tests
+      - integration-persistence
+      - integration-oidc
+      - integration-application
+      - integration-postgresql
+      - coverage
+      - production-build
+      - e2e-infrastructure
+      - e2e-browser-matrix
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
@@ -463,8 +782,9 @@ jobs:
             parako-id-v*-linux-${{ matrix.arch }}.zip.sig
             parako-id-v*-linux-${{ matrix.arch }}.zip.pem
 
+  # Build, publish, sign, and verify one immutable multi-platform OCI image.
   container-release:
-    name: Publish signed multi-platform image
+    name: Release container — signed multi-platform image
     needs: release-build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
@@ -555,8 +875,10 @@ jobs:
             "$REFERENCE"
           echo "reference=$REFERENCE" >> "$GITHUB_OUTPUT"
 
+  # Publish signed archives and integrity metadata only after the container
+  # and every architecture-specific artifact have passed their gates.
   release:
-    name: Publish immutable release
+    name: Release publication — immutable GitHub release
     needs: [release-build, container-release]
     runs-on: ubuntu-24.04
     timeout-minutes: 20

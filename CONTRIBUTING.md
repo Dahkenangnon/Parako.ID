@@ -178,12 +178,26 @@ risks. Include screenshots for visual changes.
 
 ## CI and releases
 
-GitHub Actions run quality checks, storage-adapter integration coverage, and
-the browser matrix on pull requests to `dev` or `main` and pushes to `main`.
-Workflow actions must be pinned to immutable commit SHAs with a readable
-version comment.
+GitHub Actions expose independent, clearly named checks on pull requests to
+`dev` or `main` and pushes to `main`:
+
+- commit and dependency policy;
+- architecture, lint, and formatting quality;
+- one matrix job for each TypeScript project;
+- unit and repository contract tests, plus a separate cumulative coverage policy;
+- domain-sharded persistence, OIDC, and application integration jobs, plus
+  dedicated PostgreSQL/RLS coverage;
+- the strict production build;
+- self-starting and adapter/tenancy/configuration browser E2E matrices;
+- installer shell, contract, native, Docker, fixture, and OS smoke jobs; and
+- CodeQL analysis for Actions and JavaScript/TypeScript.
+
+A failed check therefore identifies the affected layer or platform without
+requiring maintainers to search through an all-in-one CI log. Workflow actions
+must be pinned to immutable commit SHAs with a readable version comment.
 
 Releases are not created from ordinary branch pushes. Maintainers update the
 version and changelog, create a matching immutable `vX.Y.Z` tag, and let the
-tag workflow build, sign, and publish architecture-specific artifacts. Do not
-create or move release tags as part of a normal contribution.
+tag workflow build, sign, and publish architecture-specific artifacts only
+after every required CI check passes. Do not create or move release tags as
+part of a normal contribution.

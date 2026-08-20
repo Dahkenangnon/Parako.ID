@@ -1,21 +1,26 @@
-name: 'CodeQL Advanced'
+name: Security — CodeQL
+run-name: CodeQL security analysis — ${{ github.ref_name }}
 
 on:
   push:
     branches: ['main']
   pull_request:
     branches: ['main', 'dev']
+  # Weekly full analysis complements push and pull-request checks.
   schedule:
     - cron: '20 22 * * 2'
+  workflow_dispatch: {}
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  # Each language is a separate matrix run with an explicit check name.
   analyze:
-    name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    name: CodeQL — ${{ matrix.label }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
-    concurrency:
-      group: codeql-${{ github.workflow }}-${{ github.ref }}-${{ matrix.language }}
-      cancel-in-progress: true
     permissions:
       security-events: write
       packages: read
@@ -26,23 +31,25 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: actions
+          - label: GitHub Actions
+            language: actions
             build-mode: none
-          - language: javascript-typescript
+          - label: JavaScript and TypeScript
+            language: javascript-typescript
             build-mode: none
 
     steps:
-      - name: Checkout repository
+      - name: Check out repository source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Initialize CodeQL
+      - name: Initialize ${{ matrix.label }} analysis
         uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended,security-and-quality
 
-      - name: Perform CodeQL Analysis
+      - name: Analyze ${{ matrix.label }} and upload results
         uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4.37.4
         with:
-          category: '/language:${{matrix.language}}'
+          category: '/language:${{ matrix.language }}'
