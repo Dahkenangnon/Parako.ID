@@ -1,4 +1,1 @@
-pnpm run lint:check
-pnpm run format:check
-pnpm run typecheck
-pnpm run test:run
+node scripts/testing/check-staged-files.ts
