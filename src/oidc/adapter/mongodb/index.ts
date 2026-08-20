@@ -156,9 +156,6 @@ export default class OIDCMongoAdapter
     this.db = db;
   }
 
-  /**
-   * Update or Create an instance of an oidc-provider model.
-   */
   async upsert(
     _id: string,
     payload: OIDCPayload,
@@ -195,9 +192,6 @@ export default class OIDCMongoAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of an oidc-provider model.
-   */
   async find(_id: string): Promise<OIDCPayload | undefined> {
     try {
       if (!_id) return undefined;
@@ -260,9 +254,6 @@ export default class OIDCMongoAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of DeviceCode by the end-user entered user code.
-   */
   async findByUserCode(userCode: string): Promise<OIDCPayload | undefined> {
     try {
       if (!userCode || this.name !== 'DeviceCode') return undefined;
@@ -283,9 +274,6 @@ export default class OIDCMongoAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of Session by its uid reference property.
-   */
   async findByUid(uid: string): Promise<OIDCPayload | undefined> {
     try {
       if (!uid || this.name !== 'Session') return undefined;
@@ -455,9 +443,6 @@ export default class OIDCMongoAdapter
     }
   }
 
-  /**
-   * Find documents by a custom data field
-   */
   async findByCustomField(
     field: string,
     value: unknown

@@ -18,6 +18,8 @@ import type { IAuthService } from '../interfaces/auth-service.interface.js';
 import type { IActivityService } from '../interfaces/activity-service.interface.js';
 import type { IPlatformAdminService } from '../../services/platform-admin.service.js';
 import type { IProviderService } from '../interfaces/provider-service.interface.js';
+import type { IRedisPubSubService } from '../interfaces/redis-pubsub-service.interface.js';
+import type { ITenantSettingsOverrideService } from '../interfaces/tenant-settings-override-service.interface.js';
 
 import { ClientsController } from '../../api/v1/controllers/clients.controller.js';
 import { UsersController } from '../../api/v1/controllers/users.controller.js';
@@ -53,45 +55,19 @@ export const apiModule: ContainerModule = new ContainerModule(
           TYPES.ActivityService
         );
 
-        // Platform admin service may not be bound in non-multi-tenant setups
-        let platformAdminService: IPlatformAdminService | undefined;
-        try {
-          platformAdminService = context.get<IPlatformAdminService>(
-            TYPES.PlatformAdminService
-          );
-        } catch {
-          // Not available — tenants endpoints will return errors
-        }
-
-        // Tenant settings override service may not be bound
-        let tenantSettingsOverrideService: any;
-        try {
-          tenantSettingsOverrideService = context.get(
+        const platformAdminService = context.get<IPlatformAdminService>(
+          TYPES.PlatformAdminService
+        );
+        const tenantSettingsOverrideService =
+          context.get<ITenantSettingsOverrideService>(
             TYPES.TenantSettingsOverrideService
           );
-        } catch {
-          // best-effort: the tenant-override service is optional and
-          // not bound in single-tenant deployments — leave undefined.
-        }
-
-        // Redis pub/sub may not be bound
-        let redisPubSub: any;
-        try {
-          redisPubSub = context.get(TYPES.RedisPubSubService);
-        } catch {
-          // best-effort: Redis pub/sub is optional and absent when
-          // Redis isn't configured — leave undefined.
-        }
-
-        // ProviderService for registration token management
-        let providerService: IProviderService | undefined;
-        try {
-          providerService = context.get<IProviderService>(
-            TYPES.ProviderService
-          );
-        } catch {
-          // Not available — registration-tokens endpoints will return errors
-        }
+        const redisPubSub = context.get<IRedisPubSubService>(
+          TYPES.RedisPubSubService
+        );
+        const providerService = context.get<IProviderService>(
+          TYPES.ProviderService
+        );
 
         const getTenantId = () => tenantContext.getTenantId();
 
@@ -103,7 +79,7 @@ export const apiModule: ContainerModule = new ContainerModule(
         });
 
         const auditLogger = createApiAuditLogger({
-          activityService: activityService as any,
+          activityService,
           logger,
         });
 
@@ -116,20 +92,20 @@ export const apiModule: ContainerModule = new ContainerModule(
         // before initialize(), which hasn't run yet at DI resolution time.
         // Controllers access these lazily during request handling.
         const clientsController = new ClientsController({
-          oidcAdapter: oidcAdapter as any,
+          oidcAdapter,
           logger,
         });
 
         const usersController = new UsersController({
-          userService: userService as any,
-          authService: authService as any,
-          activityService: activityService as any,
-          oidcAdapter: oidcAdapter as any,
+          userService,
+          authService,
+          activityService,
+          oidcAdapter,
           logger,
         });
 
         const sessionsController = new SessionsController({
-          oidcAdapter: oidcAdapter as any,
+          oidcAdapter,
           logger,
         });
 
@@ -141,27 +117,27 @@ export const apiModule: ContainerModule = new ContainerModule(
         });
 
         const auditController = new AuditController({
-          activityService: activityService as any,
+          activityService,
           logger,
         });
 
         const statsController = new StatsController({
-          userService: userService as any,
-          oidcAdapter: oidcAdapter as any,
-          activityService: activityService as any,
+          userService,
+          oidcAdapter,
+          activityService,
           configManager,
           logger,
         });
 
         const tenantsController = new TenantsController({
-          platformAdminService: platformAdminService as any,
+          platformAdminService,
           tenantSettingsOverrideService,
           configManager,
           logger,
         });
 
         const registrationTokensController = new RegistrationTokensController({
-          providerService: providerService as any,
+          providerService,
           oidcAdapter,
           getTenantId,
           logger,

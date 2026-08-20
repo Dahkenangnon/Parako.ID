@@ -1,4 +1,4 @@
-import type { SessionDocument } from '../../oidc/interfaces/interface.js';
+import type { OidcAdminDocument } from '../../oidc/adapter/admin.contract.js';
 
 /**
  * Sends best-effort OpenID Connect back-channel logout notifications for a
@@ -6,7 +6,7 @@ import type { SessionDocument } from '../../oidc/interfaces/interface.js';
  */
 export interface IOIDCBackchannelLogoutService {
   notifySessionRevocation(
-    session: SessionDocument,
+    session: OidcAdminDocument,
     tenantId: string
   ): Promise<void>;
 }

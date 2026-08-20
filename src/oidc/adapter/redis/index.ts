@@ -12,6 +12,7 @@ import {
 import { ensureDecrypted } from '../../../utils/encryption.js';
 import { sanitizeClientPayload } from '../client-crud-utils.js';
 import { buildRedisKey } from '../../../multi-tenancy/redis-key.js';
+import { decodeOidcPayload } from '../payload-decoder.js';
 
 /**
  * Redis Adapter for OIDC Provider
@@ -38,6 +39,10 @@ export default class OIDCRedisAdapter
     this.keyPrefix = keyPrefix;
   }
 
+  protected decodePayload(serialized: string): OIDCPayload {
+    return decodeOidcPayload(serialized, `redis_oidc.${this.name}.payload`);
+  }
+
   /**
    * Generate Redis key for this adapter instance.
    * Unified format: {keyPrefix}:{tenantId}:oidc:{Model}:{id}
@@ -58,9 +63,6 @@ export default class OIDCRedisAdapter
     return buildRedisKey(this.keyPrefix, 'oidc', 'uid', uid);
   }
 
-  /**
-   * Update or Create an instance of an oidc-provider model.
-   */
   async upsert(
     _id: string,
     payload: OIDCPayload,
@@ -113,9 +115,6 @@ export default class OIDCRedisAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of an oidc-provider model.
-   */
   async find(_id: string): Promise<OIDCPayload | undefined> {
     try {
       if (!_id) return undefined;
@@ -130,7 +129,7 @@ export default class OIDCRedisAdapter
 
       let result: OIDCPayload;
       if (typeof data === 'string') {
-        result = JSON.parse(data);
+        result = this.decodePayload(data);
       } else {
         const { payload, ...rest } = data as {
           payload: string;
@@ -138,7 +137,7 @@ export default class OIDCRedisAdapter
         };
         result = {
           ...rest,
-          ...JSON.parse(payload),
+          ...this.decodePayload(payload),
         };
       }
 
@@ -189,7 +188,7 @@ export default class OIDCRedisAdapter
 
         let payload: OIDCPayload;
         if (typeof data === 'string') {
-          payload = JSON.parse(data) as OIDCPayload;
+          payload = this.decodePayload(data);
         } else {
           const { payload: encodedPayload, ...metadata } = data as {
             payload: string;
@@ -197,7 +196,7 @@ export default class OIDCRedisAdapter
           };
           payload = {
             ...metadata,
-            ...(JSON.parse(encodedPayload) as OIDCPayload),
+            ...this.decodePayload(encodedPayload),
           };
         }
 
@@ -214,9 +213,6 @@ export default class OIDCRedisAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of DeviceCode by the end-user entered user code.
-   */
   async findByUserCode(userCode: string): Promise<OIDCPayload | undefined> {
     try {
       if (!userCode || this.name !== 'DeviceCode') return undefined;
@@ -233,9 +229,6 @@ export default class OIDCRedisAdapter
     }
   }
 
-  /**
-   * Return previously stored instance of Session by its uid reference property.
-   */
   async findByUid(uid: string): Promise<OIDCPayload | undefined> {
     try {
       if (!uid || this.name !== 'Session') return undefined;
@@ -390,9 +383,6 @@ export default class OIDCRedisAdapter
     }
   }
 
-  /**
-   * Find documents by a custom data field
-   */
   async findByCustomField(field: string, value: unknown): Promise<any[]> {
     try {
       if (!field.trim()) return [];
@@ -420,7 +410,7 @@ export default class OIDCRedisAdapter
           const baseKey = keys[i].replace(':custom', '');
           const doc = await this.client.get(baseKey);
           if (doc) {
-            results.push(JSON.parse(doc));
+            results.push(this.decodePayload(doc));
           }
         }
       }

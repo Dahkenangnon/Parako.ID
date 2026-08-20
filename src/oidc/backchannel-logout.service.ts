@@ -5,7 +5,7 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IOIDCBackchannelLogoutService } from '../di/interfaces/oidc-backchannel-logout-service.interface.js';
 import type { IProviderService } from '../di/interfaces/provider-service.interface.js';
 import { TYPES } from '../di/types.js';
-import type { SessionDocument } from './interfaces/interface.js';
+import type { OidcAdminDocument } from './adapter/admin.contract.js';
 
 type BackchannelLogoutClient = Client & {
   backchannelLogout?: (accountId: string, sid: string) => Promise<void>;
@@ -54,7 +54,7 @@ export class OIDCBackchannelLogoutService implements IOIDCBackchannelLogoutServi
   ) {}
 
   public async notifySessionRevocation(
-    session: SessionDocument,
+    session: OidcAdminDocument,
     tenantId: string
   ): Promise<void> {
     if (

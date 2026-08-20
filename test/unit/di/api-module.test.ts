@@ -9,7 +9,7 @@ import { apiModule } from '../../../src/di/modules/api.module.js';
 import { TYPES } from '../../../src/di/types.js';
 
 function createApiContainer(
-  options: { includeOptional?: boolean } = {}
+  options: { brokenPlatform?: boolean; omitProvider?: boolean } = {}
 ): Container {
   const container = new Container();
   container.bind(TYPES.Logger).toConstantValue({
@@ -29,10 +29,16 @@ function createApiContainer(
   container.bind(TYPES.UserService).toConstantValue({});
   container.bind(TYPES.AuthService).toConstantValue({});
   container.bind(TYPES.ActivityService).toConstantValue({});
-  if (options.includeOptional) {
+  if (options.brokenPlatform) {
+    container.bind(TYPES.PlatformAdminService).toDynamicValue(() => {
+      throw new Error('platform admin construction failed');
+    });
+  } else {
     container.bind(TYPES.PlatformAdminService).toConstantValue({});
-    container.bind(TYPES.TenantSettingsOverrideService).toConstantValue({});
-    container.bind(TYPES.RedisPubSubService).toConstantValue({});
+  }
+  container.bind(TYPES.TenantSettingsOverrideService).toConstantValue({});
+  container.bind(TYPES.RedisPubSubService).toConstantValue({});
+  if (!options.omitProvider) {
     container.bind(TYPES.ProviderService).toConstantValue({});
   }
   container.load(apiModule);
@@ -40,7 +46,7 @@ function createApiContainer(
 }
 
 describe('apiModule', () => {
-  it('builds one Management API router without optional multi-tenant services', () => {
+  it('builds one Management API router with its required capabilities', () => {
     const container = createApiContainer();
 
     const first = container.get(TYPES.ApiV1RoutesManager);
@@ -50,10 +56,18 @@ describe('apiModule', () => {
     expect(second).toBe(first);
   });
 
-  it('builds the Management API router with every multi-tenant service', () => {
-    const container = createApiContainer({ includeOptional: true });
+  it('surfaces failures while constructing a required service', () => {
+    const container = createApiContainer({ brokenPlatform: true });
 
-    expect(container.get(TYPES.ApiV1RoutesManager)).toBeInstanceOf(Function);
+    expect(() => container.get(TYPES.ApiV1RoutesManager)).toThrow(
+      'platform admin construction failed'
+    );
+  });
+
+  it('fails fast when a required provider capability is not bound', () => {
+    const container = createApiContainer({ omitProvider: true });
+
+    expect(() => container.get(TYPES.ApiV1RoutesManager)).toThrow();
   });
 
   it('uses the default tenant and returns a Problem Detail when keys are unavailable', async () => {

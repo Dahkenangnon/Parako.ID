@@ -5,6 +5,7 @@ import type { ILogger } from '../../../di/interfaces/logger.interface.js';
 import { ensureDecrypted } from '../../../utils/encryption.js';
 import { sanitizeClientPayload } from '../client-crud-utils.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
+import { decodeOidcPayload } from '../payload-decoder.js';
 
 /**
  * Prisma-backed OIDC adapter — stores all 14 oidc-provider model types
@@ -21,6 +22,10 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
     logger: ILogger
   ) {
     super(model, logger);
+  }
+
+  private decodePayload(serialized: string): OIDCPayload {
+    return decodeOidcPayload(serialized, `prisma_oidc.${this.name}.payload`);
   }
 
   /** Filter clause that excludes records past their expires_at. */
@@ -85,7 +90,7 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
       });
       if (!row) return undefined;
 
-      const payload = JSON.parse(row.payload) as OIDCPayload;
+      const payload = this.decodePayload(row.payload);
 
       // The spec requires find() to return a truthy `consumed` property after consume().
       if (row.consumed) {
@@ -125,7 +130,7 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
       });
 
       return rows.map(row => ({
-        ...(JSON.parse(row.payload) as OIDCPayload),
+        ...this.decodePayload(row.payload),
         _id: row.id,
       }));
     } catch (error) {
@@ -147,7 +152,7 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
         },
       });
       if (!row) return undefined;
-      return JSON.parse(row.payload) as OIDCPayload;
+      return this.decodePayload(row.payload);
     } catch (error) {
       this.logError(error as Error, 'findByUserCode');
       throw error;
@@ -162,7 +167,7 @@ export class PrismaOidcStoreAdapter extends BaseOIDCAdapter {
         where: { model: this.name, uid, tenant_id, ...this.notExpired },
       });
       if (!row) return undefined;
-      return JSON.parse(row.payload) as OIDCPayload;
+      return this.decodePayload(row.payload);
     } catch (error) {
       this.logError(error as Error, 'findByUid');
       throw error;

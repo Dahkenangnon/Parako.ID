@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaOidcAdminService } from '../../../../../src/oidc/adapter/prisma/admin-service.js';
 import { tenantContext } from '../../../../../src/multi-tenancy/tenant-context.js';
 import type { OidcClientData } from '../../../../../src/oidc/adapter/client.interface.js';
+import { PersistenceDecodingError } from '../../../../../src/db/persistence/json-decoder.js';
 
 function makePrisma() {
   return {
@@ -227,6 +228,23 @@ describe('PrismaOidcAdminService session and grant behavior', () => {
       deletedCount: 0,
     });
     expect(prisma.oidcStore.deleteMany).toHaveBeenCalledTimes(4);
+  });
+
+  it('rejects non-object session payloads with controlled diagnostics', async () => {
+    const prisma = makePrisma();
+    prisma.oidcStore.findFirst.mockResolvedValue(
+      oidcRow('session-1', {}, { payload: '["private-marker"]' })
+    );
+    const service = new PrismaOidcAdminService(prisma as any, 'Session');
+
+    try {
+      await service.findSessionById('session-1');
+      throw new Error('Expected persisted OIDC payload decoding to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PersistenceDecodingError);
+      expect(error).toMatchObject({ context: 'prisma_oidc.Session.payload' });
+      expect(String(error)).not.toContain('private-marker');
+    }
   });
 
   it('computes session statistics from tenant-scoped counts', async () => {

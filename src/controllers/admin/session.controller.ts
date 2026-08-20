@@ -28,10 +28,14 @@ function firstQueryString(value: unknown): string {
   return typeof candidate === 'string' ? candidate : '';
 }
 
-/**
- * Admin Sessions Controller
- * Handles displaying and managing all user sessions (OIDC + Express) for admin panel
- */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 @injectable()
 export class AdminSessionsController implements IAdminSessionsController {
   private readonly originId = randomUUID();
@@ -86,10 +90,6 @@ export class AdminSessionsController implements IAdminSessionsController {
       });
   }
 
-  /**
-   * Display all user sessions with pagination, search, and filtering
-   * GET /admin/sessions
-   */
   public list = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
       req.query,
@@ -229,10 +229,6 @@ export class AdminSessionsController implements IAdminSessionsController {
     });
   };
 
-  /**
-   * Display session details
-   * GET /admin/sessions/:id
-   */
   public show = async (req: Request, res: Response): Promise<void> => {
     const sessionId = req.params.id;
     const sessionType = (req.query.type as string) || 'oidc';
@@ -297,7 +293,9 @@ export class AdminSessionsController implements IAdminSessionsController {
     const sessionDetails = await this.oidcUtils.processSessionData(session);
     sessionDetails.sessionType = 'oidc';
 
-    sessionDetails.authorizations = session.payload.authorizations || {};
+    sessionDetails.authorizations = isRecord(session.payload.authorizations)
+      ? session.payload.authorizations
+      : {};
     sessionDetails.created_at = session.created_at
       ? new Date(session.created_at)
       : new Date();
@@ -311,10 +309,6 @@ export class AdminSessionsController implements IAdminSessionsController {
     });
   };
 
-  /**
-   * Revoke a specific session
-   * POST /admin/sessions/:id/revoke
-   */
   public revokeSession = async (req: Request, res: Response): Promise<void> => {
     const sessionId = req.params.id;
     const sessionType = (req.body.sessionType as string) || 'oidc';
@@ -357,7 +351,9 @@ export class AdminSessionsController implements IAdminSessionsController {
       }
     } else {
       const session = await this.oidcAdapter.session.findSessionById(sessionId);
-      const targetUsername = session?.payload?.accountId || 'unknown';
+      const targetUsername = nonEmptyString(session?.payload.accountId)
+        ? session.payload.accountId
+        : 'unknown';
 
       if (session) {
         await this.backchannelLogoutService.notifySessionRevocation(
@@ -398,10 +394,6 @@ export class AdminSessionsController implements IAdminSessionsController {
     res.redirect('/admin/sessions');
   };
 
-  /**
-   * Revoke all sessions for a specific user
-   * POST /admin/sessions/revoke-user/:username
-   */
   public revokeUserSessions = async (
     req: Request,
     res: Response
@@ -414,7 +406,7 @@ export class AdminSessionsController implements IAdminSessionsController {
     let oidcRevokedCount = 0;
     for (const session of userSessions) {
       const sessionId = session.payload.jti;
-      if (sessionId) {
+      if (nonEmptyString(sessionId)) {
         await this.backchannelLogoutService.notifySessionRevocation(
           session,
           tenantContext.getTenantId()

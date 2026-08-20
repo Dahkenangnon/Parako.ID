@@ -21,7 +21,9 @@ import {
   encryptClientSecret,
   decryptClientSecret,
 } from '../client-crud-utils.js';
+import type { IOidcAdminService } from '../admin.contract.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
+import { decodeOidcPayload, validateOidcPayload } from '../payload-decoder.js';
 
 type OidcStoreRow = {
   id: string;
@@ -89,15 +91,21 @@ function indexedSortColumn(sortBy: string): string {
  * One instance is created per model type in initializePrisma():
  *   Session, Grant, Client, AccessToken, RefreshToken, Interaction
  */
-export class PrismaOidcAdminService {
+export class PrismaOidcAdminService implements IOidcAdminService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly model: string
   ) {}
 
+  private decodePayload(payload: unknown) {
+    const context = `prisma_oidc.${this.model}.payload`;
+    return typeof payload === 'string'
+      ? decodeOidcPayload(payload, context)
+      : validateOidcPayload(payload, context);
+  }
+
   private parsePayload(row: OidcStoreRow): any {
-    const payload =
-      typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+    const payload = this.decodePayload(row.payload);
     return {
       _id: row.id,
       payload,
@@ -383,7 +391,7 @@ export class PrismaOidcAdminService {
       where: this.modelWhere({ id }),
     });
     if (!row) return undefined;
-    return JSON.parse(row.payload);
+    return this.decodePayload(row.payload);
   }
 
   /** Base OIDC `destroy`. */
@@ -623,8 +631,7 @@ export class PrismaOidcAdminService {
   }
 
   private extractClientPayload(row: OidcStoreRow): OidcClientData {
-    const payload =
-      typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+    const payload = this.decodePayload(row.payload);
     const clientData = {
       ...payload,
       client_id: payload.client_id || row.id,

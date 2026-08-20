@@ -28,6 +28,7 @@ import {
   decryptClientSecret,
   sanitizeClientPayload,
 } from '../client-crud-utils.js';
+import type { IOidcAdminService } from '../admin.contract.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
 
 function grantSortField(sortBy: unknown): string {
@@ -68,14 +69,10 @@ function currentTenantIdentityListFilter(logicalIds: string[]) {
   return { _id: { $in: physicalIds }, tenant_id };
 }
 
-/**
- * MongodbOidcAdminService
- *
- * Consolidated admin service for MongoDB-backed OIDC models.
- * Replaces the 14 per-model per-file adapter classes (session.ts, grant.ts, …).
- * One instance per model type is constructed inline by OIDCAdapterBridge.
- */
-export class MongodbOidcAdminService extends OIDCMongoAdapter {
+export class MongodbOidcAdminService
+  extends OIDCMongoAdapter
+  implements IOidcAdminService
+{
   constructor(model: string, db: Db, logger: ILogger) {
     super(model, db, logger);
   }
@@ -726,9 +723,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     return clientData;
   }
 
-  /**
-   * Find a client by its client_id.
-   */
   async findClientById(clientId: string): Promise<OidcClientData | null> {
     try {
       const tenant_id = tenantContext.getTenantId();
@@ -754,9 +748,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     }
   }
 
-  /**
-   * Find all clients, optionally filtered.
-   */
   async findAllClients(filters?: ClientFilters): Promise<OidcClientData[]> {
     try {
       const tenant_id = tenantContext.getTenantId();
@@ -778,9 +769,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     }
   }
 
-  /**
-   * Update a client by its client_id.
-   */
   async updateClient(
     clientId: string,
     updates: Partial<OidcClientData>
@@ -819,9 +807,6 @@ export class MongodbOidcAdminService extends OIDCMongoAdapter {
     }
   }
 
-  /**
-   * Delete a client by its client_id.
-   */
   async deleteClient(clientId: string): Promise<boolean> {
     try {
       const tenant_id = tenantContext.getTenantId();

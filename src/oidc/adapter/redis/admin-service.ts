@@ -24,20 +24,19 @@ import {
   encryptClientSecret,
   decryptClientSecret,
 } from '../client-crud-utils.js';
+import type {
+  IOidcAdminService,
+  OidcAdminDocument,
+} from '../admin.contract.js';
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Consolidated Redis OIDC admin service.
- * Replaces the 6 per-model per-file admin classes (session, grant, client,
- * access-token, refresh-token, interaction) with a single class that
- * dispatches on `this.name` where model-specific behaviour is needed.
- *
- * Constructed directly in OIDCAdapterBridge — no @injectable decorator needed.
- */
-export class RedisOidcAdminService extends OIDCRedisAdapter {
+export class RedisOidcAdminService
+  extends OIDCRedisAdapter
+  implements IOidcAdminService
+{
   constructor(
     model: string,
     client: Redis,
@@ -47,14 +46,14 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     super(model, client, logger, keyPrefix);
   }
 
-  async findByAccountId(accountId: string): Promise<any[]> {
+  async findByAccountId(accountId: string): Promise<OidcAdminDocument[]> {
     try {
       if (!accountId) return [];
 
       const now = Math.floor(Date.now() / 1000);
       const pattern = buildRedisKey(this.keyPrefix, 'oidc', this.name, '*');
       const keys = await this.scanKeys(pattern);
-      const sessions: any[] = [];
+      const sessions: OidcAdminDocument[] = [];
 
       if (keys.length === 0) return sessions;
 
@@ -69,7 +68,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (
               sessionData &&
               sessionData.accountId === accountId &&
@@ -77,7 +76,14 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
               sessionData.exp > now &&
               sessionData.kind === 'Session'
             ) {
-              sessions.push(sessionData);
+              sessions.push({
+                _id: keys[i].replace(
+                  buildRedisKey(this.keyPrefix, 'oidc', this.name, ''),
+                  ''
+                ),
+                payload: sessionData,
+                expiresAt: new Date(sessionData.exp * 1000),
+              });
             }
           }
         } catch (error) {
@@ -114,7 +120,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (sessionData && sessionData.jti === sessionId) {
               await this.destroy(
                 keys[i].replace(
@@ -163,7 +169,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (
               sessionData &&
               sessionData.accountId === accountId &&
@@ -230,7 +236,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (sessionData.kind === 'Session') {
               total++;
               if (sessionData.exp != null && sessionData.exp > now) {
@@ -275,7 +281,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (this.matchesFilters(sessionData, filters)) count++;
           }
         } catch (error) {
@@ -317,7 +323,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (
               Object.keys(filters).length === 0 ||
               this.matchesFilters(sessionData, filters)
@@ -375,7 +381,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (sessionData.jti === sessionId) {
               return {
                 _id: keys[i].replace(
@@ -425,7 +431,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (sessionData.kind === 'Session') {
               sessions.push({
                 _id: keys[i].replace(
@@ -480,7 +486,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const sessionData = JSON.parse(data as string);
+            const sessionData = this.decodePayload(data as string);
             if (sessionData && sessionData.accountId === accountId) {
               keysToDelete.push(keys[i]);
             }
@@ -554,7 +560,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = pipelineResults[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             if (grantData && grantData.accountId === accountId) {
               results.push({
                 _id: keys[i].replace(
@@ -609,7 +615,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = pipelineResults[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             if (grantData && grantData.clientId === clientId) {
               results.push({
                 _id: keys[i].replace(
@@ -846,7 +852,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             if (this.matchesFilters(grantData, filters)) count++;
           }
         } catch (error) {
@@ -888,7 +894,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             if (
               Object.keys(filters).length === 0 ||
               this.matchesFilters(grantData, filters)
@@ -932,7 +938,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
 
       if (!data) return null;
 
-      const grantData = JSON.parse(data as string);
+      const grantData = this.decodePayload(data as string);
       return {
         _id: id,
         payload: grantData,
@@ -987,7 +993,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             total++;
 
             if (grantData.iat && grantData.iat >= thirtyDaysAgo) recent++;
@@ -1051,7 +1057,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             grants.push({
               _id: keys[i].replace(
                 buildRedisKey(this.keyPrefix, 'oidc', this.name, ''),
@@ -1101,7 +1107,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const grantData = JSON.parse(data as string);
+            const grantData = this.decodePayload(data as string);
             if (grantData && grantData.accountId === accountId) {
               keysToDelete.push(keys[i]);
             }
@@ -1154,7 +1160,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const itemData = JSON.parse(data as string);
+            const itemData = this.decodePayload(data as string);
             const matchesAccount =
               this.name === 'Interaction'
                 ? itemData?.session?.accountId === accountId
@@ -1221,7 +1227,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
     try {
       const data = await this.client.get(this.key(clientId));
       if (!data) return null;
-      const parsed = JSON.parse(data);
+      const parsed = this.decodePayload(data);
       const clientData = {
         ...parsed,
         client_id: parsed.client_id || clientId,
@@ -1253,7 +1259,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const parsed = JSON.parse(data as string);
+            const parsed = this.decodePayload(data as string);
             const clientId = keys[i].replace(
               buildRedisKey(this.keyPrefix, 'oidc', this.name, ''),
               ''
@@ -1407,7 +1413,7 @@ export class RedisOidcAdminService extends OIDCRedisAdapter {
         try {
           const [err, data] = results[i];
           if (!err && data) {
-            const itemData = JSON.parse(data as string);
+            const itemData = this.decodePayload(data as string);
             if (
               Object.keys(filters).length === 0 ||
               this.matchesFilters(itemData, filters)

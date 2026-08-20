@@ -4,11 +4,13 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from '@prisma/client';
+import { defineOidcClientAdminContract } from '../../../contract/support/oidc-client-admin-contract.js';
 import { PrismaOidcStoreAdapter } from '../../../../src/oidc/adapter/prisma/index.js';
 import { PrismaOidcAdminService } from '../../../../src/oidc/adapter/prisma/admin-service.js';
 import type { ILogger } from '../../../../src/di/interfaces/logger.interface.js';
@@ -33,12 +35,14 @@ const logger: ILogger = {
 };
 
 let prisma: PrismaClient;
+const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 
 function makeAdapter(model: string) {
   return new PrismaOidcStoreAdapter(model, prisma, logger);
 }
 
 beforeAll(async () => {
+  process.env.ENCRYPTION_KEY ||= randomBytes(32).toString('hex');
   execFileSync(PRISMA_BIN, ['db', 'push', '--config=prisma.config.ts'], {
     env: { ...process.env, DATABASE_URL: `file:${TEST_DB}` },
     stdio: 'pipe',
@@ -51,6 +55,11 @@ beforeAll(async () => {
 afterAll(async () => {
   await prisma.$disconnect();
   if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
+  if (originalEncryptionKey) {
+    process.env.ENCRYPTION_KEY = originalEncryptionKey;
+  } else {
+    delete process.env.ENCRYPTION_KEY;
+  }
 });
 
 beforeEach(async () => {
@@ -335,4 +344,19 @@ describe('PrismaOidcStoreAdapter', () => {
       expect(await adapter.findByUid('dead-uid')).toBeUndefined();
     });
   });
+});
+
+defineOidcClientAdminContract({
+  backend: 'Prisma SQLite',
+  async createHarness() {
+    return {
+      client: new PrismaOidcAdminService(prisma, 'Client'),
+      supportsTenantIsolation: false,
+      reset: async () => {
+        await prisma.oidcStore.deleteMany({});
+      },
+      runAsTenant: (tenantId, operation) =>
+        tenantContext.run(tenantId, operation),
+    };
+  },
 });

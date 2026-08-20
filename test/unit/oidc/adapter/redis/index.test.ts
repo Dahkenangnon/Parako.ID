@@ -4,6 +4,7 @@ import OIDCRedisAdapter, {
   connectRedis,
   createRedisAdapterFactory,
 } from '../../../../../src/oidc/adapter/redis/index.js';
+import { PersistenceDecodingError } from '../../../../../src/db/persistence/json-decoder.js';
 
 function createLogger(): ILogger {
   return {
@@ -179,6 +180,19 @@ describe('OIDCRedisAdapter', () => {
 
     await expect(model('Session').find('')).resolves.toBeUndefined();
     await expect(model('Session').find('missing')).resolves.toBeUndefined();
+  });
+
+  it('rejects a non-object persisted payload without exposing its value', async () => {
+    client.get.mockResolvedValueOnce('["private-marker"]');
+
+    try {
+      await model('Session').find('session-1');
+      throw new Error('Expected persisted OIDC payload decoding to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PersistenceDecodingError);
+      expect(error).toMatchObject({ context: 'redis_oidc.Session.payload' });
+      expect(String(error)).not.toContain('private-marker');
+    }
   });
 
   it('sanitizes Client metadata after transparently reading its secret', async () => {

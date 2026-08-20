@@ -10,6 +10,7 @@ import {
 } from 'vitest';
 import { MongoClient, type Db } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
+import { defineOidcClientAdminContract } from '../../../contract/support/oidc-client-admin-contract.js';
 import type { ILogger } from '../../../../src/di/interfaces/logger.interface.js';
 import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 import OIDCMongoAdapter, {
@@ -274,4 +275,19 @@ describe('OIDCMongoAdapter', () => {
       tenantContext.run('tenant-b', () => adapter.find('session-b'))
     ).resolves.toMatchObject({ accountId: 'shared-account' });
   });
+});
+
+defineOidcClientAdminContract({
+  backend: 'MongoDB',
+  async createHarness() {
+    return {
+      client: new MongodbOidcAdminService('Client', database, logger),
+      supportsTenantIsolation: true,
+      reset: async () => {
+        await database.dropDatabase();
+      },
+      runAsTenant: (tenantId, operation) =>
+        tenantContext.run(tenantId, operation),
+    };
+  },
 });

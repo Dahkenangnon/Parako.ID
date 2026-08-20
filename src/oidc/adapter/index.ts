@@ -7,7 +7,16 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IConfigProvider } from '../../di/interfaces/config-provider.interface.js';
 import type { BootstrapConfig } from '../../config/schemas/bootstrap-schema.js';
-import type { AdapterFactory } from '../../di/interfaces/oidc-adapter-bridge.interface.js';
+import type {
+  AdapterFactory,
+  IOIDCAdapterBridge,
+} from '../../di/interfaces/oidc-adapter-bridge.interface.js';
+import type {
+  IOidcAccountDataAdmin,
+  IOidcClientAdmin,
+  IOidcGrantAdmin,
+  IOidcSessionAdmin,
+} from './admin.contract.js';
 import { connectMongoDB, createMongoAdapterFactory } from './mongodb/index.js';
 import { connectRedis, createRedisAdapterFactory } from './redis/index.js';
 import { createPrismaAdapterFactory } from './prisma/index.js';
@@ -33,40 +42,16 @@ function redactConnectionUrl(value: string | undefined): string | undefined {
  * factories and admin services — no global mutable state.
  */
 @injectable()
-export class OIDCAdapterBridge {
+export class OIDCAdapterBridge implements IOIDCAdapterBridge {
   private _adapterFactory: AdapterFactory | null = null;
 
   // Admin services — one set for all backends
-  private _session:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
-  private _grant:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
-  private _client:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
-  private _accessToken:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
-  private _refreshToken:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
-  private _interaction:
-    | MongodbOidcAdminService
-    | RedisOidcAdminService
-    | PrismaOidcAdminService
-    | null = null;
+  private _session: IOidcSessionAdmin | null = null;
+  private _grant: IOidcGrantAdmin | null = null;
+  private _client: IOidcClientAdmin | null = null;
+  private _accessToken: IOidcAccountDataAdmin | null = null;
+  private _refreshToken: IOidcAccountDataAdmin | null = null;
+  private _interaction: IOidcAccountDataAdmin | null = null;
 
   private _isInitialized = false;
 
@@ -122,9 +107,6 @@ export class OIDCAdapterBridge {
     return 'mongodb';
   }
 
-  /**
-   * Initialize the adapter bridge based on configuration
-   */
   async initialize(): Promise<void> {
     if (this._isInitialized) {
       return;
@@ -298,8 +280,7 @@ export class OIDCAdapterBridge {
     return createTenantBoundAdapterFactory(this.adapter, tenantId, this.logger);
   }
 
-  get session():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get session(): IOidcSessionAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -311,8 +292,7 @@ export class OIDCAdapterBridge {
     return this._session;
   }
 
-  get grant():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get grant(): IOidcGrantAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -324,8 +304,7 @@ export class OIDCAdapterBridge {
     return this._grant;
   }
 
-  get client():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get client(): IOidcClientAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -337,8 +316,7 @@ export class OIDCAdapterBridge {
     return this._client;
   }
 
-  get accessToken():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get accessToken(): IOidcAccountDataAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -350,8 +328,7 @@ export class OIDCAdapterBridge {
     return this._accessToken;
   }
 
-  get refreshToken():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get refreshToken(): IOidcAccountDataAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -363,8 +340,7 @@ export class OIDCAdapterBridge {
     return this._refreshToken;
   }
 
-  get interaction():
-    MongodbOidcAdminService | RedisOidcAdminService | PrismaOidcAdminService {
+  get interaction(): IOidcAccountDataAdmin {
     if (!this._isInitialized) {
       throw new Error(
         'OIDC adapter bridge not initialized. Call initialize() first.'
@@ -384,9 +360,6 @@ export class OIDCAdapterBridge {
     return this._isInitialized;
   }
 
-  /**
-   * Get connection information for monitoring
-   */
   getConnectionInfo(): { type: string; status: string; config: unknown } {
     if (!this._isInitialized) {
       return {

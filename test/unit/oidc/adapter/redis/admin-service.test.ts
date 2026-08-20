@@ -216,10 +216,14 @@ describe('RedisOidcAdminService — Session model', () => {
 
     await expect(service.findByAccountId('user-1')).resolves.toEqual([
       {
-        accountId: 'user-1',
-        exp: 200,
-        kind: 'Session',
-        jti: 's1',
+        _id: 's1',
+        expiresAt: new Date(200_000),
+        payload: {
+          accountId: 'user-1',
+          exp: 200,
+          kind: 'Session',
+          jti: 's1',
+        },
       },
     ]);
     await expect(service.findByAccountId('')).resolves.toEqual([]);
@@ -1231,6 +1235,7 @@ describe('RedisOidcAdminService — Client CRUD', () => {
             }),
           ],
           [null, '{invalid-json'],
+          [null, '["private-marker"]'],
           [
             null,
             JSON.stringify({
@@ -1251,6 +1256,7 @@ describe('RedisOidcAdminService — Client CRUD', () => {
       vi.spyOn(service as any, 'scanKeys').mockResolvedValue([
         'parako:default:oidc:Client:active',
         'parako:default:oidc:Client:corrupt',
+        'parako:default:oidc:Client:wrong-shape',
         'parako:default:oidc:Client:inactive',
       ]);
 

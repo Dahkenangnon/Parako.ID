@@ -14,6 +14,7 @@ import {
   PrismaOidcStoreAdapter,
 } from '../../../../../src/oidc/adapter/prisma/index.js';
 import { ensureEncrypted } from '../../../../../src/utils/encryption.js';
+import { PersistenceDecodingError } from '../../../../../src/db/persistence/json-decoder.js';
 
 const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 
@@ -100,6 +101,27 @@ describe('PrismaOidcStoreAdapter', () => {
       client_id: 'public-client',
       client_name: 'Public client',
     });
+  });
+
+  it('rejects a non-object persisted payload without exposing its value', async () => {
+    prisma.oidcStore.findFirst.mockResolvedValue({
+      payload: '["private-marker"]',
+      consumed: null,
+    });
+    const adapter = new PrismaOidcStoreAdapter(
+      'Session',
+      prisma as never,
+      logger
+    );
+
+    try {
+      await adapter.find('session-1');
+      throw new Error('Expected persisted OIDC payload decoding to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PersistenceDecodingError);
+      expect(error).toMatchObject({ context: 'prisma_oidc.Session.payload' });
+      expect(String(error)).not.toContain('private-marker');
+    }
   });
 
   it('does not query storage when no grant identifier is provided', async () => {

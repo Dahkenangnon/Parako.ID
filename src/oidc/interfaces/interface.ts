@@ -1,14 +1,13 @@
 import { type Db, type Document } from 'mongodb';
 import { Client } from 'oidc-provider';
 
-/**
- * Interface defining the payload structure for OIDC models
- */
 export interface OIDCPayload {
   grantId?: string;
   userCode?: string;
   uid?: string;
   accountId?: string;
+  clientId?: string;
+  session?: { accountId?: string; [key: string]: unknown };
   loginTs?: number;
   exp?: number;
   iat?: number;
@@ -17,9 +16,6 @@ export interface OIDCPayload {
   [key: string]: unknown;
 }
 
-/**
- * Interface for OIDC document stored in MongoDB
- */
 export interface OIDCDocument extends Document {
   _id: string;
   logical_id?: string;
@@ -29,26 +25,17 @@ export interface OIDCDocument extends Document {
   data?: Record<string, unknown>;
 }
 
-/**
- * Interface for adapter connection options
- */
 export interface AdapterConnectionOptions {
   uri?: string;
   dbName?: string;
   connection?: Db;
 }
 
-/**
- * Interface for document mapping options
- */
 export interface DocumentMappingOptions {
   includePayload?: boolean;
   excludeFields?: string[];
 }
 
-/**
- * Interface for mapped UI document
- */
 export interface MappedDocument {
   id: string;
   expiresAt?: Date;
@@ -63,9 +50,6 @@ export interface MappedDocument {
   [key: string]: unknown;
 }
 
-/**
- * Interface for client properties during registration
- */
 export interface ClientProperties {
   client_id?: string;
   client_name?: string;
@@ -81,26 +65,17 @@ export interface ClientProperties {
   [key: string]: unknown;
 }
 
-/**
- * Interface for the resource server configuration
- */
 export interface ResourceServer {
   scope: string;
   audience?: string;
   accessTokenFormat?: 'opaque' | 'jwt';
 }
 
-/**
- * Extended Client interface with custom properties
- */
 export interface ExtendedClient extends Client {
   allowedResources?: string[];
   resourcesScopes?: string;
 }
 
-/**
- * Interface for the result of clearing OIDC user data
- */
 export interface ClearOIDCUserDataResult {
   success: boolean;
   accountId: string;
@@ -111,9 +86,6 @@ export interface ClearOIDCUserDataResult {
   interactions: number;
 }
 
-/**
- * Interface for session document structure
- */
 export interface SessionDocument {
   _id: string;
   payload: {
