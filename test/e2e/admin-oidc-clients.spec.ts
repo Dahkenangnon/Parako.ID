@@ -16,7 +16,10 @@ async function loginAsAdmin(page: Page, admin: ManagedUserFixture) {
   await page.goto(`${IDP_ORIGIN}/auth/login?continue=%2Fadmin%2Foidc-clients`);
   await page.locator('#login').fill(admin.email);
   await page.locator('#password').fill(admin.password);
-  await page.locator('#login-form button[type="submit"]').click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.locator('#login-form button[type="submit"]').click(),
+  ]);
   await expect(page).toHaveURL(`${IDP_ORIGIN}/admin/oidc-clients`);
 }
 
@@ -29,7 +32,10 @@ async function createWebClient(
   await page.locator('#client_name').fill(values.name);
   await page.locator('#description').fill(values.description);
   await page.locator('#redirect_uris').fill(values.redirectUri);
-  await page.getByRole('button', { name: 'Create Client' }).click();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+    page.getByRole('button', { name: 'Create Client' }).click(),
+  ]);
   await expect(page).toHaveURL(/\/admin\/oidc-clients\/view\/[^/]+$/);
 }
 
