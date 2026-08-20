@@ -76,7 +76,16 @@ test('a user import travels through the real queue and worker to visible complet
   await expect(page.locator('#preview-valid')).toHaveText('1 valid');
   const confirm = page.getByRole('button', { name: 'Confirm Import' });
   await expect(confirm).toBeEnabled();
+  const importResponsePromise = page.waitForResponse(
+    response =>
+      response.url() === `${IDP_ORIGIN}/admin/data-transfer/users/import` &&
+      response.request().method() === 'POST'
+  );
   await confirm.click();
+  const importResponse = await importResponsePromise;
+  expect(importResponse.ok()).toBe(true);
+  const { jobId } = (await importResponse.json()) as { jobId: string };
+  expect(jobId).toEqual(expect.any(String));
 
   await expect(
     page.getByRole('heading', { name: 'Import Completed Successfully' })
@@ -91,7 +100,16 @@ test('a user import travels through the real queue and worker to visible complet
   await expect(page.locator('tbody tr').filter({ hasText: email })).toHaveCount(
     1
   );
-  expectNoBrowserFailures(failures);
+  expectNoBrowserFailures(failures, {
+    allowedFailedRequests: [
+      {
+        method: 'GET',
+        url: `${IDP_ORIGIN}/admin/data-transfer/users/import/${jobId}/progress`,
+        resourceType: 'eventsource',
+        errorText: 'net::ERR_ABORTED',
+      },
+    ],
+  });
 });
 
 test('a breached login is processed by the worker into an email and audit', async ({
