@@ -213,6 +213,16 @@ describe('release manifest', () => {
           sourceDateEpoch: '1700000000',
         }).build.commit
       ).toBe('parako-sha');
+
+      delete process.env.PARAKO_GIT_SHA;
+      expect(
+        createReleaseManifest({
+          releaseDir: fixture(),
+          version: '1.2.3',
+          architecture: 'x64',
+          sourceDateEpoch: '1700000000',
+        }).build.commit
+      ).toBe('unknown');
     } finally {
       if (originalGithubSha === undefined) delete process.env.GITHUB_SHA;
       else process.env.GITHUB_SHA = originalGithubSha;
