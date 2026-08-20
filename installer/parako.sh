@@ -11,7 +11,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 shopt -s inherit_errexit 2>/dev/null || true
 
-PARAKO_VERSION="0.3.5"
+PARAKO_VERSION="0.3.6"
 INSTALLER_URL="${PARAKO_INSTALLER_URL:-https://get.parako.id}"
 DEFAULT_INSTALL_DIR_ROOT="/opt/parako-id"
 DEFAULT_INSTALL_DIR_USER="${HOME:-/tmp}/parako-id"

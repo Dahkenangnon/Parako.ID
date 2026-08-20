@@ -6,6 +6,58 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-20
+
+### Features
+
+- add verified Docker lifecycle ([c62aef4](https://github.com/Dahkenangnon/Parako.ID/commit/c62aef4ce25c0c0c39eb5aad2b32a39299fdcab8))
+- add hardened deployment topologies ([1275521](https://github.com/Dahkenangnon/Parako.ID/commit/1275521570b6d44ca333de90040e4866a126096a))
+- provision local test infrastructure ([20d14c3](https://github.com/Dahkenangnon/Parako.ID/commit/20d14c39d8b7a8999695f08d4c643048a8daa71a))
+- harden runtime and administration surfaces ([0c93f22](https://github.com/Dahkenangnon/Parako.ID/commit/0c93f22fa7cf49ca31d06fe3555fd3d1778dc84b))
+- harden runtime persistence and management tooling ([08b9b28](https://github.com/Dahkenangnon/Parako.ID/commit/08b9b28296c0bb11757ef807085c534eb9b58127))
+
+### Bug Fixes
+
+- harden request and session handling ([f600b0f](https://github.com/Dahkenangnon/Parako.ID/commit/f600b0fbd5eefeb0bc53a51ef5123339802f3ffc))
+- stabilize manifest verification ([b87ab0f](https://github.com/Dahkenangnon/Parako.ID/commit/b87ab0f297cd2cb7fdfa354a40a2512b2aed13ac))
+- package generated Prisma runtime dependency ([bbfcfae](https://github.com/Dahkenangnon/Parako.ID/commit/bbfcfaeaa818c1fbb7b1a35403976e5ae86d4b91))
+- make CLI entrypoint detection deterministic ([5b58100](https://github.com/Dahkenangnon/Parako.ID/commit/5b58100c363ba2d832392a92b7ffb8b2005764fb))
+- update transitive security floors ([01c2144](https://github.com/Dahkenangnon/Parako.ID/commit/01c2144bc6339c48162836140673e223a6012ace))
+- create custom-view directory from clean source ([ab7aad1](https://github.com/Dahkenangnon/Parako.ID/commit/ab7aad1bc2fd025e8817cb94db8d73759a8283f9))
+- make release verification deterministic ([a898a41](https://github.com/Dahkenangnon/Parako.ID/commit/a898a41d724a32a587713201d6e55340d21f7325))
+- make distributed initialization deterministic ([7ad8f18](https://github.com/Dahkenangnon/Parako.ID/commit/7ad8f185dd23314246d7af339bf3598b4e9102fc))
+- serve uploaded media consistently ([42e730b](https://github.com/Dahkenangnon/Parako.ID/commit/42e730b6a469a988920385c79421b0781cad749d))
+- harden signing key persistence ([0995c95](https://github.com/Dahkenangnon/Parako.ID/commit/0995c9535abc2a18395753df65d57031287b5acf))
+- harden persisted sessions ([9c80028](https://github.com/Dahkenangnon/Parako.ID/commit/9c800282f2e5c0275992378bfda4fca7a547c12e))
+- persist effective bootstrap settings ([0cf53ef](https://github.com/Dahkenangnon/Parako.ID/commit/0cf53ef2fab31c77e2916ed95421f4b8c7c1fb42))
+- support explicit TLS disable ([b97bdd4](https://github.com/Dahkenangnon/Parako.ID/commit/b97bdd4d0a3e56ee7a0c7a1309ce7c643ac69d32))
+- reject access tokens in query parameters ([a1c53d7](https://github.com/Dahkenangnon/Parako.ID/commit/a1c53d750504406a0817a99d5a7001a2229129bd))
+- harden configuration and client edge cases ([4df131e](https://github.com/Dahkenangnon/Parako.ID/commit/4df131ee69054ced7746b13b23be964238a7117d))
+- normalize identity state across adapters ([bc278bc](https://github.com/Dahkenangnon/Parako.ID/commit/bc278bcfe5bb90bb4cf2d81f024c5c3383c4973c))
+- harden identity flows across storage adapters ([5da3b7b](https://github.com/Dahkenangnon/Parako.ID/commit/5da3b7ba91c26ff25b701e4d8ec8f794e11d3b53))
+- complete consent and logout redirects ([730a886](https://github.com/Dahkenangnon/Parako.ID/commit/730a886176bed6c5792476679ff39aa446bf166f))
+- handle replayed consent interactions ([bac4c19](https://github.com/Dahkenangnon/Parako.ID/commit/bac4c19afdb8f7bffef051396781537bf54e5b50))
+- harden activation and OIDC error flows ([bc1a4cc](https://github.com/Dahkenangnon/Parako.ID/commit/bc1a4cc536c8a48a52f07770c58596891dddea3b))
+
+### Refactor
+
+- encode validated runtime invariants ([ff91f8d](https://github.com/Dahkenangnon/Parako.ID/commit/ff91f8da3fba60772ca07acb88932d261789a60a))
+- separate server contracts ([e2c44e2](https://github.com/Dahkenangnon/Parako.ID/commit/e2c44e2844cf1f5729eee336088e10b5e6d0b84a))
+- centralize environment access ([3759182](https://github.com/Dahkenangnon/Parako.ID/commit/37591822a48cc3ed0dae9f8402fe0362833d4f30))
+- consolidate view rendering ([64a841e](https://github.com/Dahkenangnon/Parako.ID/commit/64a841ec46c54752e0e2345b60061a8aab9873ba))
+- consolidate browser interactions ([75010f2](https://github.com/Dahkenangnon/Parako.ID/commit/75010f2ed9d21a31216a7e70eaeba82be0169634))
+- narrow service contracts ([7b137fb](https://github.com/Dahkenangnon/Parako.ID/commit/7b137fb45eda0612c92dbec30bf26764995a18ff))
+- consolidate social providers ([b28b8ef](https://github.com/Dahkenangnon/Parako.ID/commit/b28b8ef438b0b36591cf96e3e9300d4770673d07))
+- extract controller operations ([36752f8](https://github.com/Dahkenangnon/Parako.ID/commit/36752f824df6a1ab9f58df9f482aa4fbf0a16387))
+- validate persisted repository payloads ([b9557e1](https://github.com/Dahkenangnon/Parako.ID/commit/b9557e1e0a4b13cb4552d7ee9848986ba6b1cfd4))
+- unify adapter administration roles ([5ca28be](https://github.com/Dahkenangnon/Parako.ID/commit/5ca28be108ce05d787f4920fa987665dd2497db5))
+- separate management client contracts ([d8a8a66](https://github.com/Dahkenangnon/Parako.ID/commit/d8a8a6654e5f8c83f094739b33667f405503994a))
+- define explicit browser entry points ([70acd44](https://github.com/Dahkenangnon/Parako.ID/commit/70acd4422ed58ed1cfda4b799e6efbbf3f664c84))
+- remove bundled PM2 configuration ([e2fd7ab](https://github.com/Dahkenangnon/Parako.ID/commit/e2fd7abd3844ed391644997ece8200364e9a745d))
+- trim redundant source commentary ([fe5a54e](https://github.com/Dahkenangnon/Parako.ID/commit/fe5a54ee66c20d089a8dfbfb64466db0e0b2c5b5))
+- remove unused source abstractions ([f798820](https://github.com/Dahkenangnon/Parako.ID/commit/f7988204ac0120f2fefbb46aee4a5195bf62463a))
+- modernize storage dependencies ([8c3caf7](https://github.com/Dahkenangnon/Parako.ID/commit/8c3caf77ad936af7d916c68baf3b8760dbd83fb6))
+
 ## [0.3.5] - 2026-07-31
 
 ### Bug Fixes
