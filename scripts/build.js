@@ -23,7 +23,10 @@ import {
 } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { globSync } from 'glob';
+import {
+  BROWSER_ENTRY_POINTS,
+  SERVICE_WORKER_ENTRY_POINT,
+} from './browser-entry-manifest.js';
 import {
   cleanPriorOutputs,
   collectFiles,
@@ -269,16 +272,13 @@ async function main() {
     return `${countFiles(join(ROOT, 'dist/scripts'), '.js')} files`;
   });
 
-  // Step 4: Client-side TS → public/js/ (esbuild, minified, console-stripped,
+  // Step 4: Browser entry points → public/js/ (esbuild, minified, console-stripped,
   // content-hashed filenames; the metafile lets the manifest step locate the
   // hashed outputs without having to re-scan the directory). The service
   // worker is built separately by step 7b because it needs a different
   // bundling context (IIFE, no console drop, root scope path).
   step('client js', () => {
-    const entries = globSync('src/assets/js/**/*.ts', {
-      cwd: ROOT,
-      ignore: ['src/assets/js/sw/service-worker.ts'],
-    });
+    const entries = BROWSER_ENTRY_POINTS;
     if (entries.length === 0) return '0 files';
 
     bin('esbuild', [
@@ -357,7 +357,7 @@ async function main() {
     };
 
     bin('esbuild', [
-      'src/assets/js/sw/service-worker.ts',
+      SERVICE_WORKER_ENTRY_POINT,
       '--bundle',
       '--minify',
       '--format=iife',

@@ -5,7 +5,7 @@ import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { join, dirname, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { watch } from 'chokidar';
-import { globSync } from 'glob';
+import { BROWSER_ENTRY_POINTS } from './browser-entry-manifest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -94,8 +94,9 @@ async function initialBuild() {
   swcSync('scripts/manage', 'dist/scripts');
 
   // Client JS (no minify in dev)
-  const entries = globSync('src/assets/js/**/*.ts', { cwd: ROOT });
+  const entries = BROWSER_ENTRY_POINTS;
   if (entries.length > 0) {
+    rmSync(join(ROOT, 'public/js'), { recursive: true, force: true });
     bin('esbuild', [
       ...entries,
       '--bundle',
@@ -214,8 +215,33 @@ function startAssetWatcher() {
     depth: 10,
   });
 
-  // Debounce map for esbuild calls
-  const debounceTimers = new Map();
+  let browserBuildTimer;
+
+  const scheduleBrowserBuild = relPath => {
+    if (browserBuildTimer) clearTimeout(browserBuildTimer);
+    browserBuildTimer = setTimeout(() => {
+      browserBuildTimer = undefined;
+      try {
+        bin('esbuild', [
+          ...BROWSER_ENTRY_POINTS,
+          '--bundle',
+          '--format=esm',
+          '--target=es2020',
+          '--outdir=public/js',
+          '--outbase=src/assets/js',
+        ]);
+        log(
+          `${dim(relPath)} ${green('\u2192')} browser graph rebuilt`,
+          'esbuild'
+        );
+      } catch (err) {
+        log(
+          red(`build failed: ${err.stderr?.toString() || err.message}`),
+          'esbuild'
+        );
+      }
+    }, 150);
+  };
 
   watcher.on('change', filePath => {
     const relPath = relative(ROOT, filePath);
@@ -236,35 +262,9 @@ function startAssetWatcher() {
       return;
     }
 
-    // Client JS changed → esbuild that file
+    // Any browser module can affect one or more entry bundles.
     if (filePath.startsWith(clientJsDir) && extname(filePath) === '.ts') {
-      // Debounce per-file
-      const existing = debounceTimers.get(filePath);
-      if (existing) clearTimeout(existing);
-
-      debounceTimers.set(
-        filePath,
-        setTimeout(() => {
-          debounceTimers.delete(filePath);
-          const entryRel = relative(ROOT, filePath);
-          try {
-            bin('esbuild', [
-              entryRel,
-              '--bundle',
-              '--format=esm',
-              '--target=es2020',
-              '--outdir=public/js',
-              '--outbase=src/assets/js',
-            ]);
-            log(`${dim(relPath)} ${green('\u2192')} rebuilt`, 'esbuild');
-          } catch (err) {
-            log(
-              red(`build failed: ${err.stderr?.toString() || err.message}`),
-              'esbuild'
-            );
-          }
-        }, 150)
-      );
+      scheduleBrowserBuild(relPath);
     }
   });
 
