@@ -8,6 +8,9 @@ import { controllersModule } from '../../../src/di/modules/controllers.module.js
 import { TYPES } from '../../../src/di/types.js';
 
 const controllerBindings = [
+  TYPES.AuthControllerOperationModules,
+  TYPES.AccountControllerOperationModules,
+  TYPES.AdminSettingsControllerOperationModules,
   TYPES.AuthController,
   TYPES.AccountController,
   TYPES.AdminActivitiesController,

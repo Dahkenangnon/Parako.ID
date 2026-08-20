@@ -6,7 +6,6 @@ import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type {
   IAuthService,
   AuthUserData,
-  PhoneVerificationChallenge,
 } from '../di/interfaces/auth-service.interface.js';
 import type { IUserService } from '../di/interfaces/user-service.interface.js';
 import type { IActivityService } from '../di/interfaces/activity-service.interface.js';
@@ -44,64 +43,34 @@ import type {
   SecondaryEmailVerification,
   PhoneVerificationOIDCContinuation,
 } from '../types/session-data.js';
+import type { AuthControllerOperationModules } from '../di/factories/controller-operations.factory.js';
 import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
-
-const KNOWN_SOCIAL_PROVIDERS: readonly SocialProvider[] = [
-  'google',
-  'github',
-  'facebook',
-  'linkedin',
-  'twitter',
-  'microsoft',
-  'apple',
-] as const;
-
-function isKnownSocialProvider(provider: string): provider is SocialProvider {
-  return KNOWN_SOCIAL_PROVIDERS.includes(provider as SocialProvider);
-}
+import {
+  isConfigurableSocialProvider,
+  type ConfigurableSocialProvider,
+} from '../config/social-providers.js';
 
 function withSocialRegisterIntent(
   existing: Partial<SocialRegisterData>,
-  provider: SocialProvider,
+  provider: ConfigurableSocialProvider,
   timestamp: number
 ): SocialRegisterData {
-  const intent = {
-    intent: 'register',
-    timestamp,
+  return {
+    ...existing,
+    [provider]: {
+      intent: 'register',
+      timestamp,
+    },
   };
-  const next = { ...existing } as SocialRegisterData;
-
-  switch (provider) {
-    case 'google':
-      next.google = intent;
-      break;
-    case 'github':
-      next.github = intent;
-      break;
-    case 'facebook':
-      next.facebook = intent;
-      break;
-    case 'linkedin':
-      next.linkedin = intent;
-      break;
-    case 'twitter':
-      next.twitter = intent;
-      break;
-    case 'microsoft':
-      next.microsoft = intent;
-      break;
-    case 'apple':
-      next.apple = intent;
-      break;
-  }
-
-  return next;
 }
 
 @injectable()
 export class AuthController implements IAuthController {
   private static readonly PHONE_VERIFICATION_CONTINUATION_TTL_MS =
     15 * 60 * 1000;
+  private readonly emailVerificationService: AuthControllerOperationModules['emailVerification'];
+  private readonly passwordRecoveryService: AuthControllerOperationModules['passwordRecovery'];
+  private readonly phoneVerificationService: AuthControllerOperationModules['phoneVerification'];
 
   constructor(
     @inject(TYPES.Logger) private readonly logger: ILogger,
@@ -130,8 +99,14 @@ export class AuthController implements IAuthController {
     @inject(TYPES.SmsService) private readonly smsService: SmsService,
     @inject(TYPES.WebAuthnService)
     private readonly webauthnService: IWebAuthnService,
-    @inject(TYPES.OIDCUtils) private readonly oidcUtils: IOIDCUtils
-  ) {}
+    @inject(TYPES.OIDCUtils) private readonly oidcUtils: IOIDCUtils,
+    @inject(TYPES.AuthControllerOperationModules)
+    operationModules: AuthControllerOperationModules
+  ) {
+    this.emailVerificationService = operationModules.emailVerification;
+    this.passwordRecoveryService = operationModules.passwordRecovery;
+    this.phoneVerificationService = operationModules.phoneVerification;
+  }
 
   private get activityLoggerDeps() {
     return {
@@ -160,7 +135,7 @@ export class AuthController implements IAuthController {
 
   private consumeSocialRegisterIntent(
     req: Request,
-    provider: SocialProvider
+    provider: ConfigurableSocialProvider
   ): void {
     const existing =
       this.sessionManager.get<Partial<SocialRegisterData>>(
@@ -190,44 +165,13 @@ export class AuthController implements IAuthController {
       : path;
   }
 
-  private async deliverPhoneVerificationChallenge(
-    challenge: PhoneVerificationChallenge,
-    ip?: string
-  ): Promise<boolean> {
-    const result = await this.smsService.sendVerificationCode(
-      challenge.user.phone_number!,
-      challenge.code,
-      ip
-    );
-    if (!result.success) {
-      this.logger.warn('Phone verification SMS delivery failed', {
-        userId: challenge.user._id,
-        error: result.error,
-      });
-    }
-    return result.success;
-  }
-
-  private requiresPhoneVerification(user: {
-    phone_number?: string;
-    phone_number_verified?: boolean;
-  }): boolean {
-    return Boolean(
-      this.config().security.authentication.signup.require_phone_verification &&
-      user.phone_number &&
-      !user.phone_number_verified
-    );
-  }
-
   private async startPhoneVerification(
     req: Request,
     res: Response,
     userId: string
   ): Promise<void> {
-    const challenge =
-      await this.authService.generatePhoneVerificationChallenge(userId);
-    const delivered = await this.deliverPhoneVerificationChallenge(
-      challenge,
+    const { challenge, delivered } = await this.phoneVerificationService.start(
+      userId,
       req.ip
     );
     if (delivered) {
@@ -244,9 +188,6 @@ export class AuthController implements IAuthController {
     res.redirect(this.phoneVerificationPath(challenge.verificationToken));
   }
 
-  /**
-   * Get custom identifier fields from config
-   */
   private getCustomIdentifierFields() {
     return this.userService.getCustomIdentifierFields();
   }
@@ -261,9 +202,6 @@ export class AuthController implements IAuthController {
     );
   }
 
-  /**
-   * Get social login behavior configuration
-   */
   getSocialBehaviorConfig = () => ({
     existingUserNoIntegration:
       this.config().features.social_providers.behavior
@@ -732,7 +670,6 @@ export class AuthController implements IAuthController {
         } else if (redirectUrl) {
           // This is from stored login redirect intent
           // Consume the redirect intent now that we're using it
-          // getLoginIntent(req, true);
           this.redirectAuthority.getIntent(req, 'login', true);
 
           activityLoggerFor(this.activityLoggerDeps, req).success(
@@ -880,28 +817,8 @@ export class AuthController implements IAuthController {
     } catch (error) {
       if (error instanceof PhoneVerificationRequiredError) {
         try {
-          const challenge =
-            await this.authService.generatePhoneVerificationChallenge(
-              error.userId
-            );
-          const delivered = await this.deliverPhoneVerificationChallenge(
-            challenge,
-            req.ip
-          );
-          if (delivered) {
-            this.sessionManager
-              .flash(req)
-              .success('A verification code has been sent to your phone.');
-          } else {
-            this.sessionManager
-              .flash(req)
-              .error(
-                'We could not send the verification code. Please try resending it.'
-              );
-          }
-          return res.redirect(
-            this.phoneVerificationPath(challenge.verificationToken)
-          );
+          await this.startPhoneVerification(req, res, error.userId);
+          return;
         } catch (challengeError) {
           this.logger.error(challengeError as Error, {
             userId: error.userId,
@@ -1016,9 +933,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Processes user registration form submission
-   */
   public processRegister = async (
     req: Request,
     res: Response
@@ -1211,11 +1125,9 @@ export class AuthController implements IAuthController {
         return renderRegistration();
       }
 
-      // Validate custom identifier fields
       const ciConfig = this.config().security.authentication.custom_identifiers;
       if (ciConfig?.enabled && ciFields.length > 0) {
         for (const field of ciFields) {
-          // Skip admin_only fields during registration
           if (field.edit_policy === 'admin_only') continue;
 
           const fieldValue = getCustomIdentifierValue(field.slot);
@@ -1226,7 +1138,6 @@ export class AuthController implements IAuthController {
           }
 
           if (fieldValue) {
-            // Validate format
             if (!validateIdentifier(fieldValue, field)) {
               this.sessionManager
                 .flash(req)
@@ -1234,7 +1145,6 @@ export class AuthController implements IAuthController {
               return renderRegistration();
             }
 
-            // Check uniqueness
             const normalizedValue = field.case_sensitive
               ? fieldValue
               : fieldValue.toLowerCase();
@@ -1397,7 +1307,6 @@ export class AuthController implements IAuthController {
       // CRITICAL: If redirect URL exists, immediately redirect - do NOT show verification page
       if (redirectUrl && !phoneVerificationPending) {
         // Consume the redirect intent now that we're using it
-        // getRegistrationIntent(req, true);
         this.redirectAuthority.getIntent(req, 'register', true);
 
         let emailVerificationStatus = 'registered';
@@ -1504,28 +1413,8 @@ export class AuthController implements IAuthController {
           }
         }
 
-        const challenge =
-          await this.authService.generatePhoneVerificationChallenge(
-            user._id as string
-          );
-        const delivered = await this.deliverPhoneVerificationChallenge(
-          challenge,
-          req.ip
-        );
-        if (delivered) {
-          this.sessionManager
-            .flash(req)
-            .success('A verification code has been sent to your phone.');
-        } else {
-          this.sessionManager
-            .flash(req)
-            .error(
-              'We could not send the verification code. Please try resending it.'
-            );
-        }
-        return res.redirect(
-          this.phoneVerificationPath(challenge.verificationToken)
-        );
+        await this.startPhoneVerification(req, res, this.userId(user));
+        return;
       }
 
       // No redirect URL - handle internal flow with email verification
@@ -1600,13 +1489,10 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Renders the reset password page with a token
-   */
   public resetPassword = (req: Request, res: Response): void => {
-    const token = req.query.token as string;
+    const page = this.passwordRecoveryService.resetPage(req.query.token);
 
-    if (!token) {
+    if (page.status === 'missing_token') {
       this.sessionManager
         .flash(req)
         .error(
@@ -1617,127 +1503,52 @@ export class AuthController implements IAuthController {
       );
     }
 
-    const passwordPolicy = this.userService.getPasswordPolicy();
-
     res.render(this.viewResolver.views.auth.reset_password, {
       title: `Reset Password - ${this.getAppTitle()}`,
-      token,
-      passwordPolicy,
+      token: page.token,
+      passwordPolicy: page.passwordPolicy,
     });
   };
 
-  /**
-   * Processes the reset password form submission
-   */
   public processResetPassword = async (
     req: Request,
     res: Response
   ): Promise<void> => {
     try {
-      const { token, password, 'confirm-password': confirmPassword } = req.body;
+      const result = await this.passwordRecoveryService.submitReset(req.body);
 
-      if (!token) {
+      if (result.status === 'missing_token') {
         this.sessionManager.flash(req).error('Invalid or missing reset token.');
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.forgot_password}`
         );
       }
 
-      if (password !== confirmPassword) {
+      if (result.status === 'passwords_do_not_match') {
         this.sessionManager
           .flash(req)
           .error('Passwords do not match. Please try again.');
-        return res.render(this.viewResolver.views.auth.reset_password, {
-          title: `Reset Password - ${this.getAppTitle()}`,
-          token,
-          passwordPolicy: this.userService.getPasswordPolicy(),
-        });
+        return this.renderPasswordResetForm(res, result.token);
       }
 
-      const passwordValidation = this.userService.validatePassword(password);
-      if (!passwordValidation.isValid) {
+      if (result.status === 'invalid_password') {
         this.sessionManager
           .flash(req)
           .error(
-            `Password requirements not met: ${passwordValidation.messages.join(
-              ', '
-            )}`
+            `Password requirements not met: ${result.messages.join(', ')}`
           );
-        return res.render(this.viewResolver.views.auth.reset_password, {
-          title: `Reset Password - ${this.getAppTitle()}`,
-          token,
-          passwordPolicy: this.userService.getPasswordPolicy(),
-        });
+        return this.renderPasswordResetForm(res, result.token);
       }
-
-      const user = await this.authService.resetPassword(token, password);
-
-      this.logger.info('Password reset successfully', {
-        username: user.username,
-        id: user._id,
-      });
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'password_reset_success',
-        user,
+        result.user,
         'Password reset successfully',
         {
-          actor: user,
+          actor: result.user,
           target: { target_type: 'none' },
         }
       );
-
-      // Invalidate ALL sessions — user is not authenticated, nothing to preserve
-      try {
-        const revokedCount =
-          await this.oidcAdapter.session.revokeAllSessionsExcept(
-            user.username,
-            '' // Revoke all — no current session to exclude
-          );
-        if (revokedCount > 0) {
-          this.logger.info('Revoked sessions after password reset', {
-            username: user.username,
-            revokedCount,
-          });
-        }
-      } catch (sessionError) {
-        this.logger.error(sessionError as Error, {
-          context: 'session_revocation_after_reset_failed',
-          username: user.username,
-        });
-      }
-
-      try {
-        await this.notificationService.sendTemplatedEmail(
-          user.email ?? '',
-          `Your ${this.getAppTitle()} password has been reset`,
-          'email/mail.njk',
-          {
-            title: `Your ${this.getAppTitle()} password has been reset`,
-            content: `
-              <p>Hello ${user.given_name || user.username},</p>
-              <p>Your password has been successfully reset. If you did not request this change, please contact support immediately.</p>
-              <p><strong>Account:</strong> ${user.email}</p>
-              <p><strong>Reset time:</strong> ${new Date().toLocaleString()}</p>
-              <p>For security reasons, we recommend logging in and changing your password if you did not initiate this reset or Contact us immediately.</p>
-            `,
-            username:
-              `${user.given_name || ''} ${user.family_name || ''}`.trim(),
-          }
-        );
-
-        this.logger.info('Password reset notification email sent', {
-          username: user.username,
-          email: user.email,
-        });
-      } catch (emailError) {
-        this.logger.error(emailError as Error, {
-          username: user.username,
-          email: user.email,
-          context: 'password_reset_notification_failed',
-        });
-        // Don't fail the password reset if email fails
-      }
 
       this.sessionManager
         .flash(req)
@@ -1761,26 +1572,21 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Renders the forgot password page
-   */
-  public forgotPassword = (req: Request, res: Response): void => {
+  public forgotPassword = (_req: Request, res: Response): void => {
     res.render(this.viewResolver.views.auth.forgot_password, {
       title: `Forgot Password - ${this.getAppTitle()}`,
     });
   };
 
-  /**
-   * Processes the forgot password form submission
-   */
   public processForgotPassword = async (
     req: Request,
     res: Response
   ): Promise<void> => {
     try {
       const { email } = req.body;
+      const result = await this.passwordRecoveryService.requestReset(email);
 
-      if (!email || !this.authService.isValidEmailAddress(email)) {
+      if (result.status === 'invalid_email') {
         this.sessionManager
           .flash(req)
           .error('Please enter a valid email address.');
@@ -1789,37 +1595,6 @@ export class AuthController implements IAuthController {
         });
       }
 
-      try {
-        const { user, resetToken } =
-          await this.authService.generatePasswordResetToken(email);
-
-        const resetUrl = buildExternalApplicationUrl(
-          this.config(),
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.reset_password}`,
-          { token: resetToken }
-        );
-
-        // This allows sending to recovery email if that's what was submitted
-        await this.notificationService.sendPasswordReset(
-          {
-            email,
-            username: user.given_name || user.username,
-            locale: user.locale,
-          },
-          resetUrl
-        );
-
-        this.logger.info('Password reset email sent', { email });
-      } catch (error) {
-        // We don't want to reveal whether the email exists in our system
-        // So we'll just log the error but still show success message
-        this.logger.error(error as Error, {
-          email,
-          context: 'password_reset_token_generation_failed',
-        });
-      }
-
-      // Always show success message to prevent email enumeration
       this.sessionManager
         .flash(req)
         .success(
@@ -1841,6 +1616,19 @@ export class AuthController implements IAuthController {
       });
     }
   };
+
+  private renderPasswordResetForm(res: Response, token: string): void {
+    const page = this.passwordRecoveryService.resetPage(token);
+    if (page.status !== 'ready') {
+      throw new Error('Password reset token unexpectedly unavailable');
+    }
+
+    res.render(this.viewResolver.views.auth.reset_password, {
+      title: `Reset Password - ${this.getAppTitle()}`,
+      token: page.token,
+      passwordPolicy: page.passwordPolicy,
+    });
+  }
 
   /**
    * Renders the account selection page for OIDC/OAuth flow
@@ -2087,9 +1875,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Processes MFA verification for standard login flow
-   */
   public processMfaVerify = async (
     req: Request,
     res: Response
@@ -2267,7 +2052,6 @@ export class AuthController implements IAuthController {
       } else if (redirectUrl) {
         // This is from stored login redirect intent
         // Consume the redirect intent now that we're using it
-        // getLoginIntent(req, true);
         this.redirectAuthority.getIntent(req, 'login', true);
 
         this.logger.info(
@@ -2431,9 +2215,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Processes MFA method selection and redirects to the appropriate verification page
-   */
   public processMfaSelect = async (
     req: Request,
     res: Response
@@ -2535,9 +2316,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Gets WebAuthn authentication options for MFA
-   */
   public mfaWebAuthnOptions = async (
     req: Request,
     res: Response
@@ -2576,9 +2354,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Processes WebAuthn MFA verification
-   */
   public processMfaWebAuthn = async (
     req: Request,
     res: Response
@@ -2692,103 +2467,45 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Processes the request for a new verification email
-   */
   public requestEmailVerification = async (
     req: Request,
     res: Response
   ): Promise<void> => {
     try {
-      const { email } = req.body;
-
-      if (!email || !this.authService.isValidEmailAddress(email)) {
+      const result = await this.emailVerificationService.request(
+        req.body.email
+      );
+      if (result.status === 'invalid') {
         this.sessionManager
           .flash(req)
           .error('Please enter a valid email address.');
-        return res.render(this.viewResolver.views.auth.email_verification, {
+        res.render(this.viewResolver.views.auth.email_verification, {
           title: `Verify Email - ${this.getAppTitle()}`,
         });
+        return;
       }
 
-      try {
-        const user = await this.userService.findByEmail(email);
-
-        if (user && !user.email_verified) {
-          const { verificationToken } =
-            await this.authService.generateEmailVerificationToken(
-              user._id as string
-            );
-
-          const verificationUrl = buildExternalApplicationUrl(
-            this.config(),
-            `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
-            { token: verificationToken }
-          );
-
-          await this.notificationService.sendVerification(
-            {
-              email: user.email,
-              username: user.given_name || user.username,
-              locale: user.locale,
-            },
-            verificationUrl
-          );
-
-          this.logger.info('Verification email sent', { email });
-        } else if (user) {
-          this.logger.info(
-            'Email verification requested for an already verified user',
-            { email }
-          );
-        } else {
-          this.logger.info(
-            'Email verification requested for non-existent user',
-            {
-              email,
-            }
-          );
-        }
-
-        // Always show success message to prevent email enumeration
-        this.sessionManager
-          .flash(req)
-          .success(
-            "If your email is registered with us, we've sent a verification link. Please check your inbox."
-          );
-        return res.redirect(
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
+      this.sessionManager
+        .flash(req)
+        .success(
+          "If your email is registered with us, we've sent a verification link. Please check your inbox."
         );
-      } catch (error) {
-        this.logger.error('Error sending verification email', { email, error });
-
-        // Generic success message to prevent email enumeration
-        this.sessionManager
-          .flash(req)
-          .success(
-            "If your email is registered with us, we've sent a verification link. Please check your inbox."
-          );
-        return res.redirect(
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
-        );
-      }
+      res.redirect(
+        `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
+      );
     } catch (error) {
       this.logger.error('Email verification request error', { error });
-
       this.sessionManager
         .flash(req)
         .error(
           'An error occurred while processing your request. Please try again later.'
         );
-      return res.render(this.viewResolver.views.auth.email_verification, {
+      res.render(this.viewResolver.views.auth.email_verification, {
         title: `Verify Email - ${this.getAppTitle()}`,
       });
     }
   };
 
-  /**
-   * Processes the resend of verification email for authenticated users
-   */
   public resendEmailVerification = async (
     req: Request,
     res: Response
@@ -2798,78 +2515,62 @@ export class AuthController implements IAuthController {
         this.sessionManager
           .flash(req)
           .error('You must be logged in to resend verification email.');
-        return res.redirect(
+        res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
         );
+        return;
       }
 
       const currentUser = this.sessionManager.getActiveUser(req);
-
-      if (!currentUser || !currentUser.id) {
+      if (!currentUser?.id) {
         this.sessionManager
           .flash(req)
           .error('User information not found in session.');
-        return res.redirect(
+        res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
         );
+        return;
       }
 
-      const user = await this.userService.findOne({ _id: currentUser.id });
-
-      if (!user) {
+      const result = await this.emailVerificationService.resend(currentUser.id);
+      if (result.status === 'user_not_found') {
         this.sessionManager.flash(req).error('User not found.');
-        return res.redirect(
+        res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.login}`
         );
+        return;
       }
-
-      if (user.email_verified) {
-        this.sessionManager.flash(req).info('Your email is already verified.');
-        return res.redirect(
+      if (result.status === 'email_missing') {
+        this.sessionManager
+          .flash(req)
+          .error('No email address is associated with this account.');
+        res.redirect(
           `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`
         );
+        return;
       }
-
-      const { verificationToken } =
-        await this.authService.generateEmailVerificationToken(
-          user._id as string
+      if (result.status === 'already_verified') {
+        this.sessionManager.flash(req).info('Your email is already verified.');
+        res.redirect(
+          `${this.config().deployment.routes.accounts}${this.config().deployment.routes.account_routes.dashboard}`
         );
-
-      const verificationUrl = buildExternalApplicationUrl(
-        this.config(),
-        `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.verify_email}`,
-        { token: verificationToken }
-      );
-
-      await this.notificationService.sendVerification(
-        {
-          email: user.email,
-          username: user.given_name || user.username,
-          locale: user.locale,
-        },
-        verificationUrl
-      );
-
-      this.logger.info('Verification email resent', {
-        userId: user._id,
-        email: user.email,
-      });
+        return;
+      }
 
       this.sessionManager
         .flash(req)
         .success('Verification email has been sent. Please check your inbox.');
-      return res.redirect(
+      res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
       );
     } catch (error) {
       this.logger.error('Resend verification email error', { error });
-
       this.sessionManager
         .flash(req)
         .error(
           'An error occurred while resending the verification email. Please try again later.'
         );
-      return res.redirect(
+      res.redirect(
         `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}?status=pending`
       );
     }
@@ -2880,22 +2581,18 @@ export class AuthController implements IAuthController {
    */
   public verifyEmail = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { token } = req.query;
-
-      if (!token || typeof token !== 'string') {
+      const result = await this.emailVerificationService.verify(
+        req.query.token
+      );
+      if (result.status === 'invalid_token') {
         this.sessionManager.flash(req).error('Invalid verification token.');
-        return res.redirect(
+        res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.email_verification}`
         );
+        return;
       }
 
-      const user = await this.authService.verifyEmail(token);
-
-      this.logger.info('Email verified successfully', {
-        userId: user._id,
-        email: user.email,
-      });
-
+      const { user } = result;
       if (await this.sessionManager.isAuthenticated(req)) {
         const currentUser = this.sessionManager.getActiveUser(req);
         const authenticatedUsers =
@@ -2997,7 +2694,7 @@ export class AuthController implements IAuthController {
       });
 
     try {
-      const user = await this.authService.verifyPhone(token, code);
+      const user = await this.phoneVerificationService.verify(token, code);
       this.logger.info('Phone verified successfully', {
         userId: user._id,
       });
@@ -3075,10 +2772,9 @@ export class AuthController implements IAuthController {
   ): Promise<void> => {
     const token = typeof req.body.token === 'string' ? req.body.token : '';
     try {
-      const challenge = await this.authService.renewPhoneVerificationChallenge(
+      const challenge = await this.phoneVerificationService.renew(
         token,
-        replacement =>
-          this.deliverPhoneVerificationChallenge(replacement, req.ip)
+        req.ip
       );
       this.sessionManager
         .flash(req)
@@ -3105,9 +2801,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Show account recovery page
-   */
   public accountRecovery = (req: Request, res: Response): void => {
     res.render(this.viewResolver.views.auth.account_recovery, {
       title: `${req.t('auth.account_recovery_page.title')} - ${this.getAppTitle()}`,
@@ -3122,9 +2815,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process account recovery request - find user and redirect to method selection
-   */
   public processAccountRecovery = async (
     req: Request,
     res: Response
@@ -3245,9 +2935,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Show recovery method selection page
-   */
   public recoveryMethodSelect = async (
     req: Request,
     res: Response
@@ -3271,9 +2958,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process recovery method selection
-   */
   public processRecoveryMethodSelect = async (
     req: Request,
     res: Response
@@ -3547,9 +3231,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Show SMS recovery page
-   */
   public recoverySms = async (req: Request, res: Response): Promise<void> => {
     const config = this.config();
     const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
@@ -3575,9 +3256,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process SMS recovery - send code or verify
-   */
   public processRecoverySms = async (
     req: Request,
     res: Response
@@ -3692,9 +3370,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Show backup codes recovery page
-   */
   public recoveryBackupCodes = (req: Request, res: Response): void => {
     const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
       req,
@@ -3714,9 +3389,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process backup codes recovery
-   */
   public processRecoveryBackupCodes = async (
     req: Request,
     res: Response
@@ -3979,9 +3651,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Show secondary email recovery page
-   */
   public recoverySecondaryEmail = (req: Request, res: Response): void => {
     const recoveryAttempt = this.sessionManager.get<RecoveryAttempt>(
       req,
@@ -4001,9 +3670,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process secondary email recovery
-   */
   public processRecoverySecondaryEmail = async (
     req: Request,
     res: Response
@@ -4173,9 +3839,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Show verification code page for secondary email recovery
-   */
   public recoveryVerifyCode = (req: Request, res: Response): void => {
     const verification = this.sessionManager.get<SecondaryEmailVerification>(
       req,
@@ -4201,9 +3864,6 @@ export class AuthController implements IAuthController {
     });
   };
 
-  /**
-   * Process verification code for secondary email recovery
-   */
   public processRecoveryVerifyCode = async (
     req: Request,
     res: Response
@@ -5044,7 +4704,14 @@ export class AuthController implements IAuthController {
     res: Response
   ): Promise<void> => {
     try {
-      const provider = req.params.provider as SocialProvider;
+      const provider = req.params.provider;
+
+      if (!isConfigurableSocialProvider(provider)) {
+        this.logger.warn(`Rejected unknown social provider: ${provider}`);
+        return res.redirect(
+          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
+        );
+      }
 
       this.logger.info(`Initiating social registration for ${provider}`, {
         provider,
@@ -5059,15 +4726,6 @@ export class AuthController implements IAuthController {
         this.sessionManager
           .flash(req)
           .error(`${provider} registration is not available`);
-        return res.redirect(
-          `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
-        );
-      }
-
-      // Strict allowlist so registration state cannot be mutated for an
-      // adapter-provided value outside SocialProvider.
-      if (!isKnownSocialProvider(provider)) {
-        this.logger.warn(`Rejected unknown social provider: ${provider}`);
         return res.redirect(
           `${this.config().deployment.routes.auth}${this.config().deployment.routes.auth_routes.register}`
         );
@@ -5134,15 +4792,12 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Handle social login/register callback
-   */
   public socialCallback = async (
     req: Request,
     res: Response
   ): Promise<void> => {
     try {
-      const provider = req.params.provider as SocialProvider;
+      const provider = req.params.provider as ConfigurableSocialProvider;
 
       const oidcContext = this.sessionManager.get<OIDCSocialContext>(
         req,
@@ -5356,7 +5011,7 @@ export class AuthController implements IAuthController {
 
       this.consumeSocialRegisterIntent(req, provider);
 
-      if (this.requiresPhoneVerification(result.user)) {
+      if (this.phoneVerificationService.requiresVerification(result.user)) {
         return this.startPhoneVerification(req, res, this.userId(result.user));
       }
 
@@ -5668,7 +5323,7 @@ export class AuthController implements IAuthController {
   private async handleSocialRegistration(
     req: Request,
     res: Response,
-    provider: SocialProvider,
+    provider: ConfigurableSocialProvider,
     result: any
   ): Promise<void> {
     try {
@@ -5882,7 +5537,7 @@ export class AuthController implements IAuthController {
         );
       }
 
-      if (this.requiresPhoneVerification(newUser)) {
+      if (this.phoneVerificationService.requiresVerification(newUser)) {
         return this.startPhoneVerification(req, res, newUserId);
       }
 
@@ -6131,7 +5786,7 @@ export class AuthController implements IAuthController {
         );
       }
 
-      if (this.requiresPhoneVerification(user)) {
+      if (this.phoneVerificationService.requiresVerification(user)) {
         return this.startPhoneVerification(
           req,
           res,
@@ -6263,9 +5918,6 @@ export class AuthController implements IAuthController {
     }
   };
 
-  /**
-   * Process social contact info completion
-   */
   public processSocialContactInfo = async (
     req: Request,
     res: Response
@@ -6448,7 +6100,7 @@ export class AuthController implements IAuthController {
       return this.handleSocialRegistration(
         req,
         res,
-        provider as SocialProvider,
+        socialContactData.provider,
         result
       );
     } catch (error) {

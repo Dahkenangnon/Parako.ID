@@ -1,6 +1,5 @@
 import { injectable, inject } from 'inversify';
 import { Request, Response } from 'express';
-import { Redis } from 'ioredis';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import type { IAdminSettingsController } from '../../di/interfaces/admin-settings-controller.interface.js';
 import type { ISessionManager } from '../../di/interfaces/session-manager.interface.js';
@@ -12,10 +11,7 @@ import type { IUploadMiddleware } from '../../di/interfaces/upload-middleware.in
 import type { IClientDeviceInfoManager } from '../../di/interfaces/client-device-info-manager.interface.js';
 import { TYPES } from '../../di/types.js';
 import { activityLoggerFor } from '../../utils/activity-logger.factory.js';
-import { getDefaultFullConfig } from '../../config/constants.js';
-import type { RuntimeConfig } from '../../config/types.js';
-import { resolveBrandingUrlAsync } from '../../utils/views.js';
-import { mergeConfig, type DeepPartial } from '../../utils/config-merge.js';
+import { mergeConfig } from '../../utils/config-merge.js';
 import {
   convertApplicationFormData,
   convertBrandingFormData,
@@ -24,16 +20,32 @@ import {
   convertOidcFormData,
   convertIntegrationsFormData,
   convertNotificationsFormData,
-  convertSecurityFormData,
-  getSectionIcon,
-  getSectionStatus,
   prepareSensitiveConfigForDisplay,
   restoreMaskedSensitiveFields,
-  SENSITIVE_FIELDS,
   BOOTSTRAP_ONLY_FIELDS,
   getNestedValue,
 } from '../../utils/settings.helper.js';
 import { ConfigurationVersionConflictError } from '../../errors/configuration-version-conflict.error.js';
+import {
+  createSecuritySettingsViewModel,
+  createSettingsOverviewViewModel,
+  type ApplicationSettingsViewModel,
+  type BrandingSettingsViewModel,
+  type DeploymentSettingsViewModel,
+  type FeaturesSettingsViewModel,
+  type IntegrationsSettingsViewModel,
+  type OidcSettingsViewModel,
+} from './settings-view-model.js';
+import {
+  parseApplicationSettingsForm,
+  parseBrandingSettingsForm,
+  parseDeploymentSettingsForm,
+  parseFeaturesSettingsForm,
+  parseIntegrationsSettingsForm,
+  parseOidcSettingsForm,
+} from '../../config/schemas/settings-form-schema.js';
+import { parseConfigurationVersionId } from '../../services/admin/configuration-version.service.js';
+import type { AdminSettingsControllerOperationModules } from '../../di/factories/controller-operations.factory.js';
 
 const CONFIGURATION_CONFLICT_MESSAGE =
   'Configuration was modified by another administrator. Reload the latest settings, review them, and try again.';
@@ -69,33 +81,17 @@ function getRequestUserAgent(req: Request): string {
   return req.get('user-agent') || 'unknown';
 }
 
-function withTimeout<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  message: string
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-    operation.then(
-      value => {
-        clearTimeout(timeout);
-        resolve(value);
-      },
-      error => {
-        clearTimeout(timeout);
-        reject(error);
-      }
-    );
-  });
-}
-
-/**
- * Admin Settings Controller
- * Handles all settings management for the admin panel
- * Uses only ConfigManager as the single source of truth
- */
+/** Reads and writes settings exclusively through ConfigManager. */
 @injectable()
 export class AdminSettingsController implements IAdminSettingsController {
+  private readonly brandingSettingsService: AdminSettingsControllerOperationModules['branding'];
+  private readonly configurationTransferService: AdminSettingsControllerOperationModules['configurationTransfer'];
+  private readonly configurationVersionService: AdminSettingsControllerOperationModules['configurationVersion'];
+  private readonly securitySettingsService: AdminSettingsControllerOperationModules['security'];
+  private readonly configurationHealthService: AdminSettingsControllerOperationModules['configurationHealth'];
+  private readonly testEmailService: AdminSettingsControllerOperationModules['testEmail'];
+  private readonly secretRevealService: AdminSettingsControllerOperationModules['secretReveal'];
+
   constructor(
     @inject(TYPES.ConfigManager) private configManager: IConfigManager,
     @inject(TYPES.SessionManager) private sessionManager: ISessionManager,
@@ -105,8 +101,18 @@ export class AdminSettingsController implements IAdminSettingsController {
     @inject(TYPES.SettingsService) private settingsService: ISettingsService,
     @inject(TYPES.UploadMiddleware) private uploadMiddleware: IUploadMiddleware,
     @inject(TYPES.ClientDeviceInfoManager)
-    private readonly clientDeviceInfoManager: IClientDeviceInfoManager
-  ) {}
+    private readonly clientDeviceInfoManager: IClientDeviceInfoManager,
+    @inject(TYPES.AdminSettingsControllerOperationModules)
+    operationModules: AdminSettingsControllerOperationModules
+  ) {
+    this.brandingSettingsService = operationModules.branding;
+    this.configurationTransferService = operationModules.configurationTransfer;
+    this.configurationVersionService = operationModules.configurationVersion;
+    this.securitySettingsService = operationModules.security;
+    this.configurationHealthService = operationModules.configurationHealth;
+    this.testEmailService = operationModules.testEmail;
+    this.secretRevealService = operationModules.secretReveal;
+  }
 
   private get activityLoggerDeps() {
     return {
@@ -140,99 +146,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     });
   }
 
-  private async resolveBrandingUrls(
-    branding: RuntimeConfig['branding']
-  ): Promise<RuntimeConfig['branding']> {
-    const resolved = { ...branding } as Record<string, unknown>;
-    const imageFields = [
-      'logo',
-      'logoDark',
-      'logoIcon',
-      'logoIconDark',
-      'favicon',
-    ] as const;
-
-    await Promise.all(
-      imageFields.map(async field => {
-        const value = resolved[field];
-        if (typeof value === 'string') {
-          resolved[field] = await resolveBrandingUrlAsync(
-            value,
-            this.uploadMiddleware.getFileUrl.bind(this.uploadMiddleware)
-          );
-        }
-      })
-    );
-
-    return resolved as RuntimeConfig['branding'];
-  }
-
-  private async deleteBrandingAssetBestEffort(
-    storageKey: string,
-    context: string
-  ): Promise<void> {
-    try {
-      await this.uploadMiddleware.deleteFile(storageKey);
-    } catch (error) {
-      this.logger.error(error as Error, { context, storageKey });
-    }
-  }
-
-  /**
-   * Persist a branding replacement before deleting the previous object. If
-   * persistence fails, only the newly stored object is rolled back.
-   */
-  private async persistBrandingAssetReplacement(
-    branding: DeepPartial<RuntimeConfig['branding']>,
-    previousStorageKey: string | null | undefined,
-    newStorageKey: string,
-    context: string
-  ): Promise<void> {
-    try {
-      await this.configManager.update({ branding });
-    } catch (error) {
-      await this.deleteBrandingAssetBestEffort(
-        newStorageKey,
-        `${context}_rollback_failed`
-      );
-      throw error;
-    }
-
-    if (previousStorageKey && previousStorageKey !== newStorageKey) {
-      await this.deleteBrandingAssetBestEffort(
-        previousStorageKey,
-        `${context}_old_file_cleanup_failed`
-      );
-    }
-  }
-
-  /**
-   * Persist the reference removal before deleting the owned object. Sending
-   * only the changed field prevents a nearby branding request from restoring
-   * sibling values captured from an older configuration snapshot.
-   */
-  private async persistBrandingAssetRemoval(
-    branding: DeepPartial<RuntimeConfig['branding']>,
-    previousStorageKey: string | null | undefined,
-    context: string
-  ): Promise<void> {
-    await this.configManager.update({ branding });
-
-    if (previousStorageKey) {
-      await this.deleteBrandingAssetBestEffort(
-        previousStorageKey,
-        `${context}_old_file_cleanup_failed`
-      );
-    }
-  }
-
-  /**
-   * Get configuration section with sensitive fields masked for display
-   * This ensures secrets are never sent to the browser in plain text
-   *
-   * @param section - The section name ('security', 'oidc', 'integrations', etc.)
-   * @returns Masked configuration section safe for UI display
-   */
   private getMaskedConfigSection(section: string): any {
     const config = this.configManager.getPlatformConfig();
     const sectionConfig = (config as any)[section];
@@ -279,77 +192,20 @@ export class AdminSettingsController implements IAdminSettingsController {
     return { sanitized, removed };
   }
 
-  /**
-   * Settings overview page - shows all sections
-   */
   overview = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      const sections = [
-        {
-          key: 'application',
-          name: 'Application',
-          description: 'Basic application information and locales',
-        },
-        {
-          key: 'branding',
-          name: 'Branding',
-          description: 'Company branding, theme, and UI customization',
-        },
-        {
-          key: 'deployment',
-          name: 'Deployment',
-          description: 'Environment, server, cookies, and routes',
-        },
-        {
-          key: 'security',
-          name: 'Security',
-          description: 'Security settings, authentication, and logging',
-        },
-        {
-          key: 'features',
-          name: 'Features',
-          description: 'OIDC features, social providers, and developer API',
-        },
-        {
-          key: 'oidc',
-          name: 'OIDC',
-          description: 'OIDC-specific configuration and settings',
-        },
-        {
-          key: 'integrations',
-          name: 'Integrations',
-          description: 'Email and URL configuration',
-        },
-      ].map(section => ({
-        ...section,
-        icon: getSectionIcon(section.key),
-        isConfigured: getSectionStatus(config, section.key),
-      }));
-
-      // Use the same key constant that SettingsService uses
-      const configKey = 'parako_config';
       const versionHistory = await this.settingsService.findMany(
-        { key: configKey },
+        { key: 'parako_config' },
         { sort: { created_at: -1 }, limit: 10 }
       );
 
-      // Note: versionHistory is sorted by created_at desc, so the active version should be first
-      const activeConfig =
-        versionHistory.find(v => v.is_active) || versionHistory[0];
-      const currentVersion = activeConfig?.version || '1.0.0';
-      const currentVersionNum = activeConfig?._version || 0;
-
-      res.render('admin/settings/overview', {
-        title: 'Settings Overview',
-        config,
-        sections,
-        isUsingFileConfig: this.configManager.isUsingFileConfig(),
-        versionHistory,
-        currentVersion,
-        currentVersionNum,
-      });
+      res.render(
+        'admin/settings/overview',
+        createSettingsOverviewViewModel(
+          versionHistory,
+          this.configManager.isUsingFileConfig()
+        )
+      );
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'settings_overview_loading_failed',
@@ -359,9 +215,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Application settings - display and edit
-   */
   application = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -373,17 +226,11 @@ export class AdminSettingsController implements IAdminSettingsController {
           section: 'application',
           config: config.application,
           configVersion: activeConfig?._version,
-        });
+        } satisfies ApplicationSettingsViewModel);
       } else if (req.method === 'POST') {
-        // CSRF and device fields belong to request processing and auditing;
-        // they are never part of persisted application configuration.
-        const applicationData = { ...req.body };
-        const expectedVersion = parseConfigurationVersion(
-          applicationData._configVersion
-        );
-        delete applicationData._csrf;
-        delete applicationData._deviceInfo;
-        delete applicationData._configVersion;
+        const { data: applicationData, configVersion } =
+          parseApplicationSettingsForm(req.body);
+        const expectedVersion = parseConfigurationVersion(configVersion);
         const convertedApplicationData =
           convertApplicationFormData(applicationData);
         const existingApplication = config.application || {};
@@ -441,9 +288,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Branding settings - display and edit
-   */
   branding = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -452,40 +296,20 @@ export class AdminSettingsController implements IAdminSettingsController {
         res.render('admin/settings/branding', {
           title: 'Branding Settings',
           section: 'branding',
-          config: await this.resolveBrandingUrls(config.branding),
-        });
+          config: await this.brandingSettingsService.resolveAssetUrls(
+            config.branding
+          ),
+        } satisfies BrandingSettingsViewModel);
       } else if (req.method === 'POST') {
-        const file = (req as any).file; // Multer adds this
-
-        const convertedData = convertBrandingFormData(req.body);
-
-        let uploadedStorageKey: string | undefined;
-        if (file) {
-          uploadedStorageKey = await this.uploadMiddleware.storeFile(
-            file,
-            'logos'
+        const file = req.file;
+        const convertedData = convertBrandingFormData(
+          parseBrandingSettingsForm(req.body)
+        );
+        const { modifiedFieldCount } =
+          await this.brandingSettingsService.updateSettings(
+            convertedData,
+            file
           );
-          convertedData.logo = uploadedStorageKey;
-        } else {
-          // No file uploaded - remove logo from convertedData to preserve existing
-          delete convertedData.logo;
-        }
-
-        const existingBranding = config.branding || {};
-        const mergedBranding = mergeConfig(existingBranding, convertedData);
-
-        if (uploadedStorageKey) {
-          await this.persistBrandingAssetReplacement(
-            mergedBranding,
-            config.branding?.logo,
-            uploadedStorageKey,
-            'logo_upload'
-          );
-        } else {
-          await this.configManager.update({
-            branding: mergedBranding,
-          });
-        }
 
         this.audit(
           req,
@@ -493,7 +317,7 @@ export class AdminSettingsController implements IAdminSettingsController {
           'update_config',
           'Updated branding configuration',
           {
-            fieldsModified: Object.keys(convertedData).length,
+            fieldsModified: modifiedFieldCount,
           }
         );
 
@@ -527,18 +351,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Remove logo from branding settings
-   */
   removeLogo = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      await this.persistBrandingAssetRemoval(
-        { logo: '' },
-        config.branding?.logo,
-        'logo_removal'
-      );
+      await this.brandingSettingsService.removeAsset('logo');
 
       this.audit(req, 'success', 'update_config', 'Removed company logo', {
         action: 'remove_logo',
@@ -565,21 +380,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Reset theme colors to defaults
-   */
   resetColors = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      const defaultColors = getDefaultFullConfig().branding.colors;
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          colors: defaultColors,
-        },
-      });
+      await this.brandingSettingsService.resetThemePart('colors');
 
       this.audit(
         req,
@@ -612,21 +415,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Reset fonts to defaults
-   */
   resetFonts = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      const defaultFonts = getDefaultFullConfig().branding.fonts;
-
-      await this.configManager.update({
-        branding: {
-          ...config.branding,
-          fonts: defaultFonts,
-        },
-      });
+      await this.brandingSettingsService.resetThemePart('fonts');
 
       this.audit(req, 'success', 'update_config', 'Reset fonts to defaults', {
         action: 'reset_fonts',
@@ -647,26 +438,18 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Upload dark mode logo
-   */
   uploadLogoDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-      const file = (req as any).file;
+      const file = req.file;
 
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
 
-      const logoDarkKey = await this.uploadMiddleware.storeFile(file, 'logos');
-
-      await this.persistBrandingAssetReplacement(
-        { logoDark: logoDarkKey },
-        config.branding?.logoDark,
-        logoDarkKey,
-        'logo_dark_upload'
+      const { url } = await this.brandingSettingsService.replaceAsset(
+        'logoDark',
+        file
       );
 
       this.audit(req, 'success', 'update_config', 'Uploaded dark mode logo', {
@@ -677,7 +460,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Dark mode logo uploaded successfully',
-        url: await this.uploadMiddleware.getFileUrl(logoDarkKey),
+        url,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -699,18 +482,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Remove dark mode logo from branding settings
-   */
   removeLogoDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      await this.persistBrandingAssetRemoval(
-        { logoDark: null },
-        config.branding?.logoDark,
-        'logo_dark_removal'
-      );
+      await this.brandingSettingsService.removeAsset('logoDark');
 
       this.audit(req, 'success', 'update_config', 'Removed dark mode logo', {
         action: 'remove_logo_dark',
@@ -740,26 +514,18 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Upload icon logo (light)
-   */
   uploadLogoIcon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-      const file = (req as any).file;
+      const file = req.file;
 
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
 
-      const logoIconKey = await this.uploadMiddleware.storeFile(file, 'logos');
-
-      await this.persistBrandingAssetReplacement(
-        { logoIcon: logoIconKey },
-        config.branding?.logoIcon,
-        logoIconKey,
-        'logo_icon_upload'
+      const { url } = await this.brandingSettingsService.replaceAsset(
+        'logoIcon',
+        file
       );
 
       this.audit(req, 'success', 'update_config', 'Icon logo uploaded', {
@@ -770,7 +536,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Icon logo uploaded successfully',
-        url: await this.uploadMiddleware.getFileUrl(logoIconKey),
+        url,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -786,18 +552,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Remove icon logo (light)
-   */
   removeLogoIcon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      await this.persistBrandingAssetRemoval(
-        { logoIcon: null },
-        config.branding?.logoIcon,
-        'logo_icon_removal'
-      );
+      await this.brandingSettingsService.removeAsset('logoIcon');
 
       this.audit(req, 'success', 'update_config', 'Icon logo removed', {
         action: 'remove_logo_icon',
@@ -821,29 +578,18 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Upload dark icon logo
-   */
   uploadLogoIconDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-      const file = (req as any).file;
+      const file = req.file;
 
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
 
-      const logoIconDarkKey = await this.uploadMiddleware.storeFile(
-        file,
-        'logos'
-      );
-
-      await this.persistBrandingAssetReplacement(
-        { logoIconDark: logoIconDarkKey },
-        config.branding?.logoIconDark,
-        logoIconDarkKey,
-        'logo_icon_dark_upload'
+      const { url } = await this.brandingSettingsService.replaceAsset(
+        'logoIconDark',
+        file
       );
 
       this.audit(req, 'success', 'update_config', 'Dark icon logo uploaded', {
@@ -854,7 +600,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Dark icon logo uploaded successfully',
-        url: await this.uploadMiddleware.getFileUrl(logoIconDarkKey),
+        url,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -876,18 +622,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Remove dark icon logo
-   */
   removeLogoIconDark = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      await this.persistBrandingAssetRemoval(
-        { logoIconDark: null },
-        config.branding?.logoIconDark,
-        'logo_icon_dark_removal'
-      );
+      await this.brandingSettingsService.removeAsset('logoIconDark');
 
       this.audit(req, 'success', 'update_config', 'Dark icon logo removed', {
         action: 'remove_logo_icon_dark',
@@ -919,24 +656,16 @@ export class AdminSettingsController implements IAdminSettingsController {
 
   uploadFavicon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-      const file = (req as any).file;
+      const file = req.file;
 
       if (!file) {
         res.status(400).json({ error: 'No file uploaded' });
         return;
       }
 
-      const faviconKey = await this.uploadMiddleware.storeFile(
-        file,
-        'favicons'
-      );
-
-      await this.persistBrandingAssetReplacement(
-        { favicon: faviconKey },
-        config.branding?.favicon,
-        faviconKey,
-        'favicon_upload'
+      const { url } = await this.brandingSettingsService.replaceAsset(
+        'favicon',
+        file
       );
 
       this.audit(req, 'success', 'update_config', 'Uploaded favicon', {
@@ -947,7 +676,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       res.json({
         success: true,
         message: 'Favicon uploaded successfully',
-        url: await this.uploadMiddleware.getFileUrl(faviconKey),
+        url,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -963,18 +692,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Remove favicon from branding settings
-   */
   removeFavicon = async (req: Request, res: Response): Promise<void> => {
     try {
-      const config = this.configManager.getPlatformConfig();
-
-      await this.persistBrandingAssetRemoval(
-        { favicon: null },
-        config.branding?.favicon,
-        'favicon_removal'
-      );
+      await this.brandingSettingsService.removeAsset('favicon');
 
       this.audit(req, 'success', 'update_config', 'Removed favicon', {
         action: 'remove_favicon',
@@ -995,9 +715,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Deployment settings - display and edit
-   */
   deployment = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -1007,9 +724,11 @@ export class AdminSettingsController implements IAdminSettingsController {
           title: 'Deployment Settings',
           section: 'deployment',
           config: config.deployment,
-        });
+        } satisfies DeploymentSettingsViewModel);
       } else if (req.method === 'POST') {
-        const convertedData = convertDeploymentFormData(req.body);
+        const convertedData = convertDeploymentFormData(
+          parseDeploymentSettingsForm(req.body)
+        );
 
         // These fields (environment, port, database URI) must be set in .env file
         const { sanitized, removed } = this.removeBootstrapFields({
@@ -1081,85 +800,41 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Shared POST handler for all security sub-pages
-   */
   private handleSecurityPost = async (
     req: Request,
     res: Response,
     redirectUrl: string
   ): Promise<void> => {
-    const config = this.configManager.getPlatformConfig();
-    // CSRF and device fields describe the request, not persisted security.
-    // Preserve req.body for audit/device processing and sanitize a copy.
-    const securityData = { ...req.body };
-    delete securityData._csrf;
-    delete securityData._deviceInfo;
+    const result = await this.securitySettingsService.update(req.body);
 
-    const submittedCookieSecrets = Object.prototype.hasOwnProperty.call(
-      securityData.secrets ?? {},
-      'cookie_secrets'
-    );
-    const convertedData = convertSecurityFormData(securityData);
-
-    if (convertedData.secrets && !submittedCookieSecrets) {
-      delete convertedData.secrets.cookie_secrets;
-    }
-
-    // Inline validation (moved from config-validation middleware for correct redirects)
-    const validationErrors = this.validateSecurityData(convertedData);
-    if (validationErrors.length > 0) {
-      for (const error of validationErrors) {
+    if (result.status === 'invalid') {
+      for (const error of result.errors) {
         this.sessionManager.flash(req).error(error);
       }
-      return res.redirect(redirectUrl);
+      res.redirect(redirectUrl);
+      return;
     }
 
-    // Restore any masked sensitive fields to prevent saving masked values
-    const currentConfig = this.configManager.getPlatformConfig();
-    const { restoredConfig, restoredFields } = restoreMaskedSensitiveFields(
-      { security: convertedData },
-      currentConfig
-    );
-
-    if (restoredFields.length > 0) {
+    if (result.restoredFields.length > 0) {
       this.logger.info(
-        `Restored ${restoredFields.length} masked sensitive fields`,
-        {
-          fields: restoredFields,
-        }
+        `Restored ${result.restoredFields.length} masked sensitive fields`,
+        { fields: result.restoredFields }
       );
     }
-
-    const existingSecurity = config.security || {};
-    const mergedSecurity = mergeConfig(
-      existingSecurity,
-      restoredConfig.security
-    );
-
-    await this.configManager.update({
-      security: mergedSecurity,
-    });
 
     this.audit(
       req,
       'success',
       'update_config',
       'Updated security configuration',
-      {
-        fieldsModified: Object.keys(convertedData).length,
-      }
+      { fieldsModified: result.fieldsModified }
     );
-
     this.sessionManager
       .flash(req)
       .success('Security settings updated successfully');
     res.redirect(redirectUrl);
   };
 
-  /**
-   * Shared error handler for security sub-pages
-   */
   private handleSecurityError = (
     req: Request,
     res: Response,
@@ -1185,65 +860,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     res.redirect(redirectUrl);
   };
 
-  /**
-   * Validate security configuration data
-   * Replicates essential checks from config-validation middleware
-   */
-  private validateSecurityData(data: any): string[] {
-    const errors: string[] = [];
-
-    if (data.secrets) {
-      if (data.secrets.jwt_secret && data.secrets.jwt_secret.length < 32) {
-        errors.push(
-          'JWT secret must be at least 32 characters long for security'
-        );
-      }
-
-      if (data.secrets.cookie_secrets) {
-        let cookieSecretsArray: string[] = [];
-        if (Array.isArray(data.secrets.cookie_secrets)) {
-          cookieSecretsArray = data.secrets.cookie_secrets;
-        } else {
-          errors.push(
-            'Cookie secrets must be an array or newline-separated string'
-          );
-        }
-
-        if (cookieSecretsArray.length === 0) {
-          errors.push('At least one cookie secret is required');
-        }
-        if (cookieSecretsArray.some((s: string) => s.length < 32)) {
-          errors.push('All cookie secrets must be at least 32 characters long');
-        }
-      }
-    }
-
-    if (data.authentication?.multi_factor) {
-      const { totp, webauthn } = data.authentication.multi_factor;
-
-      if (totp?.enabled && !totp.issuer_name) {
-        errors.push('TOTP issuer name is required when TOTP is enabled');
-      }
-
-      if (webauthn?.enabled && !webauthn.rp_id) {
-        errors.push(
-          'WebAuthn Relying Party ID is required when WebAuthn is enabled'
-        );
-      }
-
-      if (webauthn?.enabled && !webauthn.rp_name) {
-        errors.push(
-          'WebAuthn Relying Party name is required when WebAuthn is enabled'
-        );
-      }
-    }
-
-    return errors;
-  }
-
-  /**
-   * Security settings - Authentication & Access sub-page
-   */
   securityAuthentication = async (
     req: Request,
     res: Response
@@ -1251,12 +867,10 @@ export class AdminSettingsController implements IAdminSettingsController {
     try {
       if (req.method === 'GET') {
         const maskedConfig = this.getMaskedConfigSection('security');
-        res.render('admin/settings/security', {
-          title: 'Authentication & Access',
-          section: 'security',
-          securityTab: 'authentication',
-          config: maskedConfig,
-        });
+        res.render(
+          'admin/settings/security',
+          createSecuritySettingsViewModel('authentication', maskedConfig)
+        );
       } else {
         await this.handleSecurityPost(req, res, '/admin/settings/security');
       }
@@ -1265,19 +879,14 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Security settings - MFA sub-page
-   */
   securityMfa = async (req: Request, res: Response): Promise<void> => {
     try {
       if (req.method === 'GET') {
         const maskedConfig = this.getMaskedConfigSection('security');
-        res.render('admin/settings/security-mfa', {
-          title: 'Multi-Factor Authentication',
-          section: 'security',
-          securityTab: 'mfa',
-          config: maskedConfig,
-        });
+        res.render(
+          'admin/settings/security-mfa',
+          createSecuritySettingsViewModel('mfa', maskedConfig)
+        );
       } else {
         await this.handleSecurityPost(req, res, '/admin/settings/security/mfa');
       }
@@ -1286,19 +895,16 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Security settings - Sessions sub-page
-   */
   securitySessions = async (req: Request, res: Response): Promise<void> => {
     try {
       if (req.method === 'GET') {
         const maskedConfig = this.getMaskedConfigSection('security');
-        res.render('admin/settings/security-sessions', {
-          title: 'Session Management',
-          section: 'security',
-          securityTab: 'sessions',
-          config: maskedConfig,
-        });
+        const redisPrefix =
+          this.configManager.getPlatformConfig().deployment.redis_prefix;
+        res.render(
+          'admin/settings/security-sessions',
+          createSecuritySettingsViewModel('sessions', maskedConfig, redisPrefix)
+        );
       } else {
         await this.handleSecurityPost(
           req,
@@ -1316,19 +922,14 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Security settings - Protection sub-page
-   */
   securityProtection = async (req: Request, res: Response): Promise<void> => {
     try {
       if (req.method === 'GET') {
         const maskedConfig = this.getMaskedConfigSection('security');
-        res.render('admin/settings/security-protection', {
-          title: 'Protection & Detection',
-          section: 'security',
-          securityTab: 'protection',
-          config: maskedConfig,
-        });
+        res.render(
+          'admin/settings/security-protection',
+          createSecuritySettingsViewModel('protection', maskedConfig)
+        );
       } else {
         await this.handleSecurityPost(
           req,
@@ -1346,19 +947,14 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Security settings - Secrets sub-page
-   */
   securitySecrets = async (req: Request, res: Response): Promise<void> => {
     try {
       if (req.method === 'GET') {
         const maskedConfig = this.getMaskedConfigSection('security');
-        res.render('admin/settings/security-secrets', {
-          title: 'Security Secrets',
-          section: 'security',
-          securityTab: 'secrets',
-          config: maskedConfig,
-        });
+        res.render(
+          'admin/settings/security-secrets',
+          createSecuritySettingsViewModel('secrets', maskedConfig)
+        );
       } else {
         await this.handleSecurityPost(
           req,
@@ -1376,9 +972,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Features settings - display and edit
-   */
   features = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -1390,12 +983,9 @@ export class AdminSettingsController implements IAdminSettingsController {
           title: 'Features Settings',
           section: 'features',
           config: maskedConfig,
-        });
+        } satisfies FeaturesSettingsViewModel);
       } else if (req.method === 'POST') {
-        // CSRF and device fields are request metadata, not feature settings.
-        const featureData = { ...req.body };
-        delete featureData._csrf;
-        delete featureData._deviceInfo;
+        const featureData = parseFeaturesSettingsForm(req.body);
         const convertedData = convertFeaturesFormData(featureData);
 
         // Restore any masked sensitive fields to prevent saving masked values
@@ -1464,9 +1054,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * OIDC settings - display and edit
-   */
   oidc = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -1479,11 +1066,9 @@ export class AdminSettingsController implements IAdminSettingsController {
           section: 'oidc',
           config: maskedConfig,
           deploymentUrl: config.deployment.url || '',
-        });
+        } satisfies OidcSettingsViewModel);
       } else if (req.method === 'POST') {
-        const oidcFormData = { ...req.body };
-        delete oidcFormData._csrf;
-        delete oidcFormData._deviceInfo;
+        const oidcFormData = parseOidcSettingsForm(req.body);
 
         this.logger.debug('OIDC form data received', {
           section: 'oidc',
@@ -1596,10 +1181,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Integrations settings - display and edit
-   * Also handles notification channel configuration
-   */
   integrations = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -1652,12 +1233,13 @@ export class AdminSettingsController implements IAdminSettingsController {
             ...maskedIntegrations,
             notifications: notificationsWithDefaults,
           },
-        });
+        } satisfies IntegrationsSettingsViewModel);
       } else if (req.method === 'POST') {
-        const convertedData = convertIntegrationsFormData(req.body);
+        const integrationsFormData = parseIntegrationsSettingsForm(req.body);
+        const convertedData = convertIntegrationsFormData(integrationsFormData);
 
-        const convertedNotifications = req.body.notifications
-          ? convertNotificationsFormData(req.body)
+        const convertedNotifications = integrationsFormData.notifications
+          ? convertNotificationsFormData(integrationsFormData)
           : null;
 
         // Restore any masked sensitive fields to prevent saving masked values
@@ -1753,9 +1335,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Reload configuration from database
-   */
   reload = async (req: Request, res: Response): Promise<void> => {
     try {
       await this.configManager.reload();
@@ -1772,159 +1351,66 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Test email configuration
-   * Logs all attempts to ActivityService for security auditing
-   */
+  /** Records every email-configuration test in the security audit log. */
   testEmail = async (req: Request, res: Response): Promise<void> => {
     const startTime = Date.now();
     const userData = this.sessionManager.getActiveUser(req);
     const requestedBy = getRequestedBy(userData);
     const requestIp = getRequestIp(req);
     const userAgent = getRequestUserAgent(req);
+    const recipientEmail = req.body.email;
 
     try {
-      const { email } = req.body;
-
       this.logger.info('Test email requested', {
         requestedBy,
-        recipientEmail: email,
+        recipientEmail,
         ip: requestIp,
         userAgent,
         context: 'test_email_attempt',
       });
 
-      if (!email) {
+      const result = await this.testEmailService.send(
+        recipientEmail,
+        requestedBy
+      );
+      if (result.status === 'invalid') {
         this.audit(
           req,
           'failed',
           'test_email',
-          'Test email failed: Email address is required'
+          result.auditDescription,
+          result.auditData
         );
-
-        res.status(400).json({
-          success: false,
-          error: 'Email address is required',
-        });
+        res.status(400).json({ success: false, error: result.error });
         return;
       }
 
-      if (typeof email !== 'string') {
-        this.audit(
-          req,
-          'failed',
-          'test_email',
-          'Test email failed: Invalid email format'
-        );
-
-        res.status(400).json({
-          success: false,
-          error: 'Invalid email address format',
-        });
-        return;
-      }
-
-      if (email.length > 254) {
-        this.audit(
-          req,
-          'failed',
-          'test_email',
-          'Test email failed: Email address too long',
-          {
-            emailLength: email.length,
-          }
-        );
-
-        res.status(400).json({
-          success: false,
-          error: 'Email address is too long',
-        });
-        return;
-      }
-
-      const emailRegex =
-        /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
-      if (!emailRegex.test(email)) {
-        this.audit(
-          req,
-          'failed',
-          'test_email',
-          'Test email failed: Invalid email format'
-        );
-
-        res.status(400).json({
-          success: false,
-          error: 'Invalid email address format',
-        });
-        return;
-      }
-
-      const recipientDomain = email.split('@')[1].toLowerCase();
-      const config = this.configManager.getPlatformConfig();
-      const deploymentUrl = config.deployment?.url || 'http://localhost:3000';
-      const appDomain = new URL(deploymentUrl).hostname.toLowerCase();
-
-      const isExternalDomain =
-        recipientDomain !== appDomain &&
-        !recipientDomain.endsWith(`.${appDomain}`);
-      if (isExternalDomain) {
+      if (result.isExternalDomain) {
         this.logger.warn('Test email to external domain', {
           requestedBy,
-          recipientEmail: email,
-          recipientDomain,
-          appDomain,
+          recipientEmail: result.recipientEmail,
+          recipientDomain: result.recipientDomain,
+          appDomain: result.appDomain,
           ip: requestIp,
           context: 'test_email_external_domain',
         });
       }
 
-      const freeEmailProviders = [
-        'gmail.com',
-        'yahoo.com',
-        'hotmail.com',
-        'outlook.com',
-        'aol.com',
-        'icloud.com',
-        'protonmail.com',
-        'mail.com',
-      ];
-      const isFreeProvider = freeEmailProviders.includes(recipientDomain);
-
-      this.emailService.initialize();
-
-      const subject = 'Test Email from Parako.ID';
-      const timestamp = new Date().toISOString();
-      const text = `This is a test email from your Parako.ID configuration. If you received this email, your SMTP settings are working correctly.\n\nTimestamp: ${timestamp}\nRequested by: ${requestedBy}`;
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #333;">Test Email from Parako.ID</h2>
-          <p>This is a test email from your Parako.ID configuration. If you received this email, your SMTP settings are working correctly.</p>
-          <p><strong>Timestamp:</strong> ${timestamp}</p>
-          <p><strong>Requested by:</strong> ${requestedBy}</p>
-          <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
-          <p style="color: #666; font-size: 12px;">This is an automated test email. Please do not reply.</p>
-        </div>
-      `;
-
-      await this.emailService.sendEmail(email, subject, text, html);
-
       const duration = Date.now() - startTime;
-
       this.logger.info('Test email sent successfully', {
         requestedBy,
-        recipientEmail: email,
-        recipientDomain,
-        isExternalDomain,
-        isFreeProvider,
+        recipientEmail: result.recipientEmail,
+        recipientDomain: result.recipientDomain,
+        isExternalDomain: result.isExternalDomain,
+        isFreeProvider: result.isFreeProvider,
         duration,
         ip: requestIp,
         context: 'test_email_success',
       });
 
       this.audit(req, 'success', 'test_email', 'Test email sent successfully', {
-        recipientEmail: email,
+        recipientEmail: result.recipientEmail,
       });
-
       res.json({
         success: true,
         message: 'Test email sent successfully',
@@ -1936,7 +1422,7 @@ export class AdminSettingsController implements IAdminSettingsController {
       this.logger.error(publicErrorMessage, {
         context: 'test_email_failed',
         requestedBy,
-        recipientEmail: req.body.email,
+        recipientEmail,
         ip: requestIp,
         userAgent,
         duration,
@@ -1946,7 +1432,6 @@ export class AdminSettingsController implements IAdminSettingsController {
       this.audit(req, 'failed', 'test_email', 'Test email failed', {
         error: publicErrorMessage,
       });
-
       res.status(500).json({
         success: false,
         error: publicErrorMessage,
@@ -1954,24 +1439,18 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Rollback configuration to a previous version
-   * Creates a new active version from a previous inactive version
-   */
+  /** Rolls back by creating a new active version; history stays immutable. */
   rollback = async (req: Request, res: Response): Promise<void> => {
     const startTime = Date.now();
     const userData = this.sessionManager.getActiveUser(req);
     const requestedBy = getRequestedBy(userData);
     const requestIp = getRequestIp(req);
     const userAgent = getRequestUserAgent(req);
+    const versionId = parseConfigurationVersionId(req.body.versionId);
 
     try {
-      const rawVersionId = req.body.versionId;
-      const versionId =
-        typeof rawVersionId === 'string' ? rawVersionId.trim() : '';
-
       this.logger.info('Configuration rollback requested', {
-        versionId,
+        versionId: versionId || '',
         requestedBy,
         ip: requestIp,
         context: 'rollback_attempt',
@@ -1985,27 +1464,28 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      const targetVersion = await this.settingsService.findOne(versionId);
+      const result = await this.configurationVersionService.rollback(
+        versionId,
+        requestedBy
+      );
 
-      if (!targetVersion) {
+      if (result.status === 'not-found') {
         this.logger.warn('Rollback failed: Version not found', {
           versionId,
           requestedBy,
           ip: requestIp,
         });
-
         this.sessionManager.flash(req).error('Configuration version not found');
         res.redirect('/admin/settings');
         return;
       }
 
-      if (targetVersion.is_active) {
+      if (result.status === 'active') {
         this.logger.warn('Rollback failed: Cannot rollback to active version', {
           versionId,
           requestedBy,
           ip: requestIp,
         });
-
         this.sessionManager
           .flash(req)
           .error('Cannot rollback to the currently active version');
@@ -2013,28 +1493,10 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      const currentConfig = this.configManager.getPlatformConfig();
-      const currentVersion = (currentConfig as any).version || 'unknown';
-
-      const rollbackReason = `Rollback to version ${targetVersion.version} (from ${currentVersion})`;
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips Mongoose metadata fields before rollback save.
-      const { _id, created_at, updated_at, __v, ...configData } =
-        targetVersion as any;
-
-      await this.settingsService.saveMainConfiguration(
-        configData,
-        requestedBy,
-        rollbackReason
-      );
-
-      await this.configManager.reload();
-
       const duration = Date.now() - startTime;
-
       this.logger.info('Configuration rollback completed successfully', {
-        fromVersion: currentVersion,
-        toVersion: targetVersion.version,
+        fromVersion: result.fromVersion,
+        toVersion: result.toVersion,
         targetVersionId: versionId,
         requestedBy,
         duration,
@@ -2048,15 +1510,15 @@ export class AdminSettingsController implements IAdminSettingsController {
         'rollback_config',
         'Configuration rolled back successfully',
         {
-          fromVersion: currentVersion,
-          toVersion: targetVersion.version,
+          fromVersion: result.fromVersion,
+          toVersion: result.toVersion,
         }
       );
 
       this.sessionManager
         .flash(req)
         .success(
-          `Configuration successfully rolled back to version ${targetVersion.version}`
+          `Configuration successfully rolled back to version ${result.toVersion}`
         );
       res.redirect('/admin/settings');
     } catch (error) {
@@ -2090,9 +1552,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Get configuration statistics
-   */
   stats = async (req: Request, res: Response): Promise<void> => {
     try {
       const config = this.configManager.getPlatformConfig();
@@ -2120,28 +1579,17 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Export current configuration as JSON file
-   * Secrets are masked for security - must be manually added after import
-   *
-   * GET /admin/settings/export
-   */
+  /** Masks secrets so an exported configuration cannot disclose them. */
   exportConfig = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = getRequestIp(req);
-      const config = this.configManager.getPlatformConfig();
-
-      const sanitizedConfig = prepareSensitiveConfigForDisplay(config);
-
-      const now = new Date();
-      const dateStr = now.toISOString().split('T')[0]; // YYYY-MM-DD format
-      const filename = `parako-config-export-${dateStr}.json`;
+      const exportedBy = getRequestedBy(this.sessionManager.getActiveUser(req));
+      const { filename, data } =
+        this.configurationTransferService.createExport(exportedBy);
 
       this.logger.info('Configuration export requested', {
-        exportedBy: getRequestedBy(userData),
+        exportedBy,
         filename,
-        ip: requestIp,
+        ip: getRequestIp(req),
         context: 'config_export',
       });
 
@@ -2155,27 +1603,13 @@ export class AdminSettingsController implements IAdminSettingsController {
         'Content-Disposition',
         `attachment; filename="${filename}"`
       );
-
-      const exportData = {
-        _export_metadata: {
-          exportedAt: now.toISOString(),
-          exportedBy: getRequestedBy(userData),
-          version: (config as any).version || '1.0.0',
-          warning:
-            'SECURITY WARNING: Sensitive fields are masked with asterisks. ' +
-            'You must manually add actual secret values after importing this configuration.',
-        },
-        ...sanitizedConfig,
-      };
-
-      res.json(exportData);
+      res.json(data);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'config_export_failed',
         exportedBy: this.sessionManager.getActiveUser(req)?.email,
       });
 
-      // Don't redirect for API endpoint - return error JSON
       res.status(500).json({
         error: 'Failed to export configuration',
         message: getErrorMessage(error),
@@ -2183,12 +1617,6 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Configuration import page
-   * Displays the dedicated import page for uploading/previewing/applying config
-   *
-   * GET /admin/settings/import
-   */
   importPage = async (req: Request, res: Response): Promise<void> => {
     try {
       res.render('admin/settings/import', {
@@ -2203,78 +1631,29 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Preview configuration import
-   * Validates uploaded config and shows diff without applying
-   *
-   * POST /admin/settings/import/preview
-   */
   importConfigPreview = async (req: Request, res: Response): Promise<void> => {
     try {
-      const importedConfig = req.body.config;
+      const result = this.configurationTransferService.preview(req.body.config);
 
-      if (!importedConfig) {
-        res.status(400).json({
-          success: false,
-          error: 'No configuration data provided',
-        });
+      if (!result.valid) {
+        res.status(400).json({ success: false, error: result.error });
         return;
       }
 
-      let parsedConfig: any;
-      try {
-        parsedConfig =
-          typeof importedConfig === 'string'
-            ? JSON.parse(importedConfig)
-            : importedConfig;
-      } catch {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid JSON format',
-        });
-        return;
-      }
-
-      if (
-        parsedConfig === null ||
-        typeof parsedConfig !== 'object' ||
-        Array.isArray(parsedConfig)
-      ) {
-        res.status(400).json({
-          success: false,
-          error: 'Configuration must be a JSON object',
-        });
-        return;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
-      const { _export_metadata, ...configData } = parsedConfig;
-
-      const currentConfig = this.configManager.getPlatformConfig();
-
-      const diff = this.settingsService.generateConfigDiff(
-        currentConfig,
-        configData
+      const requestedBy = getRequestedBy(
+        this.sessionManager.getActiveUser(req)
       );
-
-      const impact = this.settingsService.analyzeConfigImpact(diff);
-
-      const userData = this.sessionManager.getActiveUser(req);
-      const requestIp = getRequestIp(req);
-
       this.logger.info('Configuration import preview requested', {
-        requestedBy: getRequestedBy(userData),
-        changeCount: diff.length,
-        ip: requestIp,
+        requestedBy,
+        changeCount: result.value.changeCount,
+        ip: getRequestIp(req),
         context: 'config_import_preview',
       });
 
       res.json({
         success: true,
         valid: true,
-        diff,
-        impact,
-        changeCount: diff.length,
+        ...result.value,
       });
     } catch (error) {
       this.logger.error(error as Error, {
@@ -2290,80 +1669,40 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Apply configuration import
-   * Applies the imported configuration after preview and confirmation
-   *
-   * POST /admin/settings/import/apply
-   */
   applyImport = async (req: Request, res: Response): Promise<void> => {
     const userData = this.sessionManager.getActiveUser(req);
+    const importedBy = getRequestedBy(userData);
     const requestIp = getRequestIp(req);
 
     try {
-      const importedConfig = req.body.config;
-
-      if (!importedConfig) {
-        this.sessionManager
-          .flash(req)
-          .error('No configuration data provided for import');
-        res.redirect('/admin/settings');
-        return;
-      }
-
-      let parsedConfig: any;
-      try {
-        parsedConfig =
-          typeof importedConfig === 'string'
-            ? JSON.parse(importedConfig)
-            : importedConfig;
-      } catch {
-        this.sessionManager.flash(req).error('Invalid JSON format');
-        res.redirect('/admin/settings');
-        return;
-      }
-
-      if (
-        parsedConfig === null ||
-        typeof parsedConfig !== 'object' ||
-        Array.isArray(parsedConfig)
-      ) {
-        this.sessionManager
-          .flash(req)
-          .error('Configuration must be a JSON object');
-        res.redirect('/admin/settings');
-        return;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips the import-only metadata wrapper before diffing/applying the payload.
-      const { _export_metadata, ...configData } = parsedConfig;
-
-      const currentConfig = this.configManager.getPlatformConfig();
-
-      // This prevents the app from breaking when importing configs with masked secrets
-      const { restoredConfig, restoredFields } = restoreMaskedSensitiveFields(
-        configData,
-        currentConfig
+      const result = await this.configurationTransferService.apply(
+        req.body.config
       );
 
-      if (restoredFields.length > 0) {
+      if (!result.valid) {
+        const message =
+          result.error === 'No configuration data provided'
+            ? 'No configuration data provided for import'
+            : result.error;
+        this.sessionManager.flash(req).error(message);
+        res.redirect('/admin/settings');
+        return;
+      }
+
+      if (result.value.restoredFields.length > 0) {
         this.logger.info(
           'Restored masked sensitive fields from current config',
           {
-            restoredFields,
-            importedBy: getRequestedBy(userData),
+            restoredFields: result.value.restoredFields,
+            importedBy,
             ip: requestIp,
             context: 'config_import_restore_masked',
           }
         );
       }
 
-      await this.configManager.update(restoredConfig);
-
-      await this.configManager.reload();
-
       this.logger.info('Configuration imported successfully', {
-        importedBy: getRequestedBy(userData),
+        importedBy,
         ip: requestIp,
         context: 'config_import_applied',
       });
@@ -2405,13 +1744,9 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Reveal a secret configuration value
-   */
   public revealSecret = async (req: Request, res: Response): Promise<void> => {
+    const fieldPath = req.body.fieldPath;
     try {
-      const { fieldPath } = req.body;
-      // Use sessionManager.getActiveUser() instead of direct session access
       const userData = this.sessionManager.getActiveUser(req);
       if (!userData) {
         res.status(401).json({
@@ -2421,26 +1756,12 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      if (!fieldPath || typeof fieldPath !== 'string') {
-        res.status(400).json({
-          success: false,
-          error: 'Field path is required',
-        });
+      const result = await this.secretRevealService.reveal(fieldPath);
+      if (result.status === 'invalid') {
+        res.status(400).json({ success: false, error: result.error });
         return;
       }
-
-      if (!SENSITIVE_FIELDS.includes(fieldPath as any)) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid field path',
-        });
-        return;
-      }
-
-      const decryptedSettings =
-        await this.settingsService.loadAndDecryptConfiguration();
-
-      if (!decryptedSettings) {
+      if (result.status === 'not_found') {
         res.status(404).json({
           success: false,
           error: 'Configuration not found',
@@ -2448,40 +1769,29 @@ export class AdminSettingsController implements IAdminSettingsController {
         return;
       }
 
-      // For new/undefined fields, return empty string to allow setting for the first time
-      const actualValue = getNestedValue(decryptedSettings, fieldPath) ?? '';
-
       this.audit(
         req,
         'warning',
         'reveal_secret',
         'Admin revealed secret field',
-        {
-          fieldPath,
-        }
+        { fieldPath: result.fieldPath }
       );
-
       this.logger.warn('Secret field revealed', {
         action: 'reveal_secret',
-        fieldPath,
+        fieldPath: result.fieldPath,
         username: userData.username,
         userId: userData.id,
         ip: req.ip,
         userAgent: req.get('user-agent'),
         timestamp: new Date().toISOString(),
       });
-
-      res.json({
-        success: true,
-        value: actualValue,
-      });
+      res.json({ success: true, value: result.value });
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'reveal_secret_failed',
-        fieldPath: req.body.fieldPath,
+        fieldPath,
         username: this.sessionManager.getActiveUser(req)?.username,
       });
-
       res.status(500).json({
         success: false,
         error: 'Failed to reveal secret',
@@ -2489,169 +1799,22 @@ export class AdminSettingsController implements IAdminSettingsController {
     }
   };
 
-  /**
-   * Configuration health check endpoint
-   * Tests all critical configuration components and returns health status
-   *
-   * GET /admin/settings/health
-   */
   healthCheck = async (req: Request, res: Response): Promise<void> => {
-    const startTime = Date.now();
-    const checks: Record<string, boolean> = {};
-    let overallHealthy = true;
+    const result = await this.configurationHealthService.check();
 
-    try {
-      checks.configLoaded = this.configManager.isLoaded();
-      if (!checks.configLoaded) {
-        overallHealthy = false;
-      }
-
-      const config = checks.configLoaded
-        ? this.configManager.getPlatformConfig()
-        : null;
-
-      try {
-        await this.settingsService.findMany({}, { limit: 1 });
-        checks.databaseConnectivity = true;
-      } catch (error) {
-        this.logger.warn('Database connectivity check failed', { error });
-        checks.databaseConnectivity = false;
-        overallHealthy = false;
-      }
-
-      if (config?.integrations?.email?.smtp_host) {
-        try {
-          // Test SMTP connection with timeout
-          const testResult = await withTimeout(
-            this.emailService.connectToEmailServer(),
-            5000,
-            'SMTP test timeout'
-          );
-          checks.smtpConnectivity = testResult === true;
-        } catch (error) {
-          this.logger.warn('SMTP connectivity check failed', { error });
-          checks.smtpConnectivity = false;
-          // SMTP is optional, don't mark as unhealthy
-        }
-      } else {
-        checks.smtpConnectivity = null as any; // Not configured
-      }
-
-      const oidcAdapterType = config?.oidc_storage?.oidc_adapter?.type;
-      if (oidcAdapterType === 'mongodb') {
-        // MongoDB adapter uses same connection as main database
-        checks.oidcStorageConnectivity = checks.databaseConnectivity;
-      } else if (oidcAdapterType === 'redis' && config) {
-        let testClient: Redis | undefined;
-        try {
-          const redisConfig = config.oidc_storage.oidc_adapter.redis;
-          if (redisConfig?.host && redisConfig?.port) {
-            const auth = redisConfig.password
-              ? `:${encodeURIComponent(redisConfig.password)}@`
-              : '';
-            const uri = `redis://${auth}${redisConfig.host}:${redisConfig.port}/${redisConfig.database || 0}`;
-
-            testClient = new Redis(uri, {
-              lazyConnect: true,
-              connectTimeout: 5000,
-              maxRetriesPerRequest: 1,
-            });
-
-            await testClient.connect();
-            const pingResult = await testClient.ping();
-            checks.oidcStorageConnectivity = pingResult === 'PONG';
-            if (!checks.oidcStorageConnectivity) {
-              overallHealthy = false;
-            }
-          } else {
-            checks.oidcStorageConnectivity = false;
-            overallHealthy = false;
-            this.logger.warn('Redis config incomplete for health check');
-          }
-        } catch (error) {
-          this.logger.warn('Redis connectivity check failed', { error });
-          checks.oidcStorageConnectivity = false;
-          overallHealthy = false;
-        } finally {
-          if (testClient) {
-            try {
-              await testClient.quit();
-            } catch (error) {
-              this.logger.warn('Redis health client cleanup failed', {
-                error,
-              });
-            }
-          }
-        }
-      } else if (
-        oidcAdapterType === 'sqlite' ||
-        oidcAdapterType === 'postgresql'
-      ) {
-        // Prisma-backed adapters share the main database connectivity
-        checks.oidcStorageConnectivity = checks.databaseConnectivity;
-      } else {
-        checks.oidcStorageConnectivity = false;
-        overallHealthy = false;
-      }
-
-      if (config?.oidc?.issuer) {
-        try {
-          const issuerUrl = `${config.oidc.issuer}/.well-known/openid-configuration`;
-          const response = await fetch(issuerUrl, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000), // 5 second timeout
-          });
-          checks.oidcIssuerReachable = response.ok;
-          if (!checks.oidcIssuerReachable) {
-            this.logger.warn('OIDC issuer not reachable', {
-              issuerUrl,
-              status: response.status,
-            });
-          }
-        } catch (error) {
-          this.logger.warn('OIDC issuer reachability check failed', { error });
-          checks.oidcIssuerReachable = false;
-          // Don't mark as critical failure since issuer might not be deployed yet
-        }
-      } else {
-        checks.oidcIssuerReachable = null as any; // Not configured
-      }
-
-      const provider = this.configManager.isUsingFileConfig()
-        ? 'file'
-        : 'database';
-
-      const metadata = (config as any)?._metadata;
-      const lastLoaded = metadata?.loadedAt
-        ? new Date(metadata.loadedAt).toISOString()
-        : new Date().toISOString();
-
-      const healthStatus = {
-        status: overallHealthy ? 'healthy' : 'unhealthy',
-        provider,
-        lastLoaded,
-        checks,
-        responseTime: Date.now() - startTime,
-      };
-
-      this.logger.debug('Configuration health check completed', {
-        ...healthStatus,
-        requestedBy: this.sessionManager.getActiveUser(req)?.email,
-      });
-
-      const statusCode = overallHealthy ? 200 : 503;
-      res.status(statusCode).json(healthStatus);
-    } catch (error) {
-      this.logger.error(error as Error, {
+    if (result.error) {
+      this.logger.error(result.error as Error, {
         context: 'health_check_failed',
       });
-
-      res.status(503).json({
-        status: 'unhealthy',
-        error: 'Health check failed',
-        checks,
-        responseTime: Date.now() - startTime,
+    } else {
+      this.logger.debug('Configuration health check completed', {
+        ...result.response,
+        requestedBy: this.sessionManager.getActiveUser(req)?.email,
       });
     }
+
+    res
+      .status(result.response.status === 'healthy' ? 200 : 503)
+      .json(result.response);
   };
 }

@@ -5,9 +5,6 @@ import type {
 } from 'oidc-provider';
 import type { Account as OIDCAccount } from 'oidc-provider';
 
-/**
- * Interface for OIDC Account - handles user account information in the OIDC Provider
- */
 export interface IAccount extends OIDCAccount {
   /**
    * The unique identifier (username) for the account

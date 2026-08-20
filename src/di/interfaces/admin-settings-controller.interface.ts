@@ -20,9 +20,6 @@ export interface IAdminSettingsController {
    */
   branding(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Remove logo from branding settings
-   */
   removeLogo(req: Request, res: Response): Promise<void>;
 
   /**
@@ -30,9 +27,6 @@ export interface IAdminSettingsController {
    */
   uploadLogoDark(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Remove dark mode logo from branding settings
-   */
   removeLogoDark(req: Request, res: Response): Promise<void>;
 
   /**
@@ -40,9 +34,6 @@ export interface IAdminSettingsController {
    */
   uploadLogoIcon(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Remove icon logo (light)
-   */
   removeLogoIcon(req: Request, res: Response): Promise<void>;
 
   /**
@@ -50,16 +41,10 @@ export interface IAdminSettingsController {
    */
   uploadLogoIconDark(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Remove dark icon logo
-   */
   removeLogoIconDark(req: Request, res: Response): Promise<void>;
 
   uploadFavicon(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Remove favicon from branding settings
-   */
   removeFavicon(req: Request, res: Response): Promise<void>;
 
   /**
@@ -117,9 +102,6 @@ export interface IAdminSettingsController {
    */
   integrations(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Reload configuration from database
-   */
   reload(req: Request, res: Response): Promise<void>;
 
   /**
@@ -127,9 +109,6 @@ export interface IAdminSettingsController {
    */
   testEmail(req: Request, res: Response): Promise<void>;
 
-  /**
-   * Get configuration statistics
-   */
   stats(req: Request, res: Response): Promise<void>;
 
   /**

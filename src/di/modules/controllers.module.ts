@@ -28,9 +28,95 @@ import { IWebAuthnController } from '../interfaces/webauthn-controller.interface
 import { IAdminJwksController } from '../interfaces/admin-jwks-controller.interface.js';
 import type { IAdminConfigurationController } from '../interfaces/admin-configuration-controller.interface.js';
 import type { IAdminDataTransferController } from '../interfaces/admin-data-transfer-controller.interface.js';
+import type { ILogger } from '../interfaces/logger.interface.js';
+import type { IAuthService } from '../interfaces/auth-service.interface.js';
+import type { IUserService } from '../interfaces/user-service.interface.js';
+import type { INotificationService } from '../interfaces/notification-service.interface.js';
+import type { IConfigManager } from '../interfaces/config-manager.interface.js';
+import type { IRecoveryUtils } from '../interfaces/recovery-utils.interface.js';
+import type { IMfaUtils } from '../interfaces/mfa-utils.interface.js';
+import type { ISocialLoginManager } from '../interfaces/social-login-manager.interface.js';
+import type { ISocialIntegrationService } from '../interfaces/social-integration-service.interface.js';
+import type { IUploadMiddleware } from '../interfaces/upload-middleware.interface.js';
+import type { IEmailService } from '../interfaces/email-service.interface.js';
+import type { ISettingsService } from '../interfaces/settings-service.interface.js';
+import type { IOIDCAdapterBridge } from '../interfaces/oidc-adapter-bridge.interface.js';
+import type { ISessionManager } from '../interfaces/session-manager.interface.js';
+import type { PhoneVerificationServiceDependencies } from '../../services/phone-verification.service.js';
+import {
+  createAccountControllerOperationModules,
+  createAdminSettingsControllerOperationModules,
+  createAuthControllerOperationModules,
+  type AccountControllerOperationModules,
+  type AdminSettingsControllerOperationModules,
+  type AuthControllerOperationModules,
+} from '../factories/controller-operations.factory.js';
 
 export const controllersModule: ContainerModule = new ContainerModule(
   (options: ContainerModuleLoadOptions) => {
+    options
+      .bind<AuthControllerOperationModules>(
+        TYPES.AuthControllerOperationModules
+      )
+      .toDynamicValue(context =>
+        createAuthControllerOperationModules({
+          logger: context.get<ILogger>(TYPES.Logger),
+          authService: context.get<IAuthService>(TYPES.AuthService),
+          userService: context.get<IUserService>(TYPES.UserService),
+          notificationService: context.get<INotificationService>(
+            TYPES.NotificationService
+          ),
+          configManager: context.get<IConfigManager>(TYPES.ConfigManager),
+          oidcAdapter: context.get<IOIDCAdapterBridge>(TYPES.OIDCAdapterBridge),
+          smsService: context.get<
+            Pick<PhoneVerificationServiceDependencies, 'sendVerificationCode'>
+          >(TYPES.SmsService),
+        })
+      )
+      .inTransientScope();
+
+    options
+      .bind<AccountControllerOperationModules>(
+        TYPES.AccountControllerOperationModules
+      )
+      .toDynamicValue(context =>
+        createAccountControllerOperationModules({
+          logger: context.get<ILogger>(TYPES.Logger),
+          userService: context.get<IUserService>(TYPES.UserService),
+          recoveryUtils: context.get<IRecoveryUtils>(TYPES.RecoveryUtils),
+          socialIntegrationService: context.get<ISocialIntegrationService>(
+            TYPES.SocialIntegrationService
+          ),
+          socialLoginManager: context.get<ISocialLoginManager>(
+            TYPES.SocialLoginManager
+          ),
+          mfaUtils: context.get<IMfaUtils>(TYPES.MfaUtils),
+          configManager: context.get<IConfigManager>(TYPES.ConfigManager),
+          uploadMiddleware: context.get<IUploadMiddleware>(
+            TYPES.UploadMiddleware
+          ),
+          sessionManager: context.get<ISessionManager>(TYPES.SessionManager),
+        })
+      )
+      .inTransientScope();
+
+    options
+      .bind<AdminSettingsControllerOperationModules>(
+        TYPES.AdminSettingsControllerOperationModules
+      )
+      .toDynamicValue(context =>
+        createAdminSettingsControllerOperationModules({
+          configManager: context.get<IConfigManager>(TYPES.ConfigManager),
+          emailService: context.get<IEmailService>(TYPES.EmailService),
+          settingsService: context.get<ISettingsService>(TYPES.SettingsService),
+          uploadMiddleware: context.get<IUploadMiddleware>(
+            TYPES.UploadMiddleware
+          ),
+          logger: context.get<ILogger>(TYPES.Logger),
+        })
+      )
+      .inTransientScope();
+
     // All controllers - Transient (per-request, fresh instance)
     options
       .bind<IAuthController>(TYPES.AuthController)

@@ -15,6 +15,7 @@ const identifierMocks = vi.hoisted(() => ({
 vi.mock('inversify', () => ({
   injectable: () => (target: unknown) => target,
   inject: () => () => undefined,
+  unmanaged: () => () => undefined,
 }));
 
 vi.mock('../../../src/utils/activity-logger.factory.js', () => ({
@@ -25,6 +26,7 @@ vi.mock('../../../src/utils/custom-identifier-validation.js', () => ({
 }));
 
 import { AuthController } from '../../../src/controllers/auth.controller.js';
+import { createAuthControllerOperationModules } from '../../../src/di/factories/controller-operations.factory.js';
 import { PhoneVerificationDeliveryError } from '../../../src/errors/phone-verification-delivery.error.js';
 import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
 import type { IUser } from '../../../src/types/user.js';
@@ -399,6 +401,15 @@ function makeHarness() {
     getCredentials: vi.fn(),
     verifyAuthentication: vi.fn(),
   };
+  const operationModules = createAuthControllerOperationModules({
+    logger: logger as never,
+    authService: authService as never,
+    userService: userService as never,
+    notificationService: notificationService as never,
+    configManager: configManager as never,
+    oidcAdapter: oidcAdapter as never,
+    smsService,
+  });
   const controller = new AuthController(
     logger as never,
     authService as never,
@@ -418,7 +429,8 @@ function makeHarness() {
     recoveryService as never,
     smsService as never,
     webauthnService as never,
-    oidcUtils as never
+    oidcUtils as never,
+    operationModules
   );
 
   return {
@@ -2626,6 +2638,32 @@ describe('AuthController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/auth/forgot-password');
     });
 
+    it('rejects structured password fields before credential operations', async () => {
+      const { authService, controller, flash, userService } = makeHarness();
+      const res = response();
+
+      await controller.processResetPassword(
+        request({
+          body: {
+            token: 'reset-token',
+            password: ['valid-password'],
+            'confirm-password': ['valid-password'],
+          },
+        }),
+        res
+      );
+
+      expect(flash.error).toHaveBeenCalledWith(
+        'Password requirements not met: Invalid password value'
+      );
+      expect(userService.validatePassword).not.toHaveBeenCalled();
+      expect(authService.resetPassword).not.toHaveBeenCalled();
+      expect(res.render).toHaveBeenCalledWith(
+        'auth/reset-password',
+        expect.objectContaining({ token: 'reset-token' })
+      );
+    });
+
     it('re-renders reset when passwords do not match', async () => {
       const { authService, controller, flash } = makeHarness();
       const res = response();
@@ -4300,7 +4338,7 @@ describe('AuthController', () => {
       );
 
       expect(authService.generateEmailVerificationToken).toHaveBeenCalledWith(
-        unverifiedUser._id
+        'user-1'
       );
       expect(notificationService.sendVerification).toHaveBeenCalledWith(
         {
@@ -4418,7 +4456,7 @@ describe('AuthController', () => {
         expect(flash.error).toHaveBeenCalledWith(
           'User information not found in session.'
         );
-        expect(userService.findOne).not.toHaveBeenCalled();
+        expect(userService.findById).not.toHaveBeenCalled();
         expect(res.redirect).toHaveBeenCalledWith('/auth/login');
       }
     );
@@ -4427,21 +4465,38 @@ describe('AuthController', () => {
       const { controller, flash, sessionManager, userService } = makeHarness();
       sessionManager.isAuthenticated.mockResolvedValue(true);
       sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
-      userService.findOne.mockResolvedValue(null);
+      userService.findById.mockResolvedValue(null);
       const res = response();
 
       await controller.resendEmailVerification(request(), res);
 
-      expect(userService.findOne).toHaveBeenCalledWith({ _id: 'user-1' });
+      expect(userService.findById).toHaveBeenCalledWith('user-1');
       expect(flash.error).toHaveBeenCalledWith('User not found.');
       expect(res.redirect).toHaveBeenCalledWith('/auth/login');
+    });
+
+    it('returns a session user without email to the dashboard', async () => {
+      const { controller, flash, sessionManager, userService } = makeHarness();
+      sessionManager.isAuthenticated.mockResolvedValue(true);
+      sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
+      userService.findById.mockResolvedValue(
+        user({ email: undefined, email_verified: false })
+      );
+      const res = response();
+
+      await controller.resendEmailVerification(request(), res);
+
+      expect(flash.error).toHaveBeenCalledWith(
+        'No email address is associated with this account.'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
     });
 
     it('returns an already verified session user to the dashboard', async () => {
       const { controller, flash, sessionManager, userService } = makeHarness();
       sessionManager.isAuthenticated.mockResolvedValue(true);
       sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
-      userService.findOne.mockResolvedValue(user({ email_verified: true }));
+      userService.findById.mockResolvedValue(user({ email_verified: true }));
       const res = response();
 
       await controller.resendEmailVerification(request(), res);
@@ -4464,13 +4519,13 @@ describe('AuthController', () => {
       sessionManager.isAuthenticated.mockResolvedValue(true);
       sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
       const unverifiedUser = user({ email_verified: false, locale: 'fr' });
-      userService.findOne.mockResolvedValue(unverifiedUser);
+      userService.findById.mockResolvedValue(unverifiedUser);
       const res = response();
 
       await controller.resendEmailVerification(request(), res);
 
       expect(authService.generateEmailVerificationToken).toHaveBeenCalledWith(
-        unverifiedUser._id
+        'user-1'
       );
       expect(notificationService.sendVerification).toHaveBeenCalledWith(
         {
@@ -4493,7 +4548,7 @@ describe('AuthController', () => {
         makeHarness();
       sessionManager.isAuthenticated.mockResolvedValue(true);
       sessionManager.getActiveUser.mockReturnValue({ id: 'user-1' });
-      userService.findOne.mockResolvedValue(
+      userService.findById.mockResolvedValue(
         user({ email_verified: false, given_name: undefined })
       );
 
@@ -8756,55 +8811,50 @@ describe('AuthController', () => {
       expect(res.redirect).toHaveBeenCalledWith('/auth/register');
     });
 
-    it.each([
-      'google',
-      'github',
-      'facebook',
-      'linkedin',
-      'twitter',
-      'microsoft',
-      'apple',
-    ])('stores a registration intent for known provider %s', async provider => {
-      const {
-        controller,
-        redirectAuthority,
-        session,
-        sessionManager,
-        socialLoginManager,
-      } = makeHarness();
-      const existingIntent = {
-        google: { intent: 'register', timestamp: 1 },
-      };
-      session.set('socialRegister', existingIntent);
-      const req = request({
-        params: { provider },
-        query: { redirectTo: 'https://rp.example.test/callback' },
-      });
-      const res = response();
+    it.each(['google', 'github', 'facebook', 'linkedin', 'microsoft'])(
+      'stores a registration intent for known provider %s',
+      async provider => {
+        const {
+          controller,
+          redirectAuthority,
+          session,
+          sessionManager,
+          socialLoginManager,
+        } = makeHarness();
+        const existingIntent = {
+          google: { intent: 'register', timestamp: 1 },
+        };
+        session.set('socialRegister', existingIntent);
+        const req = request({
+          params: { provider },
+          query: { redirectTo: 'https://rp.example.test/callback' },
+        });
+        const res = response();
 
-      await controller.socialRegister(req, res);
+        await controller.socialRegister(req, res);
 
-      expect(redirectAuthority.storeIntent).toHaveBeenCalledWith(
-        req,
-        'https://rp.example.test/callback',
-        'social_register'
-      );
-      expect(sessionManager.set).toHaveBeenCalledWith(
-        req,
-        'socialRegister',
-        expect.objectContaining({
-          [provider]: {
-            intent: 'register',
-            timestamp: expect.any(Number),
-          },
-        })
-      );
-      expect(socialLoginManager.getAuthorizationUrl).toHaveBeenCalledWith(
-        provider,
-        req
-      );
-      expect(res.redirect).toHaveBeenCalledWith('https://github.test/auth');
-    });
+        expect(redirectAuthority.storeIntent).toHaveBeenCalledWith(
+          req,
+          'https://rp.example.test/callback',
+          'social_register'
+        );
+        expect(sessionManager.set).toHaveBeenCalledWith(
+          req,
+          'socialRegister',
+          expect.objectContaining({
+            [provider]: {
+              intent: 'register',
+              timestamp: expect.any(Number),
+            },
+          })
+        );
+        expect(socialLoginManager.getAuthorizationUrl).toHaveBeenCalledWith(
+          provider,
+          req
+        );
+        expect(res.redirect).toHaveBeenCalledWith('https://github.test/auth');
+      }
+    );
 
     it('prefers a valid continue target for social registration', async () => {
       const { controller, redirectAuthority } = makeHarness();

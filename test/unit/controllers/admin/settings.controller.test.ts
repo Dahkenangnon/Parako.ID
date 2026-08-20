@@ -26,6 +26,7 @@ vi.mock('ioredis', () => ({
 }));
 
 import { AdminSettingsController } from '../../../../src/controllers/admin/settings.controller.js';
+import { createAdminSettingsControllerOperationModules } from '../../../../src/di/factories/controller-operations.factory.js';
 import { ConfigurationVersionConflictError } from '../../../../src/errors/configuration-version-conflict.error.js';
 import { maskSensitiveValue } from '../../../../src/utils/settings.helper.js';
 
@@ -53,7 +54,7 @@ function createMockDeps() {
   };
 
   const config = {
-    application: { name: 'Parako.ID' },
+    application: { title: 'Parako.ID' },
     branding: {},
     deployment: { url: 'https://id.example.com' },
     security: {},
@@ -124,6 +125,13 @@ function createMockDeps() {
 }
 
 function createController(deps: ReturnType<typeof createMockDeps>) {
+  const operationModules = createAdminSettingsControllerOperationModules({
+    configManager: deps.configManager as never,
+    emailService: deps.emailService as never,
+    settingsService: deps.settingsService as never,
+    uploadMiddleware: deps.uploadMiddleware as never,
+    logger: deps.logger as never,
+  });
   return new (AdminSettingsController as any)(
     deps.configManager,
     deps.sessionManager,
@@ -132,7 +140,8 @@ function createController(deps: ReturnType<typeof createMockDeps>) {
     deps.activityService,
     deps.settingsService,
     deps.uploadMiddleware,
-    deps.clientDeviceInfoManager
+    deps.clientDeviceInfoManager,
+    operationModules
   ) as AdminSettingsController;
 }
 
@@ -208,20 +217,27 @@ describe('AdminSettingsController', () => {
         { key: 'parako_config' },
         { sort: { created_at: -1 }, limit: 10 }
       );
-      expect(res.render).toHaveBeenCalledWith(
-        'admin/settings/overview',
-        expect.objectContaining({
-          config: deps.config,
-          currentVersion: '1.0.0',
-          currentVersionNum: 1,
-          versionHistory: versions,
-          isUsingFileConfig: false,
-          sections: expect.arrayContaining([
-            expect.objectContaining({ key: 'application' }),
-            expect.objectContaining({ key: 'integrations' }),
-          ]),
-        })
-      );
+      expect(res.render).toHaveBeenCalledWith('admin/settings/overview', {
+        title: 'Settings Overview',
+        currentVersion: '1.0.0',
+        isUsingFileConfig: false,
+        versionHistory: [
+          {
+            id: undefined,
+            version: '1.1.0',
+            isActive: false,
+            createdAt: undefined,
+            updatedBy: undefined,
+          },
+          {
+            id: undefined,
+            version: '1.0.0',
+            isActive: true,
+            createdAt: undefined,
+            updatedBy: undefined,
+          },
+        ],
+      });
     });
 
     it('falls back to the newest version and then defaults when history is empty', async () => {
@@ -235,7 +251,6 @@ describe('AdminSettingsController', () => {
         'admin/settings/overview',
         expect.objectContaining({
           currentVersion: '2.0.0',
-          currentVersionNum: 8,
         })
       );
 
@@ -245,7 +260,6 @@ describe('AdminSettingsController', () => {
         'admin/settings/overview',
         expect.objectContaining({
           currentVersion: '1.0.0',
-          currentVersionNum: 0,
         })
       );
     });
@@ -284,14 +298,14 @@ describe('AdminSettingsController', () => {
     it('merges and persists submitted application settings', async () => {
       const req = makeReq({
         method: 'POST',
-        body: { name: 'Updated ID', _configVersion: '7' },
+        body: { title: 'Updated ID', _configVersion: '7' },
       });
       const res = makeRes();
 
       await controller.application(req, res);
 
       expect(deps.configManager.update).toHaveBeenCalledWith(
-        { application: { name: 'Updated ID' } },
+        { application: { title: 'Updated ID' } },
         7
       );
       expect(deps.activityService.success).toHaveBeenCalled();
@@ -305,7 +319,7 @@ describe('AdminSettingsController', () => {
       const req = makeReq({
         method: 'POST',
         body: {
-          name: 'Updated ID',
+          title: 'Updated ID',
           _configVersion: '7',
           _csrf: 'csrf-token',
           _deviceInfo: '{"visitorId":"browser-fixture"}',
@@ -315,7 +329,7 @@ describe('AdminSettingsController', () => {
       await controller.application(req, makeRes());
 
       expect(deps.configManager.update).toHaveBeenCalledWith(
-        { application: { name: 'Updated ID' } },
+        { application: { title: 'Updated ID' } },
         7
       );
       expect(deps.activityService.success).toHaveBeenCalledWith(
@@ -339,13 +353,13 @@ describe('AdminSettingsController', () => {
       await controller.application(
         makeReq({
           method: 'POST',
-          body: { name: 'First name', _configVersion: '7' },
+          body: { title: 'First name', _configVersion: '7' },
         }),
         makeRes()
       );
 
       expect(deps.configManager.update).toHaveBeenCalledWith(
-        { application: { name: 'First name' } },
+        { application: { title: 'First name' } },
         7
       );
     });
@@ -359,7 +373,7 @@ describe('AdminSettingsController', () => {
           makeReq({
             method: 'POST',
             body: {
-              name: 'Stale update',
+              title: 'Stale update',
               _configVersion: submittedVersion,
             },
           }),
@@ -385,7 +399,7 @@ describe('AdminSettingsController', () => {
       await controller.application(
         makeReq({
           method: 'POST',
-          body: { name: 'Stale update', _configVersion: '7' },
+          body: { title: 'Stale update', _configVersion: '7' },
         }),
         res
       );
@@ -403,7 +417,7 @@ describe('AdminSettingsController', () => {
         deps.configManager.update.mockRejectedValue(failure);
         const req = makeReq({
           method: 'POST',
-          body: { name: 'Updated ID', _configVersion: '7' },
+          body: { title: 'Updated ID', _configVersion: '7' },
         });
         const res = makeRes();
 
@@ -800,48 +814,44 @@ describe('AdminSettingsController', () => {
       });
     });
 
-    it('strips bootstrap-only fields and warns the admin', async () => {
-      const req = makeReq({
-        method: 'POST',
-        body: {
-          environment: 'development',
-          url: 'https://new.example.com',
-          server: { port: '9999' },
-        },
-      });
+    it('rejects bootstrap-only fields at the form boundary', async () => {
       const res = makeRes();
 
-      await controller.deployment(req, res);
-
-      expect(deps.logger.warn).toHaveBeenCalledWith(
-        'Bootstrap fields detected in deployment update',
-        expect.objectContaining({
-          removedFields: expect.arrayContaining([
-            'deployment.environment',
-            'deployment.server.port',
-          ]),
-        })
+      await controller.deployment(
+        makeReq({
+          method: 'POST',
+          body: {
+            environment: 'development',
+            server: { port: '9999' },
+          },
+        }),
+        res
       );
-      expect(deps.flash.warning).toHaveBeenCalled();
-      expect(deps.configManager.update).toHaveBeenCalledWith({
-        deployment: expect.not.objectContaining({ environment: 'development' }),
-      });
-      expect(
-        (deps.configManager.update.mock.calls[0][0] as any).deployment.server
-      ).not.toHaveProperty('port');
+
+      expect(deps.configManager.update).not.toHaveBeenCalled();
+      expect(deps.flash.error).toHaveBeenCalledWith(
+        'Failed to update deployment settings'
+      );
+      expect(res.redirect).toHaveBeenCalledWith('/admin/settings/deployment');
     });
 
     it('persists ordinary deployment fields without a bootstrap warning', async () => {
       const res = makeRes();
 
       await controller.deployment(
-        makeReq({ method: 'POST', body: { url: 'https://new.example.com' } }),
+        makeReq({
+          method: 'POST',
+          body: { server: { allowed_origins: 'https://rp.example.com' } },
+        }),
         res
       );
 
       expect(deps.flash.warning).not.toHaveBeenCalled();
       expect(deps.configManager.update).toHaveBeenCalledWith({
-        deployment: { url: 'https://new.example.com' },
+        deployment: {
+          url: 'https://id.example.com',
+          server: { allowed_origins: ['https://rp.example.com'] },
+        },
       });
       expect(res.redirect).toHaveBeenCalledWith('/admin/settings/deployment');
     });
@@ -853,12 +863,15 @@ describe('AdminSettingsController', () => {
       });
 
       await controller.deployment(
-        makeReq({ method: 'POST', body: { url: 'https://first.example.com' } }),
+        makeReq({
+          method: 'POST',
+          body: { cookies: { defaults: { maxAge: '60000' } } },
+        }),
         makeRes()
       );
 
       expect(deps.configManager.update).toHaveBeenCalledWith({
-        deployment: { url: 'https://first.example.com' },
+        deployment: { cookies: { defaults: { maxAge: 60000 } } },
       });
     });
 
@@ -869,7 +882,10 @@ describe('AdminSettingsController', () => {
         const res = makeRes();
 
         await controller.deployment(
-          makeReq({ method: 'POST', body: { url: 'https://new.example.com' } }),
+          makeReq({
+            method: 'POST',
+            body: { server: { allowed_origins: 'https://rp.example.com' } },
+          }),
           res
         );
 
@@ -921,11 +937,31 @@ describe('AdminSettingsController', () => {
     ] as const;
 
     it.each(pages)(
-      '%s renders masked security configuration',
+      '%s renders only its page-specific security configuration',
       async (method, view, title, tab) => {
+        (deps.config.security as any).authentication = { login: {} };
+        (deps.config.security as any).protection = { trusted_domains: [] };
         (deps.config.security as any).secrets = {
           jwt_secret: 'super-secret-value-that-is-at-least-32-characters',
         };
+        (deps.config.deployment as any).redis_prefix = 'custom-prefix';
+        const expectedConfig = {
+          authentication: { authentication: { login: {} } },
+          mfa: { authentication: { login: {} } },
+          sessions: {
+            authentication: { login: {} },
+            deployment: { redis_prefix: 'custom-prefix' },
+          },
+          protection: {
+            authentication: { login: {} },
+            protection: { trusted_domains: [] },
+          },
+          secrets: {
+            secrets: {
+              jwt_secret: expect.stringContaining('*'),
+            },
+          },
+        }[tab];
         const res = makeRes();
 
         await controller[method](makeReq(), res);
@@ -934,11 +970,7 @@ describe('AdminSettingsController', () => {
           title,
           section: 'security',
           securityTab: tab,
-          config: expect.objectContaining({
-            secrets: expect.objectContaining({
-              jwt_secret: expect.stringContaining('*'),
-            }),
-          }),
+          config: expectedConfig,
         });
       }
     );
@@ -1872,15 +1904,15 @@ describe('AdminSettingsController', () => {
           updated_at: new Date('2026-01-02T00:00:00Z'),
           key: 'parako_config',
           version: '2.0.0',
+          schema_version: '1.0.0',
           _version: 2,
           is_active: false,
-          configuration: { application: { name: 'Old' } },
+          application: { title: 'Old' },
         };
         deps.settingsService.findOne.mockResolvedValue(target);
-        deps.configManager.getPlatformConfig.mockReturnValue({
-          ...deps.config,
-          ...(currentVersion ? { version: currentVersion } : {}),
-        });
+        deps.settingsService.getMainConfiguration.mockResolvedValue(
+          currentVersion ? { version: currentVersion } : null
+        );
         const res = makeRes();
 
         await controller.rollback(
@@ -1890,13 +1922,7 @@ describe('AdminSettingsController', () => {
 
         expect(deps.settingsService.findOne).toHaveBeenCalledWith('version-2');
         expect(deps.settingsService.saveMainConfiguration).toHaveBeenCalledWith(
-          {
-            key: 'parako_config',
-            version: '2.0.0',
-            _version: 2,
-            is_active: false,
-            configuration: { application: { name: 'Old' } },
-          },
+          { application: { title: 'Old' } },
           'admin@example.com',
           `Rollback to version 2.0.0 (from ${currentVersion || 'unknown'})`
         );
@@ -2129,11 +2155,11 @@ describe('AdminSettingsController', () => {
     it.each([
       JSON.stringify({
         _export_metadata: { exportedAt: 'ignored' },
-        application: { name: 'Imported' },
+        application: { title: 'Imported' },
       }),
       {
         _export_metadata: { exportedAt: 'ignored' },
-        application: { name: 'Imported' },
+        application: { title: 'Imported' },
       },
     ])('returns a diff and impact for valid import data %#', async config => {
       const diff = [
@@ -2151,7 +2177,7 @@ describe('AdminSettingsController', () => {
 
       expect(deps.settingsService.generateConfigDiff).toHaveBeenCalledWith(
         deps.config,
-        { application: { name: 'Imported' } }
+        { application: { title: 'Imported' } }
       );
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -2241,7 +2267,7 @@ describe('AdminSettingsController', () => {
         };
         const config = {
           _export_metadata: { ignored: true },
-          application: { name: 'Imported' },
+          application: { title: 'Imported' },
           ...(restoreSecret
             ? {
                 security: {
@@ -2258,7 +2284,7 @@ describe('AdminSettingsController', () => {
         );
 
         expect(deps.configManager.update).toHaveBeenCalledWith(
-          expect.objectContaining({ application: { name: 'Imported' } })
+          expect.objectContaining({ application: { title: 'Imported' } })
         );
         expect(deps.configManager.reload).toHaveBeenCalledOnce();
         expect(deps.activityService.success).toHaveBeenCalled();

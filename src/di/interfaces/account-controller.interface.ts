@@ -1,8 +1,5 @@
 import { Request, Response } from 'express';
 
-/**
- * Interface for AccountController - handles account-related operations
- */
 export interface IAccountController {
   myAccount(req: Request, res: Response): Promise<void>;
   settings(req: Request, res: Response): Promise<void>;

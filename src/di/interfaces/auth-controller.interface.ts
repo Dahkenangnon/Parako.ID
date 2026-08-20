@@ -1,8 +1,5 @@
 import { Request, Response } from 'express';
 
-/**
- * Interface for AuthController - handles authentication-related operations
- */
 export interface IAuthController {
   login(req: Request, res: Response): void;
   processLogin(req: Request, res: Response): Promise<void>;

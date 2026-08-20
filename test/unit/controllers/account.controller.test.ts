@@ -14,6 +14,7 @@ const passwordBreachMocks = vi.hoisted(() => ({
 vi.mock('inversify', () => ({
   injectable: () => (target: unknown) => target,
   inject: () => () => undefined,
+  unmanaged: () => () => undefined,
 }));
 
 vi.mock('../../../src/utils/activity-logger.factory.js', () => ({
@@ -24,6 +25,7 @@ vi.mock('../../../src/utils/password-breach.js', () => ({
 }));
 
 import { AccountsController } from '../../../src/controllers/account.controller.js';
+import { createAccountControllerOperationModules } from '../../../src/di/factories/controller-operations.factory.js';
 
 const activeUser = (overrides: Record<string, unknown> = {}) => ({
   id: 'user-1',
@@ -251,7 +253,7 @@ function createHarness() {
   const configManager = { getConfig: vi.fn().mockReturnValue(config) };
   const uploadMiddleware = {
     deleteFile: vi.fn().mockResolvedValue(undefined),
-    getFileUrl: vi.fn<(value: string) => string | undefined>(
+    getFileUrl: vi.fn<(value: string) => string | Promise<string> | undefined>(
       (value: string) => `/media/${value}`
     ),
     storeFile: vi.fn().mockResolvedValue('avatars/new.png'),
@@ -289,6 +291,17 @@ function createHarness() {
     redirect: vi.fn().mockReturnValue(redirectChain),
   };
 
+  const operationModules = createAccountControllerOperationModules({
+    logger: logger as never,
+    userService: userService as never,
+    recoveryUtils: recoveryUtils as never,
+    socialIntegrationService: socialIntegrationService as never,
+    socialLoginManager: socialLoginManager as never,
+    mfaUtils: mfaUtils as never,
+    configManager: configManager as never,
+    uploadMiddleware: uploadMiddleware as never,
+    sessionManager: sessionManager as never,
+  });
   const controller = new (AccountsController as any)(
     logger,
     userService,
@@ -306,7 +319,8 @@ function createHarness() {
     uploadMiddleware,
     oidcAdapter,
     redirectAuthority,
-    webauthnService
+    webauthnService,
+    operationModules
   ) as AccountsController;
 
   return {
@@ -441,6 +455,27 @@ describe('AccountsController read pages', () => {
         totalAccounts: 2,
         lastActivity: '2 minutes ago',
       });
+    });
+
+    it('awaits an object-storage URL before rendering the account avatar', async () => {
+      const harness = createHarness();
+      harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
+      harness.userService.findByUsername.mockResolvedValue(databaseUser());
+      harness.uploadMiddleware.getFileUrl.mockResolvedValue(
+        'https://storage.example.test/avatar.png'
+      );
+      const res = response();
+
+      await harness.controller.myAccount(request(), res);
+
+      expect(res.render).toHaveBeenCalledWith(
+        'accounts/my-account',
+        expect.objectContaining({
+          pageUser: expect.objectContaining({
+            picture: 'https://storage.example.test/avatar.png',
+          }),
+        })
+      );
     });
 
     it('uses singular zero-safe fallbacks and preserves unresolved pictures', async () => {
@@ -3499,17 +3534,14 @@ describe('AccountsController read pages', () => {
       }
     });
 
-    it('falls back to raw adapter metadata and contains lookup failures', async () => {
+    it('falls back to raw adapter metadata for an absent registered client', async () => {
       const harness = createHarness();
       harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
       harness.oidcAdapter.grant.findGrantsByAccountId.mockResolvedValue([
         { payload: { clientId: 'raw-client' } },
-        { payload: { clientId: 'missing-client' } },
       ]);
-      harness.oidcAdapter.client.findClientById
-        .mockResolvedValueOnce(null)
-        .mockRejectedValueOnce(new Error('registry unavailable'));
-      harness.oidcAdapter.client.find.mockResolvedValueOnce({
+      harness.oidcAdapter.client.findClientById.mockResolvedValue(null);
+      harness.oidcAdapter.client.find.mockResolvedValue({
         client_name: 'Raw Client',
         client_uri: 'not a URL',
       });
@@ -3521,10 +3553,6 @@ describe('AccountsController read pages', () => {
         clientId: 'raw-client',
         clientUri: 'not a URL',
       });
-      expect(harness.logger.error).toHaveBeenCalledWith(expect.any(Error), {
-        context: 'get_unified_client_info_failed',
-        clientId: 'missing-client',
-      });
       expect(res.render).toHaveBeenCalledWith(
         'accounts/apps',
         expect.objectContaining({
@@ -3534,13 +3562,32 @@ describe('AccountsController read pages', () => {
               name: 'Raw Client',
               developer: 'Unknown Developer',
             }),
-            expect.objectContaining({
-              id: 'missing-client',
-              name: 'Application missing-client',
-            }),
           ],
         })
       );
+    });
+
+    it('surfaces client registry failures instead of rendering incomplete app data', async () => {
+      const harness = createHarness();
+      const storageError = new Error('registry unavailable');
+      harness.sessionManager.getActiveUser.mockReturnValue(activeUser());
+      harness.oidcAdapter.grant.findGrantsByAccountId.mockResolvedValue([
+        { payload: { clientId: 'unavailable-client' } },
+      ]);
+      harness.oidcAdapter.client.findClientById.mockRejectedValue(storageError);
+      const req = request();
+      const res = response();
+
+      await harness.controller.apps(req, res);
+
+      expect(harness.logger.error).toHaveBeenCalledWith(storageError, {
+        context: 'apps_load_failed',
+      });
+      expect(harness.flash.error).toHaveBeenCalledWith(
+        'Failed to load connected applications'
+      );
+      expect(res.render).not.toHaveBeenCalled();
+      expect(res.redirect).toHaveBeenCalledWith('/accounts/dashboard');
     });
 
     it('uses the client identifier when raw adapter metadata has no name', async () => {

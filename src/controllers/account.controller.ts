@@ -17,25 +17,30 @@ import type { SupportedLanguage } from '../utils/misc.js';
 import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import type { IAccountController } from '../di/interfaces/account-controller.interface.js';
 import { TYPES } from '../di/types.js';
-import { SessionUserAccount } from '../utils/session.js';
-import { validateIdentifier } from '../utils/custom-identifier-validation.js';
+import type { SessionUserAccount } from '../types/session-data.js';
 import { activityLoggerFor } from '../utils/activity-logger.factory.js';
-import type {
-  ProfileUpdateData,
-  PasswordChangeData,
-} from '../di/interfaces/user-service.interface.js';
-import type { RecoveryMethod } from '../utils/recovery.js';
+import type { RecoveryMethod } from '../types/recovery.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { SocialProvider } from '../types/social-integration.js';
 import type { IUser } from '../types/user.js';
 import type { IRedirectAuthority } from '../di/interfaces/redirect-authority.interface.js';
 import type { IWebAuthnService } from '../di/interfaces/webauthn-service.interface.js';
-import { checkPasswordBreach } from '../utils/password-breach.js';
 import type { OidcClientData } from '../oidc/adapter/client.interface.js';
-import type { BackupCodeResult } from '../utils/recovery.js';
+import type { BackupCodeResult } from '../types/recovery.js';
 import { emailSchema } from '../validators/base-schemas.js';
 import type { LinkSocialAccountIntent } from '../types/session-data.js';
 import { buildExternalApplicationUrl } from '../utils/external-application-url.js';
+import type { AccountControllerOperationModules } from '../di/factories/controller-operations.factory.js';
+import type { AccountSettingsPage } from '../services/account-settings-page.service.js';
+
+const SETTINGS_PAGE_ERROR_CONTEXT: Record<AccountSettingsPage, string> = {
+  profile: 'settings_profile_page_load_failed',
+  preferences: 'settings_preferences_page_load_failed',
+  notifications: 'settings_notifications_page_load_failed',
+  security: 'settings_security_page_load_failed',
+  recovery: 'settings_recovery_page_load_failed',
+  social: 'settings_social_page_load_failed',
+};
 
 const SUPPORTED_RECOVERY_METHODS: readonly RecoveryMethod[] = [
   'backup_codes',
@@ -81,6 +86,11 @@ const getLocaleCode = (locale?: string): string => {
 
 @injectable()
 export class AccountsController implements IAccountController {
+  private readonly accountProfileService: AccountControllerOperationModules['profile'];
+  private readonly accountPasswordChangeService: AccountControllerOperationModules['passwordChange'];
+  private readonly accountSettingsPageService: AccountControllerOperationModules['settingsPage'];
+  private readonly accountSessionService: AccountControllerOperationModules['sessions'];
+
   constructor(
     @inject(TYPES.Logger) private readonly logger: ILogger,
     @inject(TYPES.UserService) private readonly userService: IUserService,
@@ -107,8 +117,15 @@ export class AccountsController implements IAccountController {
     @inject(TYPES.RedirectAuthority)
     private readonly redirectAuthority: IRedirectAuthority,
     @inject(TYPES.WebAuthnService)
-    private readonly webauthnService: IWebAuthnService
-  ) {}
+    private readonly webauthnService: IWebAuthnService,
+    @inject(TYPES.AccountControllerOperationModules)
+    operationModules: AccountControllerOperationModules
+  ) {
+    this.accountProfileService = operationModules.profile;
+    this.accountPasswordChangeService = operationModules.passwordChange;
+    this.accountSettingsPageService = operationModules.settingsPage;
+    this.accountSessionService = operationModules.sessions;
+  }
 
   private get activityLoggerDeps() {
     return {
@@ -135,39 +152,6 @@ export class AccountsController implements IAccountController {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : null;
-  }
-
-  /**
-   * Revoke every Express session for an account except the request's current
-   * session. The session store may contain legacy or malformed records, which
-   * are ignored rather than preventing valid sessions from being revoked.
-   */
-  private async revokeOtherExpressSessions(
-    username: string,
-    currentSessionId: string | undefined
-  ): Promise<number> {
-    const expressSessions =
-      await this.sessionManager.findExpressSessionsForUser(username);
-    let revokedCount = 0;
-
-    for (const sessionDocument of expressSessions) {
-      const sessionId = this.asRecord(sessionDocument)?._id;
-      if (!this.isNonEmptyString(sessionId)) {
-        this.logger.warn(
-          'Skipping malformed Express session during bulk revocation'
-        );
-        continue;
-      }
-
-      if (
-        sessionId !== currentSessionId &&
-        (await this.sessionManager.revokeExpressSession(sessionId))
-      ) {
-        revokedCount++;
-      }
-    }
-
-    return revokedCount;
   }
 
   private isSupportedMfaEnrollmentMethod(
@@ -202,43 +186,31 @@ export class AccountsController implements IAccountController {
    * External HTTP(S) URLs pass through; storage keys get resolved
    * to signed `/media/file/...` URLs.
    */
-  private resolvePictureUrl(picture: string | undefined | null): string {
+  private async resolvePictureUrl(
+    picture: string | undefined | null
+  ): Promise<string> {
     if (!picture) return '';
-    const resolved = this.uploadMiddleware.getFileUrl(picture);
+    const resolved = await this.uploadMiddleware.getFileUrl(picture);
     return typeof resolved === 'string' ? resolved : picture;
   }
 
   private async getUnifiedClientInfo(
     clientId: string
   ): Promise<OidcClientData | null> {
-    try {
-      const adapterClient =
-        await this.oidcAdapter.client.findClientById(clientId);
-      if (adapterClient) return adapterClient;
+    const adapterClient =
+      await this.oidcAdapter.client.findClientById(clientId);
+    if (adapterClient) return adapterClient;
 
-      try {
-        const rawClient = await this.oidcAdapter.client.find(clientId);
-        if (rawClient) {
-          return {
-            client_id: clientId,
-            client_name: (rawClient as any).client_name || clientId,
-            application_type: (rawClient as any).application_type || 'web',
-            logo_uri: (rawClient as any).logo_uri,
-            client_uri: (rawClient as any).client_uri,
-          } as OidcClientData;
-        }
-      } catch {
-        // Not found in raw adapter either
-      }
+    const rawClient = await this.oidcAdapter.client.find(clientId);
+    if (!rawClient) return null;
 
-      return null;
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'get_unified_client_info_failed',
-        clientId,
-      });
-      return null;
-    }
+    return {
+      client_id: clientId,
+      client_name: (rawClient as any).client_name || clientId,
+      application_type: (rawClient as any).application_type || 'web',
+      logo_uri: (rawClient as any).logo_uri,
+      client_uri: (rawClient as any).client_uri,
+    } as OidcClientData;
   }
   public myAccount = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -294,7 +266,7 @@ export class AccountsController implements IAccountController {
         title: 'My Account',
         pageUser: {
           ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
+          picture: await this.resolvePictureUrl(userData.picture),
           mfa: currentUser.mfa,
           phone_number: currentUser.phone_number,
           phone_number_verified: currentUser.phone_number_verified,
@@ -324,35 +296,40 @@ export class AccountsController implements IAccountController {
     );
   };
 
-  /**
-   * Helper: get active user or redirect to login
-   */
-  private getActiveUserOrRedirect(
-    req: Request,
-    res: Response
-  ): SessionUserAccount | null {
-    const userData = this.sessionManager.getActiveUser(req);
-    if (!userData) {
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-      return null;
+  private getSettingsPageView(page: AccountSettingsPage): string {
+    const views = this.viewResolver.views.accounts;
+    switch (page) {
+      case 'profile':
+        return views.settings_profile;
+      case 'preferences':
+        return views.settings_preferences;
+      case 'notifications':
+        return views.settings_notifications;
+      case 'security':
+        return views.settings_security;
+      case 'recovery':
+        return views.settings_recovery;
+      case 'social':
+        return views.settings_social;
     }
-    return userData;
   }
 
-  public settingsProfile = async (
+  private async renderSettingsPage(
+    page: AccountSettingsPage,
     req: Request,
     res: Response
-  ): Promise<void> => {
+  ): Promise<void> {
     try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
+      const userData = this.sessionManager.getActiveUser(req);
+      if (!userData) {
+        res.redirect(
+          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
+        );
+        return;
+      }
 
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
+      const result = await this.accountSettingsPageService.load(page, userData);
+      if (result.status === 'user_not_found') {
         this.sessionManager.flash(req).error('User not found');
         res.redirect(
           `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
@@ -360,261 +337,35 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const ciFields = this.userService.getCustomIdentifierFields();
-      // Filter fields by edit policy - show all except admin_only to regular users
-      const visibleCiFields = ciFields.filter(
-        f => f.edit_policy !== 'admin_only'
-      );
-
-      res.render(this.viewResolver.views.accounts.settings_profile, {
-        title: 'Account Settings - Profile',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-          custom_identifier_1: currentUser.custom_identifier_1,
-          custom_identifier_2: currentUser.custom_identifier_2,
-          custom_identifier_3: currentUser.custom_identifier_3,
-        },
-        customIdentifierFields: visibleCiFields,
-      });
+      res.render(this.getSettingsPageView(page), result.model.locals);
     } catch (error) {
       this.logger.error(error as Error, {
-        context: 'settings_profile_page_load_failed',
+        context: SETTINGS_PAGE_ERROR_CONTEXT[page],
       });
       this.sessionManager.flash(req).error('Failed to load settings');
       res.redirect(
         `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
       );
     }
-  };
+  }
 
-  public settingsPreferences = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
+  public settingsProfile = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('profile', req, res);
 
-      res.render(this.viewResolver.views.accounts.settings_preferences, {
-        title: 'Account Settings - Preferences',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-        },
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'settings_preferences_page_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load settings');
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-    }
-  };
+  public settingsPreferences = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('preferences', req, res);
 
-  public settingsNotifications = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
+  public settingsNotifications = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('notifications', req, res);
 
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-        );
-        return;
-      }
+  public settingsSecurity = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('security', req, res);
 
-      const config = this.configManager.getConfig();
+  public settingsRecovery = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('recovery', req, res);
 
-      res.render(this.viewResolver.views.accounts.settings_notifications, {
-        title: 'Account Settings - Notifications',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-          phone_number: currentUser.phone_number,
-          phone_number_verified: currentUser.phone_number_verified,
-          notification_preferences: currentUser.notification_preferences,
-          recovery: currentUser.recovery,
-        },
-        notificationConfig: config.notifications,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'settings_notifications_page_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load settings');
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-    }
-  };
-
-  public settingsSecurity = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
-
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-        );
-        return;
-      }
-
-      const passwordPolicy = this.userService.getPasswordPolicy();
-
-      const integrations = await this.socialIntegrationService.findByUser(
-        userData.id
-      );
-      const linkedProviders = new Set(
-        integrations.map(integration => integration.method)
-      );
-      const hasPassword = Boolean(currentUser.password?.trim());
-
-      res.render(this.viewResolver.views.accounts.settings_security, {
-        title: 'Account Settings - Security',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-          mfa: currentUser.mfa,
-        },
-        mfaConfig: this.mfaUtils.getMfaConfig(),
-        passwordPolicy,
-        hasPassword,
-        isSpecialPasswordCase: !hasPassword && linkedProviders.size === 1,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'settings_security_page_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load settings');
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-    }
-  };
-
-  public settingsRecovery = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
-
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-        );
-        return;
-      }
-
-      const recoveryConfig = this.recoveryUtils.getRecoveryConfig();
-
-      res.render(this.viewResolver.views.accounts.settings_recovery, {
-        title: 'Account Settings - Recovery',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-          recovery: currentUser.recovery,
-        },
-        recoveryConfig,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'settings_recovery_page_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load settings');
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-    }
-  };
-
-  public settingsSocial = async (
-    req: Request,
-    res: Response
-  ): Promise<void> => {
-    try {
-      const userData = this.getActiveUserOrRedirect(req, res);
-      if (!userData) return;
-
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
-        this.sessionManager.flash(req).error('User not found');
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-        );
-        return;
-      }
-
-      const integrations = await this.socialIntegrationService.findByUser(
-        userData.id
-      );
-      const availableProviders =
-        this.socialLoginManager.getAvailableProviders();
-
-      const linkedProviders = new Set(
-        integrations.map(integration => integration.method)
-      );
-
-      const hasPassword = Boolean(currentUser.password?.trim());
-
-      const socialProviders = availableProviders.map(provider => ({
-        provider,
-        isLinked: linkedProviders.has(provider),
-        integration:
-          integrations.find(integration => integration.method === provider) ||
-          null,
-        isAvailable: this.socialLoginManager.isProviderAvailable(provider),
-        canUnlink: !(
-          linkedProviders.size === 1 &&
-          linkedProviders.has(provider) &&
-          !hasPassword
-        ),
-      }));
-
-      res.render(this.viewResolver.views.accounts.settings_social, {
-        title: 'Account Settings - Social Accounts',
-        pageUser: {
-          ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
-        },
-        socialProviders,
-        hasPassword,
-      });
-    } catch (error) {
-      this.logger.error(error as Error, {
-        context: 'settings_social_page_load_failed',
-      });
-      this.sessionManager.flash(req).error('Failed to load settings');
-      res.redirect(
-        `${this.configManager.getConfig().deployment.routes.auth}${this.configManager.getConfig().deployment.routes.auth_routes.login}`
-      );
-    }
-  };
+  public settingsSocial = (req: Request, res: Response): Promise<void> =>
+    this.renderSettingsPage('social', req, res);
 
   public updateNotificationPreferences = async (
     req: Request,
@@ -630,8 +381,13 @@ export class AccountsController implements IAccountController {
       }
 
       const config = this.configManager.getConfig();
-
-      if (!config.notifications?.defaults?.allow_user_preferences) {
+      const result =
+        await this.accountProfileService.updateNotificationPreferences(
+          userData.id,
+          req.body,
+          config.notifications?.defaults?.allow_user_preferences === true
+        );
+      if (result.status === 'disabled') {
         this.sessionManager
           .flash(req)
           .error('Notification preferences cannot be changed');
@@ -640,28 +396,6 @@ export class AccountsController implements IAccountController {
         );
         return;
       }
-
-      const {
-        preferred_channel,
-        security_alerts,
-        new_session_alerts,
-        marketing,
-      } = req.body;
-
-      const notificationPreferences = {
-        preferred_channel:
-          preferred_channel === 'email' || preferred_channel === 'sms'
-            ? preferred_channel
-            : 'auto',
-        security_alerts: security_alerts === 'on',
-        new_session_alerts: new_session_alerts === 'on',
-        marketing: marketing === 'on',
-      };
-
-      await this.userService.updateNotificationPreferences(
-        userData.id,
-        notificationPreferences
-      );
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'notification_preferences_updated',
@@ -675,11 +409,10 @@ export class AccountsController implements IAccountController {
           },
           target: {
             target_type: 'user',
-            entity_data: { changes: notificationPreferences },
+            entity_data: { changes: result.preferences },
           },
         }
       );
-
       this.sessionManager
         .flash(req)
         .success('Notification preferences updated successfully');
@@ -709,158 +442,29 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const { firstname, lastname, phone } = req.body;
-      const file = req.file;
-
-      if (
-        [firstname, lastname, phone].some(
-          value => value !== undefined && typeof value !== 'string'
-        )
-      ) {
-        this.sessionManager.flash(req).error('Invalid profile field value');
+      const config = this.configManager.getConfig();
+      const result = await this.accountProfileService.updateProfile({
+        userId: userData.id,
+        currentPicture: userData.picture,
+        formData: req.body,
+        file: req.file,
+      });
+      if (result.status === 'invalid') {
+        this.sessionManager.flash(req).error(result.error);
         res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_profile}`
+          `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
+        );
+        return;
+      }
+      if (result.status === 'user_not_found') {
+        this.sessionManager.flash(req).error('User not found');
+        res.redirect(
+          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
         );
         return;
       }
 
-      const profileData: ProfileUpdateData = {};
-      const trimmedFirstname = firstname?.trim();
-      const trimmedLastname = lastname?.trim();
-
-      if (trimmedFirstname) {
-        profileData.given_name = trimmedFirstname;
-      }
-      if (trimmedLastname) {
-        profileData.family_name = trimmedLastname;
-      }
-      if (trimmedFirstname && trimmedLastname) {
-        profileData.name = `${trimmedFirstname} ${trimmedLastname}`;
-      } else if (trimmedFirstname) {
-        profileData.name = trimmedFirstname;
-      } else if (trimmedLastname) {
-        profileData.name = trimmedLastname;
-      }
-
-      if (phone !== undefined) {
-        profileData.phone_number = phone.trim() || '';
-      }
-
-      const config = this.configManager.getConfig();
-      const ciFields = this.userService.getCustomIdentifierFields();
-
-      // Fetch fresh user from DB for accurate set_once checks
-      const dbUser = await this.userService.findById(userData.id);
-      if (!dbUser) {
-        this.sessionManager.flash(req).error('User not found');
-        return res.redirect(
-          `${config.deployment.routes.auth}${config.deployment.routes.auth_routes.login}`
-        );
-      }
-
-      const identifierChanges: Array<{
-        slot: 1 | 2 | 3;
-        value: string | null;
-      }> = [];
-
-      // Validate every custom identifier before starting any side effects.
-      for (const field of ciFields) {
-        if (field.edit_policy === 'admin_only') continue;
-
-        const formValue = req.body[`custom_identifier_${field.slot}`];
-        if (formValue === undefined) continue;
-        if (typeof formValue !== 'string') {
-          this.sessionManager.flash(req).error('Invalid profile field value');
-          res.redirect(
-            `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
-          );
-          return;
-        }
-
-        const trimmedValue = formValue.trim();
-        const currentValue = this.userService.getCustomIdentifier(
-          dbUser,
-          field.slot
-        );
-
-        // set_once: skip if already has a value
-        if (field.edit_policy === 'set_once' && currentValue) continue;
-
-        if (trimmedValue) {
-          // Validate format
-          if (!validateIdentifier(trimmedValue, field)) {
-            this.sessionManager
-              .flash(req)
-              .error(`Invalid ${field.name || 'identifier'} format`);
-            res.redirect(
-              `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
-            );
-            return;
-          }
-
-          // Normalize case
-          const normalizedValue = field.case_sensitive
-            ? trimmedValue
-            : trimmedValue.toLowerCase();
-
-          // Check uniqueness
-          const isAvailable =
-            await this.userService.isCustomIdentifierAvailable(
-              field.slot,
-              normalizedValue,
-              userData.id
-            );
-          if (!isAvailable) {
-            this.sessionManager
-              .flash(req)
-              .error(`This ${field.name || 'identifier'} is already in use`);
-            res.redirect(
-              `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
-            );
-            return;
-          }
-
-          identifierChanges.push({
-            slot: field.slot,
-            value: normalizedValue,
-          });
-        } else if (field.edit_policy === 'full') {
-          identifierChanges.push({ slot: field.slot, value: null });
-        }
-      }
-
-      if (file) {
-        const storageKey = await this.uploadMiddleware.storeFile(
-          file,
-          'avatars'
-        );
-        profileData.picture = storageKey;
-
-        if (userData.picture) {
-          await this.uploadMiddleware.deleteFile(userData.picture);
-        }
-      }
-
-      for (const change of identifierChanges) {
-        if (change.value === null) {
-          await this.userService.removeCustomIdentifier(
-            userData.id,
-            change.slot
-          );
-        } else {
-          await this.userService.setCustomIdentifier(
-            userData.id,
-            change.slot,
-            change.value
-          );
-        }
-      }
-
-      const updatedUser = await this.userService.updateProfile(
-        userData.id,
-        profileData
-      );
-
+      const { updatedUser } = result;
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'profile_updated',
         updatedUser,
@@ -872,8 +476,7 @@ export class AccountsController implements IAccountController {
       );
 
       const authenticatedUsers = this.sessionManager.getAuthenticatedUsers(req);
-
-      if (authenticatedUsers && authenticatedUsers.active) {
+      if (authenticatedUsers?.active) {
         authenticatedUsers.active = {
           ...authenticatedUsers.active,
           given_name:
@@ -884,33 +487,27 @@ export class AccountsController implements IAccountController {
           picture: updatedUser.picture || authenticatedUsers.active.picture,
           last_used: Date.now(),
         };
-
         this.sessionManager.set(req, 'authenticatedUsers', authenticatedUsers);
-
         this.logger.info(
           `Updated session for user ${userData.username} after profile update`
         );
       } else {
-        const updatedUserAccount = {
-          ...userData,
-          given_name: updatedUser.given_name || userData.given_name,
-          family_name: updatedUser.family_name || userData.family_name,
-          full_name: updatedUser.name || userData.full_name,
-          picture: updatedUser.picture || userData.picture,
-          last_used: Date.now(),
-        };
-
         this.sessionManager.setAuthenticated(req, {
-          currentActiveLoggedUser: updatedUserAccount,
+          currentActiveLoggedUser: {
+            ...userData,
+            given_name: updatedUser.given_name || userData.given_name,
+            family_name: updatedUser.family_name || userData.family_name,
+            full_name: updatedUser.name || userData.full_name,
+            picture: updatedUser.picture || userData.picture,
+            last_used: Date.now(),
+          },
         });
       }
 
       this.sessionManager.flash(req).success('Profile updated successfully');
-
       this.logger.info(`User ${userData.username} updated their profile`);
-
       res.redirect(
-        `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_profile}`
+        `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_profile}`
       );
     } catch (error) {
       this.logger.error(error as Error, { context: 'profile_update_failed' });
@@ -937,149 +534,28 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      const { currentPassword, newPassword, confirmPassword } = req.body;
-      if (
-        [currentPassword, newPassword, confirmPassword].some(
-          value => value !== undefined && typeof value !== 'string'
-        )
-      ) {
-        this.sessionManager.flash(req).error('Invalid password field value');
+      const config = this.configManager.getConfig();
+      const result = await this.accountPasswordChangeService.change({
+        userId: userData.id,
+        username: userData.username,
+        formData: req.body,
+        breachPolicy:
+          config.security?.authentication?.password_breach_detection,
+      });
+      if (result.status === 'invalid') {
+        this.sessionManager.flash(req).error(result.error);
         res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
+          `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_security}`
         );
         return;
       }
-
-      const currentUser = await this.userService.findByUsername(
-        userData.username
-      );
-      if (!currentUser) {
+      if (result.status === 'user_not_found') {
         this.sessionManager.flash(req).error('User not found');
         res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
+          `${config.deployment.routes.accounts}${config.deployment.routes.account_routes.settings_security}`
         );
         return;
       }
-
-      const cooldownResult =
-        this.recoveryUtils.checkRecoveryCooldown(currentUser);
-      if (cooldownResult.inCooldown) {
-        this.sessionManager
-          .flash(req)
-          .error(
-            `For security, password changes are restricted for ${cooldownResult.hoursRemaining} hour(s) after account recovery.`
-          );
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-        );
-        return;
-      }
-
-      const hasPassword = Boolean(currentUser.password?.trim());
-
-      const integrations = await this.socialIntegrationService.findByUser(
-        userData.id
-      );
-      const linkedProviders = integrations.map(
-        integration => integration.method
-      );
-
-      const isSpecialCase = !hasPassword && linkedProviders.length === 1;
-
-      if (isSpecialCase) {
-        // Special case: allow setting password without current password
-        if (!newPassword || !confirmPassword) {
-          this.sessionManager
-            .flash(req)
-            .error('New password and confirmation are required');
-          res.redirect(
-            `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-          );
-          return;
-        }
-      } else {
-        // Normal case: require all fields including current password
-        if (!currentPassword || !newPassword || !confirmPassword) {
-          this.sessionManager
-            .flash(req)
-            .error('All password fields are required');
-          res.redirect(
-            `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-          );
-          return;
-        }
-      }
-
-      if (newPassword !== confirmPassword) {
-        this.sessionManager
-          .flash(req)
-          .error('New password and confirmation do not match');
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-        );
-        return;
-      }
-
-      const validation = this.userService.validatePassword(newPassword);
-      if (!validation.isValid) {
-        this.sessionManager
-          .flash(req)
-          .error(
-            `Password requirements not met: ${validation.messages.join(', ')}`
-          );
-        res.redirect(
-          `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-        );
-        return;
-      }
-
-      // Check password against known breaches (HIBP)
-      const breachConfig =
-        this.configManager.getConfig().security?.authentication
-          ?.password_breach_detection;
-      if (breachConfig?.enabled && breachConfig.check_on_password_change) {
-        try {
-          const breachResult = await checkPasswordBreach(
-            newPassword,
-            breachConfig.api_timeout_ms
-          );
-          if (
-            breachResult.breached &&
-            breachResult.count >= (breachConfig.min_breach_count ?? 1)
-          ) {
-            this.sessionManager
-              .flash(req)
-              .error(
-                `This password has appeared in ${breachResult.count} known data ${breachResult.count === 1 ? 'breach' : 'breaches'} and cannot be used. Please choose a different password.`
-              );
-            res.redirect(
-              `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-            );
-            return;
-          }
-        } catch (breachError) {
-          if ((breachError as Error).message?.includes('data breaches')) {
-            this.sessionManager
-              .flash(req)
-              .error((breachError as Error).message);
-            res.redirect(
-              `${this.configManager.getConfig().deployment.routes.accounts}${this.configManager.getConfig().deployment.routes.account_routes.settings_security}`
-            );
-            return;
-          }
-          this.logger.warn(
-            'Password breach check failed during password change (allowing change)',
-            { error: (breachError as Error).message }
-          );
-        }
-      }
-
-      const passwordData: PasswordChangeData = {
-        currentPassword: isSpecialCase ? undefined : currentPassword,
-        newPassword,
-      };
-
-      await this.userService.changePassword(userData.id, passwordData);
 
       const activity = activityLoggerFor(this.activityLoggerDeps, req);
       activity.success(
@@ -1107,10 +583,11 @@ export class AccountsController implements IAccountController {
               userData.username,
               currentSessionId
             );
-          const expressRevokedCount = await this.revokeOtherExpressSessions(
-            userData.username,
-            req.sessionID
-          );
+          const expressRevokedCount =
+            await this.accountSessionService.revokeOtherExpressSessions(
+              userData.username,
+              req.sessionID
+            );
           const revokedCount = oidcRevokedCount + expressRevokedCount;
           if (revokedCount > 0) {
             this.logger.info('Revoked sessions after password change', {
@@ -1217,17 +694,15 @@ export class AccountsController implements IAccountController {
         return;
       }
 
-      await this.userService.removeAvatar(userData.id);
-
-      if (userData.picture) {
-        try {
-          await this.uploadMiddleware.deleteFile(userData.picture);
-        } catch (error) {
-          this.logger.error(error as Error, {
-            context: 'avatar_file_cleanup_failed',
-            username: userData.username,
-          });
-        }
+      const removal = await this.accountProfileService.removeAvatar(
+        userData.id,
+        userData.picture
+      );
+      if (removal.cleanupError) {
+        this.logger.error(removal.cleanupError as Error, {
+          context: 'avatar_file_cleanup_failed',
+          username: userData.username,
+        });
       }
 
       activityLoggerFor(this.activityLoggerDeps, req).success(
@@ -1811,9 +1286,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Display the passkeys management page
-   */
   public passkeysPage = async (req: Request, res: Response): Promise<void> => {
     try {
       const userData = this.sessionManager.getActiveUser(req);
@@ -1855,9 +1327,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Display the WebAuthn setup page
-   */
   public setupWebAuthnPage = async (
     req: Request,
     res: Response
@@ -2492,9 +1961,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Add a new account by redirecting to login with account addition intent
-   */
   public addAccount = (req: Request, res: Response): void => {
     try {
       this.sessionManager.set(req, 'addAccountIntent', {
@@ -2521,9 +1987,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Remove an account from the session
-   */
   public removeAccount = async (req: Request, res: Response): Promise<void> => {
     try {
       const accountId = req.body?.accountId;
@@ -2583,9 +2046,6 @@ export class AccountsController implements IAccountController {
     }
   };
 
-  /**
-   * Revoke access to a specific application
-   */
   public revokeApp = async (req: Request, res: Response): Promise<void> => {
     try {
       const userData = this.sessionManager.getActiveUser(req);
@@ -2700,9 +2160,6 @@ export class AccountsController implements IAccountController {
     );
   };
 
-  /**
-   * Revoke access to all applications
-   */
   public revokeAllApps = async (req: Request, res: Response): Promise<void> => {
     try {
       const userData = this.sessionManager.getActiveUser(req);
@@ -2932,10 +2389,11 @@ export class AccountsController implements IAccountController {
       // Also revoke all other Express sessions (excluding the current express session)
       let expressRevokedCount = 0;
       try {
-        expressRevokedCount = await this.revokeOtherExpressSessions(
-          userData.username,
-          req.sessionID
-        );
+        expressRevokedCount =
+          await this.accountSessionService.revokeOtherExpressSessions(
+            userData.username,
+            req.sessionID
+          );
       } catch (err) {
         this.logger.error(err as Error, {
           context: 'express_sessions_revocation_failed',
@@ -2983,9 +2441,6 @@ export class AccountsController implements IAccountController {
     );
   };
 
-  /**
-   * Get account switcher data for UI
-   */
   public getAccountSwitcherData = (req: Request, res: Response): void => {
     try {
       const authenticatedUsers = this.sessionManager.getAuthenticatedUsers(req);
@@ -3856,7 +3311,7 @@ export class AccountsController implements IAccountController {
         backup_codes,
         pageUser: {
           ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
+          picture: await this.resolvePictureUrl(userData.picture),
         },
       });
     } catch (error) {
@@ -4237,7 +3692,7 @@ export class AccountsController implements IAccountController {
         title: 'Set Up Account Recovery',
         pageUser: {
           ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
+          picture: await this.resolvePictureUrl(userData.picture),
           mfa: currentUser.mfa,
         },
       });
@@ -4322,7 +3777,7 @@ export class AccountsController implements IAccountController {
         title: 'Set Up Security Questions',
         pageUser: {
           ...userData,
-          picture: this.resolvePictureUrl(userData.picture),
+          picture: await this.resolvePictureUrl(userData.picture),
         },
         availableQuestionKeys,
         existingQuestions,

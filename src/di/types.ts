@@ -91,6 +91,13 @@ export const TYPES = {
   ),
   TenantSettingsOverrideService: Symbol.for('TenantSettingsOverrideService'),
 
+  AuthControllerOperationModules: Symbol.for('AuthControllerOperationModules'),
+  AccountControllerOperationModules: Symbol.for(
+    'AccountControllerOperationModules'
+  ),
+  AdminSettingsControllerOperationModules: Symbol.for(
+    'AdminSettingsControllerOperationModules'
+  ),
   AuthController: Symbol.for('AuthController'),
   AccountController: Symbol.for('AccountController'),
   AdminActivitiesController: Symbol.for('AdminActivitiesController'),
