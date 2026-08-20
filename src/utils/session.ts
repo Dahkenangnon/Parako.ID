@@ -21,6 +21,7 @@ import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.in
 import { TYPES } from '../di/types.js';
 import { PrismaSessionStore } from './prisma-session-store.js';
 import { createTenantSessionId } from './session-id.js';
+import { decodePersistedSession } from './session-persistence.js';
 import { encryptValue, decryptValue, isEncrypted } from './encryption.js';
 import { createConnectRedisClientAdapter } from './connect-redis-client.js';
 import {
@@ -29,6 +30,17 @@ import {
 } from '../multi-tenancy/tenant-context.js';
 import { escapeRegExp } from '../validators/listing-query.js';
 import { parseUserAgent } from './user-agent.js';
+import type {
+  AuthenticatedUsers,
+  FlashContainer,
+  FlashMessage,
+  FlashOptions,
+  FlashType,
+  SessionAuthenticationData,
+  SessionData,
+  SessionMetadata,
+  SessionUserAccount,
+} from '../types/session-data.js';
 
 const SENSITIVE_SESSION_FIELDS = [
   'authenticatedUsers',
@@ -39,6 +51,10 @@ const SENSITIVE_SESSION_FIELDS = [
   'deviceId',
   '_metadata',
 ];
+
+function normalizeSessionAccountId(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
 
 function normalizeSessionAuthTime(value: unknown): number {
   if (typeof value === 'number') {
@@ -438,64 +454,6 @@ class CircuitBreakerStore extends Store {
 /** Selected from the effective OIDC adapter configuration. */
 export type SessionStoreType = 'mongodb' | 'redis' | 'sqlite' | 'postgresql';
 
-export type FlashType = 'success' | 'error' | 'info' | 'warning';
-
-export interface FlashMessage {
-  type: FlashType;
-  message: string;
-  title?: string;
-  dismissible?: boolean;
-  timeout?: number;
-}
-
-export interface FlashOptions {
-  dismissible?: boolean;
-  timeout?: number;
-}
-
-export interface FlashContainer {
-  success: FlashMessage[];
-  error: FlashMessage[];
-  info: FlashMessage[];
-  warning: FlashMessage[];
-  [key: string]: FlashMessage[];
-}
-
-export interface SessionUserAccount {
-  id: string;
-  username: string;
-  email?: string;
-  email_verified?: boolean;
-  phone_number?: string;
-  phone_number_verified?: boolean;
-  given_name?: string;
-  family_name?: string;
-  full_name?: string;
-  picture?: string;
-  roles?: string[];
-  is_admin?: boolean;
-  last_used?: number;
-  zoneinfo?: string;
-  locale?: string;
-}
-
-/** Supports multiple authenticated accounts while identifying the active one. */
-export interface AuthenticatedUsers {
-  active: SessionUserAccount;
-  others: SessionUserAccount[];
-}
-
-/** Optional audit metadata collected when `store_metadata` is enabled. */
-export interface SessionMetadata {
-  created_at: Date;
-  createdFrom: 'login' | 'social' | 'api' | 'session-switch' | 'unknown';
-  createdIp?: string;
-  userAgent?: string;
-  browser?: { name?: string; version?: string };
-  os?: { name?: string; version?: string };
-  device?: { type?: string; vendor?: string; model?: string };
-}
-
 function isSessionCreationSource(
   value: unknown
 ): value is SessionMetadata['createdFrom'] {
@@ -506,23 +464,6 @@ function isSessionCreationSource(
     value === 'session-switch' ||
     value === 'unknown'
   );
-}
-
-export interface SessionData {
-  authenticatedUsers?: AuthenticatedUsers;
-  isAuthenticated?: boolean;
-  /** Intentionally unencrypted for user-scoped lookup and concurrency enforcement. */
-  accountId?: string;
-  authTime?: number;
-  lastActivity?: number;
-  created?: number;
-  ipAddress?: string;
-  userAgent?: string;
-  deviceId?: string;
-  csrfToken?: string;
-  flash?: FlashContainer;
-  _metadata?: SessionMetadata;
-  [key: string]: any;
 }
 
 @injectable()
@@ -1045,13 +986,13 @@ export class SessionManager implements ISessionManager {
         );
       }
 
-      return 0;
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to enforce session limit',
         userId,
       });
-      return 0;
+      throw error;
     }
   }
 
@@ -1062,10 +1003,7 @@ export class SessionManager implements ISessionManager {
   ): Promise<number> {
     const db = mongoose.connection.db;
     if (!db) {
-      this.logger.warn(
-        'Cannot enforce session limit: MongoDB connection not available'
-      );
-      return 0;
+      throw this.unavailableSessionStore('enforce session limit', 'MongoDB');
     }
 
     const collectionName = this.options.collection || 'application_session';
@@ -1135,10 +1073,7 @@ export class SessionManager implements ISessionManager {
     currentSessionId?: string
   ): Promise<number> {
     if (!this.redisClient) {
-      this.logger.warn(
-        'Cannot enforce session limit: Redis client not available'
-      );
-      return 0;
+      throw this.unavailableSessionStore('enforce session limit', 'Redis');
     }
 
     const tenantId = tenantContext.getTenantId();
@@ -1160,7 +1095,10 @@ export class SessionManager implements ISessionManager {
         continue;
       }
       try {
-        const data = JSON.parse(raw);
+        const data = decodePersistedSession(
+          raw,
+          'redis.application_session.data'
+        );
         if (
           sessionBelongsToTenant(data, tenantId) &&
           data.accountId === userId
@@ -1243,10 +1181,7 @@ export class SessionManager implements ISessionManager {
     currentSessionId?: string
   ): Promise<number> {
     if (!this.prismaClient) {
-      this.logger.warn(
-        'Cannot enforce session limit: Prisma client not available'
-      );
-      return 0;
+      throw this.unavailableSessionStore('enforce session limit', 'Prisma');
     }
 
     const tenantId = tenantContext.getTenantId();
@@ -1256,7 +1191,10 @@ export class SessionManager implements ISessionManager {
     for (const row of rows) {
       if (row.sid === currentSessionId) continue;
       try {
-        const data = JSON.parse(row.data);
+        const data = decodePersistedSession(
+          row.data,
+          'prisma.application_session.data'
+        );
         if (
           sessionBelongsToTenant(data, tenantId) &&
           data.accountId === userId
@@ -1325,10 +1263,10 @@ export class SessionManager implements ISessionManager {
       if (storeType === 'mongodb') {
         const db = mongoose.connection.db;
         if (!db) {
-          this.logger.warn(
-            'Cannot revoke Express sessions: MongoDB not connected'
+          throw this.unavailableSessionStore(
+            'revoke Express sessions',
+            'MongoDB'
           );
-          return 0;
         }
 
         const collection = db.collection(
@@ -1350,10 +1288,10 @@ export class SessionManager implements ISessionManager {
         return result.deletedCount;
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
-          this.logger.warn(
-            'Cannot revoke Express sessions: Redis client not available'
+          throw this.unavailableSessionStore(
+            'revoke Express sessions',
+            'Redis'
           );
-          return 0;
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1378,7 +1316,10 @@ export class SessionManager implements ISessionManager {
           if (!raw) continue;
 
           try {
-            const data = JSON.parse(raw);
+            const data = decodePersistedSession(
+              raw,
+              'redis.application_session.data'
+            );
             if (
               sessionBelongsToTenant(data, tenantId) &&
               data.accountId === userId
@@ -1424,10 +1365,10 @@ export class SessionManager implements ISessionManager {
         return deletedCount;
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
-          this.logger.warn(
-            'Cannot revoke Express sessions: Prisma client not available'
+          throw this.unavailableSessionStore(
+            'revoke Express sessions',
+            'Prisma'
           );
-          return 0;
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1436,7 +1377,10 @@ export class SessionManager implements ISessionManager {
 
         for (const row of rows) {
           try {
-            const data = JSON.parse(row.data);
+            const data = decodePersistedSession(
+              row.data,
+              'prisma.application_session.data'
+            );
             if (
               sessionBelongsToTenant(data, tenantId) &&
               data.accountId === userId
@@ -1466,13 +1410,13 @@ export class SessionManager implements ISessionManager {
         return result.count;
       }
 
-      return 0;
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to revoke Express sessions for user',
         userId,
       });
-      return 0;
+      throw error;
     }
   }
 
@@ -1487,10 +1431,10 @@ export class SessionManager implements ISessionManager {
       if (storeType === 'mongodb') {
         const db = mongoose.connection.db;
         if (!db) {
-          this.logger.warn(
-            'Cannot find Express sessions: MongoDB connection not available'
+          throw this.unavailableSessionStore(
+            'find Express sessions',
+            'MongoDB'
           );
-          return [];
         }
 
         const collectionName = this.options.collection || 'application_session';
@@ -1506,10 +1450,7 @@ export class SessionManager implements ISessionManager {
           .toArray();
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
-          this.logger.warn(
-            'Cannot find Express sessions: Redis client not available'
-          );
-          return [];
+          throw this.unavailableSessionStore('find Express sessions', 'Redis');
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1526,7 +1467,10 @@ export class SessionManager implements ISessionManager {
             continue;
           }
           try {
-            const data = JSON.parse(raw);
+            const data = decodePersistedSession(
+              raw,
+              'redis.application_session.data'
+            );
             if (
               sessionBelongsToTenant(data, tenantId) &&
               data.accountId === accountId &&
@@ -1547,10 +1491,7 @@ export class SessionManager implements ISessionManager {
         return results;
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
-          this.logger.warn(
-            'Cannot find Express sessions: Prisma client not available'
-          );
-          return [];
+          throw this.unavailableSessionStore('find Express sessions', 'Prisma');
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1558,7 +1499,10 @@ export class SessionManager implements ISessionManager {
         const results: any[] = [];
         for (const row of rows) {
           try {
-            const data = JSON.parse(row.data);
+            const data = decodePersistedSession(
+              row.data,
+              'prisma.application_session.data'
+            );
             if (
               sessionBelongsToTenant(data, tenantId) &&
               data.accountId === accountId &&
@@ -1578,13 +1522,13 @@ export class SessionManager implements ISessionManager {
         return results;
       }
 
-      return [];
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to find Express sessions for user',
         accountId,
       });
-      return [];
+      throw error;
     }
   }
 
@@ -1599,10 +1543,10 @@ export class SessionManager implements ISessionManager {
       if (storeType === 'mongodb') {
         const db = mongoose.connection.db;
         if (!db) {
-          this.logger.warn(
-            'Cannot revoke Express session: MongoDB connection not available'
+          throw this.unavailableSessionStore(
+            'revoke Express session',
+            'MongoDB'
           );
-          return false;
         }
 
         const collectionName = this.options.collection || 'application_session';
@@ -1620,10 +1564,7 @@ export class SessionManager implements ISessionManager {
         return false;
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
-          this.logger.warn(
-            'Cannot revoke Express session: Redis client not available'
-          );
-          return false;
+          throw this.unavailableSessionStore('revoke Express session', 'Redis');
         }
 
         const sessionKey = `${this.sessionPrefix}${sessionId}`;
@@ -1635,7 +1576,10 @@ export class SessionManager implements ISessionManager {
         const tenantId = tenantContext.getTenantId();
         let accountId: string | undefined;
         try {
-          const data = JSON.parse(raw);
+          const data = decodePersistedSession(
+            raw,
+            'redis.application_session.data'
+          );
           if (!sessionBelongsToTenant(data, tenantId)) {
             return false;
           }
@@ -1661,10 +1605,10 @@ export class SessionManager implements ISessionManager {
         return false;
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
-          this.logger.warn(
-            'Cannot revoke Express session: Prisma client not available'
+          throw this.unavailableSessionStore(
+            'revoke Express session',
+            'Prisma'
           );
-          return false;
         }
 
         const row = await (this.prismaClient as any).session.findUnique({
@@ -1675,7 +1619,10 @@ export class SessionManager implements ISessionManager {
         }
 
         try {
-          const data = JSON.parse(row.data);
+          const data = decodePersistedSession(
+            row.data,
+            'prisma.application_session.data'
+          );
           if (!sessionBelongsToTenant(data, tenantContext.getTenantId())) {
             return false;
           }
@@ -1694,13 +1641,13 @@ export class SessionManager implements ISessionManager {
         return false;
       }
 
-      return false;
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to revoke Express session',
         sessionId,
       });
-      return false;
+      throw error;
     }
   }
 
@@ -1714,10 +1661,10 @@ export class SessionManager implements ISessionManager {
       if (storeType === 'mongodb') {
         const db = mongoose.connection.db;
         if (!db) {
-          this.logger.warn(
-            'Cannot find Express sessions: MongoDB connection not available'
+          throw this.unavailableSessionStore(
+            'list Express sessions',
+            'MongoDB'
           );
-          return [];
         }
 
         const collectionName = this.options.collection || 'application_session';
@@ -1742,10 +1689,7 @@ export class SessionManager implements ISessionManager {
           .toArray();
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
-          this.logger.warn(
-            'Cannot find Express sessions: Redis client not available'
-          );
-          return [];
+          throw this.unavailableSessionStore('list Express sessions', 'Redis');
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1769,12 +1713,15 @@ export class SessionManager implements ISessionManager {
             const raw = await this.redisClient.get(key);
             if (!raw) continue;
             try {
-              const data = JSON.parse(raw);
+              const data = decodePersistedSession(
+                raw,
+                'redis.application_session.data'
+              );
               if (!sessionBelongsToTenant(data, tenantId)) continue;
               if (data.isAuthenticated !== true) continue;
               if (
                 search &&
-                !(data.accountId || '')
+                !normalizeSessionAccountId(data.accountId)
                   .toLowerCase()
                   .includes(search.toLowerCase())
               )
@@ -1797,10 +1744,7 @@ export class SessionManager implements ISessionManager {
         return results.slice(offset, offset + limit);
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
-          this.logger.warn(
-            'Cannot find Express sessions: Prisma client not available'
-          );
-          return [];
+          throw this.unavailableSessionStore('list Express sessions', 'Prisma');
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1808,12 +1752,15 @@ export class SessionManager implements ISessionManager {
         const results: any[] = [];
         for (const row of rows) {
           try {
-            const data = JSON.parse(row.data);
+            const data = decodePersistedSession(
+              row.data,
+              'prisma.application_session.data'
+            );
             if (!sessionBelongsToTenant(data, tenantId)) continue;
             if (data.isAuthenticated !== true) continue;
             if (
               search &&
-              !(data.accountId || '')
+              !normalizeSessionAccountId(data.accountId)
                 .toLowerCase()
                 .includes(search.toLowerCase())
             )
@@ -1833,12 +1780,12 @@ export class SessionManager implements ISessionManager {
         return results.slice(offset, offset + limit);
       }
 
-      return [];
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to find all Express sessions',
       });
-      return [];
+      throw error;
     }
   }
 
@@ -1849,10 +1796,10 @@ export class SessionManager implements ISessionManager {
       if (storeType === 'mongodb') {
         const db = mongoose.connection.db;
         if (!db) {
-          this.logger.warn(
-            'Cannot count Express sessions: MongoDB connection not available'
+          throw this.unavailableSessionStore(
+            'count Express sessions',
+            'MongoDB'
           );
-          return 0;
         }
 
         const collectionName = this.options.collection || 'application_session';
@@ -1872,10 +1819,7 @@ export class SessionManager implements ISessionManager {
         return await sessionCollection.countDocuments(query);
       } else if (storeType === 'redis') {
         if (!this.redisClient) {
-          this.logger.warn(
-            'Cannot count Express sessions: Redis client not available'
-          );
-          return 0;
+          throw this.unavailableSessionStore('count Express sessions', 'Redis');
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1899,12 +1843,15 @@ export class SessionManager implements ISessionManager {
             const raw = await this.redisClient.get(key);
             if (!raw) continue;
             try {
-              const data = JSON.parse(raw);
+              const data = decodePersistedSession(
+                raw,
+                'redis.application_session.data'
+              );
               if (
                 sessionBelongsToTenant(data, tenantId) &&
                 data.isAuthenticated === true &&
                 (!search ||
-                  (data.accountId || '')
+                  normalizeSessionAccountId(data.accountId)
                     .toLowerCase()
                     .includes(search.toLowerCase()))
               ) {
@@ -1919,10 +1866,10 @@ export class SessionManager implements ISessionManager {
         return count;
       } else if (storeType === 'sqlite' || storeType === 'postgresql') {
         if (!this.prismaClient) {
-          this.logger.warn(
-            'Cannot count Express sessions: Prisma client not available'
+          throw this.unavailableSessionStore(
+            'count Express sessions',
+            'Prisma'
           );
-          return 0;
         }
 
         const tenantId = tenantContext.getTenantId();
@@ -1930,12 +1877,15 @@ export class SessionManager implements ISessionManager {
         let count = 0;
         for (const row of rows) {
           try {
-            const data = JSON.parse(row.data);
+            const data = decodePersistedSession(
+              row.data,
+              'prisma.application_session.data'
+            );
             if (
               sessionBelongsToTenant(data, tenantId) &&
               data.isAuthenticated === true &&
               (!search ||
-                (data.accountId || '')
+                normalizeSessionAccountId(data.accountId)
                   .toLowerCase()
                   .includes(search.toLowerCase()))
             ) {
@@ -1949,12 +1899,12 @@ export class SessionManager implements ISessionManager {
         return count;
       }
 
-      return 0;
+      throw this.unsupportedSessionStore(storeType);
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'Failed to count all Express sessions',
       });
-      return 0;
+      throw error;
     }
   }
 
@@ -2029,6 +1979,7 @@ export class SessionManager implements ISessionManager {
       mongoUrl: oidcAdapterConfig.mongodb.uri,
       collectionName: this.options.collection || 'sessions',
       ttl: this.options.ttl,
+      stringify: false,
       mongoOptions: {
         serverSelectionTimeoutMS: 10000,
         maxPoolSize: 10,
@@ -2111,6 +2062,16 @@ export class SessionManager implements ISessionManager {
     );
   }
 
+  private unavailableSessionStore(operation: string, store: string): Error {
+    return new Error(
+      `Cannot ${operation}: ${store} session store is unavailable`
+    );
+  }
+
+  private unsupportedSessionStore(storeType: never): Error {
+    return new Error(`Unsupported session store type: ${String(storeType)}`);
+  }
+
   private redisUserSessionsKey(
     accountId: string,
     tenantId = tenantContext.getTenantId()
@@ -2159,7 +2120,10 @@ export class SessionManager implements ISessionManager {
         if (!raw) continue;
 
         try {
-          const data = JSON.parse(raw);
+          const data = decodePersistedSession(
+            raw,
+            'redis.application_session.data'
+          );
           if (
             sessionBelongsToTenant(data, tenantId) &&
             data.accountId === accountId
@@ -2635,26 +2599,29 @@ export class SessionManager implements ISessionManager {
     };
   }
 
-  public set(req: Request, key: string, value: any): void {
+  private sessionRecord(req: Request): Record<string, unknown> {
+    return req.session as unknown as Record<string, unknown>;
+  }
+
+  public set<T>(req: Request, key: string, value: T): void {
     if (!req.session) {
       throw new Error('Session not available');
     }
 
-    req.session[key] = value;
+    this.sessionRecord(req)[key] = value;
   }
 
-  public get<T = any>(
+  public get<T = unknown>(
     req: Request,
     key: string,
-    defaultValue?: any
+    defaultValue?: T
   ): T | undefined {
     if (!req.session) {
       return undefined;
     }
 
-    return req.session[key] !== undefined
-      ? (req.session[key] as T)
-      : defaultValue;
+    const value = this.sessionRecord(req)[key];
+    return value !== undefined ? (value as T) : defaultValue;
   }
 
   public getAll(req: Request): SessionData {
@@ -2662,15 +2629,16 @@ export class SessionManager implements ISessionManager {
       return {};
     }
 
-    const sessionData: SessionData = {};
+    const sessionData: Record<string, unknown> = {};
+    const storedSession = this.sessionRecord(req);
 
-    Object.keys(req.session).forEach(key => {
+    Object.keys(storedSession).forEach(key => {
       if (key !== 'cookie' && key !== 'id') {
-        sessionData[key] = req.session[key as keyof typeof req.session];
+        sessionData[key] = storedSession[key];
       }
     });
 
-    return sessionData;
+    return sessionData as SessionData;
   }
 
   public remove(req: Request, key: string): void {
@@ -2678,7 +2646,7 @@ export class SessionManager implements ISessionManager {
       return;
     }
 
-    delete req.session[key];
+    delete this.sessionRecord(req)[key];
   }
 
   public clear(req: Request, preserveKeys: string[] = []): void {
@@ -2686,9 +2654,9 @@ export class SessionManager implements ISessionManager {
       return;
     }
 
-    const currentSession = req.session;
+    const currentSession = this.sessionRecord(req);
 
-    const preserved: Record<string, any> = {};
+    const preserved: Record<string, unknown> = {};
     preserveKeys.forEach(key => {
       if (currentSession[key] !== undefined) {
         preserved[key] = currentSession[key];
@@ -2701,9 +2669,7 @@ export class SessionManager implements ISessionManager {
       }
     });
 
-    Object.keys(preserved).forEach(key => {
-      currentSession[key] = preserved[key];
-    });
+    Object.assign(currentSession, preserved);
   }
 
   /** Regenerates the identifier without dropping data to prevent session fixation. */
@@ -2727,8 +2693,13 @@ export class SessionManager implements ISessionManager {
           return reject(new Error('Session not available after regeneration'));
         }
 
-        Object.keys(sessionData).forEach(key => {
-          regeneratedSession[key] = sessionData[key];
+        const regeneratedRecord = regeneratedSession as unknown as Record<
+          string,
+          unknown
+        >;
+        const storedData = sessionData as unknown as Record<string, unknown>;
+        Object.keys(storedData).forEach(key => {
+          regeneratedRecord[key] = storedData[key];
         });
 
         if (this.redisClient && accountId) {
@@ -2858,28 +2829,42 @@ export class SessionManager implements ISessionManager {
 
   public setAuthenticated(
     req: Request,
-    userData: Partial<SessionData> = {}
+    userData: SessionAuthenticationData = {}
   ): void {
+    const currentActiveLoggedUser = userData.currentActiveLoggedUser;
+    const accountId =
+      currentActiveLoggedUser?.id ?? currentActiveLoggedUser?._id;
     let userAccount: SessionUserAccount | undefined;
-    if (userData.currentActiveLoggedUser) {
+    if (
+      currentActiveLoggedUser &&
+      typeof accountId === 'string' &&
+      accountId.trim().length > 0 &&
+      currentActiveLoggedUser.username.trim().length > 0
+    ) {
       userAccount = {
-        id: userData.currentActiveLoggedUser.id,
-        username: userData.currentActiveLoggedUser.username,
-        email: userData.currentActiveLoggedUser.email,
-        email_verified: userData.currentActiveLoggedUser.email_verified,
-        given_name: userData.currentActiveLoggedUser.given_name,
-        family_name: userData.currentActiveLoggedUser.family_name,
-        full_name: userData.currentActiveLoggedUser.full_name,
-        picture: userData.currentActiveLoggedUser.picture,
-        roles: userData.currentActiveLoggedUser.roles,
-        is_admin: userData.currentActiveLoggedUser.is_admin,
+        id: accountId,
+        username: currentActiveLoggedUser.username,
+        email: currentActiveLoggedUser.email,
+        email_verified: currentActiveLoggedUser.email_verified,
+        given_name: currentActiveLoggedUser.given_name,
+        family_name: currentActiveLoggedUser.family_name,
+        full_name: currentActiveLoggedUser.full_name,
+        picture: currentActiveLoggedUser.picture,
+        roles: currentActiveLoggedUser.roles,
+        is_admin: currentActiveLoggedUser.is_admin,
         last_used: Date.now(),
-        zoneinfo: userData.currentActiveLoggedUser.zoneinfo,
-        locale: userData.currentActiveLoggedUser.locale,
+        zoneinfo: currentActiveLoggedUser.zoneinfo,
+        locale: currentActiveLoggedUser.locale,
       };
     }
 
-    if (userAccount) {
+    if (!userAccount) {
+      throw new TypeError(
+        'Authenticated session requires a stable account id and username'
+      );
+    }
+
+    {
       const existingAuthUsers = this.get<AuthenticatedUsers>(
         req,
         'authenticatedUsers'
@@ -2979,8 +2964,9 @@ export class SessionManager implements ISessionManager {
       };
     }
 
-    const sessionData: Partial<SessionData> = {
+    const sessionData: Record<string, unknown> = {
       ...userData,
+      ...userData.extensions,
       isAuthenticated: true,
       authTime: Date.now(),
       lastActivity: Date.now(),
@@ -2990,11 +2976,12 @@ export class SessionManager implements ISessionManager {
       accountId: userAccount?.username ?? userData.accountId,
       _metadata: metadata,
     };
+    delete sessionData.currentActiveLoggedUser;
+    delete sessionData.authenticatedUsers;
+    delete sessionData.extensions;
 
-    Object.keys(sessionData).forEach(key => {
-      if (key !== 'currentActiveLoggedUser' && key !== 'authenticatedUsers') {
-        this.set(req, key, sessionData[key as keyof typeof sessionData]);
-      }
+    Object.entries(sessionData).forEach(([key, value]) => {
+      this.set(req, key, value);
     });
 
     if (this.redisClient && userAccount?.username) {

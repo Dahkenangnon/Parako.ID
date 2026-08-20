@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PrismaSessionStore } from '../../../src/utils/prisma-session-store.js';
 import { tenantContext } from '../../../src/multi-tenancy/tenant-context.js';
+import { PersistenceDecodingError } from '../../../src/db/persistence/json-decoder.js';
 
 // Minimal Prisma session stub
 function makeStubPrisma() {
@@ -377,7 +378,30 @@ describe('PrismaSessionStore', () => {
             err ? reject(err) : resolve(sess)
           );
         })
-      ).rejects.toBeInstanceOf(SyntaxError);
+      ).rejects.toBeInstanceOf(PersistenceDecodingError);
+    });
+
+    it('rejects non-object session documents without exposing their values', async () => {
+      prisma.session.findUnique.mockResolvedValueOnce({
+        sid: 'sid-invalid-shape',
+        data: '["private-marker"]',
+        expires_at: new Date(Date.now() + 60_000),
+      });
+
+      try {
+        await new Promise((resolve, reject) => {
+          sessionStore.get('sid-invalid-shape', (err, sess) =>
+            err ? reject(err) : resolve(sess)
+          );
+        });
+        throw new Error('Expected persisted session decoding to fail');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PersistenceDecodingError);
+        expect(error).toMatchObject({
+          context: 'prisma.application_session.data',
+        });
+        expect(String(error)).not.toContain('private-marker');
+      }
     });
   });
 

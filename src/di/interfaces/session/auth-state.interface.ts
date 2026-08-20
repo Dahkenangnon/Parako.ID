@@ -1,5 +1,8 @@
-import { Request } from 'express';
-import { SessionData, SessionUserAccount } from '../../../utils/session.js';
+import type { Request } from 'express';
+import type {
+  SessionAuthenticationData,
+  SessionUserAccount,
+} from '../../../types/session-data.js';
 
 /**
  * Interface for authentication state management
@@ -18,7 +21,7 @@ export interface IAuthState {
    * @param req - Express request object
    * @param userData - Additional user data to store in session
    */
-  setAuthenticated(req: Request, userData?: Partial<SessionData>): void;
+  setAuthenticated(req: Request, userData?: SessionAuthenticationData): void;
 
   /**
    * Clear all authentication-related data from session

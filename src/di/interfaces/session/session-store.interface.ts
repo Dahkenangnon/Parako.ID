@@ -1,5 +1,5 @@
-import { Express, Request, Response, NextFunction } from 'express';
-import { SessionData } from '../../../utils/session.js';
+import type { Express, NextFunction, Request, Response } from 'express';
+import type { SessionData } from '../../../types/session-data.js';
 
 /**
  * Interface for core session storage operations

@@ -3,6 +3,94 @@ import type {
   SocialProvider,
   TokenData,
 } from './social-integration.js';
+import type { ConfigurableSocialProvider } from '../config/social-providers.js';
+
+export type FlashType = 'success' | 'error' | 'info' | 'warning';
+
+export interface FlashMessage {
+  type: FlashType;
+  message: string;
+  title?: string;
+  dismissible?: boolean;
+  timeout?: number;
+}
+
+export interface FlashOptions {
+  dismissible?: boolean;
+  timeout?: number;
+}
+
+export interface FlashContainer {
+  success: FlashMessage[];
+  error: FlashMessage[];
+  info: FlashMessage[];
+  warning: FlashMessage[];
+  [key: string]: FlashMessage[];
+}
+
+export interface SessionUserAccount {
+  id: string;
+  username: string;
+  email?: string;
+  email_verified?: boolean;
+  phone_number?: string;
+  phone_number_verified?: boolean;
+  given_name?: string;
+  family_name?: string;
+  full_name?: string;
+  picture?: string;
+  roles?: string[];
+  is_admin?: boolean;
+  last_used?: number;
+  zoneinfo?: string;
+  locale?: string;
+}
+
+export interface AuthenticatedUsers {
+  active: SessionUserAccount;
+  others: SessionUserAccount[];
+}
+
+export type SessionCreationSource =
+  'login' | 'social' | 'api' | 'session-switch' | 'unknown';
+
+export interface SessionMetadata {
+  created_at: Date | string;
+  createdFrom: SessionCreationSource;
+  createdIp?: string;
+  userAgent?: string;
+  browser?: { name?: string; version?: string };
+  os?: { name?: string; version?: string };
+  device?: { type?: string; vendor?: string; model?: string };
+}
+
+export interface SessionData {
+  authenticatedUsers?: AuthenticatedUsers;
+  isAuthenticated?: boolean;
+  accountId?: string;
+  authTime?: number;
+  lastActivity?: number;
+  created?: number;
+  createdFrom?: SessionCreationSource;
+  ipAddress?: string;
+  userAgent?: string;
+  deviceId?: string;
+  csrfToken?: string;
+  pendingSwitchUserId?: string;
+  flash?: FlashContainer;
+  _metadata?: SessionMetadata;
+  user?: { email?: string };
+}
+
+export type SessionAuthenticationAccount = Omit<SessionUserAccount, 'id'> & {
+  id?: string;
+  _id?: string;
+};
+
+export type SessionAuthenticationData = Partial<SessionData> & {
+  currentActiveLoggedUser?: SessionAuthenticationAccount;
+  extensions?: Record<string, unknown>;
+};
 
 /**
  * Type for pending MFA user stored in session
@@ -87,12 +175,14 @@ export interface PhoneVerificationOIDCContinuation {
  * Type for social register intent stored in session
  * Stored under key: 'socialRegister'
  */
-export type SocialRegisterData = Record<
-  SocialProvider,
-  {
-    intent: string;
-    timestamp: number;
-  }
+export type SocialRegisterData = Partial<
+  Record<
+    ConfigurableSocialProvider,
+    {
+      intent: string;
+      timestamp: number;
+    }
+  >
 >;
 
 /**
@@ -101,7 +191,7 @@ export type SocialRegisterData = Record<
  */
 export interface SocialPasswordSetup {
   userId: string;
-  provider: SocialProvider;
+  provider: ConfigurableSocialProvider;
   providerData?: ProviderUserData;
   tokens?: TokenData;
   integrationId?: string;
@@ -113,7 +203,7 @@ export interface SocialPasswordSetup {
  * Stored under key: 'socialRegistrationPending'
  */
 export interface SocialContactData {
-  provider: SocialProvider;
+  provider: ConfigurableSocialProvider;
   timestamp: number;
   providerData: ProviderUserData;
   tokens?: TokenData;

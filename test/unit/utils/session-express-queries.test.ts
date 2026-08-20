@@ -263,23 +263,24 @@ describe('SessionManager - Express session queries', () => {
       });
     });
 
-    it('should return empty array when MongoDB connection is not available', async () => {
+    it('rejects when the MongoDB connection is unavailable', async () => {
       vi.spyOn(mongoose, 'connection', 'get').mockReturnValue({
         db: null,
       } as any);
 
-      const result = await sessionManager.findAllExpressSessions();
-
-      expect(result).toEqual([]);
-      expect(deps.logger.warn).toHaveBeenCalled();
+      await expect(sessionManager.findAllExpressSessions()).rejects.toThrow(
+        'MongoDB session store is unavailable'
+      );
+      expect(deps.logger.error).toHaveBeenCalled();
     });
 
-    it('should return empty array on error', async () => {
-      mockCursor.toArray.mockRejectedValue(new Error('DB error'));
+    it('propagates MongoDB query errors', async () => {
+      const storageError = new Error('DB error');
+      mockCursor.toArray.mockRejectedValue(storageError);
 
-      const result = await sessionManager.findAllExpressSessions();
-
-      expect(result).toEqual([]);
+      await expect(sessionManager.findAllExpressSessions()).rejects.toBe(
+        storageError
+      );
       expect(deps.logger.error).toHaveBeenCalled();
     });
   });
@@ -314,22 +315,24 @@ describe('SessionManager - Express session queries', () => {
       expect(result).toBe(2);
     });
 
-    it('should return 0 when MongoDB connection is not available', async () => {
+    it('rejects when the MongoDB connection is unavailable', async () => {
       vi.spyOn(mongoose, 'connection', 'get').mockReturnValue({
         db: null,
       } as any);
 
-      const result = await sessionManager.countAllExpressSessions();
-
-      expect(result).toBe(0);
+      await expect(sessionManager.countAllExpressSessions()).rejects.toThrow(
+        'MongoDB session store is unavailable'
+      );
+      expect(deps.logger.error).toHaveBeenCalled();
     });
 
-    it('should return 0 on error', async () => {
-      mockCollection.countDocuments.mockRejectedValue(new Error('DB error'));
+    it('propagates MongoDB count errors', async () => {
+      const storageError = new Error('DB error');
+      mockCollection.countDocuments.mockRejectedValue(storageError);
 
-      const result = await sessionManager.countAllExpressSessions();
-
-      expect(result).toBe(0);
+      await expect(sessionManager.countAllExpressSessions()).rejects.toBe(
+        storageError
+      );
       expect(deps.logger.error).toHaveBeenCalled();
     });
   });
@@ -2307,123 +2310,89 @@ describe('SessionManager - Express session queries', () => {
       }
     );
 
-    it('fails safely when the effective adapter type is unsupported', async () => {
+    const expectEverySessionOperationToReject = async (
+      expected: Error | RegExp
+    ): Promise<void> => {
+      const operations = [
+        () => sessionManager.enforceSessionLimit('user@example.com'),
+        () => sessionManager.revokeAllSessionsForUser('user@example.com'),
+        () => sessionManager.findExpressSessionsForUser('user@example.com'),
+        () => sessionManager.revokeExpressSession('session-id'),
+        () => sessionManager.findAllExpressSessions(),
+        () => sessionManager.countAllExpressSessions(),
+      ];
+
+      for (const operation of operations) {
+        const assertion = expect(operation()).rejects;
+        if (expected instanceof Error) {
+          await assertion.toBe(expected);
+        } else {
+          await assertion.toThrow(expected);
+        }
+      }
+    };
+
+    it('rejects an unsupported effective adapter type', async () => {
       sessionManager.oidcAdapterBridge.effectiveOidcAdapter.mockReturnValue(
         'unsupported'
       );
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(sessionManager.findAllExpressSessions()).resolves.toEqual(
-        []
+      await expectEverySessionOperationToReject(
+        /Unsupported session store type: unsupported/
       );
-      await expect(sessionManager.countAllExpressSessions()).resolves.toBe(0);
+      expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
 
-    it('fails safely when the MongoDB session connection is unavailable', async () => {
+    it('rejects when the MongoDB session connection is unavailable', async () => {
       vi.spyOn(mongoose, 'connection', 'get').mockReturnValue({
         db: undefined,
       } as any);
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      expect(deps.logger.warn).toHaveBeenCalledTimes(4);
+      await expectEverySessionOperationToReject(
+        /MongoDB session store is unavailable/
+      );
+      expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
 
-    it('fails safely when the Redis session client is unavailable', async () => {
+    it('rejects when the Redis session client is unavailable', async () => {
       sessionManager.oidcAdapterBridge.effectiveOidcAdapter.mockReturnValue(
         'redis'
       );
       sessionManager.redisClient = undefined;
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      await expect(sessionManager.findAllExpressSessions()).resolves.toEqual(
-        []
+      await expectEverySessionOperationToReject(
+        /Redis session store is unavailable/
       );
-      await expect(sessionManager.countAllExpressSessions()).resolves.toBe(0);
-      expect(deps.logger.warn).toHaveBeenCalledTimes(6);
+      expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
 
-    it('fails safely when the Prisma session client is unavailable', async () => {
+    it('rejects when the Prisma session client is unavailable', async () => {
       sessionManager.oidcAdapterBridge.effectiveOidcAdapter.mockReturnValue(
         'sqlite'
       );
       sessionManager.prismaClient = null;
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      await expect(sessionManager.findAllExpressSessions()).resolves.toEqual(
-        []
+      await expectEverySessionOperationToReject(
+        /Prisma session store is unavailable/
       );
-      await expect(sessionManager.countAllExpressSessions()).resolves.toBe(0);
-      expect(deps.logger.warn).toHaveBeenCalledTimes(6);
+      expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
 
-    it('contains MongoDB failures in each user-session operation', async () => {
+    it('propagates MongoDB failures from every session operation', async () => {
       const storageError = new Error('database unavailable');
       mockCollection.find.mockImplementation(() => {
         throw storageError;
       });
       mockCollection.deleteOne = vi.fn().mockRejectedValue(storageError);
       mockCollection.deleteMany = vi.fn().mockRejectedValue(storageError);
+      mockCursor.toArray.mockRejectedValue(storageError);
+      mockCollection.countDocuments.mockRejectedValue(storageError);
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      expect(deps.logger.error).toHaveBeenCalledTimes(4);
+      await expectEverySessionOperationToReject(storageError);
+      expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
 
-    it('contains Prisma failures in each session operation', async () => {
+    it('propagates Prisma failures from every session operation', async () => {
       const storageError = new Error('database unavailable');
       sessionManager.oidcAdapterBridge.effectiveOidcAdapter.mockReturnValue(
         'postgresql'
@@ -2431,26 +2400,12 @@ describe('SessionManager - Express session queries', () => {
       sessionManager.prismaClient = {
         session: {
           findMany: vi.fn().mockRejectedValue(storageError),
+          findUnique: vi.fn().mockRejectedValue(storageError),
           deleteMany: vi.fn().mockRejectedValue(storageError),
         },
       };
 
-      await expect(
-        sessionManager.enforceSessionLimit('user@example.com')
-      ).resolves.toBe(0);
-      await expect(
-        sessionManager.findExpressSessionsForUser('user@example.com')
-      ).resolves.toEqual([]);
-      await expect(
-        sessionManager.revokeExpressSession('session-id')
-      ).resolves.toBe(false);
-      await expect(
-        sessionManager.revokeAllSessionsForUser('user@example.com')
-      ).resolves.toBe(0);
-      await expect(sessionManager.findAllExpressSessions()).resolves.toEqual(
-        []
-      );
-      await expect(sessionManager.countAllExpressSessions()).resolves.toBe(0);
+      await expectEverySessionOperationToReject(storageError);
       expect(deps.logger.error).toHaveBeenCalledTimes(6);
     });
   });

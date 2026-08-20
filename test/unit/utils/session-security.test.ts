@@ -41,12 +41,12 @@ import {
 } from '../../../src/utils/encryption.js';
 import { PrismaSessionStore } from '../../../src/utils/prisma-session-store.js';
 import { createConnectRedisClientAdapter } from '../../../src/utils/connect-redis-client.js';
-import {
-  FlashManager,
-  type FlashContainer,
-  SessionManager,
-  type SessionUserAccount,
-} from '../../../src/utils/session.js';
+import { FlashManager, SessionManager } from '../../../src/utils/session.js';
+import type {
+  FlashContainer,
+  SessionCreationSource,
+  SessionUserAccount,
+} from '../../../src/types/session-data.js';
 
 function createManager(options: { encryptSessionData?: boolean } = {}) {
   const config = {
@@ -500,6 +500,7 @@ describe('SessionManager configuration and initialization', () => {
         collectionName: 'application_session',
         ttl: 1209600,
         touchAfter: 900,
+        stringify: false,
       })
     );
     eventHandlers.get('error')?.(new Error('store disconnected'));
@@ -1914,6 +1915,23 @@ describe('SessionManager authentication state', () => {
     );
   });
 
+  it('rejects authentication state without a stable account identity', () => {
+    const { manager } = createManager();
+    const request = {
+      headers: {},
+      session: { id: 'session-id' },
+    } as unknown as Request;
+
+    expect(() =>
+      manager.setAuthenticated(request, {
+        currentActiveLoggedUser: { username: 'alice' },
+      })
+    ).toThrow(
+      'Authenticated session requires a stable account id and username'
+    );
+    expect(request.session).not.toHaveProperty('isAuthenticated');
+  });
+
   it('keeps server-derived authentication fields authoritative', () => {
     const { manager } = createManager();
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
@@ -1936,7 +1954,7 @@ describe('SessionManager authentication state', () => {
       lastActivity: 1,
       ipAddress: '198.51.100.99',
       userAgent: 'spoofed-browser',
-      customValue: 'preserved',
+      extensions: { customValue: 'preserved' },
     });
 
     expect(request.session).toMatchObject({
@@ -2231,6 +2249,10 @@ describe('SessionManager authentication state', () => {
     } as unknown as Request;
 
     manager.setAuthenticated(request, {
+      currentActiveLoggedUser: {
+        id: 'account-id',
+        username: 'account-user',
+      },
       createdFrom: 'untrusted-value',
     } as never);
 
@@ -2287,7 +2309,11 @@ describe('SessionManager authentication state', () => {
     } as unknown as Request;
 
     manager.setAuthenticated(request, {
-      createdFrom: requestedSource,
+      currentActiveLoggedUser: {
+        id: 'user-id',
+        username: 'alice',
+      },
+      createdFrom: requestedSource as SessionCreationSource | undefined,
     });
 
     expect(request.session._metadata?.createdFrom).toBe(expectedSource);
@@ -3423,7 +3449,7 @@ describe('SessionManager flash middleware and authorization helpers', () => {
         success: [expect.objectContaining({ message: 'saved' })],
       }),
     });
-    expect(request.session.flash.success).toEqual([]);
+    expect(request.session.flash?.success).toEqual([]);
     expect(next).toHaveBeenCalledOnce();
   });
 
@@ -3463,7 +3489,7 @@ describe('SessionManager flash middleware and authorization helpers', () => {
     expect(response.json({ ok: true })).toBe(response);
 
     expect(originalJson).toHaveBeenCalledWith({ ok: true });
-    expect(request.session.flash.success).toEqual([]);
+    expect(request.session.flash?.success).toEqual([]);
   });
 
   it('reads active-user properties, roles, and admin status safely', () => {

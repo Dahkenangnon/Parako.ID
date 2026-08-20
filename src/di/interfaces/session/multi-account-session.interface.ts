@@ -1,8 +1,8 @@
-import { Request } from 'express';
-import {
-  SessionUserAccount,
+import type { Request } from 'express';
+import type {
   AuthenticatedUsers,
-} from '../../../utils/session.js';
+  SessionUserAccount,
+} from '../../../types/session-data.js';
 
 /**
  * Result of adding an authenticated user to session

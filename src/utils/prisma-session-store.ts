@@ -6,6 +6,7 @@ import {
   tenantContext,
 } from '../multi-tenancy/tenant-context.js';
 import { tenantIdFromSessionId } from './session-id.js';
+import { decodePersistedSession } from './session-persistence.js';
 
 /** Minimal logger contract — kept narrow so the store stays portable. */
 export interface PrismaSessionStoreLogger {
@@ -114,9 +115,10 @@ export class PrismaSessionStore extends Store {
           return cb(null, null);
         }
         try {
-          const session = JSON.parse(row.data) as SessionData & {
-            tenantId?: unknown;
-          };
+          const session = decodePersistedSession(
+            row.data,
+            'prisma.application_session.data'
+          ) as unknown as SessionData & { tenantId?: unknown };
           if (
             typeof session.tenantId === 'string' &&
             session.tenantId !== tenantId
