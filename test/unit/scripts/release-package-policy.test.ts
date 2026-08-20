@@ -29,8 +29,8 @@ describe('source package release policy', () => {
     expect(packageJson.dependencies).not.toHaveProperty(
       'connect-mongodb-session'
     );
-    expect(packageJson.dependencies).not.toHaveProperty(
-      '@prisma/client-runtime-utils'
+    expect(packageJson.dependencies['@prisma/client-runtime-utils']).toBe(
+      packageJson.dependencies['@prisma/client']
     );
     expect(packageJson.dependencies['ua-parser-js']).toMatch(/^\^1\./);
   });

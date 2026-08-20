@@ -567,7 +567,7 @@ create_release_manifest() {
         log_info "Would create release-manifest.json for linux-$RELEASE_ARCH"
         return
     fi
-    node "$PROJECT_ROOT/scripts/create-release-manifest.mjs" \
+    node "$PROJECT_ROOT/scripts/create-release-manifest-cli.mjs" \
         "$PROJECT_ROOT/parako-id-release" "$VERSION" "$RELEASE_ARCH"
     log_success "Release compatibility manifest created"
 }

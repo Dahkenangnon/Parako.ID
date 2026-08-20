@@ -1,13 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertValidManifest,
   createReleaseManifest,
   hashDirectory,
-  isMainModule,
   main,
   validateManifest,
   writeReleaseManifest,
@@ -250,7 +248,7 @@ describe('release manifest', () => {
 
       expect(main({ argv, stderr })).toBe(2);
       expect(stderr).toHaveBeenCalledWith(
-        'Usage: node scripts/create-release-manifest.mjs <release-dir> <version> <x64|arm64>'
+        'Usage: node scripts/create-release-manifest-cli.mjs <release-dir> <version> <x64|arm64>'
       );
     }
   );
@@ -289,46 +287,4 @@ describe('release manifest', () => {
       expect(stderr).toHaveBeenCalledWith('write failed');
     }
   );
-
-  it('detects direct CLI invocation without depending on process globals', () => {
-    const scriptPath = path.resolve('scripts/create-release-manifest.mjs');
-    const moduleUrl = pathToFileURL(scriptPath).href;
-
-    expect(isMainModule(moduleUrl, [process.execPath])).toBe(false);
-    expect(
-      isMainModule(moduleUrl, [process.execPath, path.resolve('other.mjs')])
-    ).toBe(false);
-    expect(isMainModule(moduleUrl, [process.execPath, scriptPath])).toBe(true);
-  });
-
-  it('runs the CLI when the module is invoked as the entrypoint', async () => {
-    const root = fixture();
-    const originalArgv = process.argv;
-    const originalEpoch = process.env.SOURCE_DATE_EPOCH;
-    const originalExitCode = process.exitCode;
-    const stdout = vi.spyOn(console, 'log').mockImplementation(() => {});
-    process.argv = [
-      process.execPath,
-      path.resolve('scripts/create-release-manifest.mjs'),
-      root,
-      '1.2.3',
-      'x64',
-    ];
-    process.env.SOURCE_DATE_EPOCH = '1700000000';
-
-    try {
-      vi.resetModules();
-      await import('../../../scripts/create-release-manifest.mjs');
-
-      expect(process.exitCode).toBe(0);
-      expect(stdout).toHaveBeenCalledWith(
-        path.join(root, 'release-manifest.json')
-      );
-    } finally {
-      process.argv = originalArgv;
-      process.exitCode = originalExitCode;
-      if (originalEpoch === undefined) delete process.env.SOURCE_DATE_EPOCH;
-      else process.env.SOURCE_DATE_EPOCH = originalEpoch;
-    }
-  });
 });

@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 
 const ALLOWED_ARCHITECTURES = new Set(['x64', 'arm64']);
 const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
@@ -219,15 +218,6 @@ export function writeReleaseManifest(options) {
   return target;
 }
 
-export function isMainModule(moduleUrl, argv = process.argv) {
-  const scriptPath = argv[1];
-  return (
-    scriptPath !== undefined &&
-    path.resolve(scriptPath) === fileURLToPath(moduleUrl)
-  );
-}
-
-const isEntrypoint = isMainModule(import.meta.url);
 export function main({
   argv = process.argv.slice(2),
   stdout = console.log,
@@ -237,7 +227,7 @@ export function main({
   const [releaseDir, version, architecture] = argv;
   if (!releaseDir || !version || !architecture) {
     stderr(
-      'Usage: node scripts/create-release-manifest.mjs <release-dir> <version> <x64|arm64>'
+      'Usage: node scripts/create-release-manifest-cli.mjs <release-dir> <version> <x64|arm64>'
     );
     return 2;
   }
@@ -254,8 +244,4 @@ export function main({
     stderr(error instanceof Error ? error.message : String(error));
     return 1;
   }
-}
-
-if (isEntrypoint) {
-  process.exitCode = main();
 }
