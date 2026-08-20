@@ -7,6 +7,7 @@ INSTALLER_SH="${INSTALLER_DIR}/install.sh"
 GIT_INSTALLER_SH="${INSTALLER_DIR}/install-git.sh"
 PARAKO_SH="${INSTALLER_DIR}/parako.sh"
 PARAKO_DOCKER_SH="${INSTALLER_DIR}/parako-docker.sh"
+PARAKO_DOCKERFILE="${INSTALLER_DIR}/../deployment/docker/Dockerfile"
 
 assert_syntax() {
   local file=$1

@@ -209,6 +209,13 @@ load helpers
   grep -q 'flock --nonblock --exclusive 9' "${INSTALLER_SH}"
 }
 
+@test "Docker image creates the ignored custom-view directory from clean source" {
+  ! grep -Fq '/build/runtime/views' "${PARAKO_DOCKERFILE}"
+  grep -Fq \
+    'install --directory --owner=10001 --group=10001 --mode=0755 /app/runtime/views' \
+    "${PARAKO_DOCKERFILE}"
+}
+
 @test "Docker operator module has valid syntax and a fixed signing trust policy" {
   run assert_syntax "${PARAKO_DOCKER_SH}"
   [ "${status}" -eq 0 ]

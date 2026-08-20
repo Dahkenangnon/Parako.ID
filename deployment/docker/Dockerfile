@@ -44,7 +44,7 @@ COPY --from=build --chown=10001:10001 /build/public ./public
 COPY --from=build --chown=10001:10001 /build/prisma ./prisma
 COPY --from=build --chown=10001:10001 /build/prisma.config.ts /build/prisma.config.pg.ts ./
 COPY --from=build --chown=10001:10001 /build/runtime/locales ./runtime/locales
-COPY --from=build --chown=10001:10001 /build/runtime/views ./runtime/views
+RUN install --directory --owner=10001 --group=10001 --mode=0755 /app/runtime/views
 
 USER 10001:10001
 EXPOSE 9007
