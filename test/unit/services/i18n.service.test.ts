@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -89,7 +90,8 @@ function makeService(config: unknown = localeConfig()) {
   const service = new I18nService(
     configManager as any,
     fileSystemUtils as any,
-    logger as any
+    logger as any,
+    new BootstrapEnvironment()
   );
   return {
     configManager,

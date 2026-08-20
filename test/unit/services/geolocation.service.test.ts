@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GeolocationService } from '../../../src/services/geolocation.service.js';
 import type { GeoLocation } from '../../../src/di/interfaces/geolocation-service.interface.js';
@@ -40,7 +41,11 @@ function makeLogger() {
 function makeService(config: unknown = geolocationConfig()) {
   const configManager = { getConfig: vi.fn(() => config) };
   const logger = makeLogger();
-  const service = new GeolocationService(configManager as any, logger as any);
+  const service = new GeolocationService(
+    configManager as any,
+    logger as any,
+    new BootstrapEnvironment()
+  );
   return { configManager, logger, service };
 }
 
@@ -134,7 +139,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(service.isEnabled()).toBe(true);
@@ -150,7 +156,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(service.isEnabled()).toBe(false);
@@ -286,7 +293,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       await expect(
@@ -307,7 +315,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       await expect(
@@ -593,7 +602,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(
@@ -665,7 +675,8 @@ describe('GeolocationService', () => {
       const logger = makeLogger();
       const service = new GeolocationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(service.isHighRiskRegion(location(1, 1, { country: 'KP' }))).toBe(

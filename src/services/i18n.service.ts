@@ -7,6 +7,7 @@ import type { II18nService } from '../di/interfaces/i18n-service.interface.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
+import type { IBootstrapEnvironment } from '../di/interfaces/bootstrap-environment.interface.js';
 import { Request, Response, NextFunction } from 'express';
 
 /**
@@ -24,7 +25,9 @@ export class I18nService implements II18nService {
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager,
     @inject(TYPES.FileSystemUtils)
     private readonly fileSystemUtils: IFileSystemUtils,
-    @inject(TYPES.Logger) private readonly logger: ILogger
+    @inject(TYPES.Logger) private readonly logger: ILogger,
+    @inject(TYPES.BootstrapEnvironment)
+    private readonly bootstrapEnvironment: IBootstrapEnvironment
   ) {
     this.configure();
 
@@ -36,10 +39,6 @@ export class I18nService implements II18nService {
     });
   }
 
-  /**
-   * Reconfigure i18n with updated settings
-   * Called when configuration changes to update locale settings
-   */
   private reconfigure(updatedConfig: any): void {
     try {
       const localesPath = path.join(
@@ -60,7 +59,7 @@ export class I18nService implements II18nService {
         directory: mergedPath,
         objectNotation: true,
         updateFiles: false,
-        autoReload: process.env.NODE_ENV === 'development',
+        autoReload: this.bootstrapEnvironment.nodeEnvironment === 'development',
         cookie: updatedConfig.deployment.cookies.types.locale.name,
         queryParameter: 'lang',
         mustacheConfig: {
@@ -228,7 +227,7 @@ export class I18nService implements II18nService {
       directory: mergedPath,
       objectNotation: true,
       updateFiles: false,
-      autoReload: process.env.NODE_ENV === 'development',
+      autoReload: this.bootstrapEnvironment.nodeEnvironment === 'development',
       cookie: config.deployment.cookies.types.locale.name,
       queryParameter: 'lang',
       mustacheConfig: {
@@ -251,9 +250,6 @@ export class I18nService implements II18nService {
     return i18n.getLocale();
   }
 
-  /**
-   * Get all available locales
-   */
   getLocales(): string[] {
     return i18n.getLocales();
   }
@@ -277,9 +273,6 @@ export class I18nService implements II18nService {
     }
   }
 
-  /**
-   * Initialize i18n for a request
-   */
   init(req: Request, res: Response, next: NextFunction): void {
     i18n.init(req, res, next);
   }

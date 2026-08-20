@@ -2,6 +2,7 @@ import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
+import type { IBootstrapEnvironment } from '../di/interfaces/bootstrap-environment.interface.js';
 import type {
   IGeolocationService,
   GeoLocation,
@@ -16,18 +17,17 @@ import type {
  */
 @injectable()
 export class GeolocationService implements IGeolocationService {
-  /** In-memory cache for geolocation results */
   private cache = new Map<string, { data: GeoLocation; expiresAt: number }>();
 
-  /** API request timeout in milliseconds */
-  private readonly API_TIMEOUT = 5000;
+  private readonly API_TIMEOUT_MS = 5000;
 
-  /** Earth's radius in kilometers */
   private readonly EARTH_RADIUS_KM = 6371;
 
   constructor(
     @inject(TYPES.ConfigManager) private configManager: IConfigManager,
-    @inject(TYPES.Logger) private logger: ILogger
+    @inject(TYPES.Logger) private logger: ILogger,
+    @inject(TYPES.BootstrapEnvironment)
+    private readonly bootstrapEnvironment: IBootstrapEnvironment
   ) {}
 
   private errorMessage(error: unknown): string {
@@ -35,8 +35,7 @@ export class GeolocationService implements IGeolocationService {
   }
 
   private getEnvironmentApiToken(): string | undefined {
-    const token = process.env.IPINFO_API_TOKEN?.trim();
-    return token || undefined;
+    return this.bootstrapEnvironment.ipinfoApiToken;
   }
 
   /**
@@ -50,9 +49,6 @@ export class GeolocationService implements IGeolocationService {
     return configuredToken || undefined;
   }
 
-  /**
-   * Check if geolocation service is enabled
-   */
   public isEnabled(): boolean {
     if (this.getEnvironmentApiToken()) return true;
 
@@ -171,9 +167,6 @@ export class GeolocationService implements IGeolocationService {
     }
   }
 
-  /**
-   * Get geographic location for an IP address
-   */
   public async getLocationFromIP(ip: string): Promise<GeoLocation> {
     const normalizedIP = ip.replace(/^::ffff:/, '');
 
@@ -212,7 +205,10 @@ export class GeolocationService implements IGeolocationService {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.API_TIMEOUT);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.API_TIMEOUT_MS
+      );
 
       let response: Response;
       try {
@@ -296,9 +292,6 @@ export class GeolocationService implements IGeolocationService {
     return this.EARTH_RADIUS_KM * c;
   }
 
-  /**
-   * Check for impossible travel between two locations
-   */
   public checkImpossibleTravel(
     previousLocation: GeoLocation,
     currentLocation: GeoLocation,
@@ -382,9 +375,6 @@ export class GeolocationService implements IGeolocationService {
     };
   }
 
-  /**
-   * Check if a location is in a high-risk region
-   */
   public isHighRiskRegion(location: GeoLocation): boolean {
     if (!location.country) return false;
 
@@ -399,9 +389,6 @@ export class GeolocationService implements IGeolocationService {
     return degrees * (Math.PI / 180);
   }
 
-  /**
-   * Create an error result for failed lookups
-   */
   private createErrorResult(ip: string, errorMessage: string): GeoLocation {
     return {
       ip,

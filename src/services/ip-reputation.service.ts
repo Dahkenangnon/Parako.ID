@@ -2,6 +2,7 @@ import { injectable, inject } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
+import type { IBootstrapEnvironment } from '../di/interfaces/bootstrap-environment.interface.js';
 import type {
   IIPReputationService,
   IPReputationResult,
@@ -18,18 +19,18 @@ const errorMessage = (error: unknown): string =>
  */
 @injectable()
 export class IPReputationService implements IIPReputationService {
-  /** In-memory cache for reputation results */
   private cache = new Map<
     string,
     { data: IPReputationResult; expiresAt: number }
   >();
 
-  /** API request timeout in milliseconds */
-  private readonly API_TIMEOUT = 5000;
+  private readonly API_TIMEOUT_MS = 5000;
 
   constructor(
     @inject(TYPES.ConfigManager) private configManager: IConfigManager,
-    @inject(TYPES.Logger) private logger: ILogger
+    @inject(TYPES.Logger) private logger: ILogger,
+    @inject(TYPES.BootstrapEnvironment)
+    private readonly bootstrapEnvironment: IBootstrapEnvironment
   ) {}
 
   /**
@@ -37,8 +38,7 @@ export class IPReputationService implements IIPReputationService {
    * Environment variable takes precedence over database config
    */
   private getEnvironmentApiKey(): string | undefined {
-    const envKey = process.env.IPQUALITYSCORE_API_KEY;
-    return envKey?.trim() || undefined;
+    return this.bootstrapEnvironment.ipQualityScoreApiKey;
   }
 
   private getApiKey(
@@ -51,9 +51,6 @@ export class IPReputationService implements IIPReputationService {
     );
   }
 
-  /**
-   * Check if IP reputation service is enabled
-   */
   public isEnabled(): boolean {
     // An environment key implicitly enables the integration and must remain
     // usable even while the persisted configuration provider is unavailable.
@@ -73,9 +70,6 @@ export class IPReputationService implements IIPReputationService {
     }
   }
 
-  /**
-   * Check the reputation of an IP address
-   */
   public async checkIPReputation(ip: string): Promise<IPReputationResult> {
     const normalizedIP = ip.replace(/^::ffff:/, '');
 
@@ -103,7 +97,10 @@ export class IPReputationService implements IIPReputationService {
       const url = `https://www.ipqualityscore.com/api/json/ip/${encodeURIComponent(apiKey)}/${encodeURIComponent(normalizedIP)}?strictness=1&allow_public_access_points=true&lighter_penalties=true`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.API_TIMEOUT);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.API_TIMEOUT_MS
+      );
 
       let response: Response;
       try {
@@ -173,25 +170,16 @@ export class IPReputationService implements IIPReputationService {
     }
   }
 
-  /**
-   * Quick check if an IP is likely a VPN, proxy, or Tor
-   */
   public async isLikelyVPN(ip: string): Promise<boolean> {
     const result = await this.checkIPReputation(ip);
     return result.isVPN || result.isProxy || result.isTor;
   }
 
-  /**
-   * Get the fraud score for an IP address
-   */
   public async getFraudScore(ip: string): Promise<number> {
     const result = await this.checkIPReputation(ip);
     return result.fraudScore;
   }
 
-  /**
-   * Check if an IP should be blocked based on configured threshold
-   */
   public async shouldBlock(ip: string): Promise<boolean> {
     const config = this.configManager.getConfig();
     const threshold =
@@ -201,9 +189,6 @@ export class IPReputationService implements IIPReputationService {
     return result.fraudScore >= threshold || result.isBlocklisted;
   }
 
-  /**
-   * Calculate risk level based on fraud score and other factors
-   */
   private calculateRiskLevel(
     fraudScore: number,
     data: Record<string, unknown>
@@ -255,9 +240,6 @@ export class IPReputationService implements IIPReputationService {
     };
   }
 
-  /**
-   * Create an error result for failed lookups
-   */
   private createErrorResult(
     ip: string,
     errorMessage: string

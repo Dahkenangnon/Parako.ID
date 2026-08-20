@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { readEnvironmentVariable } from '../config/bootstrap-environment.js';
 
 /**
  * Encryption Utility for Database Secrets
@@ -79,8 +80,9 @@ export interface EncryptionResult {
  * @returns {Buffer} The encryption key as a Buffer
  * @throws {Error} If ENCRYPTION_KEY is not set or invalid
  */
-function getEncryptionKey(): Buffer {
-  const encryptionKey = process.env.ENCRYPTION_KEY;
+function getEncryptionKey(configuredKey?: string): Buffer {
+  const encryptionKey =
+    configuredKey ?? readEnvironmentVariable('ENCRYPTION_KEY');
 
   if (!encryptionKey) {
     throw new Error(
@@ -128,13 +130,16 @@ function getEncryptionKey(): Buffer {
  * //   version: 1
  * // }
  */
-export function encrypt(plaintext: string): EncryptionResult {
+export function encrypt(
+  plaintext: string,
+  encryptionKey?: string
+): EncryptionResult {
   if (!plaintext || typeof plaintext !== 'string') {
     throw new Error('Plaintext must be a non-empty string');
   }
 
   try {
-    const key = getEncryptionKey();
+    const key = getEncryptionKey(encryptionKey);
 
     // Generate a random IV for each encryption (important for security)
     const iv = randomBytes(IV_LENGTH);
@@ -178,7 +183,8 @@ export function decrypt(
   encrypted: string,
   iv: string,
   authTag: string,
-  version: number
+  version: number,
+  encryptionKey?: string
 ): string {
   if (!encrypted || !iv || !authTag) {
     throw new Error(
@@ -196,7 +202,7 @@ export function decrypt(
   }
 
   try {
-    const key = getEncryptionKey();
+    const key = getEncryptionKey(encryptionKey);
 
     const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(iv, 'hex'));
 
@@ -336,8 +342,11 @@ export function parseEncrypted(serialized: string): EncryptionResult {
  * const encrypted = encryptValue('my-secret-password');
  * // Returns: 'ENCRYPTED:v1:abc123:def456:ghi789'
  */
-export function encryptValue(plaintext: string): string {
-  const result = encrypt(plaintext);
+export function encryptValue(
+  plaintext: string,
+  encryptionKey?: string
+): string {
+  const result = encrypt(plaintext, encryptionKey);
   return serializeEncrypted(result);
 }
 
@@ -352,9 +361,12 @@ export function encryptValue(plaintext: string): string {
  * const plaintext = decryptValue('ENCRYPTED:v1:abc123:def456:ghi789');
  * // Returns: 'my-secret-password'
  */
-export function decryptValue(serialized: string): string {
+export function decryptValue(
+  serialized: string,
+  encryptionKey?: string
+): string {
   const { encrypted, iv, authTag, version } = parseEncrypted(serialized);
-  return decrypt(encrypted, iv, authTag, version);
+  return decrypt(encrypted, iv, authTag, version, encryptionKey);
 }
 
 /**
@@ -371,12 +383,12 @@ export function decryptValue(serialized: string): string {
  * const encrypted2 = ensureEncrypted('ENCRYPTED:v1:abc:def:ghi');
  * // Returns: 'ENCRYPTED:v1:abc:def:ghi' (unchanged)
  */
-export function ensureEncrypted(value: string): string {
+export function ensureEncrypted(value: string, encryptionKey?: string): string {
   if (isEncrypted(value)) {
     parseEncrypted(value);
     return value;
   }
-  return encryptValue(value);
+  return encryptValue(value, encryptionKey);
 }
 
 /**
@@ -393,11 +405,11 @@ export function ensureEncrypted(value: string): string {
  * const plain2 = ensureDecrypted('plain-password');
  * // Returns: 'plain-password' (unchanged)
  */
-export function ensureDecrypted(value: string): string {
+export function ensureDecrypted(value: string, encryptionKey?: string): string {
   if (!isEncrypted(value)) {
     return value;
   }
-  return decryptValue(value);
+  return decryptValue(value, encryptionKey);
 }
 
 /**

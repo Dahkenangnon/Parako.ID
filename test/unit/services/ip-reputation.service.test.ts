@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPReputationService } from '../../../src/services/ip-reputation.service.js';
 import type { IPReputationResult } from '../../../src/di/interfaces/ip-reputation-service.interface.js';
@@ -30,7 +31,11 @@ function makeLogger() {
 function makeService(config: unknown = reputationConfig()) {
   const configManager = { getConfig: vi.fn(() => config) };
   const logger = makeLogger();
-  const service = new IPReputationService(configManager as any, logger as any);
+  const service = new IPReputationService(
+    configManager as any,
+    logger as any,
+    new BootstrapEnvironment()
+  );
   return { configManager, logger, service };
 }
 
@@ -133,7 +138,8 @@ describe('IPReputationService', () => {
       const logger = makeLogger();
       const service = new IPReputationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(service.isEnabled()).toBe(true);
@@ -149,7 +155,8 @@ describe('IPReputationService', () => {
       const logger = makeLogger();
       const service = new IPReputationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       expect(service.isEnabled()).toBe(false);
@@ -271,7 +278,8 @@ describe('IPReputationService', () => {
       const logger = makeLogger();
       const service = new IPReputationService(
         configManager as any,
-        logger as any
+        logger as any,
+        new BootstrapEnvironment()
       );
 
       await expect(
