@@ -6,6 +6,10 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-20
+
+_No user-visible changes — see git history for the maintenance commits in this release._
+
 ## [0.3.6] - 2026-08-20
 
 ### Features
