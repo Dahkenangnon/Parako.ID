@@ -8,9 +8,8 @@
  */
 
 import { Router } from 'express';
-import type { RequestHandler, ErrorRequestHandler } from 'express';
 
-import type { RouteHandler } from './route-handler.js';
+import type { ApiV1Dependencies } from './contracts.js';
 import { clientRoutes } from './clients.routes.js';
 import { userRoutes } from './users.routes.js';
 import { sessionRoutes } from './sessions.routes.js';
@@ -20,94 +19,6 @@ import { statsRoutes } from './stats.routes.js';
 import { tenantRoutes } from './tenants.routes.js';
 import { registrationTokenRoutes } from './registration-tokens.routes.js';
 import { notFound } from '../errors.js';
-
-// Controller interfaces (duck-typed method sets)
-
-export interface IClientsRouteController {
-  list: RouteHandler;
-  create: RouteHandler;
-  get: RouteHandler;
-  update: RouteHandler;
-  patch: RouteHandler;
-  destroy: RouteHandler;
-  activate: RouteHandler;
-  deactivate: RouteHandler;
-  regenerateSecret: RouteHandler;
-  stats: RouteHandler;
-}
-
-export interface IUsersRouteController {
-  list: RouteHandler;
-  create: RouteHandler;
-  get: RouteHandler;
-  update: RouteHandler;
-  patch: RouteHandler;
-  destroy: RouteHandler;
-  lock: RouteHandler;
-  unlock: RouteHandler;
-  passwordReset: RouteHandler;
-  mfaReset: RouteHandler;
-  activities: RouteHandler;
-  sessions: RouteHandler;
-}
-
-export interface ISessionsRouteController {
-  list: RouteHandler;
-  get: RouteHandler;
-  revoke: RouteHandler;
-  bulkRevoke: RouteHandler;
-}
-
-export interface IJwksRouteController {
-  list: RouteHandler;
-  get: RouteHandler;
-  rotate: RouteHandler;
-  retireExpired: RouteHandler;
-  retire: RouteHandler;
-}
-
-export interface IAuditRouteController {
-  list: RouteHandler;
-  get: RouteHandler;
-  types: RouteHandler;
-  stats: RouteHandler;
-}
-
-export interface IStatsRouteController {
-  overview: RouteHandler;
-  health: RouteHandler;
-}
-
-export interface ITenantsRouteController {
-  list: RouteHandler;
-  create: RouteHandler;
-  get: RouteHandler;
-  getConfig: RouteHandler;
-  updateConfig: RouteHandler;
-}
-
-export interface IRegistrationTokensRouteController {
-  list: RouteHandler;
-  create: RouteHandler;
-  get: RouteHandler;
-  destroy: RouteHandler;
-}
-
-/** Dependencies injected into the v1 router factory. */
-export interface ApiV1Dependencies {
-  jwtAuth: RequestHandler;
-  auditLogger: RequestHandler;
-  errorHandler: ErrorRequestHandler;
-
-  clientsController: IClientsRouteController;
-  usersController: IUsersRouteController;
-  sessionsController: ISessionsRouteController;
-  jwksController: IJwksRouteController;
-  auditController: IAuditRouteController;
-  statsController: IStatsRouteController;
-  tenantsController: ITenantsRouteController;
-  registrationTokensController: IRegistrationTokensRouteController;
-}
 
 /**
  * Create the Express router for Management API v1.

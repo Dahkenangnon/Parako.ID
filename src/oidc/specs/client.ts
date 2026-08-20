@@ -1,5 +1,5 @@
 import type { IOIDCClientMerger } from '../../di/interfaces/oidc-client-merger.interface.js';
-import { OidcClient } from '../../utils/client-registry-config.js';
+import type { OidcClient } from '../client-registry.contract.js';
 
 /**
  * Factory function to create client configuration

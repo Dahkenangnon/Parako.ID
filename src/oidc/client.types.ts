@@ -1,0 +1,96 @@
+export interface StaticClient {
+  client_id: string;
+  client_name: string;
+  application_type: string;
+  token_endpoint_auth_method?: string;
+  grant_types?: string[];
+  response_types?: string[];
+  redirect_uris?: string[];
+  post_logout_redirect_uris?: string[];
+  scope?: string;
+  accessTokenFormat?: string;
+  id_token_signed_response_alg?: string;
+  allowedResources?: string[];
+  resourcesScopes?: string;
+  isInternalClient?: boolean;
+  contacts?: string[];
+  active?: boolean;
+  require_pkce?: boolean;
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ClientMetadata {
+  client_id: string;
+  client_name: string;
+  client_uri?: string;
+  logo_uri?: string;
+  policy_uri?: string;
+  tos_uri?: string;
+  application_type: string;
+  redirect_uris?: string[];
+  post_logout_redirect_uris?: string[];
+  grant_types?: string[];
+  response_types?: string[];
+  response_modes?: string[];
+  scope?: string;
+  subject_type?: string;
+  token_endpoint_auth_method?: string;
+  require_auth_time?: boolean;
+  default_acr_values?: string[];
+  id_token_signed_response_alg?: string;
+  id_token_encrypted_response_alg?: string;
+  id_token_encrypted_response_enc?: string;
+  userinfo_signed_response_alg?: string;
+  userinfo_encrypted_response_alg?: string;
+  userinfo_encrypted_response_enc?: string;
+  authorization_signed_response_alg?: string;
+  authorization_encrypted_response_alg?: string;
+  authorization_encrypted_response_enc?: string;
+  introspection_signed_response_alg?: string;
+  introspection_encrypted_response_alg?: string;
+  introspection_encrypted_response_enc?: string;
+  request_object_signing_alg?: string;
+  request_object_encryption_alg?: string;
+  request_object_encryption_enc?: string;
+  tls_client_auth_subject_dn?: string;
+  tls_client_auth_san_dns?: string;
+  tls_client_auth_san_uri?: string;
+  tls_client_auth_san_ip?: string;
+  tls_client_auth_san_email?: string;
+  token_endpoint_auth_signing_alg?: string;
+  backchannel_logout_session_required?: boolean;
+  backchannel_logout_uri?: string;
+  backchannel_user_code_parameter?: boolean;
+  backchannel_authentication_request_signing_alg?: string;
+  backchannel_client_notification_endpoint?: string;
+  backchannel_token_delivery_mode?: string;
+  require_signed_request_object?: boolean;
+  require_pushed_authorization_requests?: boolean;
+  jwks?: any;
+  contacts?: string[];
+  sector_identifier_uri?: string;
+  initiate_login_uri?: string;
+  client_id_issued_at?: number;
+}
+
+export interface UnifiedClient {
+  client_id: string;
+  client_name: string;
+  application_type: string;
+  source: 'static' | 'adapter';
+  isEditable: boolean;
+  isStatic: boolean;
+  active: boolean;
+  require_pkce: boolean;
+  tags: string[];
+  contacts: string[];
+  isInternalClient: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  metadata: ClientMetadata;
+  description?: string;
+  client_secret?: string;
+  [key: string]: any;
+}

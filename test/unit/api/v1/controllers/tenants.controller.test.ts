@@ -6,6 +6,7 @@ import type { TenantsControllerDeps } from '../../../../../src/api/v1/controller
 import { ApiError } from '../../../../../src/api/v1/errors.js';
 import { encodeCursor } from '../../../../../src/api/v1/pagination.js';
 import { ConflictError as PlatformConflictError } from '../../../../../src/errors/platform.errors.js';
+import type { ITenant } from '../../../../../src/types/tenant.js';
 import type { ITenantSettingsOverride } from '../../../../../src/types/tenant-settings-override.js';
 
 // Helpers
@@ -65,7 +66,7 @@ const sampleTenant = {
   display_name: 'Acme Corporation',
   domain: 'acme.example.com',
   status: 'active',
-};
+} satisfies ITenant;
 
 const sampleTenant2 = {
   _id: '507f1f77bcf86cd799439012',
@@ -73,7 +74,7 @@ const sampleTenant2 = {
   display_name: 'Globex Inc.',
   domain: 'globex.example.com',
   status: 'active',
-};
+} satisfies ITenant;
 
 function savedTenantOverride(
   overrides: Partial<ITenantSettingsOverride> = {}
@@ -475,6 +476,7 @@ describe('api/v1/controllers/TenantsController', () => {
         id: 'uuid-123',
         slug: 'acme-corp',
         display_name: 'Acme',
+        status: 'active' as const,
       };
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue(
         tenantWithId
@@ -495,6 +497,7 @@ describe('api/v1/controllers/TenantsController', () => {
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
         slug: 'acme-corp',
         display_name: 'Acme',
+        status: 'active',
       });
 
       const req = createMockRequest({ params: { slug: 'acme-corp' } });
@@ -597,6 +600,7 @@ describe('api/v1/controllers/TenantsController', () => {
       vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue({
         slug: 'acme-corp',
         display_name: 'Acme',
+        status: 'active',
       });
 
       await controller.updateConfig(
@@ -694,7 +698,13 @@ describe('api/v1/controllers/TenantsController', () => {
   describe('DB abstraction', () => {
     describe('getConfig — tenant ID resolution', () => {
       it('should prefer tenant.id over tenant._id', async () => {
-        const tenant = { id: 'prisma-id', _id: 'mongo-id', slug: 'test' };
+        const tenant = {
+          id: 'prisma-id',
+          _id: 'mongo-id',
+          slug: 'test',
+          display_name: 'Test',
+          status: 'active' as const,
+        };
         vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue(
           tenant
         );
@@ -709,7 +719,12 @@ describe('api/v1/controllers/TenantsController', () => {
       });
 
       it('should fall back to tenant._id when id is absent (MongoDB)', async () => {
-        const tenant = { _id: 'mongo-id', slug: 'test' };
+        const tenant = {
+          _id: 'mongo-id',
+          slug: 'test',
+          display_name: 'Test',
+          status: 'active' as const,
+        };
         vi.mocked(deps.platformAdminService.getTenantBySlug).mockResolvedValue(
           tenant
         );

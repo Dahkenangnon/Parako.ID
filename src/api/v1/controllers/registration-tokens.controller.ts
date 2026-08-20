@@ -10,34 +10,27 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import type { Provider } from 'oidc-provider';
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+import type { IProviderService } from '../../../di/interfaces/provider-service.interface.js';
+import type BaseOIDCAdapter from '../../../oidc/adapter/base.js';
 
 import { notFound } from '../errors.js';
 import { apiSuccess, apiCreated, apiNoContent, apiList } from '../response.js';
 import type { CreateRegistrationTokenInput } from '../validators/registration-tokens.validator.js';
 
 /** Service and logger dependencies required by {@link RegistrationTokensController}. */
+type RegistrationTokenAdapter = Pick<
+  BaseOIDCAdapter,
+  'destroy' | 'find' | 'findAll' | 'upsert'
+>;
+
 export interface RegistrationTokensControllerDeps {
-  providerService: {
-    getProviderForTenant(tenantId: string): Promise<Provider>;
-  };
+  providerService: Pick<IProviderService, 'getProviderForTenant'>;
   oidcAdapter: {
-    readonly adapter: (modelName: string) => {
-      destroy(id: string): Promise<void>;
-      find(id: string): Promise<unknown>;
-      findAll(): Promise<unknown[]>;
-      upsert(
-        id: string,
-        payload: Record<string, unknown>,
-        expiresIn?: number
-      ): Promise<void>;
-    };
+    readonly adapter: (modelName: string) => RegistrationTokenAdapter;
   };
   getTenantId: () => string;
-  logger: {
-    error(error: Error, context?: Record<string, unknown>): void;
-    info(message: string, context?: Record<string, unknown>): void;
-  };
+  logger: Pick<ILogger, 'error' | 'info'>;
 }
 
 /** Shape returned to API consumers — never exposes the raw token value. */
@@ -215,7 +208,6 @@ export class RegistrationTokensController {
     }
   };
 
-  /** Revoke an IAT by JTI. */
   destroy = async (
     req: Request,
     res: Response,

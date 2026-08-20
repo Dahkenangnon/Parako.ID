@@ -14,7 +14,7 @@ import {
   SUPPORTED_RESPONSE_TYPES,
   type TokenEndpointAuthMethod,
 } from '../../../oidc/adapter/client.interface.js';
-import { validateClientKeyMetadata } from '../../../oidc/adapter/client-crud-utils.js';
+import { validateClientKeyMetadata } from '../../../oidc/client-key-metadata.js';
 
 const MAX_URI_LENGTH = 2048;
 const MAX_URI_COUNT = 100;

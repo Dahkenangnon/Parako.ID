@@ -12,6 +12,9 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+import type { IOidcSessionAdmin } from '../../../oidc/adapter/admin.contract.js';
+
 import { notFound, validationError } from '../errors.js';
 import { apiSuccess, apiList, apiNoContent } from '../response.js';
 import {
@@ -22,31 +25,19 @@ import {
 import { sessionQuerySchema } from '../validators/sessions.validator.js';
 
 /** Service and logger dependencies required by {@link SessionsController}. */
+type SessionAdministrationCapability = Pick<
+  IOidcSessionAdmin,
+  | 'findSessionById'
+  | 'revokeSession'
+  | 'countSessions'
+  | 'findSessionsWithPagination'
+  | 'deleteSessionsByAccountId'
+  | 'deleteSessionsByIds'
+>;
+
 export interface SessionsControllerDeps {
-  oidcAdapter: {
-    session: {
-      find(jti: string): Promise<any>;
-      destroy(jti: string): Promise<void>;
-      countSessions(filter?: any): Promise<number>;
-      findSessionsWithPagination(
-        filter?: any,
-        sortBy?: string,
-        sortOrder?: number,
-        skip?: number,
-        limit?: number
-      ): Promise<any[]>;
-      deleteSessionsByAccountId(
-        accountId: string
-      ): Promise<{ deletedCount: number }>;
-      deleteSessionsByIds(
-        sessionIds: string[]
-      ): Promise<{ deletedCount: number }>;
-    };
-  };
-  logger: {
-    error(error: Error, context?: Record<string, unknown>): void;
-    info(message: string, context?: Record<string, unknown>): void;
-  };
+  oidcAdapter: { readonly session: SessionAdministrationCapability };
+  logger: Pick<ILogger, 'error' | 'info'>;
 }
 
 const SESSION_SORT_FIELD = 'createdAt';
@@ -215,7 +206,7 @@ export class SessionsController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const session = await this.adapter.find(req.params.jti);
+      const session = await this.adapter.findSessionById(req.params.jti);
 
       if (!session) {
         throw notFound(`Session '${req.params.jti}' not found`);
@@ -227,20 +218,19 @@ export class SessionsController {
     }
   };
 
-  /** Revoke a single session by its JTI. */
   revoke = async (
     req: Request,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
     try {
-      const session = await this.adapter.find(req.params.jti);
+      const session = await this.adapter.findSessionById(req.params.jti);
 
       if (!session) {
         throw notFound(`Session '${req.params.jti}' not found`);
       }
 
-      await this.adapter.destroy(req.params.jti);
+      await this.adapter.revokeSession(req.params.jti);
 
       this.logger.info('Session revoked via API', { jti: req.params.jti });
 

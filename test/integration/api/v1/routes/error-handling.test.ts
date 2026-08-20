@@ -2,10 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-import {
-  createApiV1Router,
-  type ApiV1Dependencies,
-} from '../../../../../src/api/v1/routes/index.js';
+import type { ApiV1Dependencies } from '../../../../../src/api/v1/routes/contracts.js';
+import { createApiV1Router } from '../../../../../src/api/v1/routes/index.js';
 
 // Helpers
 

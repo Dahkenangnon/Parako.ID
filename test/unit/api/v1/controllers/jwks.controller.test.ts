@@ -282,7 +282,7 @@ describe('api/v1/controllers/JwksController', () => {
 
       expect(deps.redisPubSub!.publish).toHaveBeenCalledWith(
         'jwks:rotated',
-        expect.stringContaining('"tenantId":"default"')
+        expect.objectContaining({ tenantId: 'default', promoted: 1 })
       );
     });
 

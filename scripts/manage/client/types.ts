@@ -1,5 +1,12 @@
 import type { OidcClient } from './local-types.js';
 
+interface ClientTypeTemplate {
+  name: string;
+  description: string;
+  icon: string;
+  defaults: Partial<OidcClient>;
+}
+
 // Client type templates with enhanced configuration
 export const CLIENT_TYPES = {
   web: {
@@ -106,7 +113,7 @@ export const CLIENT_TYPES = {
       allowedResources: ['urn:parako:api:v1'],
     },
   },
-} as const;
+} satisfies Record<string, ClientTypeTemplate>;
 
 export type ClientType = keyof typeof CLIENT_TYPES;
 export type { OidcClient };

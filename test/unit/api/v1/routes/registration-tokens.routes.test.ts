@@ -28,7 +28,7 @@ vi.mock(
 );
 
 import { registrationTokenRoutes } from '../../../../../src/api/v1/routes/registration-tokens.routes.js';
-import type { IRegistrationTokensRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { IRegistrationTokensRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 import { createRegistrationTokenSchema } from '../../../../../src/api/v1/validators/registration-tokens.validator.js';
 

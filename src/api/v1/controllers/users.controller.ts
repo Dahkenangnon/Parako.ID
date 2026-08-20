@@ -471,7 +471,6 @@ export class UsersController {
     }
   };
 
-  /** List activity log entries for a specific user. */
   activities = async (
     req: Request,
     res: Response,
@@ -538,7 +537,6 @@ export class UsersController {
     }
   };
 
-  /** List active OIDC sessions for a specific user. */
   sessions = async (
     req: Request,
     res: Response,

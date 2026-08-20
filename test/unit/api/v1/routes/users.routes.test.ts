@@ -27,7 +27,7 @@ vi.mock(
   () => ({ validateBody: middlewareMocks.validateBody })
 );
 
-import type { IUsersRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { IUsersRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { userRoutes } from '../../../../../src/api/v1/routes/users.routes.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 import {

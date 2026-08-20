@@ -1,7 +1,7 @@
 import type {
-  OidcClient,
   ClientRegistryConfig,
-} from '../../utils/client-registry-config.js';
+  OidcClient,
+} from '../../oidc/client-registry.contract.js';
 
 /**
  * Interface for client registry manager service

@@ -9,7 +9,7 @@
 
 import { Router } from 'express';
 
-import type { IClientsRouteController } from './index.js';
+import type { IClientsRouteController } from './contracts.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
 import { validateBody } from '../middleware/validate-body.middleware.js';

@@ -21,7 +21,7 @@ vi.mock(
   () => ({ apiRateLimiter: middlewareMocks.apiRateLimiter })
 );
 
-import type { IJwksRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { IJwksRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { jwksRoutes } from '../../../../../src/api/v1/routes/jwks.routes.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 

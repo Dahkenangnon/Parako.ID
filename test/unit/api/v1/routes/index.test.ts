@@ -52,10 +52,8 @@ vi.mock('../../../../../src/api/v1/errors.js', () => ({
   notFound: routeFactoryMocks.notFound,
 }));
 
-import {
-  createApiV1Router,
-  type ApiV1Dependencies,
-} from '../../../../../src/api/v1/routes/index.js';
+import type { ApiV1Dependencies } from '../../../../../src/api/v1/routes/contracts.js';
+import { createApiV1Router } from '../../../../../src/api/v1/routes/index.js';
 
 type TracedRequest = Request & { routeTrace?: string[] };
 

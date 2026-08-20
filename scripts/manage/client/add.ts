@@ -112,7 +112,6 @@ export async function addClientInteractive(): Promise<void> {
       },
     ] as any);
 
-    // @ts-expect-error - OidcClient is not defined
     const clientData: Partial<OidcClient> = {
       ...selectedType.defaults,
       ...basicInfo,

@@ -21,7 +21,7 @@ vi.mock(
   () => ({ apiRateLimiter: middlewareMocks.apiRateLimiter })
 );
 
-import type { ISessionsRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { ISessionsRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { sessionRoutes } from '../../../../../src/api/v1/routes/sessions.routes.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 

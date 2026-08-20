@@ -9,25 +9,36 @@ import type { StatsControllerDeps } from '../../../../../src/api/v1/controllers/
 function createMockDeps(): StatsControllerDeps {
   return {
     userService: {
-      count: vi.fn().mockResolvedValue(0),
-      findWithPagination: vi.fn().mockResolvedValue({ docs: [], totalDocs: 0 }),
+      countDocuments: vi.fn().mockResolvedValue(0),
     },
     oidcAdapter: {
       client: {
         countClients: vi.fn().mockResolvedValue(0),
-        getClientStatistics: vi.fn().mockResolvedValue({}),
+        getClientStatistics: vi.fn().mockResolvedValue({
+          total: 0,
+          active: 0,
+          inactive: 0,
+          byType: { web: 0, native: 0, spa: 0 },
+        }),
       },
       session: {
         getSessionStatistics: vi
           .fn()
-          .mockResolvedValue({ active: 0, total: 0 }),
+          .mockResolvedValue({ active: 0, total: 0, expired: 0 }),
       },
       grant: {
-        getGrantStatistics: vi.fn().mockResolvedValue({ active: 0, total: 0 }),
+        getGrantStatistics: vi.fn().mockResolvedValue({
+          total: 0,
+          recent: 0,
+          expired: 0,
+          byClient: [],
+          byUser: [],
+        }),
       },
     },
     activityService: {
       getActivityStats: vi.fn().mockResolvedValue({
+        available: true,
         totalActivities: 0,
         uniqueUsers: 0,
         todayCount: 0,
@@ -82,20 +93,26 @@ describe('api/v1/controllers/StatsController', () => {
   // overview
   describe('overview()', () => {
     it('should aggregate stats from all services', async () => {
-      vi.mocked(deps.userService.count!).mockResolvedValue(150);
+      vi.mocked(deps.userService.countDocuments).mockResolvedValue(150);
       vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(10);
       vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockResolvedValue({
         total: 10,
         active: 8,
+        inactive: 2,
+        byType: { web: 7, native: 2, spa: 1 },
       });
       vi.mocked(
-        deps.oidcAdapter.session.getSessionStatistics!
-      ).mockResolvedValue({ active: 25, total: 100 });
-      vi.mocked(deps.oidcAdapter.grant.getGrantStatistics!).mockResolvedValue({
-        active: 50,
+        deps.oidcAdapter.session.getSessionStatistics
+      ).mockResolvedValue({ active: 25, total: 100, expired: 75 });
+      vi.mocked(deps.oidcAdapter.grant.getGrantStatistics).mockResolvedValue({
         total: 200,
+        recent: 50,
+        expired: 150,
+        byClient: [],
+        byUser: [],
       });
       vi.mocked(deps.activityService.getActivityStats).mockResolvedValue({
+        available: true,
         totalActivities: 5000,
         uniqueUsers: 100,
         todayCount: 75,
@@ -113,9 +130,24 @@ describe('api/v1/controllers/StatsController', () => {
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data.users).toEqual({ total: 150 });
-      expect(jsonCall.data.clients).toEqual({ total: 10, active: 8 });
-      expect(jsonCall.data.sessions).toEqual({ active: 25, total: 100 });
-      expect(jsonCall.data.grants).toEqual({ active: 50, total: 200 });
+      expect(jsonCall.data.clients).toEqual({
+        total: 10,
+        active: 8,
+        inactive: 2,
+        byType: { web: 7, native: 2, spa: 1 },
+      });
+      expect(jsonCall.data.sessions).toEqual({
+        active: 25,
+        total: 100,
+        expired: 75,
+      });
+      expect(jsonCall.data.grants).toEqual({
+        total: 200,
+        recent: 50,
+        expired: 150,
+        byClient: [],
+        byUser: [],
+      });
       expect(jsonCall.data.activity).toEqual(
         expect.objectContaining({
           totalActivities: 5000,
@@ -130,6 +162,7 @@ describe('api/v1/controllers/StatsController', () => {
         total: 11,
         active: 8,
         inactive: 3,
+        byType: { web: 8, native: 2, spa: 1 },
       });
 
       const res = createMockResponse();
@@ -141,20 +174,21 @@ describe('api/v1/controllers/StatsController', () => {
         total: 11,
         active: 8,
         inactive: 3,
+        byType: { web: 8, native: 2, spa: 1 },
       });
     });
 
     it('should handle individual section failures gracefully', async () => {
-      vi.mocked(deps.userService.count!).mockRejectedValue(
+      vi.mocked(deps.userService.countDocuments).mockRejectedValue(
         new Error('User DB down')
       );
       vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockRejectedValue(
         new Error('Client DB down')
       );
       vi.mocked(
-        deps.oidcAdapter.session.getSessionStatistics!
+        deps.oidcAdapter.session.getSessionStatistics
       ).mockRejectedValue(new Error('Session fail'));
-      vi.mocked(deps.oidcAdapter.grant.getGrantStatistics!).mockRejectedValue(
+      vi.mocked(deps.oidcAdapter.grant.getGrantStatistics).mockRejectedValue(
         new Error('Grant fail')
       );
       vi.mocked(deps.activityService.getActivityStats).mockRejectedValue(
@@ -181,31 +215,10 @@ describe('api/v1/controllers/StatsController', () => {
       expect(deps.logger.error).toHaveBeenCalledTimes(5);
     });
 
-    it('should handle missing optional methods on adapters', async () => {
-      const depsWithout = createMockDeps();
-      delete (depsWithout.userService as any).count;
-      delete (depsWithout.oidcAdapter.session as any).getSessionStatistics;
-      delete (depsWithout.oidcAdapter.grant as any).getGrantStatistics;
-      const controllerWithout = new StatsController(depsWithout);
-
-      const req = createMockRequest();
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controllerWithout.overview(req, res, next);
-
-      expect(res.status).toHaveBeenCalledWith(200);
-
-      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
-      expect(jsonCall.data.users).toEqual({ total: null });
-      expect(jsonCall.data.sessions).toEqual({ available: false });
-      expect(jsonCall.data.grants).toEqual({ available: false });
-    });
-
     it('should call next(error) when the response itself throws', async () => {
       // All individual section try/catch blocks succeed, but the final
       // apiSuccess call throws — simulating e.g. a circular JSON error.
-      vi.mocked(deps.userService.count!).mockResolvedValue(10);
+      vi.mocked(deps.userService.countDocuments).mockResolvedValue(10);
       vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(5);
 
       const req = createMockRequest();
@@ -226,7 +239,7 @@ describe('api/v1/controllers/StatsController', () => {
   // health
   describe('health()', () => {
     it('should return healthy status when all checks pass', async () => {
-      vi.mocked(deps.userService.count!).mockResolvedValue(100);
+      vi.mocked(deps.userService.countDocuments).mockResolvedValue(100);
       vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(5);
 
       const req = createMockRequest();
@@ -246,7 +259,7 @@ describe('api/v1/controllers/StatsController', () => {
     });
 
     it('should return degraded status with 503 when a check fails', async () => {
-      vi.mocked(deps.userService.count!).mockRejectedValue(
+      vi.mocked(deps.userService.countDocuments).mockRejectedValue(
         new Error('DB down')
       );
 
@@ -285,29 +298,18 @@ describe('api/v1/controllers/StatsController', () => {
       });
     });
 
-    it('should fall back to findWithPagination when count is not available', async () => {
-      const depsWithout = createMockDeps();
-      delete (depsWithout.userService as any).count;
-      const controllerWithout = new StatsController(depsWithout);
-
-      const req = createMockRequest();
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controllerWithout.health(req, res, next);
-
-      expect(depsWithout.userService.findWithPagination).toHaveBeenCalledWith(
-        {},
-        { page: 1, limit: 1 }
+    it('uses the repository-neutral countDocuments capability', async () => {
+      await controller.health(
+        createMockRequest(),
+        createMockResponse(),
+        createMockNext()
       );
-      expect(res.status).toHaveBeenCalledWith(200);
 
-      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
-      expect(jsonCall.data.checks.database.status).toBe('healthy');
+      expect(deps.userService.countDocuments).toHaveBeenCalledWith();
     });
 
     it('should report unhealthy config when getConfig returns null', async () => {
-      vi.mocked(deps.configManager.getConfig).mockReturnValue(null);
+      vi.mocked(deps.configManager.getConfig).mockReturnValue(null as never);
 
       const req = createMockRequest();
       const res = createMockResponse();
@@ -341,24 +343,8 @@ describe('api/v1/controllers/StatsController', () => {
       });
     });
 
-    it('should report unknown database status when no probe method is available', async () => {
-      const depsWithout = createMockDeps();
-      delete (depsWithout.userService as any).count;
-      delete (depsWithout.userService as any).findWithPagination;
-      const controllerWithout = new StatsController(depsWithout);
-
-      const req = createMockRequest();
-      const res = createMockResponse();
-      const next = createMockNext();
-
-      await controllerWithout.health(req, res, next);
-
-      const jsonCall = vi.mocked(res.json).mock.calls[0][0];
-      expect(jsonCall.data.checks.database.status).toBe('unknown');
-    });
-
     it('should call next(error) when the response itself throws', async () => {
-      vi.mocked(deps.userService.count!).mockResolvedValue(100);
+      vi.mocked(deps.userService.countDocuments).mockResolvedValue(100);
       vi.mocked(deps.oidcAdapter.client.countClients).mockResolvedValue(5);
 
       const req = createMockRequest();

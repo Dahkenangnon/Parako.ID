@@ -18,12 +18,10 @@ export function apiSuccess(
   return res.status(status).json({ data });
 }
 
-/** Return a 201 Created response with the given data. */
 export function apiCreated(res: Response, data: unknown): Response {
   return res.status(201).json({ data });
 }
 
-/** Return a cursor-paginated list response. */
 export function apiList<T>(res: Response, cursorPage: CursorPage<T>): Response {
   return res.status(200).json({
     data: cursorPage.data,
@@ -31,12 +29,10 @@ export function apiList<T>(res: Response, cursorPage: CursorPage<T>): Response {
   });
 }
 
-/** Return a 202 Accepted response with the given data. */
 export function apiAccepted(res: Response, data: unknown): Response {
   return res.status(202).json({ data });
 }
 
-/** Return a 204 No Content response with an empty body. */
 export function apiNoContent(res: Response): Response {
   return res.status(204).end();
 }

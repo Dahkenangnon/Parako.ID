@@ -156,7 +156,7 @@ describe('api/v1/middleware/audit-logger', () => {
   });
 
   // 5. Actor set correctly when auth is present
-  it('should set actor to { actor_type: "service", actor_id: clientId } when auth present', () => {
+  it('should persist the authenticated client as the service actor identity', () => {
     const middleware = createApiAuditLogger(deps);
     const { req, res, triggerFinish } = createMockReqRes();
     const next = vi.fn();
@@ -170,7 +170,7 @@ describe('api/v1/middleware/audit-logger', () => {
 
     expect(options.actor).toEqual({
       actor_type: 'service',
-      actor_id: 'test-client',
+      id: 'test-client',
     });
   });
 
@@ -280,7 +280,7 @@ describe('api/v1/middleware/audit-logger', () => {
         client_id: 'test-client',
         actor: {
           actor_type: 'service',
-          actor_id: 'test-client',
+          id: 'test-client',
         },
         target: expect.objectContaining({
           entity_data: expect.objectContaining({

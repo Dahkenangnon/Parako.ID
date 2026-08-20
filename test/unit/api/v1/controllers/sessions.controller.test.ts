@@ -12,8 +12,8 @@ function createMockDeps(): SessionsControllerDeps {
   return {
     oidcAdapter: {
       session: {
-        find: vi.fn().mockResolvedValue(null),
-        destroy: vi.fn().mockResolvedValue(undefined),
+        findSessionById: vi.fn().mockResolvedValue(null),
+        revokeSession: vi.fn().mockResolvedValue(false),
         countSessions: vi.fn().mockResolvedValue(0),
         findSessionsWithPagination: vi.fn().mockResolvedValue([]),
         deleteSessionsByAccountId: vi
@@ -193,8 +193,12 @@ describe('api/v1/controllers/SessionsController', () => {
       vi.mocked(
         deps.oidcAdapter.session.findSessionsWithPagination
       ).mockResolvedValue([
-        { payload: { accountId: 'anonymous-row' } },
-        { id: 'session-id', payload: { accountId: 'known-row', jti: '' } },
+        { _id: '', payload: { accountId: 'anonymous-row' } },
+        {
+          _id: '',
+          id: 'session-id',
+          payload: { accountId: 'known-row', jti: '' },
+        },
       ]);
       const res = createMockResponse();
 
@@ -306,13 +310,18 @@ describe('api/v1/controllers/SessionsController', () => {
 
     it('scans bounded adapter pages and accepts the cursor id alias', async () => {
       const fullPage = Array.from({ length: 100 }, (_, index) => ({
+        _id: '',
         id: `session-${index}`,
         payload: { accountId: 'user-1' },
       }));
       vi.mocked(deps.oidcAdapter.session.findSessionsWithPagination)
         .mockResolvedValueOnce(fullPage)
         .mockResolvedValueOnce([
-          { id: 'cursor-session', payload: { accountId: 'user-1' } },
+          {
+            _id: '',
+            id: 'cursor-session',
+            payload: { accountId: 'user-1' },
+          },
         ])
         .mockResolvedValueOnce([]);
 
@@ -355,8 +364,9 @@ describe('api/v1/controllers/SessionsController', () => {
   // get
   describe('get()', () => {
     it('should return a session by jti', async () => {
-      vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue({
-        ...sampleSession,
+      vi.mocked(deps.oidcAdapter.session.findSessionById).mockResolvedValue({
+        _id: sampleSession.jti,
+        payload: { ...sampleSession },
       });
 
       const req = createMockRequest({ params: { jti: 'sess-abc-123' } });
@@ -365,7 +375,7 @@ describe('api/v1/controllers/SessionsController', () => {
 
       await controller.get(req, res, next);
 
-      expect(deps.oidcAdapter.session.find).toHaveBeenCalledWith(
+      expect(deps.oidcAdapter.session.findSessionById).toHaveBeenCalledWith(
         'sess-abc-123'
       );
       expect(res.status).toHaveBeenCalledWith(200);
@@ -376,7 +386,9 @@ describe('api/v1/controllers/SessionsController', () => {
     });
 
     it('should call next with 404 ApiError when session is not found', async () => {
-      vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue(null);
+      vi.mocked(deps.oidcAdapter.session.findSessionById).mockResolvedValue(
+        null
+      );
 
       const req = createMockRequest({ params: { jti: 'nonexistent' } });
       const res = createMockResponse();
@@ -394,8 +406,9 @@ describe('api/v1/controllers/SessionsController', () => {
   // revoke
   describe('revoke()', () => {
     it('should revoke the session and return 204', async () => {
-      vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue({
-        ...sampleSession,
+      vi.mocked(deps.oidcAdapter.session.findSessionById).mockResolvedValue({
+        _id: sampleSession.jti,
+        payload: { ...sampleSession },
       });
 
       const req = createMockRequest({ params: { jti: 'sess-abc-123' } });
@@ -404,10 +417,10 @@ describe('api/v1/controllers/SessionsController', () => {
 
       await controller.revoke(req, res, next);
 
-      expect(deps.oidcAdapter.session.find).toHaveBeenCalledWith(
+      expect(deps.oidcAdapter.session.findSessionById).toHaveBeenCalledWith(
         'sess-abc-123'
       );
-      expect(deps.oidcAdapter.session.destroy).toHaveBeenCalledWith(
+      expect(deps.oidcAdapter.session.revokeSession).toHaveBeenCalledWith(
         'sess-abc-123'
       );
       expect(res.status).toHaveBeenCalledWith(204);
@@ -416,8 +429,9 @@ describe('api/v1/controllers/SessionsController', () => {
     });
 
     it('should log session revocation', async () => {
-      vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue({
-        ...sampleSession,
+      vi.mocked(deps.oidcAdapter.session.findSessionById).mockResolvedValue({
+        _id: sampleSession.jti,
+        payload: { ...sampleSession },
       });
 
       const req = createMockRequest({ params: { jti: 'sess-abc-123' } });
@@ -433,7 +447,9 @@ describe('api/v1/controllers/SessionsController', () => {
     });
 
     it('should call next with 404 when session is not found', async () => {
-      vi.mocked(deps.oidcAdapter.session.find).mockResolvedValue(null);
+      vi.mocked(deps.oidcAdapter.session.findSessionById).mockResolvedValue(
+        null
+      );
 
       const req = createMockRequest({ params: { jti: 'nonexistent' } });
       const res = createMockResponse();
@@ -444,7 +460,7 @@ describe('api/v1/controllers/SessionsController', () => {
       expect(next).toHaveBeenCalledWith(expect.any(ApiError));
       const error = vi.mocked(next).mock.calls[0][0] as unknown as ApiError;
       expect(error.status).toBe(404);
-      expect(deps.oidcAdapter.session.destroy).not.toHaveBeenCalled();
+      expect(deps.oidcAdapter.session.revokeSession).not.toHaveBeenCalled();
     });
   });
 
@@ -506,7 +522,7 @@ describe('api/v1/controllers/SessionsController', () => {
       expect(deps.oidcAdapter.session.deleteSessionsByIds).toHaveBeenCalledWith(
         ['sess-1', 'sess-2']
       );
-      expect(deps.oidcAdapter.session.destroy).not.toHaveBeenCalled();
+      expect(deps.oidcAdapter.session.revokeSession).not.toHaveBeenCalled();
 
       const jsonCall = vi.mocked(res.json).mock.calls[0][0];
       expect(jsonCall.data.revoked_count).toBe(2);
@@ -514,11 +530,13 @@ describe('api/v1/controllers/SessionsController', () => {
 
     it('scans every bounded page before deleting filtered sessions', async () => {
       const fullPage = Array.from({ length: 100 }, (_, index) => ({
+        _id: '',
         id: `session-${index}`,
+        payload: {},
       }));
       vi.mocked(deps.oidcAdapter.session.findSessionsWithPagination)
         .mockResolvedValueOnce(fullPage)
-        .mockResolvedValueOnce([{ id: 'session-100' }]);
+        .mockResolvedValueOnce([{ _id: '', id: 'session-100', payload: {} }]);
       vi.mocked(deps.oidcAdapter.session.deleteSessionsByIds).mockResolvedValue(
         { deletedCount: 101 }
       );
@@ -611,7 +629,11 @@ describe('api/v1/controllers/SessionsController', () => {
     it('skips malformed adapter rows without a session identifier', async () => {
       vi.mocked(
         deps.oidcAdapter.session.findSessionsWithPagination
-      ).mockResolvedValue([{}, { id: null, jti: '' }, { id: 123 }]);
+      ).mockResolvedValue([
+        { _id: '', payload: {} },
+        { _id: '', id: null, jti: '', payload: {} },
+        { _id: '', id: 123, payload: {} },
+      ]);
       vi.mocked(deps.oidcAdapter.session.deleteSessionsByIds).mockResolvedValue(
         {
           deletedCount: 1,
@@ -683,8 +705,8 @@ describe('api/v1/controllers/SessionsController', () => {
     describe('bulkRevoke — JTI resolution', () => {
       it('should fall back to session.id when jti is absent (Prisma)', async () => {
         const sessions = [
-          { id: 'prisma-session-1' },
-          { id: 'prisma-session-2' },
+          { _id: '', id: 'prisma-session-1', payload: {} },
+          { _id: '', id: 'prisma-session-2', payload: {} },
         ];
         vi.mocked(
           deps.oidcAdapter.session.findSessionsWithPagination

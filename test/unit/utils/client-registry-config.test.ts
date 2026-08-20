@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import ClientRegistryManager, {
-  OidcClientSchema,
-} from '../../../src/utils/client-registry-config.js';
+import { OidcClientSchema } from '../../../src/oidc/client-registry.contract.js';
+import ClientRegistryManager from '../../../src/utils/client-registry-config.js';
 import type { IConfigFileReader } from '../../../src/di/interfaces/config-file-reader.interface.js';
 import type { IFileSystemUtils } from '../../../src/di/interfaces/file-system-utils.interface.js';
 

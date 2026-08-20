@@ -11,7 +11,7 @@
 
 import { Router } from 'express';
 
-import type { IAuditRouteController } from './index.js';
+import type { IAuditRouteController } from './contracts.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
 import { SCOPES } from '../scopes.js';

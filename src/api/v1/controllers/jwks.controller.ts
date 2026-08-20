@@ -51,7 +51,7 @@ export interface JwksControllerDeps {
   };
   getTenantId: () => string;
   redisPubSub?: {
-    publish(channel: string, message: string): Promise<void>;
+    publish(channel: string, message: Record<string, unknown>): Promise<void>;
   };
   logger: {
     error(error: Error, context?: Record<string, unknown>): void;
@@ -162,14 +162,11 @@ export class JwksController {
       this.logger.info('JWKS keys rotated via API', { tenantId, promoted });
 
       if (this.redisPubSub) {
-        await this.redisPubSub.publish(
-          'jwks:rotated',
-          JSON.stringify({
-            tenantId,
-            promoted,
-            timestamp: new Date().toISOString(),
-          })
-        );
+        await this.redisPubSub.publish('jwks:rotated', {
+          tenantId,
+          promoted,
+          timestamp: new Date().toISOString(),
+        });
       }
 
       apiSuccess(res, { message: 'Keys rotated successfully', promoted });

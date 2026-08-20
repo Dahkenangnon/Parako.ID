@@ -8,30 +8,13 @@
 
 import type { RequestHandler } from 'express';
 
+import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+
 /** Subset of application services required by the audit logger middleware. */
 export interface AuditLoggerDependencies {
-  activityService: {
-    info(
-      type: string,
-      description: string,
-      user: { username: string } | null,
-      options?: {
-        ip_address?: string;
-        user_agent?: string;
-        client_id?: string;
-        actor?: { actor_type: string; actor_id: string };
-        target?: {
-          target_type: 'system';
-          entity_name: string;
-          entity_data: Record<string, unknown>;
-        };
-      }
-    ): void;
-  };
-  logger: {
-    debug(message: string, context?: Record<string, unknown>): void;
-    warn(message: string, context?: Record<string, unknown>): void;
-  };
+  activityService: Pick<IActivityService, 'info'>;
+  logger: Pick<ILogger, 'debug' | 'warn'>;
 }
 
 /**
@@ -80,7 +63,7 @@ export function createApiAuditLogger(
               clientId !== undefined
                 ? {
                     actor_type: 'service',
-                    actor_id: clientId,
+                    id: clientId,
                   }
                 : undefined,
             target: {

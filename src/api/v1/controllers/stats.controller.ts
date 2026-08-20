@@ -11,41 +11,32 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
+import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
+import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+import type { IUserService } from '../../../di/interfaces/user-service.interface.js';
+import type {
+  IOidcClientAdmin,
+  IOidcGrantAdmin,
+  IOidcSessionAdmin,
+} from '../../../oidc/adapter/admin.contract.js';
+
 import { apiSuccess } from '../response.js';
 
 /** Service and logger dependencies required by {@link StatsController}. */
 export interface StatsControllerDeps {
-  userService: {
-    count?(filter?: any): Promise<number>;
-    findWithPagination?(filter: any, options: any): Promise<any>;
-  };
+  userService: Pick<IUserService, 'countDocuments'>;
   oidcAdapter: {
-    client: {
-      countClients(): Promise<number>;
-      getClientStatistics(): Promise<Record<string, unknown>>;
-    };
-    session: {
-      getSessionStatistics?(): Promise<Record<string, unknown>>;
-    };
-    grant: {
-      getGrantStatistics?(): Promise<Record<string, unknown>>;
-    };
+    readonly client: Pick<
+      IOidcClientAdmin,
+      'countClients' | 'getClientStatistics'
+    >;
+    readonly session: Pick<IOidcSessionAdmin, 'getSessionStatistics'>;
+    readonly grant: Pick<IOidcGrantAdmin, 'getGrantStatistics'>;
   };
-  activityService: {
-    getActivityStats(): Promise<{
-      totalActivities: number;
-      uniqueUsers: number;
-      todayCount: number;
-      successfulLogins: number;
-      failedLogins: number;
-    }>;
-  };
-  configManager: {
-    getConfig(): any;
-  };
-  logger: {
-    error(error: Error, context?: Record<string, unknown>): void;
-  };
+  activityService: Pick<IActivityService, 'getActivityStats'>;
+  configManager: Pick<IConfigManager, 'getConfig'>;
+  logger: Pick<ILogger, 'error'>;
 }
 
 export class StatsController {
@@ -78,11 +69,7 @@ export class StatsController {
       const stats: Record<string, unknown> = {};
 
       try {
-        if (this.userService.count) {
-          stats.users = { total: await this.userService.count() };
-        } else {
-          stats.users = { total: null };
-        }
+        stats.users = { total: await this.userService.countDocuments() };
       } catch (err) {
         this.logger.error(err as Error, { section: 'users' });
         stats.users = { error: 'Failed to retrieve user statistics' };
@@ -96,23 +83,14 @@ export class StatsController {
       }
 
       try {
-        if (this.oidcAdapter.session.getSessionStatistics) {
-          stats.sessions =
-            await this.oidcAdapter.session.getSessionStatistics();
-        } else {
-          stats.sessions = { available: false };
-        }
+        stats.sessions = await this.oidcAdapter.session.getSessionStatistics();
       } catch (err) {
         this.logger.error(err as Error, { section: 'sessions' });
         stats.sessions = { error: 'Failed to retrieve session statistics' };
       }
 
       try {
-        if (this.oidcAdapter.grant.getGrantStatistics) {
-          stats.grants = await this.oidcAdapter.grant.getGrantStatistics();
-        } else {
-          stats.grants = { available: false };
-        }
+        stats.grants = await this.oidcAdapter.grant.getGrantStatistics();
       } catch (err) {
         this.logger.error(err as Error, { section: 'grants' });
         stats.grants = { error: 'Failed to retrieve grant statistics' };
@@ -147,18 +125,8 @@ export class StatsController {
       const checks: Record<string, { status: string; message?: string }> = {};
 
       try {
-        if (this.userService.count) {
-          await this.userService.count();
-          checks.database = { status: 'healthy' };
-        } else if (this.userService.findWithPagination) {
-          await this.userService.findWithPagination({}, { page: 1, limit: 1 });
-          checks.database = { status: 'healthy' };
-        } else {
-          checks.database = {
-            status: 'unknown',
-            message: 'No probe method available',
-          };
-        }
+        await this.userService.countDocuments();
+        checks.database = { status: 'healthy' };
       } catch (err) {
         this.logger.error(err as Error, { check: 'database' });
         checks.database = {

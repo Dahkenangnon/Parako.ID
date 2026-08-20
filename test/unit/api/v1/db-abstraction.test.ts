@@ -454,8 +454,8 @@ describe('API v1 — DB abstraction contract', () => {
       const deps: SessionsControllerDeps = {
         oidcAdapter: {
           session: {
-            find: vi.fn(),
-            destroy: vi.fn(),
+            findSessionById: vi.fn().mockResolvedValue(null),
+            revokeSession: vi.fn().mockResolvedValue(false),
             countSessions: vi.fn().mockResolvedValue(0),
             findSessionsWithPagination: vi.fn().mockResolvedValue([]),
             deleteSessionsByAccountId: vi

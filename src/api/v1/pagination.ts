@@ -187,12 +187,33 @@ export function buildCursorQuery(
  *                      (default `id`).
  * @param totalCount  - Optional total count to include when the caller
  *                      requested `?include_count=true`.
+ * @param getStableIdentifier - Optional selector for records whose stable
+ *                              identifier is not exposed as `id` or `_id`.
  */
-export function buildCursorResponse<T extends { _id?: unknown; id?: unknown }>(
+type PersistedDocument = { _id?: unknown; id?: unknown };
+
+export function buildCursorResponse<T extends PersistedDocument>(
+  docs: T[],
+  limit: number,
+  cursorField?: string,
+  totalCount?: number
+): CursorPage<T>;
+export function buildCursorResponse<T extends object>(
+  docs: T[],
+  limit: number,
+  cursorField: string,
+  totalCount: number | undefined,
+  getStableIdentifier: (document: T) => unknown
+): CursorPage<T>;
+export function buildCursorResponse<T extends object>(
   docs: T[],
   limit: number,
   cursorField: string = 'id',
-  totalCount?: number
+  totalCount?: number,
+  getStableIdentifier: (document: T) => unknown = document => {
+    const persistedDocument = document as PersistedDocument;
+    return persistedDocument.id ?? persistedDocument._id;
+  }
 ): CursorPage<T> {
   const hasMore = docs.length > limit;
   const data = hasMore ? docs.slice(0, limit) : docs;
@@ -210,7 +231,7 @@ export function buildCursorResponse<T extends { _id?: unknown; id?: unknown }>(
     }
 
     // Support both Prisma (id) and MongoDB (_id) document shapes
-    cursorFields.id = String(lastDoc.id ?? lastDoc._id);
+    cursorFields.id = String(getStableIdentifier(lastDoc));
     nextCursor = encodeCursor(cursorFields);
   }
 

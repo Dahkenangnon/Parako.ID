@@ -23,7 +23,7 @@ vi.mock(
 
 import { auditRoutes } from '../../../../../src/api/v1/routes/audit.routes.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
-import type { IAuditRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { IAuditRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 
 type TracedRequest = Request & { routeTrace?: string[] };
 

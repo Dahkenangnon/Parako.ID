@@ -12,6 +12,9 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+import type { IPlatformAdminService } from '../../../services/platform-admin.service.js';
+
 import type { ITenantSettingsOverrideService } from '../../../di/interfaces/tenant-settings-override-service.interface.js';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
 import type { ITenantSettingsOverride } from '../../../types/tenant-settings-override.js';
@@ -52,24 +55,16 @@ function isTenantConflict(error: unknown): boolean {
 
 /** Service and logger dependencies required by {@link TenantsController}. */
 export interface TenantsControllerDeps {
-  platformAdminService: {
-    listTenants(filter?: { status?: TenantStatus }): Promise<any[]>;
-    createTenant(data: {
-      slug: string;
-      display_name: string;
-      domain?: string;
-    }): Promise<any>;
-    getTenantBySlug(slug: string): Promise<any>;
-  };
+  platformAdminService: Pick<
+    IPlatformAdminService,
+    'listTenants' | 'createTenant' | 'getTenantBySlug'
+  >;
   tenantSettingsOverrideService?: Pick<
     ITenantSettingsOverrideService,
     'loadOverrides' | 'saveOverrides'
   >;
   configManager: Pick<IConfigManager, 'getPlatformConfig'>;
-  logger: {
-    error(error: Error, context?: Record<string, unknown>): void;
-    info(message: string, context?: Record<string, unknown>): void;
-  };
+  logger: Pick<ILogger, 'error' | 'info'>;
 }
 
 export class TenantsController {

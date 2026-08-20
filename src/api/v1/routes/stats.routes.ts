@@ -8,7 +8,7 @@
 
 import { Router } from 'express';
 
-import type { IStatsRouteController } from './index.js';
+import type { IStatsRouteController } from './contracts.js';
 import { requireScope } from '../middleware/scope-guard.middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.middleware.js';
 import { SCOPES } from '../scopes.js';

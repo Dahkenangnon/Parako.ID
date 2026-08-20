@@ -11,6 +11,9 @@
 
 import type { Request, Response, NextFunction } from 'express';
 
+import type { ILogger } from '../../../di/interfaces/logger.interface.js';
+import type { IOidcClientAdmin } from '../../../oidc/adapter/admin.contract.js';
+
 import { conflict, notFound } from '../errors.js';
 import { apiSuccess, apiCreated, apiList, apiNoContent } from '../response.js';
 import {
@@ -24,35 +27,30 @@ import type {
 } from '../validators/clients.validator.js';
 import {
   clientAuthMethodUsesSecret,
-  type RegenerateSecretResult,
+  type ApplicationType,
+  type ClientFilters,
+  type OidcClientData,
 } from '../../../oidc/adapter/client.interface.js';
 
 /** Service and logger dependencies required by {@link ClientsController}. */
+type ClientAdministrationCapability = Pick<
+  IOidcClientAdmin,
+  | 'findAllClients'
+  | 'findClientById'
+  | 'createClient'
+  | 'updateClient'
+  | 'deleteClient'
+  | 'activateClient'
+  | 'deactivateClient'
+  | 'regenerateClientSecret'
+  | 'getClientStatistics'
+  | 'countClients'
+  | 'searchClients'
+>;
+
 export interface ClientsControllerDeps {
-  oidcAdapter: {
-    client: {
-      findAllClients(filters?: Record<string, unknown>): Promise<any[]>;
-      findClientById(clientId: string): Promise<any>;
-      createClient(data: Record<string, unknown>): Promise<any>;
-      updateClient(
-        clientId: string,
-        data: Record<string, unknown>
-      ): Promise<any>;
-      deleteClient(clientId: string): Promise<boolean>;
-      activateClient(clientId: string): Promise<any>;
-      deactivateClient(clientId: string): Promise<any>;
-      regenerateClientSecret(
-        clientId: string
-      ): Promise<RegenerateSecretResult | null>;
-      getClientStatistics(): Promise<Record<string, unknown>>;
-      countClients(): Promise<number>;
-      searchClients(query: string): Promise<any[]>;
-    };
-  };
-  logger: {
-    error(error: Error, context?: Record<string, unknown>): void;
-    info(message: string, context?: Record<string, unknown>): void;
-  };
+  oidcAdapter: { readonly client: ClientAdministrationCapability };
+  logger: Pick<ILogger, 'error' | 'info'>;
 }
 
 /**
@@ -61,14 +59,23 @@ export interface ClientsControllerDeps {
  * Handles both plain objects and Mongoose documents (which expose
  * `.toJSON()`). Callers provide only adapter-confirmed client records.
  */
-function stripClientSecret(client: any): any {
-  const plain = {
-    ...(typeof client.toJSON === 'function' ? client.toJSON() : client),
-  };
+type ClientWithOptionalSerializer = OidcClientData & {
+  toJSON?: () => OidcClientData;
+};
+
+function stripClientSecret(
+  client: ClientWithOptionalSerializer
+): Omit<OidcClientData, 'client_secret'> {
+  const plain =
+    typeof client.toJSON === 'function' ? client.toJSON() : { ...client };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructure-and-discard pattern strips client_secret before returning the client to the caller.
   const { client_secret: _secret, ...rest } = plain;
   return rest;
+}
+
+function isApplicationType(value: unknown): value is ApplicationType {
+  return value === 'web' || value === 'native' || value === 'spa';
 }
 
 export class ClientsController {
@@ -96,9 +103,9 @@ export class ClientsController {
         req.query as Record<string, unknown>
       );
 
-      const filters: Record<string, unknown> = {};
+      const filters: ClientFilters = {};
 
-      if (req.query.application_type) {
+      if (isApplicationType(req.query.application_type)) {
         filters.application_type = req.query.application_type;
       }
 
@@ -157,7 +164,8 @@ export class ClientsController {
         docs.slice(0, limit + 1).map(stripClientSecret),
         limit,
         'client_id',
-        totalCount
+        totalCount,
+        client => client.client_id
       );
 
       apiList(res, page);

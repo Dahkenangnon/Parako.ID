@@ -1,16 +1,5 @@
-/**
- * Unified OIDC Client Interface
- *
- * This file defines the unified client data structure used by both:
- * - Static clients from parako-rp.jsonc
- * - Managed clients stored in the OIDC adapter
- *
- * All client sources must conform to this interface for consistency.
- */
+/** Canonical client metadata shared by static registries and managed adapters. */
 
-/**
- * Application type for OIDC clients
- */
 export type ApplicationType = 'web' | 'native' | 'spa';
 
 /**
@@ -37,9 +26,6 @@ export function normalizeClientApplicationType<
   } as T;
 }
 
-/**
- * Token endpoint authentication method
- */
 export type TokenEndpointAuthMethod =
   | 'none'
   | 'client_secret_basic'
@@ -56,11 +42,6 @@ export function clientAuthMethodUsesSecret(
 ): boolean {
   return method === undefined || method.startsWith('client_secret_');
 }
-
-/**
- * Source of the client (for runtime tracking)
- */
-export type ClientSource = 'static' | 'adapter';
 
 /**
  * Grant and response types supported by Parako's oidc-provider configuration.
@@ -84,10 +65,6 @@ export const SUPPORTED_RESPONSE_TYPES = [
   'none',
 ] as const;
 
-/**
- * Unified OIDC Client data interface
- * Used by both static clients (parako-rp.jsonc) and adapter-managed clients
- */
 export interface OidcClientData {
   client_id: string;
   client_name: string;
@@ -105,7 +82,6 @@ export interface OidcClientData {
     [key: string]: unknown;
   };
 
-  // URIs
   redirect_uris?: string[];
   post_logout_redirect_uris?: string[];
   client_uri?: string;
@@ -113,12 +89,10 @@ export interface OidcClientData {
   policy_uri?: string;
   tos_uri?: string;
 
-  // OAuth2/OIDC
   grant_types?: string[];
   response_types?: string[];
   scope?: string;
 
-  // Security
   require_pkce?: boolean;
   id_token_signed_response_alg?: string;
   subject_type?: string;
@@ -137,22 +111,10 @@ export interface OidcClientData {
   contacts?: string[];
   isInternalClient?: boolean;
 
-  // Timestamps (adapter-managed clients only)
   created_at?: string;
   updated_at?: string;
 }
 
-/**
- * Client with source tracking (used at runtime for display)
- */
-export interface OidcClientWithSource extends OidcClientData {
-  _source: ClientSource;
-  _readonly: boolean;
-}
-
-/**
- * Filters for listing clients
- */
 export interface ClientFilters {
   application_type?: ApplicationType;
   active?: boolean;
@@ -160,27 +122,11 @@ export interface ClientFilters {
   search?: string;
 }
 
-/**
- * Pagination options for listing clients
- */
-export interface ClientPaginationOptions {
-  page?: number;
-  limit?: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-}
-
-/**
- * Result of client validation
- */
 export interface ClientValidationResult {
   isValid: boolean;
   errors: string[];
 }
 
-/**
- * Statistics about clients
- */
 export interface ClientStatistics {
   total: number;
   active: number;
@@ -188,49 +134,11 @@ export interface ClientStatistics {
   byType: Record<ApplicationType, number>;
 }
 
-/**
- * Result of secret regeneration
- */
 export interface RegenerateSecretResult {
   client: OidcClientData;
   newSecret: string;
 }
 
-/**
- * Adapter Client Service Interface
- * Defines the contract for client management in the adapter
- */
-export interface IAdapterClientService {
-  // CRUD Operations
-  create(clientData: Partial<OidcClientData>): Promise<OidcClientData>;
-  findById(clientId: string): Promise<OidcClientData | null>;
-  findAll(filters?: ClientFilters): Promise<OidcClientData[]>;
-  update(
-    clientId: string,
-    updates: Partial<OidcClientData>
-  ): Promise<OidcClientData | null>;
-  delete(clientId: string): Promise<boolean>;
-
-  // Admin Operations
-  search(query: string): Promise<OidcClientData[]>;
-  activate(clientId: string): Promise<OidcClientData | null>;
-  deactivate(clientId: string): Promise<OidcClientData | null>;
-  regenerateSecret(clientId: string): Promise<RegenerateSecretResult | null>;
-
-  getStatistics(): Promise<ClientStatistics>;
-  countAll(): Promise<number>;
-
-  validateClientData(
-    data: Partial<OidcClientData>
-  ): Promise<ClientValidationResult>;
-
-  generateClientId(): string;
-  generateClientSecret(): string;
-}
-
-/**
- * Default values for new clients
- */
 export const CLIENT_DEFAULTS: Partial<OidcClientData> = {
   application_type: 'web',
   token_endpoint_auth_method: 'client_secret_basic',
@@ -316,9 +224,6 @@ export const APP_TYPE_PRESETS = {
   },
 } as const;
 
-/**
- * Signing algorithms for ID tokens
- */
 export const SIGNING_ALGORITHMS = [
   { value: '', label: 'Provider Default (RS256)' },
   { value: 'RS256', label: 'RS256' },
@@ -332,9 +237,6 @@ export const SIGNING_ALGORITHMS = [
   { value: 'PS512', label: 'PS512' },
 ] as const;
 
-/**
- * Subject types
- */
 export const SUBJECT_TYPES = [
   { value: 'public', label: 'Public', description: 'Same sub for all clients' },
   {
@@ -344,9 +246,6 @@ export const SUBJECT_TYPES = [
   },
 ] as const;
 
-/**
- * Grant types with descriptions
- */
 export const GRANT_TYPES = [
   {
     value: 'authorization_code',
@@ -380,9 +279,6 @@ export const GRANT_TYPES = [
   },
 ] as const;
 
-/**
- * Response types with descriptions
- */
 export const RESPONSE_TYPES = [
   {
     value: 'code',
@@ -410,9 +306,6 @@ export const RESPONSE_TYPES = [
   },
 ] as const;
 
-/**
- * Authentication methods with descriptions
- */
 export const AUTH_METHODS = [
   {
     value: 'client_secret_basic',

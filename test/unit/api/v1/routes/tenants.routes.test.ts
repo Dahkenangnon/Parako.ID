@@ -27,7 +27,7 @@ vi.mock(
   () => ({ validateBody: middlewareMocks.validateBody })
 );
 
-import type { ITenantsRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { ITenantsRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { tenantRoutes } from '../../../../../src/api/v1/routes/tenants.routes.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 import {

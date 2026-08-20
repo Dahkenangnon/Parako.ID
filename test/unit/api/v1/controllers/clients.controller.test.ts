@@ -374,6 +374,7 @@ describe('api/v1/controllers/ClientsController', () => {
 
     it('should strip secret from Mongoose documents (toJSON)', async () => {
       const mongooseDoc = {
+        ...sampleClient,
         toJSON: () => ({ ...sampleClient }),
       };
       vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue(
@@ -804,9 +805,10 @@ describe('api/v1/controllers/ClientsController', () => {
       });
 
       const statistics = {
-        total_tokens_issued: 150,
-        active_sessions: 12,
-        last_used: '2026-03-07T10:00:00Z',
+        total: 5,
+        active: 4,
+        inactive: 1,
+        byType: { web: 3, native: 1, spa: 1 },
       };
       vi.mocked(deps.oidcAdapter.client.getClientStatistics).mockResolvedValue(
         statistics
@@ -856,6 +858,7 @@ describe('api/v1/controllers/ClientsController', () => {
           client_id: 'test',
           client_secret: 'secret123',
           client_name: 'Test',
+          application_type: 'web' as const,
         };
         vi.mocked(deps.oidcAdapter.client.findClientById).mockResolvedValue(
           client
@@ -871,10 +874,26 @@ describe('api/v1/controllers/ClientsController', () => {
     describe('list — cursor field', () => {
       it('should pass "client_id" as cursor field (not "_id")', async () => {
         const clients = [
-          { client_id: 'c1', client_name: 'A' },
-          { client_id: 'c2', client_name: 'B' },
-          { client_id: 'c3', client_name: 'C' },
-          { client_id: 'c4', client_name: 'D' },
+          {
+            client_id: 'c1',
+            client_name: 'A',
+            application_type: 'web' as const,
+          },
+          {
+            client_id: 'c2',
+            client_name: 'B',
+            application_type: 'web' as const,
+          },
+          {
+            client_id: 'c3',
+            client_name: 'C',
+            application_type: 'web' as const,
+          },
+          {
+            client_id: 'c4',
+            client_name: 'D',
+            application_type: 'web' as const,
+          },
         ];
         vi.mocked(deps.oidcAdapter.client.findAllClients).mockResolvedValue(
           clients

@@ -398,6 +398,29 @@ describe('api/v1/pagination', () => {
       expect(decoded.client_id).toBe('c3');
       expect(decoded.id).toBe('c');
     });
+
+    it('uses an explicit stable identifier without adding it to response data', () => {
+      const docs = [
+        { client_id: 'c1' },
+        { client_id: 'c2' },
+        { client_id: 'c3' },
+        { client_id: 'c4' },
+      ];
+      const result = buildCursorResponse(
+        docs,
+        3,
+        'client_id',
+        undefined,
+        client => client.client_id
+      );
+
+      expect(result.data).toEqual(docs.slice(0, 3));
+      expect(result.data[0]).not.toHaveProperty('id');
+
+      const decoded = decodeCursor(result.pagination.next_cursor!);
+      expect(decoded.client_id).toBe('c3');
+      expect(decoded.id).toBe('c3');
+    });
   });
 
   // buildCursorQuery — DB-agnostic id field

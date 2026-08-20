@@ -28,7 +28,7 @@ vi.mock(
 );
 
 import { clientRoutes } from '../../../../../src/api/v1/routes/clients.routes.js';
-import type { IClientsRouteController } from '../../../../../src/api/v1/routes/index.js';
+import type { IClientsRouteController } from '../../../../../src/api/v1/routes/contracts.js';
 import { SCOPES } from '../../../../../src/api/v1/scopes.js';
 import {
   createClientSchema,
