@@ -219,9 +219,15 @@ export function writeReleaseManifest(options) {
   return target;
 }
 
-const isEntrypoint =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+export function isMainModule(moduleUrl, argv = process.argv) {
+  const scriptPath = argv[1];
+  return (
+    scriptPath !== undefined &&
+    path.resolve(scriptPath) === fileURLToPath(moduleUrl)
+  );
+}
+
+const isEntrypoint = isMainModule(import.meta.url);
 export function main({
   argv = process.argv.slice(2),
   stdout = console.log,
