@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CreateSocialIntegrationDto } from '../../../../src/db/repositories/interfaces/social-integration.repository.js';
 import { MongooseSocialIntegrationRepository } from '../../../../src/db/repositories/mongoose/social-integration.repository.js';
 import { PrismaSocialIntegrationRepository } from '../../../../src/db/repositories/prisma/social-integration.repository.js';
+import { PersistenceDecodingError } from '../../../../src/db/persistence/json-decoder.js';
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -27,7 +28,10 @@ function row(overrides: Record<string, unknown> = {}) {
 function fullRow() {
   return row({
     provider_username: 'alice',
-    tokens: JSON.stringify({ access_token: 'access' }),
+    tokens: JSON.stringify({
+      access_token: 'access',
+      expires_at: '2026-08-01T00:10:00.000Z',
+    }),
     last_used: new Date('2026-08-01T00:02:00.000Z'),
     metadata: JSON.stringify({
       created_by: 'user',
@@ -161,7 +165,10 @@ describe('Prisma social integration repository', () => {
     expect(result).toEqual(
       expect.objectContaining({
         provider_username: 'alice',
-        tokens: { access_token: 'access' },
+        tokens: {
+          access_token: 'access',
+          expires_at: new Date('2026-08-01T00:10:00.000Z'),
+        },
         last_used: lastUsed,
         metadata: {
           created_by: 'user',
@@ -173,20 +180,47 @@ describe('Prisma social integration repository', () => {
     );
   });
 
-  it('preserves non-date metadata values without coercion', async () => {
-    const findUnique = vi.fn().mockResolvedValue(
-      row({
-        metadata: JSON.stringify({ linked_at: 42, last_sync: null }),
-      })
-    );
-    const repository = new PrismaSocialIntegrationRepository(
-      prismaClient({ findUnique }) as never
-    );
+  it.each([
+    {
+      context: 'social_integration.provider_data',
+      overrides: {
+        provider_data: '{"sub":42,"value":"private-marker"}',
+      },
+    },
+    {
+      context: 'social_integration.tokens',
+      overrides: {
+        tokens: '{"access_token":42,"value":"private-marker"}',
+      },
+    },
+    {
+      context: 'social_integration.metadata',
+      overrides: {
+        metadata:
+          '{"created_by":"user","linked_at":42,"value":"private-marker"}',
+      },
+    },
+  ])(
+    'rejects invalid persisted social integration data without exposing its value',
+    async ({ context, overrides }) => {
+      const repository = new PrismaSocialIntegrationRepository(
+        prismaClient({
+          findUnique: vi.fn().mockResolvedValue(row(overrides)),
+        }) as never
+      );
 
-    await expect(repository.findById('social-1')).resolves.toMatchObject({
-      metadata: { linked_at: 42, last_sync: null },
-    });
-  });
+      try {
+        await repository.findById('social-1');
+        throw new Error(
+          'Expected persisted social integration decoding to fail'
+        );
+      } catch (error) {
+        expect(error).toBeInstanceOf(PersistenceDecodingError);
+        expect(error).toMatchObject({ context });
+        expect(String(error)).not.toContain('private-marker');
+      }
+    }
+  );
 
   it('handles found and missing id, filter, and provider lookups', async () => {
     const findUnique = vi

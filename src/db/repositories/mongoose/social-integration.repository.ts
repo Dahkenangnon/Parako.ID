@@ -12,6 +12,7 @@ import type {
 import type {
   PaginatedResult,
   PaginationOptions,
+  QueryOptions,
 } from '../interfaces/base.repository.js';
 import { AbstractMongooseRepository } from './base.repository.js';
 
@@ -31,6 +32,13 @@ export class MongooseSocialIntegrationRepository
 {
   constructor(socialIntegrationModel: SocialIntegrationModel) {
     super(socialIntegrationModel);
+  }
+
+  async findMany(
+    filter: Record<string, unknown>,
+    opts?: QueryOptions
+  ): Promise<ISocialIntegration[]> {
+    return this.queryMany(filter, opts);
   }
 
   async findByUserId(

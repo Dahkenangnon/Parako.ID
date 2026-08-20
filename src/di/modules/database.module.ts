@@ -5,7 +5,7 @@ import { TYPES } from '../types.js';
 import DatabaseConnectionManager from '../../db/connection.js';
 import { IDatabaseConnectionManager } from '../interfaces/database-connection-manager.interface.js';
 
-import type { IUserRepository } from '../../db/repositories/interfaces/user.repository.js';
+import type { IUserPersistenceRepository } from '../../db/repositories/interfaces/user.repository.js';
 import type { IActivityRepository } from '../../db/repositories/interfaces/activity.repository.js';
 import type { ISettingsRepository } from '../../db/repositories/interfaces/settings.repository.js';
 import type { ISocialIntegrationRepository } from '../../db/repositories/interfaces/social-integration.repository.js';
@@ -134,7 +134,7 @@ export const databaseModule: ContainerModule = new ContainerModule(
       .inSingletonScope();
 
     options
-      .bind<IUserRepository>(TYPES.UserRepository)
+      .bind<IUserPersistenceRepository>(TYPES.UserRepository)
       .toDynamicValue(context => {
         const bundle = context.get<AdapterBundle>(TYPES.AdapterBundle);
         if (bundle.kind === 'prisma') {

@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { getDefaultFullConfig } from '../../../src/config/constants.js';
+import { PersistedConfigSchema } from '../../../src/config/types.js';
+
 import {
   createSettingsRepositoryHarness,
   type SettingsRepositoryHarness,
@@ -30,6 +33,27 @@ describe.sequential('settings repository persistence contract', () => {
 
   afterAll(async () => {
     if (harness) await harness.close();
+  });
+
+  it('round-trips the canonical persisted configuration without adapter drift', async () => {
+    const config = PersistedConfigSchema.parse(getDefaultFullConfig());
+
+    await harness.repository.save(key, config);
+    const stored = await harness.repository.findActive(key);
+
+    expect(stored).not.toBeNull();
+    for (const section of [
+      'application',
+      'branding',
+      'deployment',
+      'security',
+      'features',
+      'oidc',
+      'integrations',
+      'notifications',
+    ] as const) {
+      expect(stored?.[section]).toEqual(config[section]);
+    }
   });
 
   it('preserves revision history while keeping exactly one active revision', async () => {

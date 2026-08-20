@@ -82,6 +82,45 @@ describe('Prisma settings repository', () => {
     );
   });
 
+  it.each([
+    ['value', '{"secret":"private-marker"'],
+    ['metadata', '"private-marker"'],
+  ])(
+    'rejects malformed persisted %s without exposing its content',
+    async (field, serialized) => {
+      const repository = new PrismaSettingsRepository(
+        prismaClient({
+          findUnique: vi
+            .fn()
+            .mockResolvedValue(settingsRow({ [field]: serialized })),
+        }) as never
+      );
+
+      const rejection = repository.findById('settings-1');
+      await expect(rejection).rejects.toMatchObject({
+        name: 'PersistenceDecodingError',
+        context: `settings.settings-1.${field}`,
+      });
+      await expect(rejection).rejects.not.toThrow('private-marker');
+    }
+  );
+
+  it('rejects non-object persisted settings content', async () => {
+    const repository = new PrismaSettingsRepository(
+      prismaClient({
+        findUnique: vi
+          .fn()
+          .mockResolvedValue(
+            settingsRow({ value: JSON.stringify(['not', 'an', 'object']) })
+          ),
+      }) as never
+    );
+
+    await expect(repository.findById('settings-1')).rejects.toThrow(
+      'Invalid persisted data at settings.settings-1.value: schema validation failed at <root> (invalid_type)'
+    );
+  });
+
   it('synchronizes managed columns while merging only configuration content', async () => {
     const current = settingsRow();
     const updated = settingsRow({

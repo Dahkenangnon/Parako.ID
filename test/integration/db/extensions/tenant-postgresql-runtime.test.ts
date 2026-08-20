@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import type { BootstrapConfig } from '../../../../src/config/schemas/bootstrap-schema.js';
@@ -8,6 +8,7 @@ import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 import { PrismaOidcStoreAdapter } from '../../../../src/oidc/adapter/prisma/index.js';
 import { PrismaOidcAdminService } from '../../../../src/oidc/adapter/prisma/admin-service.js';
 import type { ILogger } from '../../../../src/di/interfaces/logger.interface.js';
+import { defineOidcClientAdminContract } from '../../../contract/support/oidc-client-admin-contract.js';
 
 describe('PostgreSQL generated client and RLS runtime', () => {
   let client: PrismaClient;
@@ -17,8 +18,10 @@ describe('PostgreSQL generated client and RLS runtime', () => {
   const email = `shared-${suffix}@example.test`;
   const oidcId = `shared-oidc-${suffix}`;
   const logger = { error: () => {} } as unknown as ILogger;
+  const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 
   beforeAll(() => {
+    process.env.ENCRYPTION_KEY ||= randomBytes(32).toString('hex');
     const url = resolvePostgresqlTestUrl(process.env);
     if (!url) {
       throw new Error(
@@ -57,6 +60,11 @@ describe('PostgreSQL generated client and RLS runtime', () => {
       async () => await client.user.deleteMany({ where: { email } })
     );
     await client.$disconnect();
+    if (originalEncryptionKey) {
+      process.env.ENCRYPTION_KEY = originalEncryptionKey;
+    } else {
+      delete process.env.ENCRYPTION_KEY;
+    }
   });
 
   it('supports the same unique value in isolated tenants', async () => {
@@ -145,5 +153,29 @@ describe('PostgreSQL generated client and RLS runtime', () => {
       await tenantContext.run(tenantA, () => adapter.destroy(sessionId));
       await tenantContext.run(tenantB, () => adapter.destroy(sessionId));
     }
+  });
+
+  defineOidcClientAdminContract({
+    backend: 'Prisma PostgreSQL',
+    async createHarness() {
+      const reset = async () => {
+        for (const tenantId of [
+          'default',
+          'contract-tenant-a',
+          'contract-tenant-b',
+        ]) {
+          await tenantContext.run(tenantId, () =>
+            client.oidcStore.deleteMany({ where: { model: 'Client' } })
+          );
+        }
+      };
+      return {
+        client: new PrismaOidcAdminService(client, 'Client'),
+        supportsTenantIsolation: true,
+        reset,
+        runAsTenant: (tenantId, operation) =>
+          tenantContext.run(tenantId, operation),
+      };
+    },
   });
 });

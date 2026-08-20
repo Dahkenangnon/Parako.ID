@@ -9,7 +9,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
-import type { IUserRepository } from '../../db/repositories/interfaces/user.repository.js';
+import type { IUserPersistenceRepository } from '../../db/repositories/interfaces/user.repository.js';
 import type { IActivityRepository } from '../../db/repositories/interfaces/activity.repository.js';
 import type { ISettingsRepository } from '../../db/repositories/interfaces/settings.repository.js';
 import type { ISocialIntegrationRepository } from '../../db/repositories/interfaces/social-integration.repository.js';
@@ -31,7 +31,7 @@ export interface PrismaAdapterBundle {
   readonly UserRepository: new (
     client: PrismaClient,
     adapter?: Exclude<StorageAdapter, 'mongodb'>
-  ) => IUserRepository;
+  ) => IUserPersistenceRepository;
   readonly ActivityRepository: new (
     client: PrismaClient
   ) => IActivityRepository;
@@ -49,7 +49,7 @@ export interface PrismaAdapterBundle {
 
 export interface MongooseAdapterBundle {
   readonly kind: 'mongoose';
-  readonly UserRepository: new (model: UserModel) => IUserRepository;
+  readonly UserRepository: new (model: UserModel) => IUserPersistenceRepository;
   readonly ActivityRepository: new (
     model: ActivityModel
   ) => IActivityRepository;

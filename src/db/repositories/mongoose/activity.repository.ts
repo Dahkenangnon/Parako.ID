@@ -28,9 +28,6 @@ export class MongooseActivityRepository
     super(activityModel);
   }
 
-  // IActivityRepository omits findMany from base and redefines it with paginated return.
-  // The override is intentionally incompatible with the base class signature.
-  // @ts-expect-error -- return type narrowed from T[] to PaginatedResult per IActivityRepository
   async findMany(
     filter: ActivityFilter,
     opts?: PaginationOptions
@@ -77,7 +74,7 @@ export class MongooseActivityRepository
   }
 
   async findByDevice(fingerprint: string): Promise<IActivity[]> {
-    return super.findMany({ 'device_infos.fingerprint': fingerprint });
+    return this.queryMany({ 'device_infos.fingerprint': fingerprint });
   }
 
   async count(filter?: ActivityFilter): Promise<number> {

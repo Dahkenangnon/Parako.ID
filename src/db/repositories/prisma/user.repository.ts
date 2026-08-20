@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
+import { z } from 'zod';
 import type { IUser } from '../../../types/user.js';
 import type { WebAuthnCredential } from '../../../types/webauthn.js';
 import type {
-  IUserRepository,
+  IUserPersistenceRepository,
   UserFilter,
   CreateUserDto,
   UpdateUserDto,
@@ -23,6 +24,7 @@ import {
 } from './base.repository.js';
 import { computeUserName } from '../user-name.js';
 import { tenantContext } from '../../../multi-tenancy/tenant-context.js';
+import { decodePersistedJson } from '../../persistence/json-decoder.js';
 
 /**
  * User roles are stored as a JSON-encoded string in both Prisma schemas.
@@ -39,6 +41,14 @@ const USER_SEARCH_FIELDS = [
   'given_name',
   'family_name',
 ] as const;
+
+const UserStringArraySchema = z.array(z.string());
+const AuthenticatorTransportsSchema = z.array(
+  z.enum(['usb', 'ble', 'nfc', 'internal', 'hybrid'])
+);
+const RecoveryMethodsSchema = z.array(
+  z.enum(['backup_codes', 'secondary_email', 'sms', 'security_questions'])
+);
 
 function normalizeUserFilterToPrisma(
   filter: Record<string, unknown>,
@@ -116,7 +126,6 @@ function toIUser(row: UserFull): IUser {
     row.webauthn_credentials.length > 0;
 
   type MfaShape = NonNullable<IUser['mfa']>;
-  type RecoveryShape = NonNullable<IUser['recovery']>;
   type NotifShape = NonNullable<IUser['notification_preferences']>;
 
   const mfaData: IUser['mfa'] = hasMfaData
@@ -154,9 +163,11 @@ function toIUser(row: UserFull): IUser {
                       (c.device_type as WebAuthnCredential['device_type']) ??
                       'singleDevice',
                     backed_up: c.backed_up,
-                    transports: JSON.parse(
-                      c.transports
-                    ) as WebAuthnCredential['transports'],
+                    transports: decodePersistedJson(
+                      c.transports,
+                      AuthenticatorTransportsSchema,
+                      'user.webauthn_credentials.transports'
+                    ),
                     created_at: c.created_at,
                     friendly_name: c.friendly_name,
                     last_used_at: c.last_used_at ?? undefined,
@@ -182,9 +193,11 @@ function toIUser(row: UserFull): IUser {
   const recoveryData: IUser['recovery'] = hasRecoveryData
     ? {
         enabled: row.recovery?.enabled ?? false,
-        methods: JSON.parse(
-          row.recovery?.methods ?? '[]'
-        ) as RecoveryShape['methods'],
+        methods: decodePersistedJson(
+          row.recovery?.methods ?? '[]',
+          RecoveryMethodsSchema,
+          'user.recovery.methods'
+        ),
         secondary_email: row.recovery?.secondary_email
           ? {
               email: row.recovery.secondary_email,
@@ -263,7 +276,7 @@ function toIUser(row: UserFull): IUser {
     street_address: row.street_address ?? undefined,
     region: row.region ?? undefined,
     postal_code: row.postal_code ?? undefined,
-    roles: JSON.parse(row.roles) as string[],
+    roles: decodePersistedJson(row.roles, UserStringArraySchema, 'user.roles'),
     phone_number_verified: row.phone_number_verified,
     email_verified: row.email_verified,
     theme: (row.theme as IUser['theme']) ?? undefined,
@@ -280,7 +293,11 @@ function toIUser(row: UserFull): IUser {
     phone_verification_token: row.phone_verification_token ?? undefined,
     phone_verification_code: row.phone_verification_code ?? undefined,
     phone_verification_expires: row.phone_verification_expires ?? undefined,
-    blocked_from: JSON.parse(row.blocked_from) as string[],
+    blocked_from: decodePersistedJson(
+      row.blocked_from,
+      UserStringArraySchema,
+      'user.blocked_from'
+    ),
     account_is_anonymized: row.account_is_anonymized,
     register_with: row.register_with as IUser['register_with'],
     auth_provider: (row.auth_provider as IUser['auth_provider']) ?? undefined,
@@ -303,7 +320,7 @@ function toIUser(row: UserFull): IUser {
 
 export class PrismaUserRepository
   extends AbstractPrismaRepository
-  implements IUserRepository
+  implements IUserPersistenceRepository
 {
   constructor(
     prisma: PrismaClient,

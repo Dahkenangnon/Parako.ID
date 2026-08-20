@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CreateActivityDto } from '../../../../src/db/repositories/interfaces/activity.repository.js';
 import { MongooseActivityRepository } from '../../../../src/db/repositories/mongoose/activity.repository.js';
 import { PrismaActivityRepository } from '../../../../src/db/repositories/prisma/activity.repository.js';
+import { PersistenceDecodingError } from '../../../../src/db/persistence/json-decoder.js';
 import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 
 const includeRelations = {
@@ -10,7 +11,13 @@ const includeRelations = {
   device: true,
 };
 
-function minimalRow(overrides: Record<string, unknown> = {}) {
+interface ActivityRowFixture extends Record<string, unknown> {
+  target: Record<string, unknown> | null;
+}
+
+function minimalRow(
+  overrides: Record<string, unknown> = {}
+): ActivityRowFixture {
   return {
     id: 'activity-1',
     type: 'login',
@@ -27,7 +34,7 @@ function minimalRow(overrides: Record<string, unknown> = {}) {
     device: null,
     created_at: new Date('2026-08-01T00:00:01.000Z'),
     ...overrides,
-  };
+  } as ActivityRowFixture;
 }
 
 function fullRow() {
@@ -864,6 +871,27 @@ describe('Prisma activity repository', () => {
     expect(groupBy).toHaveBeenLastCalledWith({ by: ['type'], where: {} });
     await repository.delete('activity-1');
     expect(deleteOne).toHaveBeenCalledWith({ where: { id: 'activity-1' } });
+  });
+
+  it('rejects malformed persisted target data without exposing its value', async () => {
+    const persistedMarker = 'private-marker';
+    const invalidRow = fullRow();
+    if (!invalidRow.target) throw new Error('Expected target fixture');
+    invalidRow.target.entity_data = JSON.stringify([persistedMarker]);
+    const repository = new PrismaActivityRepository(
+      prismaClient({
+        findUnique: vi.fn().mockResolvedValue(invalidRow),
+      }) as never
+    );
+
+    try {
+      await repository.findById('activity-1');
+      throw new Error('Expected persisted activity decoding to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PersistenceDecodingError);
+      expect(error).toMatchObject({ context: 'activity.target.entity_data' });
+      expect(String(error)).not.toContain(persistedMarker);
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 import { injectable } from 'inversify';
 import type { IUser, UserModel } from '../../../models/user.model.js';
 import type {
-  IUserRepository,
+  IUserPersistenceRepository,
   UserFilter,
   CreateUserDto,
   UpdateUserDto,
@@ -47,7 +47,7 @@ function normalizeUserFilterToMongoose(
 @injectable()
 export class MongooseUserRepository
   extends AbstractMongooseRepository<IUser, CreateUserDto, UpdateUserDto>
-  implements IUserRepository
+  implements IUserPersistenceRepository
 {
   constructor(private readonly userModel: UserModel) {
     super(userModel);
@@ -96,9 +96,6 @@ export class MongooseUserRepository
     });
   }
 
-  // IUserRepository omits findMany from base and redefines it with paginated return.
-  // The override is intentionally incompatible with the base class signature.
-  // @ts-expect-error -- return type narrowed from T[] to PaginatedResult per IUserRepository
   async findMany(
     filter: UserFilter,
     opts?: PaginationOptions
@@ -107,7 +104,7 @@ export class MongooseUserRepository
   }
 
   async findManyRaw(filter: UserFilter, opts?: QueryOptions): Promise<IUser[]> {
-    return super.findMany(normalizeUserFilterToMongoose(filter), opts);
+    return this.queryMany(normalizeUserFilterToMongoose(filter), opts);
   }
 
   async updateMfa(id: string, mfa: IUserMfaUpdate): Promise<void> {

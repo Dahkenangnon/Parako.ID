@@ -1,11 +1,8 @@
 import { injectable } from 'inversify';
 import crypto from 'node:crypto';
 import { PrismaClient, Prisma } from '@prisma/client';
-import type {
-  ISocialIntegration,
-  ProviderUserData,
-  TokenData,
-} from '../../../types/social-integration.js';
+import { z } from 'zod';
+import type { ISocialIntegration } from '../../../types/social-integration.js';
 import type {
   ISocialIntegrationRepository,
   CreateSocialIntegrationDto,
@@ -21,20 +18,66 @@ import {
   normalizeToPrisma,
   toOrderBy,
 } from './base.repository.js';
+import { decodePersistedJson } from '../../persistence/json-decoder.js';
+
+const ProviderUserDataSchema = z
+  .object({
+    sub: z.string(),
+    email: z.string().optional(),
+    email_verified: z.boolean().optional(),
+    phone_number: z.string().optional(),
+    phone_number_verified: z.boolean().optional(),
+    name: z.string().optional(),
+    given_name: z.string().optional(),
+    family_name: z.string().optional(),
+    picture: z.string().optional(),
+    locale: z.string().optional(),
+    provider_username: z.string().optional(),
+    raw_data: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+const TokenDataSchema = z
+  .object({
+    access_token: z.string(),
+    refresh_token: z.string().optional(),
+    id_token: z.string().optional(),
+    token_type: z.string().optional(),
+    expires_at: z
+      .string()
+      .datetime()
+      .transform(value => new Date(value))
+      .optional(),
+    scope: z.string().optional(),
+  })
+  .passthrough();
+
+const SocialMetadataSchema = z
+  .object({
+    created_by: z.enum(['user', 'admin', 'system']),
+    linked_at: z
+      .string()
+      .datetime()
+      .transform(value => new Date(value)),
+    last_sync: z
+      .string()
+      .datetime()
+      .transform(value => new Date(value))
+      .optional(),
+    sync_errors: z.array(z.string()).optional(),
+  })
+  .passthrough();
 
 function parseMetadata(
   value: string | null
 ): ISocialIntegration['metadata'] | undefined {
   if (!value) return undefined;
 
-  const metadata = JSON.parse(value) as Record<string, unknown>;
-  for (const field of ['linked_at', 'last_sync'] as const) {
-    if (typeof metadata[field] === 'string') {
-      metadata[field] = new Date(metadata[field]);
-    }
-  }
-
-  return metadata as unknown as ISocialIntegration['metadata'];
+  return decodePersistedJson(
+    value,
+    SocialMetadataSchema,
+    'social_integration.metadata'
+  );
 }
 
 function toISocialIntegration(
@@ -47,8 +90,18 @@ function toISocialIntegration(
     method: row.method as ISocialIntegration['method'],
     provider_sub: row.provider_sub,
     provider_username: row.provider_username ?? undefined,
-    provider_data: JSON.parse(row.provider_data) as ProviderUserData,
-    tokens: row.tokens ? (JSON.parse(row.tokens) as TokenData) : undefined,
+    provider_data: decodePersistedJson(
+      row.provider_data,
+      ProviderUserDataSchema,
+      'social_integration.provider_data'
+    ),
+    tokens: row.tokens
+      ? decodePersistedJson(
+          row.tokens,
+          TokenDataSchema,
+          'social_integration.tokens'
+        )
+      : undefined,
     is_active: row.is_active,
     last_used: row.last_used ?? undefined,
     metadata: parseMetadata(row.metadata),

@@ -1,5 +1,6 @@
 import { injectable } from 'inversify';
 import { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 import type { ISettings } from '../../../models/settings/types.js';
 import type {
   ISettingsRepository,
@@ -9,6 +10,17 @@ import type {
 import type { QueryOptions } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
 import { ConfigurationVersionConflictError } from '../../../errors/configuration-version-conflict.error.js';
+import {
+  decodePersistedJson,
+  PersistedJsonObjectSchema,
+} from '../../persistence/json-decoder.js';
+
+const SettingsMetadataSchema = z.object({
+  last_modified_by: z.string().optional(),
+  change_reason: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  environment: z.string().optional(),
+});
 
 interface SettingsRow {
   id: string;
@@ -23,8 +35,16 @@ interface SettingsRow {
 }
 
 function toISettings(row: SettingsRow): ISettings {
-  const parsed = JSON.parse(row.value) as Partial<ISettings>;
-  const meta = JSON.parse(row.metadata) as SettingsMeta;
+  const parsed = decodePersistedJson(
+    row.value,
+    PersistedJsonObjectSchema,
+    `settings.${row.id}.value`
+  ) as Partial<ISettings>;
+  const meta = decodePersistedJson(
+    row.metadata,
+    SettingsMetadataSchema,
+    `settings.${row.id}.metadata`
+  );
   return {
     ...parsed,
     id: row.id,
@@ -149,7 +169,11 @@ export class PrismaSettingsRepository
     const current = await this.prisma.settings.findUnique({ where: { id } });
     if (!current) throw new Error(`Settings not found: ${id}`);
     const currentContent = settingsContent(
-      JSON.parse(current.value) as Record<string, unknown>
+      decodePersistedJson(
+        current.value,
+        PersistedJsonObjectSchema,
+        `settings.${current.id}.value`
+      )
     );
     const updateContent = settingsContent(
       data as unknown as Record<string, unknown>

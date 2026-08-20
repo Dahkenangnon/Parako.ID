@@ -21,7 +21,7 @@ export abstract class AbstractMongooseRepository<
   T extends IBaseModel,
   TCreate,
   TUpdate = Partial<TCreate>,
-> implements IBaseRepository<T, TCreate, TUpdate> {
+> implements Omit<IBaseRepository<T, TCreate, TUpdate>, 'findMany'> {
   constructor(protected readonly model: TypedModel<any, any>) {}
 
   async findById(id: string): Promise<T | null> {
@@ -42,7 +42,7 @@ export abstract class AbstractMongooseRepository<
     return serializeDocument(doc) as T | null;
   }
 
-  async findMany(
+  protected async queryMany(
     filter: Record<string, unknown>,
     opts?: QueryOptions
   ): Promise<T[]> {

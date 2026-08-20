@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MongooseTenantSettingsOverrideRepository } from '../../../../src/db/repositories/mongoose/tenant-settings-override.repository.js';
 import { PrismaTenantSettingsOverrideRepository } from '../../../../src/db/repositories/prisma/tenant-settings-override.repository.js';
+import { PersistenceDecodingError } from '../../../../src/db/persistence/json-decoder.js';
 
 function overrideRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -264,6 +265,37 @@ describe('Prisma tenant settings override repository', () => {
     );
     expect(create).toHaveBeenCalledTimes(16);
   });
+
+  it.each([
+    {
+      context: 'tenant_settings_override.value',
+      overrides: { value: '["private-marker"]' },
+    },
+    {
+      context: 'tenant_settings_override.metadata',
+      overrides: {
+        metadata: '{"last_modified_by":42,"value":"private-marker"}',
+      },
+    },
+  ])(
+    'rejects invalid persisted tenant override data without exposing its value',
+    async ({ context, overrides }) => {
+      const repository = new PrismaTenantSettingsOverrideRepository(
+        prismaClient({
+          findFirst: vi.fn().mockResolvedValue(overrideRow(overrides)),
+        }) as never
+      );
+
+      try {
+        await repository.findActive();
+        throw new Error('Expected persisted override decoding to fail');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PersistenceDecodingError);
+        expect(error).toMatchObject({ context });
+        expect(String(error)).not.toContain('private-marker');
+      }
+    }
+  );
 });
 
 describe('Mongoose tenant settings override repository', () => {

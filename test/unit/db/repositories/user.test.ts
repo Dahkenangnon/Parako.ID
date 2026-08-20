@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MongooseUserRepository } from '../../../../src/db/repositories/mongoose/user.repository.js';
 import { PrismaUserRepository } from '../../../../src/db/repositories/prisma/user.repository.js';
+import { PersistenceDecodingError } from '../../../../src/db/persistence/json-decoder.js';
 import { tenantContext } from '../../../../src/multi-tenancy/tenant-context.js';
 
 function mongooseQuery<T>(result: T) {
@@ -2298,6 +2299,63 @@ describe('Prisma user repository', () => {
         },
         data: { used: true },
       });
+    }
+  );
+
+  it.each([
+    {
+      field: 'roles',
+      context: 'user.roles',
+      overrides: { roles: '{"private-marker":true}' },
+    },
+    {
+      field: 'blocked addresses',
+      context: 'user.blocked_from',
+      overrides: { blocked_from: '{"private-marker":true}' },
+    },
+    {
+      field: 'WebAuthn transports',
+      context: 'user.webauthn_credentials.transports',
+      overrides: {
+        webauthn_credentials: [
+          {
+            credential_id: 'credential-1',
+            public_key: 'public-key',
+            counter: 0,
+            device_type: null,
+            backed_up: false,
+            transports: '["private-marker"]',
+            created_at: new Date('2026-08-01T00:00:00.000Z'),
+            friendly_name: 'Credential',
+            last_used_at: null,
+          },
+        ],
+      },
+    },
+    {
+      field: 'recovery methods',
+      context: 'user.recovery.methods',
+      overrides: {
+        recovery: { enabled: false, methods: '["private-marker"]' },
+      },
+    },
+  ])(
+    'rejects invalid persisted user data without exposing its value',
+    async ({ context, overrides }) => {
+      const repository = new PrismaUserRepository(
+        prismaUserClient({
+          findUnique: vi.fn().mockResolvedValue(prismaUserRow(overrides)),
+        }) as never
+      );
+
+      try {
+        await repository.findById('user-1');
+        throw new Error('Expected persisted user decoding to fail');
+      } catch (error) {
+        expect(error).toBeInstanceOf(PersistenceDecodingError);
+        expect(error).toMatchObject({ context });
+        expect(String(error)).not.toContain('private-marker');
+      }
     }
   );
 });

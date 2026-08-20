@@ -1,11 +1,22 @@
 import { injectable } from 'inversify';
 import type { PrismaClient } from '@prisma/client';
+import { z } from 'zod';
 import type { ITenantSettingsOverride } from '../../../types/tenant-settings-override.js';
 import type { ITenantSettingsOverrideRepository } from '../interfaces/tenant-settings-override.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
+import {
+  decodePersistedJson,
+  PersistedJsonObjectSchema,
+} from '../../persistence/json-decoder.js';
 
 const KEY = 'parako_config';
 const SAVE_MAX_ATTEMPTS = 16;
+const TenantOverrideMetadataSchema = z
+  .object({
+    last_modified_by: z.string().optional(),
+    change_reason: z.string().optional(),
+  })
+  .passthrough();
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
@@ -47,11 +58,16 @@ interface TsoRow {
 }
 
 function toITenantSettingsOverride(row: TsoRow): ITenantSettingsOverride {
-  const parsed = JSON.parse(row.value) as Partial<ITenantSettingsOverride>;
-  const meta = JSON.parse(row.metadata) as {
-    last_modified_by?: string;
-    change_reason?: string;
-  };
+  const parsed = decodePersistedJson(
+    row.value,
+    PersistedJsonObjectSchema,
+    'tenant_settings_override.value'
+  );
+  const meta = decodePersistedJson(
+    row.metadata,
+    TenantOverrideMetadataSchema,
+    'tenant_settings_override.metadata'
+  );
   return {
     ...parsed,
     id: row.id,

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PaginationOptions } from '../../../../src/db/repositories/interfaces/base.repository.js';
+import type {
+  PaginationOptions,
+  QueryOptions,
+} from '../../../../src/db/repositories/interfaces/base.repository.js';
 import { AbstractMongooseRepository } from '../../../../src/db/repositories/mongoose/base.repository.js';
 import {
   AbstractPrismaRepository,
@@ -37,6 +40,13 @@ class MongooseRepositoryHarness extends AbstractMongooseRepository<
   RecordModel,
   { name: string }
 > {
+  findMany(
+    filter: Record<string, unknown>,
+    options?: QueryOptions
+  ): Promise<RecordModel[]> {
+    return this.queryMany(filter, options);
+  }
+
   exposePaginate(
     filter: Record<string, unknown>,
     options?: {

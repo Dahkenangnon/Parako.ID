@@ -68,7 +68,7 @@ export interface IWebAuthnCredential {
   last_used_at?: Date;
 }
 
-export interface IUserRepository extends Omit<
+export interface IUserPersistenceRepository extends Omit<
   IBaseRepository<IUser, CreateUserDto, UpdateUserDto>,
   'findMany'
 > {

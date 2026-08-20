@@ -6,6 +6,7 @@ import type {
   CreateSettingsDto,
   SettingsMeta,
 } from '../interfaces/settings.repository.js';
+import type { QueryOptions } from '../interfaces/base.repository.js';
 import { AbstractMongooseRepository } from './base.repository.js';
 import { serializeDocument, serializeDocuments } from '../../utils.js';
 import { ConfigurationVersionConflictError } from '../../../errors/configuration-version-conflict.error.js';
@@ -28,6 +29,13 @@ export class MongooseSettingsRepository
 {
   constructor(private readonly settingsModel: SettingsModel) {
     super(settingsModel);
+  }
+
+  async findMany(
+    filter: Record<string, unknown>,
+    opts?: QueryOptions
+  ): Promise<ISettings[]> {
+    return this.queryMany(filter, opts);
   }
 
   async findActive(key: string): Promise<ISettings | null> {

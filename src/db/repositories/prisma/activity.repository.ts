@@ -14,6 +14,10 @@ import type {
 } from '../interfaces/base.repository.js';
 import { AbstractPrismaRepository } from './base.repository.js';
 import {
+  decodePersistedJson,
+  PersistedJsonObjectSchema,
+} from '../../persistence/json-decoder.js';
+import {
   DEFAULT_TENANT_ID,
   tenantContext,
 } from '../../../multi-tenancy/tenant-context.js';
@@ -66,7 +70,11 @@ function toIActivity(row: ActivityFull): IActivity {
           entity_id: row.target.entity_id ?? undefined,
           entity_name: row.target.entity_name ?? undefined,
           entity_data: row.target.entity_data
-            ? (JSON.parse(row.target.entity_data) as Record<string, unknown>)
+            ? decodePersistedJson(
+                row.target.entity_data,
+                PersistedJsonObjectSchema,
+                'activity.target.entity_data'
+              )
             : undefined,
         }
       : undefined,
