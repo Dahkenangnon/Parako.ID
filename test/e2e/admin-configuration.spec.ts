@@ -78,6 +78,19 @@ function assetPath(assetUrl: string): string {
   return new URL(assetUrl, IDP_ORIGIN).pathname;
 }
 
+async function expectAssetPath(
+  locator: Locator,
+  attribute: string,
+  expectedUrl: string
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const value = await locator.getAttribute(attribute);
+      return value ? assetPath(value) : null;
+    })
+    .toBe(assetPath(expectedUrl));
+}
+
 async function readRenderedBrandingAssets(page: Page) {
   const assets = await page.evaluate(() => ({
     logos: Array.from(
@@ -2550,27 +2563,33 @@ test('branding media is validated, served, isolated, removable, and restorable',
     const sidebarExpanded = await page
       .locator('#sidebar')
       .evaluate(sidebar => sidebar.classList.contains('sidebar-expanded'));
-    await expect(page.locator('#sidebar-logo-light')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-light'),
       'src',
       sidebarExpanded ? adminLight : adminIcon
     );
-    await expect(page.locator('#sidebar-logo-light')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-light'),
       'data-rect',
       adminLight
     );
-    await expect(page.locator('#sidebar-logo-light')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-light'),
       'data-icon',
       adminIcon
     );
-    await expect(page.locator('#sidebar-logo-dark')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-dark'),
       'src',
       sidebarExpanded ? adminDark : adminIconDark
     );
-    await expect(page.locator('#sidebar-logo-dark')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-dark'),
       'data-rect',
       adminDark
     );
-    await expect(page.locator('#sidebar-logo-dark')).toHaveAttribute(
+    await expectAssetPath(
+      page.locator('#sidebar-logo-dark'),
       'data-icon',
       adminIconDark
     );
