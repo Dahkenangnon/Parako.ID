@@ -12,6 +12,7 @@ import {
   deriveKeyFromSecret,
   encryptJWK,
   decryptJWK,
+  decodePersistedJWK,
 } from '../../utils/key-encryption.js';
 import type { JwksKeyModel } from '../../models/jwks-key.model.js';
 import type {
@@ -106,11 +107,10 @@ export class DBKeyStore implements IKeyStore {
     this.sortByPromotionGroup(docs);
 
     const keys = docs.map((doc: JwksKeyRecord) => {
-      const pub =
-        typeof doc.public_key === 'string'
-          ? JSON.parse(doc.public_key)
-          : doc.public_key;
-      return pub as JWKWithMetadata;
+      return decodePersistedJWK(
+        doc.public_key,
+        'jwks_keys.public_key'
+      ) as JWKWithMetadata;
     });
     return { keys };
   }
@@ -120,9 +120,8 @@ export class DBKeyStore implements IKeyStore {
     this.guardRapidRotation(tenant);
     this.ensureDerivedKey();
 
-    // IMPORTANT: Generate new keys FIRST, then demote old ones.
-    // and new keys remain active — safe. The reverse order would leave
-    // zero active keys on crash.
+    // Generate first so a crash leaves both old and new keys usable; demoting
+    // first could leave the provider without an active signing key.
 
     // Phase 1: Generate new keys as unpromoted (verification only)
     await this.generateAndStoreKeys(tenant, false);
@@ -209,10 +208,7 @@ export class DBKeyStore implements IKeyStore {
       status: doc.status as KeyStatus,
       promoted: doc.promoted !== false,
       privateKey: decryptJWK(doc.encrypted_private_key, key),
-      publicKey:
-        typeof doc.public_key === 'string'
-          ? JSON.parse(doc.public_key)
-          : doc.public_key,
+      publicKey: decodePersistedJWK(doc.public_key, 'jwks_keys.public_key'),
       createdAt: doc.created_at,
       rotatedAt: doc.rotated_at ?? undefined,
       tenantId: doc.tenant_id,

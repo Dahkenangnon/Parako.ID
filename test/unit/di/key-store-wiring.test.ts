@@ -20,7 +20,6 @@ describe('KeyStore DI Wiring', () => {
             secrets: { jwt_secret: 'x'.repeat(32) },
           },
         }),
-        getConfigSection: vi.fn(),
         isLoaded: () => true,
         subscribe: vi.fn(),
       });
@@ -71,7 +70,6 @@ describe('KeyStore DI Wiring', () => {
           secrets: { jwt_secret: 'x'.repeat(32) },
         },
       }),
-      getConfigSection: vi.fn(),
       isLoaded: () => true,
       subscribe: vi.fn(),
     });
@@ -124,7 +122,6 @@ describe('KeyStore DI Wiring', () => {
           secrets: { jwt_secret: 'x'.repeat(32) },
         },
       }),
-      getConfigSection: vi.fn(),
       isLoaded: () => true,
       subscribe: vi.fn(),
     });
@@ -162,7 +159,6 @@ describe('KeyStore DI Wiring', () => {
           secrets: { jwt_secret: 'x'.repeat(32) },
         },
       }),
-      getConfigSection: vi.fn(),
       isLoaded: () => true,
       subscribe: vi.fn(),
     });

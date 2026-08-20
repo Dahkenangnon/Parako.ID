@@ -200,9 +200,6 @@ export default function Interaction(
   return {
     policy: basePolicy,
 
-    /**
-     * Generates the URL for the interaction endpoint
-     */
     url(_ctx: KoaContextWithOIDC, interaction: OidcInteraction) {
       return `${config.oidc.path}/interaction/${interaction.uid}`;
     },

@@ -65,9 +65,6 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
     };
   }
 
-  /**
-   * Get origin for WebAuthn operations
-   */
   private getOrigin(): string {
     const config = this.configManager.getConfig();
     if (config.deployment?.url) {
@@ -96,9 +93,6 @@ export class OIDCWebAuthnMfaHandler implements IOIDCWebAuthnMfaHandler {
     this.sessionManager.set(req, WEBAUTHN_OIDC_CHALLENGE_KEY, challengeData);
   }
 
-  /**
-   * Get and validate challenge from session
-   */
   private getChallenge(
     req: Request,
     uid: string,

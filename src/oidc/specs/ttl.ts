@@ -17,7 +17,7 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
  * library accepts arbitrary metadata extensions and exposes them
  * untyped. This helper bridges the typed config with that opaque shape
  * so the rest of the module never needs to reach for `as any` or
- * `// @ts-ignore`.
+ * a compiler suppression.
  */
 type TtlOverrideKey =
   | 'AccessToken'

@@ -20,10 +20,6 @@ import {
   oidcUidParamsSchema,
 } from '../../../validators/oidc/handlers.js';
 
-/**
- * OIDC MFA Handler
- * Handles MFA verification for OIDC interactions
- */
 @injectable()
 export class OIDCMfaHandler implements IOIDCMfaHandler {
   private readonly oidcPath: string;
@@ -54,10 +50,6 @@ export class OIDCMfaHandler implements IOIDCMfaHandler {
     };
   }
 
-  /**
-   * POST /interaction/:uid/mfa handler
-   * Handles MFA verification for OIDC interactions
-   */
   handle = async (
     req: Request,
     res: Response,

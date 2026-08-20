@@ -1,4 +1,4 @@
-import type { UnifiedClient } from '../../utils/client-transformer.js';
+import type { UnifiedClient } from '../../oidc/client.types.js';
 
 /**
  * Interface for OIDC Client Merger service.
@@ -11,9 +11,6 @@ import type { UnifiedClient } from '../../utils/client-transformer.js';
  * automatically by node-oidc-provider via adapter.find('Client', id).
  */
 export interface IOIDCClientMerger {
-  /**
-   * Load static clients from configuration file
-   */
   loadClients(): UnifiedClient[];
 
   /**
@@ -21,9 +18,6 @@ export interface IOIDCClientMerger {
    */
   mergeClients(staticClients: UnifiedClient[]): UnifiedClient[];
 
-  /**
-   * Get client statistics for static clients.
-   */
   getAllClientStatistics(): Promise<{
     total: number;
     static: number;

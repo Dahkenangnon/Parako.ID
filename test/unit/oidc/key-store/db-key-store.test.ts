@@ -4,6 +4,7 @@ import type { IConfigManager } from '../../../../src/di/interfaces/config-manage
 import type { IJwksKeyRepository } from '../../../../src/oidc/key-store/jwks-key.repository.js';
 import { DBKeyStore } from '../../../../src/oidc/key-store/db-key-store.js';
 import type { JwksKeyModel } from '../../../../src/models/jwks-key.model.js';
+import { PersistenceDecodingError } from '../../../../src/db/persistence/json-decoder.js';
 
 // gitleaks:allow -- deterministic unit-test key material.
 const TEST_JWT_SECRET =
@@ -42,7 +43,6 @@ function createMockConfigManager(
         },
       },
     }),
-    getConfigSection: vi.fn(),
     isLoaded: vi.fn().mockReturnValue(true),
   } as any;
 }
@@ -338,6 +338,26 @@ describe('DBKeyStore', () => {
     expect(listedKeys[0].publicKey).toMatchObject({ alg: 'ES256', use: 'sig' });
   });
 
+  it('rejects non-object serialized public keys without exposing values', async () => {
+    const model = createMockJwksKeyModel();
+    const store = new DBKeyStore(
+      createMockLogger(),
+      createMockConfigManager({ algorithms: ['ES256'] }),
+      model
+    );
+    await store.initialize();
+    model._docs[0].public_key = '["private-marker"]';
+
+    try {
+      await store.getPublicJWKS();
+      throw new Error('Expected persisted JWK decoding to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(PersistenceDecodingError);
+      expect(error).toMatchObject({ context: 'jwks_keys.public_key' });
+      expect(String(error)).not.toContain('private-marker');
+    }
+  });
+
   it('should order all promotion groups even when storage returns them in priority order', async () => {
     const records = [
       {
@@ -363,7 +383,7 @@ describe('DBKeyStore', () => {
       alg: 'ES256',
       use: 'sig',
       encrypted_private_key: 'unused',
-      public_key: { kid: record.kid },
+      public_key: { kty: 'EC', kid: record.kid },
       tenant_id: 'default',
     }));
     const repository = createMockJwksRepository({

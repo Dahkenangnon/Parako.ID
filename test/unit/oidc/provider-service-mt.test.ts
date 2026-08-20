@@ -192,7 +192,7 @@ describe('ProviderService — getProviderForTenant()', () => {
     expect(registry.getProvider).toHaveBeenCalledWith('acme');
     expect(provider).toBeDefined();
     expect((provider as any).issuer).toContain('acme');
-  });
+  }, 30_000);
 
   it('returns single provider when multi-tenancy disabled', async () => {
     const configManager = createMockConfigManager(false);

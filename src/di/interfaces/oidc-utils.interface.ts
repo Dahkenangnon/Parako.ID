@@ -1,17 +1,13 @@
 import type { Request } from 'express';
 import type { KoaContextWithOIDC } from 'oidc-provider';
-import type { SessionUserAccount } from '../../utils/session.js';
+import type { SessionUserAccount } from '../../types/session-data.js';
 
-/**
- * Interface for OIDC utilities service
- */
 export interface IOIDCUtils {
   // /**
   //  * Logout a user from OIDC system
   //  * @param accountId - The account ID to logout
   //  * @returns Promise with logout result
   //  */
-  // logout(accountId: string): Promise<ClearOIDCUserDataResult>;
 
   /**
    * Get the user's preferred locale from the Koa context

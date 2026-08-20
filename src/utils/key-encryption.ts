@@ -10,13 +10,33 @@
  */
 
 import { hkdfSync } from 'node:crypto';
+import { z } from 'zod';
 import { encryptWithKey, decryptWithKey, isEncrypted } from './encryption.js';
+import {
+  decodePersistedJson,
+  validatePersistedValue,
+} from '../db/persistence/json-decoder.js';
 
 /** Static salt for HKDF — safe to be public; only the input secret is private. */
 const HKDF_SALT = 'parako-jwks-key-encryption';
 
 /** Application-specific info parameter for HKDF key isolation. */
 const HKDF_INFO = 'aes-256-gcm-jwks-key';
+
+const JsonWebKeySchema = z
+  .object({ kty: z.string().trim().min(1) })
+  .passthrough();
+
+export function decodePersistedJWK(
+  value: unknown,
+  context: string
+): JsonWebKey {
+  const decoded =
+    typeof value === 'string'
+      ? decodePersistedJson(value, JsonWebKeySchema, context)
+      : validatePersistedValue(value, JsonWebKeySchema, context);
+  return decoded as JsonWebKey;
+}
 
 /**
  * Derive a 32-byte AES key from a secret string using HKDF (RFC 5869).
@@ -59,7 +79,7 @@ export function encryptJWK(jwk: JsonWebKey, derivedKey: Buffer): string {
  */
 export function decryptJWK(encrypted: string, derivedKey: Buffer): JsonWebKey {
   const plaintext = decryptWithKey(encrypted, derivedKey);
-  return JSON.parse(plaintext) as JsonWebKey;
+  return decodePersistedJWK(plaintext, 'jwks_keys.encrypted_private_key');
 }
 
 /**

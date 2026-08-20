@@ -1,9 +1,6 @@
 import type { Configuration } from 'oidc-provider';
 import type { JWKWithMetadata } from '../../oidc/key-store/constants.js';
 
-/**
- * Interface for OIDC Configuration service
- */
 export interface IOIDCConfig {
   /**
    * Get the complete OIDC Provider configuration (excludes JWKS)

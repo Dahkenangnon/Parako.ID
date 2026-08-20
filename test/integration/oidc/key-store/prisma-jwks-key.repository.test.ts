@@ -57,7 +57,6 @@ describe('PrismaJwksKeyRepository with DBKeyStore', () => {
           },
         },
       }),
-      getConfigSection: vi.fn(),
       isLoaded: vi.fn().mockReturnValue(true),
     } as unknown as IConfigManager;
 

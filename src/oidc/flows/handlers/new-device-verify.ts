@@ -11,7 +11,7 @@ import type { IViewResolver } from '../../../di/interfaces/view-resolver.interfa
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
 import type { INotificationService } from '../../../di/interfaces/notification-service.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
-import type { SessionUserAccount } from '../../../utils/session.js';
+import type { SessionUserAccount } from '../../../types/session-data.js';
 import type { IClientDeviceInfoManager } from '../../../di/interfaces/client-device-info-manager.interface.js';
 import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 import {
@@ -21,9 +21,6 @@ import {
 
 const NEW_DEVICE_VERIFICATION_TTL_MS = 10 * 60 * 1000;
 
-/**
- * Pending new device verification data stored in session
- */
 interface PendingNewDeviceVerification {
   userId: string;
   username: string;
@@ -40,9 +37,6 @@ interface PendingNewDeviceVerification {
   created_at: number;
 }
 
-/**
- * Interface for the new device verification handler
- */
 export interface IOIDCNewDeviceVerifyHandler {
   handleGet(
     req: Request,
@@ -58,10 +52,6 @@ export interface IOIDCNewDeviceVerifyHandler {
   ): Promise<void>;
 }
 
-/**
- * OIDC New Device Verification Handler
- * Handles 2FA verification for new device logins
- */
 @injectable()
 export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
   private readonly oidcPath: string;
@@ -92,10 +82,6 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     };
   }
 
-  /**
-   * GET /interaction/:uid/new-device-verify handler
-   * Renders the new device verification form
-   */
   handleGet = async (
     req: Request,
     res: Response,
@@ -153,10 +139,6 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     }
   };
 
-  /**
-   * POST /interaction/:uid/new-device-verify handler
-   * Verifies the OTP code and completes the login
-   */
   handlePost = async (
     req: Request,
     res: Response,
@@ -333,9 +315,6 @@ export class OIDCNewDeviceVerifyHandler implements IOIDCNewDeviceVerifyHandler {
     }
   };
 
-  /**
-   * Mask email for display (e.g., j***@example.com)
-   */
   private maskEmail(email: string): string {
     if (!email || !email.includes('@')) return email;
     const [local, domain] = email.split('@');

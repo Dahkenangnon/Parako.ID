@@ -5,7 +5,7 @@ import type { IMetricsService } from '../di/interfaces/metrics-service.interface
 import {
   AccessToken,
   AuthorizationCode,
-  Client,
+  InitialAccessToken,
   KoaContextWithOIDC,
 } from 'oidc-provider';
 import Provider, { errors as oidcErrors } from 'oidc-provider';
@@ -479,23 +479,27 @@ export class OIDCListenerService {
       }
     );
 
-    // @ts-expect-error OIDC Provider event type not properly defined
-    provider.on('initial_access_token.destroyed', async (token: any) => {
-      this.logger.info('initial_access_token.destroyed', {
-        token_id: token?.jti,
-        client_id: token?.clientId,
-        tenant: tenantContext.getTenantId(),
-      });
-    });
+    provider.on(
+      'initial_access_token.destroyed',
+      async (token: InitialAccessToken) => {
+        this.logger.info('initial_access_token.destroyed', {
+          token_id: token?.jti,
+          client_id: token?.clientId,
+          tenant: tenantContext.getTenantId(),
+        });
+      }
+    );
 
-    // @ts-expect-error - Event type not properly defined in oidc-provider types
-    provider.on('initial_access_token.saved', async (token: any) => {
-      this.logger.info('initial_access_token.saved', {
-        token_id: token?.jti,
-        client_id: token?.clientId,
-        tenant: tenantContext.getTenantId(),
-      });
-    });
+    provider.on(
+      'initial_access_token.saved',
+      async (token: InitialAccessToken) => {
+        this.logger.info('initial_access_token.saved', {
+          token_id: token?.jti,
+          client_id: token?.clientId,
+          tenant: tenantContext.getTenantId(),
+        });
+      }
+    );
 
     provider.on('replay_detection.destroyed', async (token: any) => {
       this.logger.info('replay_detection.destroyed', {
@@ -558,11 +562,10 @@ export class OIDCListenerService {
     );
 
     provider.on(
-      // @ts-expect-error OIDC Provider event type not properly defined
       'pushed_authorization_request.success',
-      async (ctx: KoaContextWithOIDC, client: Client) => {
+      async (ctx: KoaContextWithOIDC) => {
         this.logger.info('pushed_authorization_request.success', {
-          client_id: client?.clientId,
+          client_id: ctx.oidc?.client?.clientId,
           ip_address: ctx.ip,
           user_agent: ctx.get('user-agent'),
           tenant: tenantContext.getTenantId(),

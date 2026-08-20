@@ -22,7 +22,7 @@ export interface StoredKey {
   publicKey: JWKWithMetadata; // always plain
   createdAt: Date;
   rotatedAt?: Date;
-  tenantId: string; // default: 'default' (future multi-tenancy)
+  tenantId: string; // 'default' in single-tenant deployments
 }
 
 export interface IKeyStore {

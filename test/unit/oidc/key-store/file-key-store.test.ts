@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { IFileSystemUtils } from '../../../../src/di/interfaces/file-system-utils.interface.js';
 import type { ILogger } from '../../../../src/di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../../../src/di/interfaces/config-manager.interface.js';
+import { FileKeyStore } from '../../../../src/oidc/key-store/file-key-store.js';
 
 // Sample JWKS with one RS256 key
 const sampleJWKS = {
@@ -73,20 +74,11 @@ function createMockConfigManager(
         },
       },
     }),
-    getConfigSection: vi.fn(),
     isLoaded: vi.fn().mockReturnValue(true),
   } as any;
 }
 
 describe('FileKeyStore', () => {
-  let FileKeyStore: any;
-
-  beforeEach(async () => {
-    const mod =
-      await import('../../../../src/oidc/key-store/file-key-store.js');
-    FileKeyStore = mod.FileKeyStore;
-  });
-
   it('should load JWKS from file on initialize', async () => {
     const fsUtils = createMockFileSystemUtils();
     const store = new FileKeyStore(
@@ -354,6 +346,52 @@ describe('FileKeyStore', () => {
 
     expect(fsUtils.saveFile).toHaveBeenCalledOnce();
     expect(fsUtils.saveFile).toHaveBeenCalledWith(
+      '/test/project/runtime/jwks/jwks.json',
+      expect.any(String)
+    );
+  });
+
+  it('aborts rotation when the existing JWKS file cannot be read', async () => {
+    const fsUtils = createMockFileSystemUtils();
+    const failure = Object.assign(new Error('permission denied'), {
+      code: 'EACCES',
+    });
+    (fsUtils.readFileSync as ReturnType<typeof vi.fn>).mockImplementation(
+      () => {
+        throw failure;
+      }
+    );
+    const store = new FileKeyStore(
+      fsUtils,
+      createMockLogger(),
+      createMockConfigManager(['ES256'])
+    );
+
+    await expect(store.rotate()).rejects.toMatchObject({
+      cause: failure,
+      message: expect.stringContaining('rotation aborted'),
+    });
+    expect(fsUtils.saveFile).not.toHaveBeenCalled();
+  });
+
+  it('aborts rotation when the existing JWKS backup cannot be written', async () => {
+    const fsUtils = createMockFileSystemUtils();
+    const failure = new Error('backup volume unavailable');
+    (fsUtils.saveFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      failure
+    );
+    const store = new FileKeyStore(
+      fsUtils,
+      createMockLogger(),
+      createMockConfigManager(['ES256'])
+    );
+
+    await expect(store.rotate()).rejects.toMatchObject({
+      cause: failure,
+      message: expect.stringContaining('rotation aborted'),
+    });
+    expect(fsUtils.saveFile).toHaveBeenCalledOnce();
+    expect(fsUtils.saveFile).not.toHaveBeenCalledWith(
       '/test/project/runtime/jwks/jwks.json',
       expect.any(String)
     );

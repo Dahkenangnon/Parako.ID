@@ -1,6 +1,6 @@
 import type { KoaContextWithOIDC } from 'oidc-provider';
 import type { Request } from 'express';
-import type { SessionUserAccount } from '../utils/session.js';
+import type { SessionUserAccount } from '../types/session-data.js';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
@@ -645,9 +645,6 @@ export class OIDCUtils implements IOIDCUtils {
     return { hasMfa: true, method: preferred_method, methods };
   }
 
-  /**
-   * Get application title
-   */
   public getAppTitle(): string {
     const config = this.configManager.getConfig();
     return config.application.title;
@@ -692,7 +689,7 @@ export class OIDCUtils implements IOIDCUtils {
       return `${hours} hour${hours > 1 ? 's' : ''} ${future ? 'from now' : 'ago'}`;
     if (minutes > 0)
       return `${minutes} minute${minutes > 1 ? 's' : ''} ${future ? 'from now' : 'ago'}`;
-    return future ? 'Just now' : 'Just now';
+    return 'Just now';
   }
 
   /**
@@ -706,9 +703,6 @@ export class OIDCUtils implements IOIDCUtils {
     })}`;
   }
 
-  /**
-   * Get client information for connected applications
-   */
   public async getClientInfo(clientIds: string[]): Promise<any[]> {
     if (clientIds.length === 0) return [];
 
@@ -758,9 +752,6 @@ export class OIDCUtils implements IOIDCUtils {
     }
   }
 
-  /**
-   * Process session data and enrich with additional information
-   */
   public async processSessionData(session: any): Promise<any> {
     const payload = session.payload as any;
     const loginTime = payload.loginTs || payload.iat;
@@ -866,9 +857,6 @@ export class OIDCUtils implements IOIDCUtils {
     };
   }
 
-  /**
-   * Process session data for export (simplified version)
-   */
   public async processSessionForExport(session: any): Promise<any> {
     const payload = session.payload as any;
     const loginTime = payload.loginTs || payload.iat;

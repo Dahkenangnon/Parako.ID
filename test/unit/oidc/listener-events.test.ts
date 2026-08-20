@@ -295,7 +295,7 @@ describe('OIDC listener event contract', () => {
     ],
     [
       'pushed_authorization_request.success',
-      [context, client],
+      [context],
       { client_id: 'client-1' },
     ],
   ])('logs %s request metadata', async (event, args, expected) => {
@@ -416,11 +416,7 @@ describe('OIDC listener event contract', () => {
     await emit('registration_create.success', sparseContext, undefined);
     await emit('registration_delete.success', sparseContext, undefined);
     await emit('registration_update.success', sparseContext, undefined);
-    await emit(
-      'pushed_authorization_request.success',
-      sparseContext,
-      undefined
-    );
+    await emit('pushed_authorization_request.success', sparseContext);
 
     expect(metrics.recordOidcInteraction).toHaveBeenCalledWith(
       'unknown',

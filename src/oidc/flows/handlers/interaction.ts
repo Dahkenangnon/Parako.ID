@@ -13,10 +13,6 @@ import type { IMfaUtils } from '../../../di/interfaces/mfa-utils.interface.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 import { allowFormActionRedirectOrigin } from '../../../utils/content-security-policy.js';
 
-/**
- * OIDC Interaction Handler
- * Handles OIDC interaction flows
- */
 @injectable()
 export class OIDCInteractionHandler implements IOIDCInteractionHandler {
   private readonly oidcPath: string;
@@ -36,10 +32,6 @@ export class OIDCInteractionHandler implements IOIDCInteractionHandler {
     this.oidcPath = this.configManager.getConfig().oidc.path;
   }
 
-  /**
-   * GET /interaction/:uid handler
-   * Displays login or consent screens based on the interaction details
-   */
   handle = async (
     req: Request,
     res: Response,

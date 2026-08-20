@@ -24,9 +24,6 @@ export class OIDCClientMerger implements IOIDCClientMerger {
     private readonly clientRegistryManager: IClientRegistryManager
   ) {}
 
-  /**
-   * Load static clients from configuration file
-   */
   public loadClients(): UnifiedClient[] {
     try {
       const rawClients = this.clientRegistryManager.getOidcProviderClients();

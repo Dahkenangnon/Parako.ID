@@ -12,7 +12,7 @@ import type { IOIDCMiddleware } from '../../../di/interfaces/oidc-middleware.int
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
 import type { IAuthService } from '../../../di/interfaces/auth-service.interface.js';
 import type { ILogger } from '../../../di/interfaces/logger.interface.js';
-import { SessionUserAccount } from '../../../utils/session.js';
+import type { SessionUserAccount } from '../../../types/session-data.js';
 import { KoaContextWithOIDC } from 'oidc-provider';
 
 /**
@@ -46,9 +46,6 @@ export class OIDCMiddleware implements IOIDCMiddleware {
     }
   };
 
-  /**
-   * Apply OIDC middleware to Express app
-   */
   applyOidcMiddleware = (app: Express, provider: Provider): RequestHandler => {
     if (!app || !provider) {
       throw new Error(

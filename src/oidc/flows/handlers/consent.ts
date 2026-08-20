@@ -13,10 +13,6 @@ import type { ISessionManager } from '../../../di/interfaces/session-manager.int
 import { activityLoggerFor } from '../../../utils/activity-logger.factory.js';
 import { oidcUidParamsSchema } from '../../../validators/oidc/handlers.js';
 
-/**
- * OIDC Consent Handler
- * Handles user consent for OIDC interactions
- */
 @injectable()
 export class OIDCConsentHandler implements IOIDCConsentHandler {
   constructor(
@@ -39,10 +35,6 @@ export class OIDCConsentHandler implements IOIDCConsentHandler {
     };
   }
 
-  /**
-   * POST /interaction/:uid/confirm handler
-   * Processes user consent for the requested scopes and claims
-   */
   handle = async (
     req: Request,
     res: Response,

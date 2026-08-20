@@ -6,6 +6,7 @@ import {
   decryptJWK,
   isEncryptedJWK,
 } from '../../../src/utils/key-encryption.js';
+import { PersistenceDecodingError } from '../../../src/db/persistence/json-decoder.js';
 
 describe('key-encryption', () => {
   const testSecret =
@@ -81,6 +82,27 @@ describe('key-encryption', () => {
       const wrongKey = randomBytes(32);
       expect(() => decryptJWK(encrypted, wrongKey)).toThrow();
     });
+
+    it.each([
+      ['a non-object value', ['private-marker']],
+      ['an object without a key type', { secret: 'private-marker' }],
+    ])(
+      'rejects decrypted persisted JWK data containing %s',
+      (_label, value) => {
+        const encrypted = encryptJWK(value as never, derivedKey);
+
+        try {
+          decryptJWK(encrypted, derivedKey);
+          throw new Error('Expected persisted JWK decoding to fail');
+        } catch (error) {
+          expect(error).toBeInstanceOf(PersistenceDecodingError);
+          expect(error).toMatchObject({
+            context: 'jwks_keys.encrypted_private_key',
+          });
+          expect(String(error)).not.toContain('private-marker');
+        }
+      }
+    );
   });
 
   describe('isEncryptedJWK', () => {

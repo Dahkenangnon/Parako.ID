@@ -1,3 +1,9 @@
+import type { NextFunction, Request, Response } from 'express';
+import type {
+  FlashContainer,
+  SessionData as ParakoSessionData,
+} from './session-data.js';
+
 /**
  * Extend Express Response to include translation method
  */
@@ -33,19 +39,7 @@ declare module 'express-serve-static-core' {
 }
 
 declare module 'express-session' {
-  interface SessionData {
-    authenticatedUsers?: AuthenticatedUsers;
-    isAuthenticated?: boolean;
-    authTime?: number;
-    lastActivity?: number;
-    created?: number;
-    ipAddress?: string;
-    userAgent?: string;
-    deviceId?: string;
-    csrfToken?: string;
-    flash?: FlashContainer;
-    [key: string]: any;
-  }
+  interface SessionData extends ParakoSessionData {}
 }
 
 declare module 'i18n' {

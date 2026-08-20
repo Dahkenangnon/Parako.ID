@@ -43,9 +43,6 @@ export class KoaMiddleware implements IKoaMiddleware {
     this.nunjucksEnv = this.initializeNunjucks();
   }
 
-  /**
-   * Initialize Nunjucks environment with view directories
-   */
   private initializeNunjucks(): nunjucks.Environment {
     const viewConfig = this.viewResolver.getCurrentConfig();
     const viewDirs = [
@@ -143,9 +140,6 @@ export class KoaMiddleware implements IKoaMiddleware {
     });
   }
 
-  /**
-   * Get locale for Koa context
-   */
   getKoaLocale = (ctx: KoaI18nContext): string => {
     return this.oidcUtils.getLocale(
       ctx as unknown as KoaContextWithOIDC,
@@ -153,9 +147,6 @@ export class KoaMiddleware implements IKoaMiddleware {
     );
   };
 
-  /**
-   * Initialize i18n for Koa context
-   */
   i18nKoaInit = async (
     ctx: KoaI18nContext,
     next: () => Promise<void>
@@ -175,9 +166,6 @@ export class KoaMiddleware implements IKoaMiddleware {
     await next();
   };
 
-  /**
-   * Handle language selection for Koa context
-   */
   koaLanguageHandler = async (
     ctx: KoaI18nContext,
     next: () => Promise<void>

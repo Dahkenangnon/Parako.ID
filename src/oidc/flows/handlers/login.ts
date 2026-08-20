@@ -8,7 +8,7 @@ import type { IAuthService } from '../../../di/interfaces/auth-service.interface
 import type { IActivityService } from '../../../di/interfaces/activity-service.interface.js';
 import type { IViewResolver } from '../../../di/interfaces/view-resolver.interface.js';
 import type { IOIDCLoginHandler } from '../../../di/interfaces/oidc-login-handler.interface.js';
-import { SessionUserAccount } from '../../../utils/session.js';
+import type { SessionUserAccount } from '../../../types/session-data.js';
 import type { IOIDCUtils } from '../../../di/interfaces/oidc-utils.interface.js';
 import type { ISessionManager } from '../../../di/interfaces/session-manager.interface.js';
 import type { IConfigManager } from '../../../di/interfaces/config-manager.interface.js';
@@ -22,10 +22,6 @@ import type { IMetricsService } from '../../../di/interfaces/metrics-service.int
 import { SmsService } from '../../../services/sms.service.js';
 import { PhoneVerificationRequiredError } from '../../../errors/phone-verification-required.error.js';
 
-/**
- * OIDC Login Handler
- * Handles user login for OIDC interactions
- */
 @injectable()
 export class OIDCLoginHandler implements IOIDCLoginHandler {
   constructor(
@@ -61,10 +57,6 @@ export class OIDCLoginHandler implements IOIDCLoginHandler {
     };
   }
 
-  /**
-   * POST /interaction/:uid/login handler
-   * Authenticates the user and completes the OIDC login interaction
-   */
   handle = async (
     req: Request,
     res: Response,

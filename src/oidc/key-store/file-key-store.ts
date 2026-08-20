@@ -10,6 +10,15 @@ import type { ILogger } from '../../di/interfaces/logger.interface.js';
 import type { IConfigManager } from '../../di/interfaces/config-manager.interface.js';
 import { PRIVATE_KEY_FIELDS, type JWKWithMetadata } from './constants.js';
 
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'ENOENT'
+  );
+}
+
 /**
  * File-based IKeyStore implementation.
  *
@@ -128,8 +137,15 @@ export class FileKeyStore implements IKeyStore {
       const existing = this.fileSystemUtils.readFileSync(jwksPath);
       await this.fileSystemUtils.saveFile(backupPath, existing);
       this.logger.info('Backup created before rotation', { backupPath });
-    } catch {
-      // No existing file to back up — that's fine
+    } catch (error) {
+      if (!isMissingFileError(error)) {
+        throw new Error(
+          `Failed to back up existing JWKS file at ${
+            jwksPath
+          }; rotation aborted`,
+          { cause: error }
+        );
+      }
     }
 
     this.fileSystemUtils.ensureDir(`${projectDir}/runtime/jwks`);
