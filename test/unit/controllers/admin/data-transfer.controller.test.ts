@@ -160,6 +160,7 @@ function makeRes() {
     send: vi.fn(),
     writeHead: vi.fn(),
     write: vi.fn(),
+    flush: vi.fn(),
     end: vi.fn(),
   }) as any;
   res.status.mockReturnValue(res);
@@ -861,6 +862,7 @@ describe('AdminDataTransferController', () => {
       expect(res.write).toHaveBeenCalledWith(
         'event: connected\ndata: {"jobId":"job-1"}\n\n'
       );
+      expect(res.flush).toHaveBeenCalledOnce();
       expect(queueMocks.queueEventsArgs).toEqual([
         [
           'background-tasks',
@@ -882,6 +884,7 @@ describe('AdminDataTransferController', () => {
       expect(res.write).toHaveBeenLastCalledWith(
         'event: progress\ndata: 50\n\n'
       );
+      expect(res.flush).toHaveBeenCalledTimes(2);
 
       req.emit('close');
       expect(res.end).not.toHaveBeenCalled();
@@ -924,6 +927,7 @@ describe('AdminDataTransferController', () => {
         await vi.waitFor(() => expect(res.end).toHaveBeenCalledOnce());
 
         expect(res.write).toHaveBeenLastCalledWith(message);
+        expect(res.flush).toHaveBeenCalledTimes(2);
         expect(events.close).toHaveBeenCalledOnce();
         await vi.waitFor(() => expect(queue.close).toHaveBeenCalledOnce());
         res.emit('close');
@@ -982,6 +986,7 @@ describe('AdminDataTransferController', () => {
       expect(res.write).toHaveBeenLastCalledWith(
         'event: timeout\ndata: {}\n\n'
       );
+      expect(res.flush).toHaveBeenCalledTimes(2);
       expect(res.end).toHaveBeenCalledOnce();
       expect(queue.close).toHaveBeenCalledOnce();
     });

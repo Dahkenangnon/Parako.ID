@@ -381,6 +381,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
       });
 
       res.write(`event: connected\ndata: ${JSON.stringify({ jobId })}\n\n`);
+      res.flush();
     } catch (error) {
       await this.closeResourceSafely(
         queueEvents,
@@ -421,6 +422,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
     const sseTimeout = setTimeout(
       () => {
         res.write(`event: timeout\ndata: {}\n\n`);
+        res.flush();
         cleanup();
       },
       5 * 60 * 1000
@@ -431,6 +433,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
       ({ jobId: jId, data }: { jobId: string; data: unknown }) => {
         if (jId === jobId) {
           res.write(`event: progress\ndata: ${JSON.stringify(data)}\n\n`);
+          res.flush();
         }
       }
     );
@@ -440,6 +443,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
       ({ jobId: jId, returnvalue }: { jobId: string; returnvalue: string }) => {
         if (jId === jobId) {
           res.write(`event: completed\ndata: ${returnvalue}\n\n`);
+          res.flush();
           cleanup();
         }
       }
@@ -458,6 +462,7 @@ export class AdminDataTransferController implements IAdminDataTransferController
           res.write(
             `event: failed\ndata: ${JSON.stringify({ error: failedReason })}\n\n`
           );
+          res.flush();
           cleanup();
         }
       }

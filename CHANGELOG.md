@@ -18,6 +18,7 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ### Bug Fixes
 
+- flush compressed import progress streams
 - harden request and session handling ([f600b0f](https://github.com/Dahkenangnon/Parako.ID/commit/f600b0fbd5eefeb0bc53a51ef5123339802f3ffc))
 - stabilize manifest verification ([b87ab0f](https://github.com/Dahkenangnon/Parako.ID/commit/b87ab0f297cd2cb7fdfa354a40a2512b2aed13ac))
 - package generated Prisma runtime dependency ([bbfcfae](https://github.com/Dahkenangnon/Parako.ID/commit/bbfcfaeaa818c1fbb7b1a35403976e5ae86d4b91))
