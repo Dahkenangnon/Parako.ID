@@ -2,41 +2,18 @@ import type { Request, Response } from 'express';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { ISessionManager } from '../di/interfaces/session-manager.interface.js';
-import { IRedirectAuthority } from '../di/interfaces/redirect-authority.interface.js';
+import type { IRedirectAuthority } from '../di/interfaces/redirect-authority.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.interface.js';
 import type { IOIDCClientMerger } from '../di/interfaces/oidc-client-merger.interface.js';
+import type {
+  IRedirectBuilder,
+  RedirectIntent,
+  RedirectValidationOptions,
+  RedirectValidationResult,
+} from '../types/redirect-authority.js';
 import { TYPES } from '../di/types.js';
 import { URL } from 'node:url';
-
-/**
- * Interface for redirect intent stored in session
- */
-export interface RedirectIntent {
-  url: string;
-  intent: string;
-  timestamp: number;
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Configuration options for redirect validation
- */
-export interface RedirectValidationOptions {
-  allowLocal?: boolean;
-  requireHttps?: boolean;
-  maxLength?: number;
-  customValidator?: (url: string) => boolean;
-}
-
-/**
- * Result of redirect validation
- */
-export interface RedirectValidationResult {
-  isValid: boolean;
-  url: string | null;
-  reason?: string;
-}
 
 function appendQueryParameters(
   baseUrl: string,
@@ -62,7 +39,7 @@ function appendQueryParameters(
 /**
  * Fluent redirect builder for secure redirects
  */
-export class RedirectBuilder {
+export class RedirectBuilder implements IRedirectBuilder {
   private response: Response;
   private redirectAuthority: RedirectAuthority;
   private validationOptions: RedirectValidationOptions;

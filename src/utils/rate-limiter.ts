@@ -20,8 +20,9 @@ import type { Request, Response } from 'express';
 import { Redis } from 'ioredis';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
 import { HARDENING } from '../config/hardening-defaults.js';
+import { readEnvironmentVariable } from '../config/bootstrap-environment.js';
 
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = readEnvironmentVariable('NODE_ENV') !== 'production';
 
 // Redis client for distributed rate limiting (production only)
 let redisClient: Redis | null = null;

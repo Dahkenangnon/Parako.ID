@@ -1,17 +1,8 @@
 import { type Logger } from 'pino';
 
-/**
- * Interface for application logger service
- */
 export interface ILogger {
-  /**
-   * Get the underlying Pino logger instance
-   */
   getLogger(): Logger;
 
-  /**
-   * Create a child logger with additional bindings
-   */
   child(bindings: Record<string, unknown>): Logger;
 
   /**

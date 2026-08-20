@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
-import {
+import type {
+  IRedirectBuilder,
   RedirectIntent,
   RedirectValidationOptions,
   RedirectValidationResult,
-  RedirectBuilder,
-} from '../../utils/redirect-authority.js';
+} from '../../types/redirect-authority.js';
 
 /**
  * Interface for redirect authority service
@@ -114,5 +114,5 @@ export interface IRedirectAuthority {
   redirect(
     response: Response,
     options?: RedirectValidationOptions
-  ): RedirectBuilder;
+  ): IRedirectBuilder;
 }

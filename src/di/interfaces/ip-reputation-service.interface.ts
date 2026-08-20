@@ -29,7 +29,6 @@ export interface IIPReputationService {
 
   getFraudScore(ip: string): Promise<number>;
 
-  /** Applies the configured blocking threshold. */
   shouldBlock(ip: string): Promise<boolean>;
 
   isEnabled(): boolean;

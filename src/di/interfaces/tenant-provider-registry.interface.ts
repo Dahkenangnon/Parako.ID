@@ -32,7 +32,6 @@ export interface ITenantProviderRegistry {
   /** Check if a Provider is currently cached for the given tenant. */
   has(tenantId: string): boolean;
 
-  /** Return the current number of cached Providers. */
   size(): number;
 
   /** Tear down the registry: clear pool, cancel timers. */

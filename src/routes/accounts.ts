@@ -8,9 +8,6 @@ import { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js';
 import { changePasswordLimiter } from '../utils/rate-limiter.js';
 import { asyncHandler } from '../middlewares/async-handler.js';
 
-/**
- * Register account routes with the DI injectable services
- */
 export const accountRoutes = (
   avatarUpload: IUploadMiddleware,
   configManager: IConfigManager,

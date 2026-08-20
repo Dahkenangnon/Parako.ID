@@ -57,9 +57,6 @@ export class AdminHomeController implements IAdminHomeController {
     });
   };
 
-  /**
-   * Get admin dashboard statistics
-   */
   async getSystemStats() {
     const users = await this.getUserStats();
     const oidc = await this.getOIDCStats();
@@ -142,9 +139,6 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
-  /**
-   * Get OIDC client statistics
-   */
   async getOIDCStats() {
     try {
       const stats = await this.oidcAdapter.client.getClientStatistics();
@@ -168,9 +162,6 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
-  /**
-   * Get user sessions statistics
-   */
   async getSessionsStats() {
     try {
       const sessionStats =
@@ -189,9 +180,6 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
-  /**
-   * Get user grants statistics
-   */
   async getGrantsStats() {
     try {
       const grantStats = await this.oidcAdapter.grant.getGrantStatistics();
@@ -209,9 +197,6 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
-  /**
-   * Get activity statistics
-   */
   async getActivityStats() {
     try {
       const stats = await this.activity.getActivityStats();
@@ -236,9 +221,6 @@ export class AdminHomeController implements IAdminHomeController {
     }
   }
 
-  /**
-   * Get recent activity for the dashboard
-   */
   async getRecentActivity() {
     try {
       const result = await this.activity.queryActivities(

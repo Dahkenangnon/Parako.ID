@@ -2,167 +2,28 @@ import crypto from 'node:crypto';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import type { IPasswordUtils } from '../di/interfaces/password-utils.interface.js';
-import { IRecoveryUtils } from '../di/interfaces/recovery-utils.interface.js';
+import type { IRecoveryUtils } from '../di/interfaces/recovery-utils.interface.js';
+import type {
+  BackupCodeResult,
+  FailedAttemptResult,
+  RecoveryConfig,
+  RecoveryCooldownResult,
+  RecoveryLockoutResult,
+  RecoveryMethod,
+  RecoveryVerificationResult,
+  SecondaryEmailResult,
+  SecurityAnswerValidationResult,
+  SecurityQuestionInput,
+  SecurityQuestionsLockoutResult,
+  SecurityQuestionsSetupResult,
+  SecurityQuestionsVerificationResult,
+} from '../types/recovery.js';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { type IUser } from '../types/user.js';
 
 function isValidDate(value: unknown): value is Date {
   return value instanceof Date && Number.isFinite(value.getTime());
-}
-
-/**
- * Recovery method types supported by the system
- */
-export type RecoveryMethod =
-  'backup_codes' | 'secondary_email' | 'sms' | 'security_questions';
-
-/**
- * Recovery configuration interface
- */
-export interface RecoveryConfig {
-  enabled: boolean;
-  methods: RecoveryMethod[];
-  backup_codes?: {
-    codes: string[];
-    generated_at: Date;
-    expires_at: Date;
-  };
-  secondary_email?: {
-    email: string;
-    verified: boolean;
-    verification_token?: string;
-    verification_expires?: Date;
-  };
-  sms?: {
-    phone_number: string;
-    verified: boolean;
-    verification_code?: string;
-    verification_expires?: Date;
-  };
-  security_questions?: {
-    questions: Array<{
-      id: string;
-      question_key: string; // i18n key (e.g., 'q1', 'q2') from security-questions namespace
-      answer_hash: string;
-    }>;
-    setup_at?: Date;
-    last_used_at?: Date;
-    failed_attempts?: number;
-    last_failed_at?: Date;
-    locked_until?: Date;
-  };
-}
-
-/**
- * Backup code generation result
- */
-export interface BackupCodeResult {
-  codes: string[]; // Plain codes for one-time display
-  hashedCodes: string[]; // Hashed codes for database storage
-  generatedAt: Date;
-  expiresAt: Date;
-}
-
-/**
- * Secondary email verification result
- */
-export interface SecondaryEmailResult {
-  email: string;
-  verificationToken: string;
-  tokenHash: string;
-  expiresAt: Date;
-}
-
-/**
- * Recovery verification result
- */
-export interface RecoveryVerificationResult {
-  valid: boolean;
-  method: RecoveryMethod;
-  error?: string;
-  matchedCode?: string; // The hashed code that matched (for removal)
-}
-
-/**
- * Recovery lockout check result
- */
-export interface RecoveryLockoutResult {
-  locked: boolean;
-  failedAttempts?: number;
-  remainingAttempts?: number;
-  lockedUntil?: Date;
-  minutesRemaining?: number;
-}
-
-/**
- * Failed recovery attempt result
- */
-export interface FailedAttemptResult {
-  locked: boolean;
-  failedAttempts: number;
-  lockedUntil?: Date;
-}
-
-/**
- * Recovery cooldown check result
- */
-export interface RecoveryCooldownResult {
-  inCooldown: boolean;
-  cooldownEndsAt?: Date;
-  hoursRemaining?: number;
-}
-
-/**
- * Security question answer validation result
- */
-export interface SecurityAnswerValidationResult {
-  valid: boolean;
-  error?: string;
-  normalized?: string;
-}
-
-/**
- * Security questions setup input
- */
-export interface SecurityQuestionInput {
-  question_key: string; // i18n key (e.g., 'q1', 'q2')
-  answer: string;
-}
-
-/**
- * Security questions setup result
- */
-export interface SecurityQuestionsSetupResult {
-  valid: boolean;
-  error?: string;
-  questions?: Array<{
-    id: string;
-    question_key: string;
-    answer_hash: string;
-  }>;
-  setup_at?: Date;
-}
-
-/**
- * Security questions lockout result
- */
-export interface SecurityQuestionsLockoutResult {
-  locked: boolean;
-  failedAttempts?: number;
-  remainingAttempts?: number;
-  lockedUntil?: Date;
-  minutesRemaining?: number;
-}
-
-/**
- * Security questions verification result
- */
-export interface SecurityQuestionsVerificationResult {
-  valid: boolean;
-  error?: string;
-  allCorrect?: boolean;
-  incorrectCount?: number;
 }
 
 /**
@@ -222,9 +83,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     this.logger = logger;
   }
 
-  /**
-   * Generate backup codes for account recovery
-   */
   async generateBackupCodes(): Promise<BackupCodeResult> {
     try {
       const codes: string[] = [];
@@ -401,9 +259,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     }
   }
 
-  /**
-   * Generate secondary email verification token
-   */
   generateSecondaryEmailVerification(email: string): SecondaryEmailResult {
     try {
       if (!email || typeof email !== 'string') {
@@ -632,16 +487,10 @@ export class RecoveryUtils implements IRecoveryUtils {
     }
   }
 
-  /**
-   * Check if user has recovery enabled
-   */
   isRecoveryEnabled(user: IUser): boolean {
     return Boolean(user.recovery?.enabled);
   }
 
-  /**
-   * Check if user has backup codes available and not expired
-   */
   hasBackupCodes(user: IUser): boolean {
     return Boolean(
       user?.recovery?.enabled &&
@@ -651,9 +500,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     );
   }
 
-  /**
-   * Check if user has secondary email configured and verified
-   */
   hasSecondaryEmail(user: IUser): boolean {
     return Boolean(
       user?.recovery?.enabled &&
@@ -663,9 +509,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     );
   }
 
-  /**
-   * Get user's available recovery methods
-   */
   getAvailableRecoveryMethods(user: IUser): RecoveryMethod[] {
     if (!this.isRecoveryEnabled(user)) {
       return [];
@@ -688,9 +531,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return methods;
   }
 
-  /**
-   * Create recovery configuration object
-   */
   createRecoveryConfig(
     enabled: boolean = true,
     methods: RecoveryMethod[] = ['backup_codes', 'secondary_email'],
@@ -703,9 +543,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     };
   }
 
-  /**
-   * Create backup codes recovery configuration
-   */
   createBackupCodesRecoveryConfig(codes: string[]): RecoveryConfig {
     if (!codes || !Array.isArray(codes) || codes.length === 0) {
       throw new Error('Valid backup codes array is required');
@@ -723,9 +560,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     });
   }
 
-  /**
-   * Create secondary email recovery configuration
-   */
   createSecondaryEmailRecoveryConfig(
     email: string,
     verified: boolean = false
@@ -808,9 +642,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return '*'.repeat(maskedLength) + cleaned.slice(-4);
   }
 
-  /**
-   * Get recovery configuration from environment/config
-   */
   getRecoveryConfig(): {
     enabled: boolean;
     methods: {
@@ -844,9 +675,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     };
   }
 
-  /**
-   * Validate recovery method is supported
-   */
   isMethodSupported(method: RecoveryMethod): boolean {
     const config = this.getRecoveryConfig();
 
@@ -864,9 +692,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     }
   }
 
-  /**
-   * Get available recovery methods based on configuration
-   */
   getAvailableMethods(): RecoveryMethod[] {
     const config = this.getRecoveryConfig();
     const methods: RecoveryMethod[] = [];
@@ -901,9 +726,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return { valid: true, sanitized };
   }
 
-  /**
-   * Check if backup codes are expired
-   */
   areBackupCodesExpired(user: IUser): boolean {
     const expiresAt = user.recovery?.backup_codes?.expires_at;
     if (!isValidDate(expiresAt)) {
@@ -912,9 +734,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return expiresAt < new Date();
   }
 
-  /**
-   * Get remaining backup codes count
-   */
   getRemainingBackupCodesCounts(user: IUser): number {
     if (!user.recovery?.backup_codes) {
       return 0;
@@ -924,9 +743,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return user.recovery.backup_codes.codes.length;
   }
 
-  /**
-   * Check if user is locked out from recovery attempts
-   */
   checkRecoveryLockout(user: IUser): RecoveryLockoutResult {
     const lockout = user.recovery?.lockout;
 
@@ -1041,9 +857,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     }
   }
 
-  /**
-   * Get lockout configuration
-   */
   getLockoutConfig(): { maxAttempts: number; lockoutMinutes: number } {
     return {
       maxAttempts: RecoveryUtils.MAX_RECOVERY_ATTEMPTS,
@@ -1081,9 +894,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     return { inCooldown: false };
   }
 
-  /**
-   * Check if user is in recovery cooldown period (convenience boolean)
-   */
   isInRecoveryCooldown(user: IUser): boolean {
     return this.checkRecoveryCooldown(user).inCooldown;
   }
@@ -1102,9 +912,6 @@ export class RecoveryUtils implements IRecoveryUtils {
     user.recovery.last_recovered_at = new Date();
   }
 
-  /**
-   * Get cooldown configuration
-   */
   getCooldownConfig(): { cooldownHours: number } {
     return {
       cooldownHours: RecoveryUtils.RECOVERY_COOLDOWN_HOURS,

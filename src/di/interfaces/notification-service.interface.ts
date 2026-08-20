@@ -52,11 +52,8 @@ export interface NotificationAction {
 }
 
 /**
- * Interface for NotificationService - channel-agnostic notification abstraction
- *
- * This service wraps the underlying email service (and future SMS/WhatsApp services)
- * to provide a unified notification API. All application code should use this
- * service instead of directly depending on EmailService.
+ * Application notification contract. Callers depend on this boundary rather
+ * than the current email transport implementation.
  */
 export interface INotificationService {
   /**

@@ -345,9 +345,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Get available recovery methods for a user
-   */
   async getAvailableMethods(userId: string): Promise<RecoveryMethodStatus[]> {
     try {
       const user = await this.userService.findById(userId);
@@ -437,9 +434,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Check recovery lockout status
-   */
   async checkLockout(
     userId: string,
     method?: RecoveryMethod
@@ -492,9 +486,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Check if user is in recovery cooldown period
-   */
   async isInCooldownPeriod(userId: string): Promise<boolean> {
     try {
       const user = await this.userService.findById(userId);
@@ -565,9 +556,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Generate new backup codes for a user
-   */
   async generateBackupCodes(
     userId: string
   ): Promise<{ codes: string[]; expiresAt: Date }> {
@@ -752,9 +740,6 @@ export class RecoveryService implements IRecoveryService {
     }
   }
 
-  /**
-   * Find user by various identifiers
-   */
   private async findUserByIdentifier(
     identifier: string
   ): Promise<IUser | null> {

@@ -1,4 +1,7 @@
-import { PasswordVerificationResult } from '../../utils/password.js';
+export interface PasswordVerificationResult {
+  valid: boolean;
+  needsUpgrade: boolean;
+}
 
 /**
  * Interface for password utils service

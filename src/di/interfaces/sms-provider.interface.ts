@@ -17,9 +17,6 @@ export interface PhoneValidationResult {
   error?: string;
 }
 
-/**
- * Interface for SMS providers (Twilio, Nexmo/Vonage)
- */
 export interface ISmsProvider {
   /**
    * Send an SMS message
@@ -40,8 +37,5 @@ export interface ISmsProvider {
 
   getProviderName(): string;
 
-  /**
-   * Check if the provider is properly configured
-   */
   isConfigured(): boolean;
 }

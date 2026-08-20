@@ -33,10 +33,6 @@ function redactPrivateKey(key: StoredKey): AdminKey {
   };
 }
 
-/**
- * Admin JWKS Controller
- * Handles displaying and managing JWKS keys for the admin panel
- */
 @injectable()
 export class AdminJwksController implements IAdminJwksController {
   private get redisPrefix(): string {
@@ -66,10 +62,6 @@ export class AdminJwksController implements IAdminJwksController {
     };
   }
 
-  /**
-   * Display all JWKS keys with status, stats, and config info
-   * GET /admin/jwks
-   */
   public list = async (_req: Request, res: Response): Promise<void> => {
     const tenantId = tenantContext.getTenantId();
     const keys = await this.keyStore.listKeys(tenantId);
@@ -105,10 +97,6 @@ export class AdminJwksController implements IAdminJwksController {
     });
   };
 
-  /**
-   * Display individual key details with public JWK
-   * GET /admin/jwks/:kid
-   */
   public show = async (req: Request, res: Response): Promise<void> => {
     const tenantId = tenantContext.getTenantId();
     const kid = req.params.kid;
@@ -189,10 +177,6 @@ export class AdminJwksController implements IAdminJwksController {
     res.redirect('/admin/jwks');
   };
 
-  /**
-   * Retire keys that have been in 'expiring' status past the overlap window
-   * POST /admin/jwks/retire-expired
-   */
   public retireExpired = async (req: Request, res: Response): Promise<void> => {
     try {
       const tenantId = tenantContext.getTenantId();

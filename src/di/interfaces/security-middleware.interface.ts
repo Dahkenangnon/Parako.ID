@@ -1,8 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 
-/**
- * Interface for SecurityMiddleware - handles authentication, authorization, and CSRF protection.
- */
 export interface ISecurityMiddleware {
   /**
    * Middleware to require authentication

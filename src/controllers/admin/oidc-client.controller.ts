@@ -844,9 +844,6 @@ export class AdminOidcClientController {
       .filter(Boolean);
   }
 
-  /**
-   * Process form data and convert to flat OidcClientData structure
-   */
   private processFormData(body: any): Partial<OidcClientData> {
     const defaultMaxAge = parseInt(body.default_max_age, 10);
 

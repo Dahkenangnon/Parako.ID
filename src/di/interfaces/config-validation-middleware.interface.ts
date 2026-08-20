@@ -1,9 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ValidationResult } from '../../middlewares/config-validation.middleware.js';
 
-/**
- * Interface for configuration validation middleware
- */
 export interface IConfigValidationMiddleware {
   /**
    * Middleware factory for validating configuration updates

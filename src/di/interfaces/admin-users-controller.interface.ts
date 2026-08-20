@@ -1,8 +1,5 @@
 import { Request, Response } from 'express';
 
-/**
- * Interface for AdminUsersController - handles admin user management operations
- */
 export interface IAdminUsersController {
   // User listing and viewing
   list(req: Request, res: Response): Promise<void>;

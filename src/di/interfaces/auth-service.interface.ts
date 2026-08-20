@@ -53,9 +53,6 @@ export interface LoginResult {
   requiresPasswordReset?: boolean;
 }
 
-/**
- * Interface for AuthService - handles authentication operations
- */
 export interface IAuthService {
   isValidEmailAddress(email: string): boolean;
 

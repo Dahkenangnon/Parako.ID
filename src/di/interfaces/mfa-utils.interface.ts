@@ -1,11 +1,11 @@
 import type { IUser } from '../../types/user.js';
-import {
+import type {
+  EmailOtpResult,
   MfaMethod,
   MfaMethodUpdate,
-  TotpVerificationResult,
-  EmailOtpResult,
   MfaSetupResult,
-} from '../../utils/mfa.js';
+  TotpVerificationResult,
+} from '../../types/mfa.js';
 
 /**
  * Interface for MFA utils service

@@ -121,9 +121,6 @@ export function validateCharsetMask(
   return true;
 }
 
-/**
- * Validate an identifier value against its field configuration
- */
 export function validateIdentifier(
   value: string,
   fieldConfig: CustomIdentifierValidationConfig

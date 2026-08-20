@@ -1,7 +1,3 @@
-/**
- * Admin session-listing query schema for `GET /admin/sessions`.
- */
-
 import { z } from 'zod';
 
 import {

@@ -12,18 +12,9 @@ import type {
   PasskeyInfo,
 } from '../../types/webauthn.js';
 
-/**
- * Interface for WebAuthnService - handles WebAuthn (passkey) operations
- */
 export interface IWebAuthnService {
-  /**
-   * Get WebAuthn configuration from application settings
-   */
   getConfig(): WebAuthnConfig;
 
-  /**
-   * Check if WebAuthn is enabled in configuration
-   */
   isEnabled(): boolean;
 
   /**

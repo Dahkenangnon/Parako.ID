@@ -1,19 +1,12 @@
 import { Response } from 'express';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
-import type { ICookieManager } from '../di/interfaces/cookie-manager.interface.js';
+import type {
+  CookieOptions,
+  CookieType,
+  ICookieManager,
+} from '../di/interfaces/cookie-manager.interface.js';
 import { TYPES } from '../di/types.js';
-
-export type CookieType = 'locale' | 'theme' | 'session';
-
-export interface CookieOptions {
-  name?: string;
-  maxAge?: number;
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: 'strict' | 'lax' | 'none';
-  path?: string;
-}
 
 /**
  * Cookie utility class for managing application cookies with proper configuration
@@ -32,9 +25,6 @@ export class CookieManager implements ICookieManager {
   constructor(
     @inject(TYPES.ConfigManager) private readonly configManager: IConfigManager
   ) {}
-  /**
-   * Set a cookie with proper configuration based on cookie type and deployment environment
-   */
   setCookie = (
     res: Response,
     cookieType: CookieType,
@@ -59,9 +49,6 @@ export class CookieManager implements ICookieManager {
     });
   };
 
-  /**
-   * Set a locale preference cookie
-   */
   setLocaleCookie = (
     res: Response,
     locale: string,
@@ -70,9 +57,6 @@ export class CookieManager implements ICookieManager {
     this.setCookie(res, 'locale', locale, options);
   };
 
-  /**
-   * Set a theme preference cookie
-   */
   setThemeCookie = (
     res: Response,
     theme: string,
@@ -89,9 +73,6 @@ export class CookieManager implements ICookieManager {
     this.setCookie(res, 'session', sessionId, options);
   };
 
-  /**
-   * Get cookie configuration for a specific type
-   */
   getCookieConfig(cookieType: CookieType) {
     return this.configManager.getConfig().deployment.cookies.types[cookieType];
   }
@@ -103,9 +84,6 @@ export class CookieManager implements ICookieManager {
     return this.configManager.getConfig().deployment.cookies.defaults;
   }
 
-  /**
-   * Check if a cookie type is configured
-   */
   isCookieTypeSupported(cookieType: string): cookieType is CookieType {
     return ['locale', 'theme', 'session'].includes(cookieType);
   }

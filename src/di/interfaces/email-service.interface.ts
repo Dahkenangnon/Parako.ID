@@ -3,9 +3,6 @@
  * Defines the contract for email operations
  */
 export interface IEmailService {
-  /**
-   * Initialize the email service with configuration
-   */
   initialize(): void;
 
   /**

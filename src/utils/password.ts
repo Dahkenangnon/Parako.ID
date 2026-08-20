@@ -1,14 +1,9 @@
 import * as argon2 from 'argon2';
 import { injectable } from 'inversify';
-import { IPasswordUtils } from '../di/interfaces/password-utils.interface.js';
-
-/**
- * Interface for password verification result
- */
-export interface PasswordVerificationResult {
-  valid: boolean;
-  needsUpgrade: boolean;
-}
+import type {
+  IPasswordUtils,
+  PasswordVerificationResult,
+} from '../di/interfaces/password-utils.interface.js';
 
 /**
  * Argon2id password hashing utility.

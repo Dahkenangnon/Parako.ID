@@ -80,7 +80,7 @@ export class TenantContextMiddleware implements ITenantContextMiddleware {
       // When cookies are scoped to the base domain (e.g. .parako.test),
       // a session from acme.parako.test is sent to beta.parako.test too.
       const subdomain = this.extractSubdomain(req);
-      const sessionTenant = (req.session as Record<string, unknown>)
+      const sessionTenant = (req.session as unknown as Record<string, unknown>)
         ?.tenantId as string | undefined;
 
       const hasValidExtractedTenant =

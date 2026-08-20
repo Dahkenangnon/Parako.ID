@@ -13,9 +13,6 @@ import {
   webauthnRenameCredentialParamsSchema,
 } from '../validators/webauthn/rename.js';
 
-/**
- * Register WebAuthn API routes with DI injectable services
- */
 export const webauthnRoutes = (
   securityMiddleware: ISecurityMiddleware,
   webauthnController: IWebAuthnController,

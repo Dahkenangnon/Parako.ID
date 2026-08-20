@@ -59,9 +59,6 @@ export default class EmailUtils implements IEmailService {
     });
   }
 
-  /**
-   * Initialize the email service with configuration
-   */
   public initialize(): void {
     const emailConfig = this.configManager.getConfig().integrations.email;
 
@@ -184,9 +181,6 @@ export default class EmailUtils implements IEmailService {
     );
   }
 
-  /**
-   * Check if a template file exists and is valid
-   */
   private isValidTemplateFile(filePath: string): boolean {
     // Single fs read avoids TOCTOU between existsSync/statSync/readFileSync.
     try {
@@ -594,9 +588,6 @@ export default class EmailUtils implements IEmailService {
     );
   }
 
-  /**
-   * Send OTP code for new device verification
-   */
   public async sendNewDeviceOtpEmail(data: {
     email: string;
     username: string;

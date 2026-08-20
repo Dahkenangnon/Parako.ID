@@ -26,7 +26,7 @@ export function opsRoutes(
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Metrics endpoint (placeholder — delegates to MetricsService in future)
+  // This reserved _ops path is a liveness contract; application metrics are configured separately.
   router.get('/metrics', (_req: Request, res: Response) => {
     res.json({ status: 'ok', message: 'Metrics endpoint' });
   });

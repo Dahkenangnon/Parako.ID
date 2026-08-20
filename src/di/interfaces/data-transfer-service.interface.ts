@@ -53,9 +53,6 @@ export interface IDataTransferService {
     ctx: ExportContext
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }>;
 
-  /**
-   * Generate import template file.
-   */
   generateImportTemplate(
     config: EntityTransferConfig
   ): Promise<{ buffer: Buffer; filename: string; contentType: string }>;

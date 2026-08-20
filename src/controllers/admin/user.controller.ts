@@ -28,10 +28,6 @@ interface UserActivityTarget {
   full_name?: string;
 }
 
-/**
- * Admin Users Controller
- * Handles all user management operations for admin panel
- */
 @injectable()
 export class AdminUsersController implements IAdminUsersController {
   private readonly originId = randomUUID();
@@ -123,10 +119,6 @@ export class AdminUsersController implements IAdminUsersController {
       });
   }
 
-  /**
-   * List all users with pagination, search, and filtering
-   * GET /admin/users
-   */
   public list = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
       req.query,
@@ -205,10 +197,6 @@ export class AdminUsersController implements IAdminUsersController {
     });
   };
 
-  /**
-   * Show user details
-   * GET /admin/users/:id
-   */
   public show = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
@@ -249,10 +237,6 @@ export class AdminUsersController implements IAdminUsersController {
     });
   };
 
-  /**
-   * Show create user form
-   * GET /admin/users/new
-   */
   public create = async (_req: Request, res: Response): Promise<void> => {
     const roles =
       this.configManager.getConfig().security.authentication.roles.available;
@@ -265,10 +249,6 @@ export class AdminUsersController implements IAdminUsersController {
     });
   };
 
-  /**
-   * Store new user
-   * POST /admin/users
-   */
   public store = async (req: Request, res: Response): Promise<void> => {
     const {
       email,
@@ -401,10 +381,6 @@ export class AdminUsersController implements IAdminUsersController {
     );
   };
 
-  /**
-   * Show edit user form
-   * GET /admin/users/:id/edit
-   */
   public edit = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const user = await this.userService.findOne(id);
@@ -432,10 +408,6 @@ export class AdminUsersController implements IAdminUsersController {
     });
   };
 
-  /**
-   * Update user
-   * PUT /admin/users/:id
-   */
   public update = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const {
@@ -646,10 +618,6 @@ export class AdminUsersController implements IAdminUsersController {
     );
   };
 
-  /**
-   * Enable user account.
-   * POST /admin/users/:id/enable — JSON endpoint consumed by admin UI.
-   */
   public enable = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
@@ -698,10 +666,6 @@ export class AdminUsersController implements IAdminUsersController {
     }
   };
 
-  /**
-   * Disable user account.
-   * POST /admin/users/:id/disable — JSON endpoint consumed by admin UI.
-   */
   public disable = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
@@ -792,10 +756,7 @@ export class AdminUsersController implements IAdminUsersController {
     }
   };
 
-  /**
-   * Delete user (soft delete/anonymize).
-   * DELETE /admin/users/:id — JSON endpoint consumed by admin UI.
-   */
+  /** Soft-deletes the account by anonymizing its user record. */
   public destroy = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
@@ -858,10 +819,6 @@ export class AdminUsersController implements IAdminUsersController {
     }
   };
 
-  /**
-   * Show user activities
-   * GET /admin/users/:id/activities
-   */
   public activities = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
     const page = parsePositiveInt(req.query.page, {

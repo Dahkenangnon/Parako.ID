@@ -136,9 +136,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     };
   }
 
-  /**
-   * List all user grants with pagination, search, and filtering
-   */
   public list = async (req: Request, res: Response): Promise<void> => {
     const { page, limit, search, sortBy, sortOrder } = extractListingQuery(
       req.query,
@@ -294,9 +291,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     });
   };
 
-  /**
-   * Show detailed information about a specific grant
-   */
   public show = async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
@@ -574,9 +568,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     }
   };
 
-  /**
-   * Revoke all grants for a specific client
-   */
   public revokeClientGrants = async (
     req: Request,
     res: Response
@@ -684,9 +675,6 @@ export class AdminUserGrantsController implements IAdminUserGrantsController {
     }
   };
 
-  /**
-   * Get statistics about user grants
-   */
   public getStats = async (_req: Request, res: Response): Promise<void> => {
     try {
       const stats = await this.oidcAdapter.grant.getGrantStatistics();

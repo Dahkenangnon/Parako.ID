@@ -50,9 +50,6 @@ export class WebAuthnController implements IWebAuthnController {
     };
   }
 
-  /**
-   * Get origin for WebAuthn operations
-   */
   private getOrigin(req: Request): string {
     const config = this.configManager.getConfig();
     const rpId = config.security?.authentication?.multi_factor?.webauthn?.rp_id;
@@ -101,9 +98,6 @@ export class WebAuthnController implements IWebAuthnController {
     this.sessionManager.set(req, WEBAUTHN_CHALLENGE_KEY, challengeData);
   }
 
-  /**
-   * Get and validate challenge from session
-   */
   private getChallenge(
     req: Request,
     expectedType: 'registration' | 'authentication'
@@ -129,16 +123,10 @@ export class WebAuthnController implements IWebAuthnController {
     return challengeData.challenge;
   }
 
-  /**
-   * Clear challenge from session
-   */
   private clearChallenge(req: Request): void {
     this.sessionManager.remove(req, WEBAUTHN_CHALLENGE_KEY);
   }
 
-  /**
-   * Get authenticated user from session
-   */
   private getAuthenticatedUser(
     req: Request
   ): { username: string; email?: string; name: string } | null {

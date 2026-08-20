@@ -17,12 +17,9 @@ import type {
 /**
  * NotificationService - Channel-agnostic notification abstraction
  *
- * This service wraps the EmailService (and future SMS/WhatsApp services)
- * to provide a unified notification API. All application code should use
- * this service instead of directly depending on EmailService.
- *
- * Currently only email channel is implemented. SMS and WhatsApp can be
- * added later without changing consumers of this service.
+ * This service keeps application callers independent from the email
+ * transport. Delivery is currently email-only; additional channels belong
+ * behind the same notification contract.
  */
 @injectable()
 export class NotificationService implements INotificationService {
@@ -35,9 +32,6 @@ export class NotificationService implements INotificationService {
     private readonly logger: ILogger
   ) {}
 
-  /**
-   * Send email verification notification
-   */
   async sendVerification(
     recipient: NotificationRecipient,
     verificationUrl: string
@@ -74,9 +68,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send password reset notification
-   */
   async sendPasswordReset(
     recipient: NotificationRecipient,
     resetUrl: string
@@ -113,9 +104,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send welcome notification to new users
-   */
   async sendWelcome(
     recipient: NotificationRecipient
   ): Promise<NotificationResult> {
@@ -150,9 +138,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send security alert notification
-   */
   async sendSecurityAlert(
     recipient: NotificationRecipient,
     alertType: string,
@@ -197,9 +182,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send new session/login alert notification
-   */
   async sendNewSessionAlert(
     recipient: NotificationRecipient,
     sessionInfo: SessionInfo
@@ -239,9 +221,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send OTP code notification
-   */
   async sendOtp(
     recipient: NotificationRecipient,
     otp: string,
@@ -281,9 +260,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send a generic notification with custom content
-   */
   async sendGeneric(
     recipient: NotificationRecipient,
     title: string,
@@ -326,9 +302,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send a templated email notification
-   */
   async sendTemplatedEmail(
     email: string,
     subject: string,
@@ -371,9 +344,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send backup code count warning notification
-   */
   async sendBackupCodeWarning(
     recipient: NotificationRecipient,
     remainingCount: number,
@@ -426,9 +396,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Send admin alert notification (always uses email)
-   */
   async sendAdminAlert(
     adminEmails: string[],
     subject: string,
@@ -474,10 +441,6 @@ export class NotificationService implements INotificationService {
     }
   }
 
-  /**
-   * Get the preferred notification channel for a user
-   * Based on user preferences and available contact methods
-   */
   getPreferredChannel(user: IUser): NotificationChannel {
     const userPreference = user.notification_preferences?.preferred_channel;
 
@@ -515,10 +478,6 @@ export class NotificationService implements INotificationService {
     return 'email';
   }
 
-  /**
-   * Get list of available notification channels
-   * Based on system configuration
-   */
   getAvailableChannels(): NotificationChannel[] {
     const channels: NotificationChannel[] = ['email']; // Email always available
 

@@ -181,9 +181,6 @@ export class SmsService {
     return { allowed: true };
   }
 
-  /**
-   * Initialize the SMS provider based on configuration
-   */
   private initializeProvider(): void {
     let providerName: string | undefined;
 
@@ -218,9 +215,6 @@ export class SmsService {
     }
   }
 
-  /**
-   * Check if SMS service is available
-   */
   isAvailable(): boolean {
     return this.provider !== null && this.provider.isConfigured();
   }
@@ -333,9 +327,6 @@ export class SmsService {
     }
   }
 
-  /**
-   * Validate a phone number using libphonenumber-js
-   */
   validatePhoneNumber(
     phone: string,
     defaultCountry?: string

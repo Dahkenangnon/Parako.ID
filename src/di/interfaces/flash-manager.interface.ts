@@ -1,8 +1,8 @@
-import {
-  FlashType,
-  FlashOptions,
+import type {
   FlashContainer,
-} from '../../utils/session.js';
+  FlashOptions,
+  FlashType,
+} from '../../types/session-data.js';
 
 /**
  * Interface for flash manager service

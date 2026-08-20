@@ -35,10 +35,6 @@ import type { PlatformTenantMiddleware } from '../middlewares/platform-tenant.mi
 import { opsRoutes } from './ops.js';
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 
-/**
- * Main Routes Manager
- * Handles registration of all application routes with DI injectable services
- */
 @injectable()
 export class MainRoutesManager implements IMainRoutesManager {
   constructor(

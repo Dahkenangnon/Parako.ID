@@ -1,5 +1,14 @@
 import { Response } from 'express';
-import { CookieType, CookieOptions } from '../../utils/cookies.js';
+export type CookieType = 'locale' | 'theme' | 'session';
+
+export interface CookieOptions {
+  name?: string;
+  maxAge?: number;
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'strict' | 'lax' | 'none';
+  path?: string;
+}
 
 /**
  * Interface for cookie manager service

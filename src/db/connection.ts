@@ -22,9 +22,6 @@ export default class DatabaseConnectionManager implements IDatabaseConnectionMan
     this.config = {} as BootstrapConfig;
   }
 
-  /**
-   * Initialize with bootstrap configuration
-   */
   public initializeWithBootstrapConfig(bootstrapConfig: BootstrapConfig): void {
     this.config = bootstrapConfig;
   }
@@ -199,9 +196,6 @@ export default class DatabaseConnectionManager implements IDatabaseConnectionMan
     }
   }
 
-  /**
-   * Gets the database instance
-   */
   getDB(): any {
     if (mongoose.connection.db) {
       return mongoose.connection.db;

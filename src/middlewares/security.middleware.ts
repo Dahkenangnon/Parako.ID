@@ -244,21 +244,16 @@ export class SecurityMiddleware implements ISecurityMiddleware {
     }
   };
 
-  /**
-   * Middleware to generate CSRF token and set it in res.locals for views
-   */
   public generateCsrfToken = (
     req: Request,
     res: Response,
     next: NextFunction
   ): void => {
     try {
-      // Generate CSRF token if not already present
       if (!this.sessionManager.get(req, 'csrfToken')) {
         this.sessionManager.generateCsrfToken(req);
       }
 
-      // Set CSRF token in res.locals for use in templates
       res.locals.csrfToken = this.sessionManager.get(req, 'csrfToken');
 
       next();

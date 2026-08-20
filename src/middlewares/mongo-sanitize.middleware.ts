@@ -28,16 +28,10 @@ class MongoSanitizer {
   private static readonly REPLACE_REGEX = /\$|\./g;
   private static readonly REPLACE_REGEX_WITHOUT_DOT = /\$/g;
 
-  /**
-   * Check if an object is a plain object (not array, null, or primitive)
-   */
   private static isPlainObject(obj: any): boolean {
     return typeof obj === 'object' && obj !== null && !Array.isArray(obj);
   }
 
-  /**
-   * Get the appropriate test regex based on allowDots option
-   */
   private static getTestRegex(allowDots: boolean): RegExp {
     return allowDots ? this.TEST_REGEX_WITHOUT_DOT : this.TEST_REGEX;
   }
@@ -65,9 +59,6 @@ class MongoSanitizer {
     traverse(target);
   }
 
-  /**
-   * Check if target contains prohibited keys
-   */
   public static hasProhibitedKeys(
     target: any,
     allowDots: boolean = false
@@ -153,9 +144,6 @@ class MongoSanitizer {
     return MongoSanitizer.sanitizeInternal(target, options).target;
   }
 
-  /**
-   * Check if target contains prohibited keys
-   */
   public static has(target: any, allowDots: boolean = false): boolean {
     return MongoSanitizer.hasProhibitedKeys(target, allowDots);
   }
@@ -213,12 +201,6 @@ mongoSanitize.has = MongoSanitizer.has;
  */
 export default mongoSanitize;
 
-/**
- * Export the class for advanced usage
- */
 export { MongoSanitizer };
 
-/**
- * Export types for external use
- */
 export type { SanitizeOptions, SanitizeResult };

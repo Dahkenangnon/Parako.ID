@@ -46,9 +46,6 @@ import {
 } from '../validators/admin/oidc-clients.js';
 import { asyncHandler } from '../middlewares/async-handler.js';
 
-/**
- * Register admin routes with the DI injectable services
- */
 export const adminRoutes = (
   adminHomeController: IAdminHomeController,
   adminUsersController: IAdminUsersController,

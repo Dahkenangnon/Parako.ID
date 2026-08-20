@@ -7,58 +7,18 @@ import QRCode from 'qrcode';
 import crypto from 'node:crypto';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
-import { IMfaUtils } from '../di/interfaces/mfa-utils.interface.js';
+import type { IMfaUtils } from '../di/interfaces/mfa-utils.interface.js';
+import type {
+  EmailOtpResult,
+  MfaMethod,
+  MfaMethodUpdate,
+  MfaSetupResult,
+  TotpVerificationResult,
+} from '../types/mfa.js';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { type IUser } from '../types/user.js';
 import { ensureDecrypted } from './encryption.js';
-
-/**
- * MFA method types supported by the system
- */
-export type MfaMethod = 'totp' | 'sms' | 'email' | 'webauthn';
-
-/**
- * Update object for enabling/disabling MFA methods
- * Uses MongoDB dot notation for partial updates
- */
-export interface MfaMethodUpdate {
-  [key: string]: boolean | string | Date | undefined;
-}
-
-/**
- * TOTP verification result
- */
-export interface TotpVerificationResult {
-  valid: boolean;
-  error?: string;
-}
-
-/**
- * Email OTP generation result
- */
-export interface EmailOtpResult {
-  code: string;
-  hash: string;
-  expiresAt: Date;
-}
-
-/**
- * QR Code generation result
- */
-export interface QrCodeResult {
-  otpauth: string;
-  qrDataUri: string;
-}
-
-/**
- * MFA setup result
- */
-export interface MfaSetupResult {
-  secret: string;
-  qrCode: QrCodeResult;
-  backup_codes?: string[];
-}
 
 /**
  * Centralized MFA utility class
@@ -86,9 +46,6 @@ export class MfaUtils implements IMfaUtils {
     this.configManager = configManager;
   }
 
-  /**
-   * Generate a new TOTP secret
-   */
   generateTotpSecret(): string {
     try {
       return otpGenerateSecret();
@@ -100,9 +57,6 @@ export class MfaUtils implements IMfaUtils {
     }
   }
 
-  /**
-   * Generate TOTP URI for QR code
-   */
   generateTotpUri(accountName: string, secret: string, issuer: string): string {
     try {
       if (!accountName?.trim() || !secret?.trim() || !issuer?.trim()) {
@@ -120,9 +74,6 @@ export class MfaUtils implements IMfaUtils {
     }
   }
 
-  /**
-   * Generate QR code data URI from TOTP URI
-   */
   async generateQrCode(otpauth: string): Promise<string> {
     try {
       if (!otpauth) {
@@ -227,9 +178,6 @@ export class MfaUtils implements IMfaUtils {
     return { valid: true, sanitized };
   }
 
-  /**
-   * Generate email OTP code
-   */
   generateEmailOtp(ttlSeconds: number = 600): EmailOtpResult {
     try {
       if (
@@ -563,9 +511,6 @@ export class MfaUtils implements IMfaUtils {
     return '*'.repeat(cleaned.length - 4) + cleaned.slice(-4);
   }
 
-  /**
-   * Get MFA configuration from environment/config
-   */
   getMfaConfig(): {
     enabled: boolean;
     methods: {
@@ -598,9 +543,6 @@ export class MfaUtils implements IMfaUtils {
     };
   }
 
-  /**
-   * Validate MFA method is supported
-   */
   isMethodSupported(method: MfaMethod): boolean {
     const config = this.getMfaConfig();
 
@@ -618,9 +560,6 @@ export class MfaUtils implements IMfaUtils {
     }
   }
 
-  /**
-   * Get available MFA methods based on configuration
-   */
   getAvailableMethods(): MfaMethod[] {
     const config = this.getMfaConfig();
     const methods: MfaMethod[] = [];

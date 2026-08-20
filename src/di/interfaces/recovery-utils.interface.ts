@@ -1,19 +1,19 @@
 import type { IUser } from '../../types/user.js';
-import {
-  RecoveryMethod,
-  RecoveryConfig,
+import type {
   BackupCodeResult,
-  SecondaryEmailResult,
-  RecoveryVerificationResult,
-  RecoveryLockoutResult,
   FailedAttemptResult,
+  RecoveryConfig,
   RecoveryCooldownResult,
+  RecoveryLockoutResult,
+  RecoveryMethod,
+  RecoveryVerificationResult,
+  SecondaryEmailResult,
   SecurityAnswerValidationResult,
   SecurityQuestionInput,
-  SecurityQuestionsSetupResult,
   SecurityQuestionsLockoutResult,
+  SecurityQuestionsSetupResult,
   SecurityQuestionsVerificationResult,
-} from '../../utils/recovery.js';
+} from '../../types/recovery.js';
 
 /**
  * Interface for recovery utils service
