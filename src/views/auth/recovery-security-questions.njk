@@ -1,40 +1,15 @@
 {% extends "layouts/auth-layout.njk" %}
+{% from "partials/auth-ui.njk" import auth_page_header, auth_alert %}
 
 {% block auth_content %}
-                <div class="flex justify-center mb-2">
-                    {{ image(branding.logo, { alt: app.title + " Logo", className: 'dark:hidden h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
-                    {{ image(branding.logoDark, { alt: app.title + " Logo", className: 'hidden dark:block h-12 w-auto', loading: 'eager', fetchpriority: 'high' }) }}
-                </div>
-
-                <div class="mb-4 flex justify-center">
-                    <h1 class="auth-heading text-center font-bold text-primary text-lg sm:text-xl md:text-2xl lg:text-3xl leading-tight break-words">
-                        <span class="block max-w-full" style="display: block; width: 100%;">
-                            <span class="block w-full" style="display: block; width: 100%; font-size: clamp(1rem, 2.5vw, 2rem);">
-                                {{ t('security-questions.recovery.title') }}
-                            </span>
-                        </span>
-                    </h1>
-                </div>
+                {{ auth_page_header(branding, app, t('security-questions.recovery.title'), 'mb-2', 'mb-4') }}
 
                 <p class="text-center text-sm text-gray-600 dark:text-muted-foreground mb-4">
                     {{ t('security-questions.recovery.description') }}
                 </p>
 
                 <!-- Error Message -->
-                {% if error %}
-                <div class="bg-red-50 dark:bg-red-900 border-2 border-red-200 dark:border-red-700 p-4 mb-4">
-                    <div class="flex">
-                        <div class="flex-shrink-0">
-                            <svg class="h-5 w-5 text-red-400 dark:text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                        </div>
-                        <div class="ml-3">
-                            <p class="text-sm text-red-800 dark:text-red-200">{{ error }}</p>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
+                {{ auth_alert(error, 'error') }}
 
                 <!-- Lockout Warning -->
                 {% if lockout and lockout.locked %}

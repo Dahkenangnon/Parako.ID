@@ -3,7 +3,11 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { injectable, inject } from 'inversify';
 import type { IConfigManager } from '../di/interfaces/config-manager.interface.js';
-import type { IViewResolver } from '../di/interfaces/view-resolver.interface.js';
+import type {
+  IViewResolver,
+  ViewKeys,
+  ViewResolverConfig,
+} from '../di/interfaces/view-resolver.interface.js';
 import { TYPES } from '../di/types.js';
 import nunjucks from 'nunjucks';
 import { Application } from 'express';
@@ -11,101 +15,38 @@ import { deepMerge } from './misc.js';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 
-export interface ViewResolverConfig {
-  enabled: boolean;
-  customViewsRoot: string;
-  defaultViewsRoot: string;
-  viewExtension: string;
-}
-
-/**
- * View key interface for type-safe view access
- */
-export interface ViewKeys {
-  auth: {
-    login: string;
-    register: string;
-    forgot_password: string;
-    reset_password: string;
-    email_verification: string;
-    verify_email: string;
-    email_verification_success: string;
-    phone_verification: string;
-    account_select: string;
-    continue: string;
-    multi_factor: string;
-    mfa_verify: string;
-    mfa_resend: string;
-    logout: string;
-    social_password_setup: string;
-    social_contact_info: string;
-    account_recovery: string;
-    recovery_backup_codes: string;
-    recovery_secondary_email: string;
-    recovery_verify_code: string;
-    recovery_method_select: string;
-    recovery_security_questions: string;
-    recovery_sms: string;
-    recovery_codes_display: string;
-    setup_mfa: string;
-    setup_webauthn: string;
-    mfa_select: string;
-    mfa_webauthn: string;
-    mfa_no_fallback: string;
-    social_callback: string;
-    oidc: {
-      consent: string;
-      device_flow_code_input: string;
-      device_flow_confirm_code: string;
-      device_flow_success: string;
-      error: string;
-      login: string;
-      logout_success: string;
-      logout: string;
-      mfa: string;
-      mfa_select: string;
-      mfa_webauthn: string;
-      mfa_no_fallback: string;
-      newDeviceVerify: string;
-    };
-  };
-  accounts: {
-    my_account: string;
-    settings: string;
-    settings_profile: string;
-    settings_preferences: string;
-    settings_notifications: string;
-    settings_security: string;
-    settings_recovery: string;
-    settings_social: string;
-    apps: string;
-    sessions: string;
-    recovery_codes: string;
-    recovery_setup: string;
-    security_questions_setup: string;
-    passkeys: string;
-  };
-  errors: {
-    unauthorized: string;
-    forbidden: string;
-    notfound: string;
-    server_error: string;
-    rate_limit: string;
-  };
-  email: {
-    mail: string;
-  };
-  home: {
-    index: string;
-  };
-}
-
 function isOutsideRoot(relativePath: string): boolean {
   return (
     relativePath === '..' ||
     relativePath.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relativePath)
   );
+}
+
+const LEGACY_ACCOUNT_SETTINGS_VIEW = 'accounts/settings.njk';
+const DEFAULT_ACCOUNT_PROFILE_VIEW = 'accounts/settings/profile.njk';
+
+function migrateLegacyAccountSettingsView(
+  value: unknown
+): Record<string, unknown> | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const views = { ...(value as Record<string, unknown>) };
+  const legacyView = views.settings;
+  delete views.settings;
+
+  if (
+    typeof legacyView === 'string' &&
+    legacyView !== LEGACY_ACCOUNT_SETTINGS_VIEW &&
+    (typeof views.settings_profile !== 'string' ||
+      views.settings_profile === DEFAULT_ACCOUNT_PROFILE_VIEW)
+  ) {
+    views.settings_profile = legacyView;
+  }
+
+  return views;
 }
 
 /**
@@ -135,9 +76,6 @@ export class ViewResolver implements IViewResolver {
     this.fileSystemUtils = fileSystemUtils;
   }
 
-  /**
-   * Get configuration from the main config
-   */
   private getConfig(): ViewResolverConfig {
     try {
       const uiConfig =
@@ -265,7 +203,10 @@ export class ViewResolver implements IViewResolver {
     };
 
     const authCustom = buildSection(configViews?.auth, 'auth');
-    const accountsCustom = buildSection(configViews?.accounts, 'accounts');
+    const accountsCustom = buildSection(
+      migrateLegacyAccountSettingsView(configViews?.accounts),
+      'accounts'
+    );
     const errorsCustom = buildSection(configViews?.errorpage, 'errors');
     const emailCustom = buildSection(configViews?.email, 'email');
     const homeCustom = buildSection(configViews?.home, 'home');
@@ -375,7 +316,6 @@ export class ViewResolver implements IViewResolver {
       'auth.oidc.mfa_no_fallback': 'auth/oidc/mfa-no-fallback',
       'auth.oidc.newDeviceVerify': 'auth/oidc/new-device-verify',
       'accounts.my_account': 'accounts/my-account',
-      'accounts.settings': 'accounts/settings',
       'accounts.settings_profile': 'accounts/settings/profile',
       'accounts.settings_preferences': 'accounts/settings/preferences',
       'accounts.settings_notifications': 'accounts/settings/notifications',
@@ -400,9 +340,6 @@ export class ViewResolver implements IViewResolver {
     return defaultPathMap[configKey] || configKey;
   }
 
-  /**
-   * Check if a view file is valid (exists, readable, and not empty)
-   */
   private isValidViewFile(filePath: string): boolean {
     // Single fs read avoids TOCTOU between existsSync/statSync/readFileSync.
     try {
@@ -506,7 +443,6 @@ export class ViewResolver implements IViewResolver {
       },
       accounts: {
         my_account: this.ensureViewExtension('accounts/my-account'),
-        settings: this.ensureViewExtension('accounts/settings'),
         settings_profile: this.ensureViewExtension('accounts/settings/profile'),
         settings_preferences: this.ensureViewExtension(
           'accounts/settings/preferences'
@@ -605,17 +541,11 @@ export class ViewResolver implements IViewResolver {
     }
   }
 
-  /**
-   * Reload configuration
-   */
   public reloadConfig(): void {
     this.initializeViewKeys();
     this.logger.info('View resolver configuration reloaded');
   }
 
-  /**
-   * Get current configuration
-   */
   public getCurrentConfig(): ViewResolverConfig {
     return this.getConfig();
   }

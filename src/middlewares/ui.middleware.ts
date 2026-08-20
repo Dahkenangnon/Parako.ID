@@ -10,23 +10,12 @@ import type { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js'
 import type { II18nService } from '../di/interfaces/i18n-service.interface.js';
 import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import { TYPES } from '../di/types.js';
-import { resolveBrandingUrl } from '../utils/views.js';
 import { getDefaultFullConfig } from '../config/constants.js';
-import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../config/social-providers.js';
 import {
   tenantContext,
   DEFAULT_TENANT_ID,
 } from '../multi-tenancy/tenant-context.js';
-
-const CANONICAL_PATH_BASE = 'https://parako.local';
-
-function canonicalPath(originalUrl: string): string {
-  try {
-    return new URL(originalUrl, CANONICAL_PATH_BASE).pathname;
-  } catch {
-    return '/';
-  }
-}
+import { buildConfigurationViewLocals } from '../utils/view-locals.js';
 
 function supportedLocale(
   value: unknown,
@@ -61,9 +50,6 @@ export class UIMiddleware implements IUIMiddleware {
     private readonly uploadMiddleware: IUploadMiddleware
   ) {}
 
-  /**
-   * Sets theme-related locals for the user interface
-   */
   public setThemeLocals = async (
     req: Request,
     res: Response,
@@ -167,9 +153,6 @@ export class UIMiddleware implements IUIMiddleware {
     }
   };
 
-  /**
-   * Sets sidebar state locals for the user interface
-   */
   public setSidebarLocals = async (
     req: Request,
     res: Response,
@@ -218,9 +201,6 @@ export class UIMiddleware implements IUIMiddleware {
     }
   };
 
-  /**
-   * Updates the user's sidebar state preference
-   */
   public updateSidebar = async (req: Request, res: Response): Promise<void> => {
     try {
       const { expanded } = req.body;
@@ -275,9 +255,6 @@ export class UIMiddleware implements IUIMiddleware {
     }
   };
 
-  /**
-   * Sets locale-related locals for the user interface
-   */
   public setLocaleLocals = async (
     req: Request,
     res: Response,
@@ -469,9 +446,6 @@ export class UIMiddleware implements IUIMiddleware {
     }
   };
 
-  /**
-   * Gets available locales with their display information
-   */
   public getAvailableLocales = (): Array<{
     code: string;
     flag: string;
@@ -501,9 +475,6 @@ export class UIMiddleware implements IUIMiddleware {
     }));
   };
 
-  /**
-   * Initializes i18n for the request
-   */
   public initI18n = (req: Request, res: Response, next: NextFunction): void => {
     try {
       this.i18nService.init(req, res, next);
@@ -810,145 +781,36 @@ export class UIMiddleware implements IUIMiddleware {
       res.locals.userLocale = finalLocale;
       res.locals.currentLocale = finalLocale;
 
-      // Re-build config-derived locals with tenant-aware config.
-      // configLocals set these before tenant context was active (platform defaults).
-      // Now ALS is active, so getConfig() returns tenant-merged config.
-      // @TODO: Extract shared locals-building utility (see locals.middleware.ts:30 TODO)
+      // Tenant context is active here, so this replaces the platform defaults
+      // installed by LocalsMiddleware with the effective tenant configuration.
       const tenantConfig = this.configManager.getConfig();
+      const enabledProviders = Array.isArray(
+        res.locals.socialProviders?.enabled
+      )
+        ? res.locals.socialProviders.enabled.filter(
+            (provider: unknown): provider is string =>
+              typeof provider === 'string'
+          )
+        : [];
 
-      res.locals.app = {
-        title: tenantConfig.application.title,
-        description: tenantConfig.application.description,
-        locales: tenantConfig.application.locales,
-        url: tenantConfig.deployment.url,
-        env: tenantConfig.deployment.environment,
-        fingerprintJS: tenantConfig.integrations.fingerprintjs?.enabled
-          ? {
-              apiKey: tenantConfig.integrations.fingerprintjs.api_key,
-              endpoint: tenantConfig.integrations.fingerprintjs.endpoint,
-            }
-          : null,
-      };
+      const tenantLocals = await buildConfigurationViewLocals({
+        config: tenantConfig,
+        request: req,
+        resolveFileUrl: storageKey =>
+          this.uploadMiddleware.getFileUrl(storageKey),
+        enabledSocialProviders: enabledProviders,
+        restrictSocialProviders: true,
+      });
+      Object.assign(res.locals, tenantLocals);
 
-      const resolve = (v: string | undefined | null) =>
-        resolveBrandingUrl(
-          v,
-          this.uploadMiddleware.getFileUrl.bind(this.uploadMiddleware)
-        );
-
-      res.locals.branding = {
-        companyName: tenantConfig.branding.companyName,
-        logo: resolve(tenantConfig.branding.logo),
-        logoDark: resolve(
-          tenantConfig.branding.logoDark || tenantConfig.branding.logo
-        ),
-        logoIcon: resolve(
-          tenantConfig.branding.logoIcon || '/images/logo-icon-light.png'
-        ),
-        logoIconDark: resolve(
-          tenantConfig.branding.logoIconDark || '/images/logo-icon-dark.png'
-        ),
-        favicon: resolve(tenantConfig.branding.favicon || '/favicon.png'),
-        colors: tenantConfig.branding.colors || { light: {}, dark: {} },
-        fonts: tenantConfig.branding.fonts || {},
-      };
-
-      res.locals.urls = {
-        website: tenantConfig.integrations.urls.website,
-        privacy_policy: tenantConfig.integrations.urls.privacy_policy,
-        terms_of_service: tenantConfig.integrations.urls.terms_of_service,
-        contact: tenantConfig.integrations.urls.contact,
-      };
-
-      // Intersect platform providers (from SocialLoginManager) with tenant enabled list
-      const platformProviders: string[] =
-        res.locals.socialProviders?.enabled || [];
-      const tenantEnabled: string[] =
-        (tenantConfig.features.social_providers.enabled as string[]) || [];
-      const effectiveEnabled = platformProviders.filter((p: string) =>
-        tenantEnabled.includes(p)
-      );
-
-      res.locals.socialProviders = {
-        enabled: effectiveEnabled,
-        available: tenantConfig.features.social_providers.available || [
-          ...CONFIGURABLE_SOCIAL_PROVIDER_IDS,
-        ],
-      };
-
-      // Re-build authentication locals
-      const authConfig = tenantConfig.security.authentication;
-      const customIdentifiers = (
-        authConfig.custom_identifiers?.enabled
-          ? (authConfig.custom_identifiers.fields ?? []).filter(
-              (field: any) => field.usable_for_login
-            )
-          : []
-      ).map((field: any) => ({
-        slot: field.slot,
-        key: field.key,
-        name: field.name,
-        hint: field.hint_for_user,
-      }));
-
-      res.locals.authentication = {
-        loginMethods: {
-          email:
-            authConfig.login.login_methods.some((cred: string) =>
-              cred.includes('email')
-            ) || false,
-          phone:
-            authConfig.login.login_methods.some(
-              (cred: string) =>
-                cred.includes('phone') || cred.includes('phone_number')
-            ) || false,
-          customIdentifier:
-            authConfig.login.login_methods.some((cred: string) =>
-              cred.includes('custom_identifier')
-            ) || false,
-          customIdentifiers,
-          bothEnabled: authConfig.login.login_methods.length > 1 || false,
-        },
-        signupMethods: {
-          bothEnabled: authConfig.signup.signup_methods.length > 1 || false,
-          requireFullName:
-            authConfig.signup.contact_channels?.full_name?.required ?? true,
-        },
-        customIdentifiers,
-        emailVerificationRequired:
-          authConfig.signup.require_email_verification || false,
-        phoneVerificationRequired:
-          authConfig.signup.require_phone_verification || false,
-      };
-
-      res.locals.oidc = {
-        issuer: tenantConfig.oidc.issuer,
-        path: tenantConfig.oidc.path,
-      };
-
-      // Platform settings nav visibility
       const currentTenantId =
         tenantContext.getTenantIdSafe() || DEFAULT_TENANT_ID;
       res.locals.isPlatformTenant =
         !tenantConfig.features.multi_tenancy.enabled ||
         currentTenantId === '_platforms' ||
         currentTenantId === DEFAULT_TENANT_ID;
-
       res.locals.isMultiTenancyEnabled =
         tenantConfig.features.multi_tenancy.enabled;
-
-      const baseUrl =
-        tenantConfig.deployment.url || `${req.protocol}://${req.hostname}`;
-      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
-
-      res.locals.og = {
-        title: tenantConfig.application.title,
-        description: tenantConfig.application.description,
-        url: res.locals.canonical_url,
-        site_name: tenantConfig.branding.companyName,
-        locale: tenantConfig.application.locales.default,
-      };
-
       this.addI18nHelpers(req, res, () => {});
 
       next();

@@ -142,12 +142,17 @@ Place your custom template files in the `rootPath` directory, matching the origi
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth     | `login`, `register`, `forgot_password`, `reset_password`, `email_verification`, `verify_email`, `email_verification_success`, `account_select`, `continue`, `multi_factor`, `mfa_verify`, `mfa_resend`, `logout`, `social_password_setup`, `social_contact_info`, `account_recovery`, `recovery_backup_codes`, `recovery_secondary_email`, `recovery_verify_code`, `setup_mfa`, `social_callback` |
 | OIDC     | `consent`, `device_flow_code_input`, `device_flow_confirm_code`, `device_flow_success`, `error`, `login`, `logout_success`, `logout`, `mfa`                                                                                                                                                                                                                                                       |
-| Account  | `my_account`, `settings`, `apps`, `sessions`, `recovery_codes`, `recovery_setup`                                                                                                                                                                                                                                                                                                                  |
+| Account  | `my_account`, `settings_profile`, `settings_preferences`, `settings_notifications`, `settings_security`, `settings_recovery`, `settings_social`, `apps`, `sessions`, `recovery_codes`, `recovery_setup`, `security_questions_setup`, `passkeys`                                                                                                                                                   |
 | Error    | `unauthorized`, `forbidden`, `notfound`, `server_error`, `rate_limit`                                                                                                                                                                                                                                                                                                                             |
 | Email    | `mail`                                                                                                                                                                                                                                                                                                                                                                                            |
 | Home     | `index`                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Only override the views you want to change. Unoverridden views use the built-in templates.
+
+The former `accounts.settings` override is deprecated. Existing configurations
+with a non-default value are migrated at runtime to `accounts.settings_profile`;
+an explicit `accounts.settings_profile` value takes precedence. New
+configurations should use the focused account settings view keys shown above.
 
 ### Example: Custom Login Page
 

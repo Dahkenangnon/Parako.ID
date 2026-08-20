@@ -7,23 +7,13 @@ import type { ILocalsMiddleware } from '../di/interfaces/locals-middleware.inter
 import type { ISocialLoginManager } from '../di/interfaces/social-login-manager.interface.js';
 import type { IUploadMiddleware } from '../di/interfaces/upload-middleware.interface.js';
 import { TYPES } from '../di/types.js';
-import {
-  isValidHttpUrl,
-  isValidPictureUrl,
-  resolveBrandingUrl,
-} from '../utils/views.js';
+import { isValidHttpUrl, isValidPictureUrl } from '../utils/views.js';
 import { WEB_SAFE_FONTS } from '../config/constants.js';
 import { CONFIGURABLE_SOCIAL_PROVIDER_IDS } from '../config/social-providers.js';
-
-const CANONICAL_PATH_BASE = 'https://parako.local';
-
-function canonicalPath(originalUrl: string): string {
-  try {
-    return new URL(originalUrl, CANONICAL_PATH_BASE).pathname;
-  } catch {
-    return '/';
-  }
-}
+import {
+  buildConfigurationViewLocals,
+  canonicalViewPath,
+} from '../utils/view-locals.js';
 
 /**
  * Unified middleware class for handling all locals (configuration and user-related)
@@ -42,11 +32,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
   ) {}
 
   /**
-   * Middleware to set configuration-based locals for all requests
-   * NOTE: This runs early in the middleware chain, before locale detection
-   *
-   * @TODO: Extract this locals building into a shared utils which will be used here and in the Koa locals
-   * Ensure also to avoid unecessary locals sending to the views
+   * Sets platform configuration locals before locale and tenant detection.
    */
   public configLocals = async (
     req: Request,
@@ -55,127 +41,15 @@ export class LocalsMiddleware implements ILocalsMiddleware {
   ): Promise<void> => {
     try {
       const config = this.configManager.getConfig();
+      const locals = await buildConfigurationViewLocals({
+        config,
+        request: req,
+        resolveFileUrl: storageKey =>
+          this.uploadMiddleware.getFileUrl(storageKey),
+        enabledSocialProviders: this.socialLoginManager.getAvailableProviders(),
+      });
 
-      res.locals.app = {
-        title: config.application.title,
-        description: config.application.description,
-        locales: config.application.locales,
-        url: config.deployment.url,
-        env: config.deployment.environment,
-        // FingerprintJS Pro configuration (optional)
-        fingerprintJS: config.integrations.fingerprintjs?.enabled
-          ? {
-              apiKey: config.integrations.fingerprintjs.api_key,
-              endpoint: config.integrations.fingerprintjs.endpoint,
-            }
-          : null,
-      };
-
-      const resolve = (v: string | undefined | null) =>
-        resolveBrandingUrl(
-          v,
-          this.uploadMiddleware.getFileUrl.bind(this.uploadMiddleware)
-        );
-
-      res.locals.branding = {
-        companyName: config.branding.companyName,
-        logo: resolve(config.branding.logo),
-        logoDark: resolve(config.branding.logoDark || config.branding.logo),
-        logoIcon: resolve(
-          config.branding.logoIcon || '/images/logo-icon-light.png'
-        ),
-        logoIconDark: resolve(
-          config.branding.logoIconDark || '/images/logo-icon-dark.png'
-        ),
-        favicon: resolve(config.branding.favicon || '/favicon.png'),
-        colors: config.branding.colors || { light: {}, dark: {} },
-        fonts: config.branding.fonts || {},
-      };
-
-      // Font options for admin branding UI
-      res.locals.webSafeFonts = WEB_SAFE_FONTS;
-
-      res.locals.urls = {
-        website: config.integrations.urls.website,
-        privacy_policy: config.integrations.urls.privacy_policy,
-        terms_of_service: config.integrations.urls.terms_of_service,
-        contact: config.integrations.urls.contact,
-      };
-
-      // Use SocialLoginManager to get only providers that are both enabled AND configured
-      res.locals.socialProviders = {
-        enabled: this.socialLoginManager.getAvailableProviders(),
-        available: config.features.social_providers.available || [
-          ...CONFIGURABLE_SOCIAL_PROVIDER_IDS,
-        ],
-      };
-
-      const authConfig = config.security.authentication;
-      const customIdentifiers = (
-        authConfig.custom_identifiers?.enabled
-          ? (authConfig.custom_identifiers.fields ?? []).filter(
-              (field: any) => field.usable_for_login
-            )
-          : []
-      ).map((field: any) => ({
-        slot: field.slot,
-        key: field.key,
-        name: field.name,
-        hint: field.hint_for_user,
-      }));
-
-      res.locals.authentication = {
-        loginMethods: {
-          email:
-            authConfig.login.login_methods.some((cred: string) =>
-              cred.includes('email')
-            ) || false,
-          phone:
-            authConfig.login.login_methods.some(
-              (cred: string) =>
-                cred.includes('phone') || cred.includes('phone_number')
-            ) || false,
-          customIdentifier:
-            authConfig.login.login_methods.some((cred: string) =>
-              cred.includes('custom_identifier')
-            ) || false,
-          customIdentifiers,
-          bothEnabled: authConfig.login.login_methods.length > 1 || false,
-        },
-
-        signupMethods: {
-          bothEnabled: authConfig.signup.signup_methods.length > 1 || false,
-          requireFullName:
-            authConfig.signup.contact_channels?.full_name?.required ?? true,
-        },
-
-        customIdentifiers,
-
-        emailVerificationRequired:
-          authConfig.signup.require_email_verification || false,
-        phoneVerificationRequired:
-          authConfig.signup.require_phone_verification || false,
-      };
-
-      res.locals.currentYear = new Date().getFullYear();
-
-      res.locals.oidc = {
-        issuer: config.oidc.issuer,
-        path: config.oidc.path,
-      };
-
-      const baseUrl =
-        config.deployment.url || `${req.protocol}://${req.hostname}`;
-      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
-
-      res.locals.og = {
-        title: config.application.title,
-        description: config.application.description,
-        url: res.locals.canonical_url,
-        site_name: config.branding.companyName,
-        locale: config.application.locales.default,
-      };
-
+      Object.assign(res.locals, locals);
       next();
     } catch (error) {
       this.logger.error(error as Error, {
@@ -257,7 +131,7 @@ export class LocalsMiddleware implements ILocalsMiddleware {
       };
 
       const baseUrl = `http://localhost:9007`;
-      res.locals.canonical_url = `${baseUrl}${canonicalPath(req.originalUrl)}`;
+      res.locals.canonical_url = `${baseUrl}${canonicalViewPath(req.originalUrl)}`;
 
       res.locals.og = {
         title: 'Parako.ID',
@@ -533,9 +407,6 @@ export class LocalsMiddleware implements ILocalsMiddleware {
     }
   };
 
-  /**
-   * Sets account-related locals for authenticated users
-   */
   public setAccountLocals = async (
     req: Request,
     res: Response,
@@ -648,9 +519,6 @@ export class LocalsMiddleware implements ILocalsMiddleware {
     }
   };
 
-  /**
-   * Sets the active page name in locals
-   */
   public setActivePage = (pageName: string) => {
     return (_req: Request, res: Response, next: NextFunction): void => {
       res.locals.activePage = pageName;

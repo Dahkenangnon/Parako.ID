@@ -47,7 +47,7 @@
             <div class="flex items-center gap-2">
                 <i data-lucide="clock" class="h-4 w-4 text-muted-foreground"></i>
                 <span class="text-muted-foreground">Updated:</span>
-                <span class="font-medium text-foreground">{{ recentVersion.created_at | date('MMM DD, YYYY', displayTimezone) }}</span>
+                <span class="font-medium text-foreground">{{ recentVersion.createdAt | date('MMM DD, YYYY', displayTimezone) }}</span>
             </div>
             {% endif %}
         </div>
@@ -120,22 +120,22 @@
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2 mb-1">
                             <span class="text-sm font-semibold text-foreground">v{{ version.version }}</span>
-                            {% if version.is_active %}
+                            {% if version.isActive %}
                             <span class="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary">
                                 Active
                             </span>
                             {% endif %}
                         </div>
                         <div class="text-xs text-muted-foreground">
-                            {{ version.created_at | date('YYYY-MM-DD HH:mm:ss', displayTimezone) }}
-                            {% if version.metadata and version.metadata.updatedBy %}
-                            · {{ version.metadata.updatedBy }}
+                            {{ version.createdAt | date('YYYY-MM-DD HH:mm:ss', displayTimezone) }}
+                            {% if version.updatedBy %}
+                            · {{ version.updatedBy }}
                             {% endif %}
                         </div>
                     </div>
                     <div class="flex-shrink-0">
-                        {% if not version.is_active %}
-                        <button type="button" data-settings-action="rollback" data-settings-version-id="{{ version._id }}" data-settings-version-number="{{ version.version }}" class="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium">
+                        {% if not version.isActive and version.id %}
+                        <button type="button" data-settings-action="rollback" data-settings-version-id="{{ version.id }}" data-settings-version-number="{{ version.version }}" class="inline-flex items-center px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium">
                             <i data-lucide="rotate-ccw" class="h-3 w-3 mr-1.5"></i>
                             Rollback
                         </button>

@@ -126,6 +126,55 @@ describe('ViewResolver', () => {
     expect(readFileSync).toHaveBeenCalledTimes(7);
   });
 
+  it('migrates a legacy account settings override without replacing an explicit profile view', async () => {
+    const readFileSync = vi.fn(() => '<p>custom template</p>');
+    vi.doMock('node:fs', () => ({
+      default: {
+        readFileSync,
+        realpathSync: vi.fn((value: string) => value),
+      },
+    }));
+    const { ViewResolver } =
+      await import('../../../src/utils/view-resolver.js');
+    const createResolver = (accounts: Record<string, string>) =>
+      new ViewResolver(
+        {
+          getConfig: vi.fn(() => ({
+            branding: {
+              ui: {
+                customization: {
+                  enabled: true,
+                  rootPath: 'runtime/views',
+                  views: { accounts },
+                },
+              },
+            },
+            deployment: { environment: 'production' },
+          })),
+        } as never,
+        { error: vi.fn(), info: vi.fn() } as never,
+        { rootDir: '/srv/parako' } as never
+      );
+
+    const migrated = createResolver({
+      settings: 'custom/legacy-account-settings',
+    });
+    expect(migrated.views.accounts.settings_profile).toBe(
+      'custom/legacy-account-settings.njk'
+    );
+    expect('settings' in migrated.views.accounts).toBe(false);
+
+    const explicit = createResolver({
+      settings: 'custom/legacy-account-settings',
+      settings_profile: 'custom/profile-settings',
+    });
+    expect(explicit.views.accounts.settings_profile).toBe(
+      'custom/profile-settings.njk'
+    );
+    expect('settings' in explicit.views.accounts).toBe(false);
+    expect(readFileSync).toHaveBeenCalledTimes(2);
+  });
+
   it('exposes memoized built-in views and source-tree defaults without customization', async () => {
     const { ViewResolver } =
       await import('../../../src/utils/view-resolver.js');

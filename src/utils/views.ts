@@ -10,6 +10,7 @@ import {
   type SupportedLanguage,
 } from './misc.js';
 import { rootLogger } from '../observability/logs/logger.js';
+import { readEnvironmentVariable } from '../config/bootstrap-environment.js';
 
 type AssetManifest = Readonly<Record<string, string>>;
 
@@ -29,7 +30,7 @@ function loadManifest(): AssetManifest {
   if (cachedManifest !== null) return cachedManifest;
 
   if (!existsSync(MANIFEST_PATH)) {
-    if (process.env.NODE_ENV === 'production') {
+    if (readEnvironmentVariable('NODE_ENV') === 'production') {
       throw new Error(
         `Asset manifest not found at ${MANIFEST_PATH}. ` +
           'Run `pnpm build` to generate it.'
@@ -50,7 +51,7 @@ function loadManifest(): AssetManifest {
     cachedManifest = parsedManifest;
     return cachedManifest;
   } catch (err) {
-    if (process.env.NODE_ENV === 'production') {
+    if (readEnvironmentVariable('NODE_ENV') === 'production') {
       throw new Error(
         `Asset manifest at ${MANIFEST_PATH} is malformed: ${(err as Error).message}`
       );
@@ -306,8 +307,14 @@ function addGlobalFunctions(env: nunjucks.Environment): void {
 
   env.addGlobal('currentYear', new Date().getFullYear());
 
-  env.addGlobal('isDevelopment', process.env.NODE_ENV === 'development');
-  env.addGlobal('isProduction', process.env.NODE_ENV === 'production');
+  env.addGlobal(
+    'isDevelopment',
+    readEnvironmentVariable('NODE_ENV') === 'development'
+  );
+  env.addGlobal(
+    'isProduction',
+    readEnvironmentVariable('NODE_ENV') === 'production'
+  );
 
   env.addGlobal('availableTimezones', getAvailableTimezones());
 

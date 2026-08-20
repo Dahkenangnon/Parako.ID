@@ -436,7 +436,7 @@
 {% block scripts %}
 {{ super() }}
 <script id="___ADMIN_OIDC_CLIENTS_FORM_STATE___" type="application/json">
-{{ { "csrfToken": csrfToken } | dump | safe }}
+{{ { "csrfToken": csrfToken, "presets": appTypePresets } | dump | safe }}
 </script>
 <script src="{{ asset('js/admin/oidc-clients.js') }}"></script>
 <script src="{{ asset('js/admin/oidc-clients/form.js') }}"></script>
