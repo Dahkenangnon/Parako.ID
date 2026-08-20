@@ -53,12 +53,9 @@ export interface MergeOptions {
   skipNull?: boolean;
 }
 
-/** Recursive update shape accepted by configuration merges. */
-export type DeepPartial<T> = T extends readonly unknown[]
-  ? T
-  : T extends object
-    ? { [Key in keyof T]?: DeepPartial<T[Key]> }
-    : T;
+import type { DeepPartial } from '../config/types.js';
+
+export type { DeepPartial } from '../config/types.js';
 
 /**
  * Default merge options

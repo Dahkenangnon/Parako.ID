@@ -166,9 +166,6 @@ export class BootstrapConfigProvider extends AbstractConfigProvider<BootstrapCon
     return config;
   }
 
-  /**
-   * Load bootstrap configuration from environment variables
-   */
   private loadBootstrapConfiguration(): BootstrapConfig {
     try {
       const envVars = this.loadEnvironmentVariables();

@@ -120,77 +120,52 @@ class ParakoServer {
         );
       }
 
-      try {
+      await configManager.load();
+
+      if (!configManager.isUsingFileConfig()) {
+        await configManager.flushInitial();
         await configManager.load();
 
-        if (!configManager.isUsingFileConfig()) {
-          try {
-            await configManager.flushInitial();
-            await configManager.load();
-          } catch (flushError) {
-            logger.warn(
-              'Failed to flush initial configuration, continuing with loaded config',
-              { error: flushError }
-            );
-          }
-
-          try {
-            const settingsService = container.get<ISettingsService>(
-              TYPES.SettingsService
-            );
-            const validationResult =
-              await settingsService.validateAndFixActiveConfigs();
-
-            if (validationResult.multipleActiveFound) {
-              logger.warn(
-                'Multiple active configurations detected and auto-healed',
-                {
-                  fixedCount: validationResult.fixedCount,
-                  keptVersion: validationResult.keptVersion,
-                  details: validationResult.details,
-                }
-              );
-              await configManager.reload();
-            } else if (validationResult.isValid) {
-              logger.info('Configuration validation passed', {
-                details: validationResult.details,
-              });
-            } else {
-              logger.warn('Configuration validation returned issues', {
-                details: validationResult.details,
-              });
-            }
-          } catch (validationError) {
-            logger.warn(
-              'Configuration validation failed, but continuing startup',
-              {
-                error: validationError,
-              }
-            );
-          }
-        }
-
-        // Bootstrap master tenant (multi-tenancy only)
-        if (bootstrapConfig.multiTenancy?.enabled) {
-          try {
-            const { bootstrapMasterTenant } =
-              await import('./multi-tenancy/master-tenant-bootstrap.js');
-            await bootstrapMasterTenant(container, logger, bootstrapConfig);
-          } catch (bootstrapError) {
-            logger.warn('Master tenant bootstrap failed, continuing startup', {
-              error: bootstrapError,
-            });
-          }
-        }
-
-        logger.info('Full configuration loaded successfully');
-      } catch (configError) {
-        logger.warn(
-          'Failed to load full configuration, continuing with bootstrap config',
-          { error: configError }
+        const settingsService = container.get<ISettingsService>(
+          TYPES.SettingsService
         );
-        // ConfigManager will fall back to bootstrap config internally
+        const validationResult =
+          await settingsService.validateAndFixActiveConfigs();
+
+        if (validationResult.multipleActiveFound) {
+          if (!validationResult.isValid) {
+            throw new Error(
+              `Configuration validation failed: ${validationResult.details}`
+            );
+          }
+
+          logger.warn(
+            'Multiple active configurations detected and auto-healed',
+            {
+              fixedCount: validationResult.fixedCount,
+              keptVersion: validationResult.keptVersion,
+              details: validationResult.details,
+            }
+          );
+          await configManager.reload();
+        } else if (validationResult.isValid) {
+          logger.info('Configuration validation passed', {
+            details: validationResult.details,
+          });
+        } else {
+          throw new Error(
+            `Configuration validation failed: ${validationResult.details}`
+          );
+        }
       }
+
+      if (bootstrapConfig.multiTenancy?.enabled) {
+        const { bootstrapMasterTenant } =
+          await import('./multi-tenancy/master-tenant-bootstrap.js');
+        await bootstrapMasterTenant(container, logger, bootstrapConfig);
+      }
+
+      logger.info('Full configuration loaded successfully');
 
       // Connect Redis Pub/Sub event bus for cross-process communication
       try {

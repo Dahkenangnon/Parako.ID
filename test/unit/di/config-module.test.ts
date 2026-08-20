@@ -4,6 +4,7 @@ import { Container } from 'inversify';
 import { describe, expect, it } from 'vitest';
 
 import { BootstrapConfigProvider } from '../../../src/config/provider/bootstrap-provider.js';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 import { configModule } from '../../../src/di/modules/config.module.js';
 import { TYPES } from '../../../src/di/types.js';
 
@@ -15,8 +16,24 @@ describe('configModule', () => {
 
     expect(container.isBound(TYPES.ConfigManager)).toBe(true);
     expect(container.isBound(TYPES.BootstrapConfigProvider)).toBe(true);
+    expect(container.isBound(TYPES.BootstrapEnvironment)).toBe(true);
     expect(container.isBound(TYPES.DatabaseConfigProvider)).toBe(true);
     expect(container.isBound(TYPES.FileConfigProvider)).toBe(true);
+  });
+
+  it('binds one process-backed bootstrap environment instance', () => {
+    const container = new Container();
+    container.load(configModule);
+
+    const first = container.get<BootstrapEnvironment>(
+      TYPES.BootstrapEnvironment
+    );
+    const second = container.get<BootstrapEnvironment>(
+      TYPES.BootstrapEnvironment
+    );
+
+    expect(first).toBeInstanceOf(BootstrapEnvironment);
+    expect(second).toBe(first);
   });
 
   it('binds one bootstrap configuration provider instance', () => {

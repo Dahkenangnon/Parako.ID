@@ -80,6 +80,7 @@ function createMockBootstrapProvider(): BootstrapConfigProvider {
 
 function createMockDbProvider(): DatabaseConfigProvider {
   return {
+    initialize: vi.fn(),
     loadConfiguration: vi.fn().mockResolvedValue({}),
     reloadConfiguration: vi.fn().mockResolvedValue({}),
     clearCache: vi.fn(),

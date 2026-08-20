@@ -1,6 +1,10 @@
 import { injectable, inject } from 'inversify';
 import { type ISettings } from '../models/settings/types.js';
 import { AppConfigSchema } from '../config/schemas/schema.js';
+import {
+  PersistedConfigSchema,
+  type PersistedConfig,
+} from '../config/schemas/persisted-schema.js';
 import { getDefaultFullConfig } from '../config/constants.js';
 import { z } from 'zod';
 import type { ISettingsService } from '../di/interfaces/settings-service.interface.js';
@@ -14,12 +18,10 @@ import {
   isSensitiveField,
 } from '../utils/settings.helper.js';
 import type { ISettingsRepository } from '../db/repositories/interfaces/settings.repository.js';
-import type {
-  BulkWriteResult,
-  BulkDeleteResult,
-} from '../di/interfaces/base-service.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import { ConfigurationVersionConflictError } from '../errors/configuration-version-conflict.error.js';
+import type { ConfigDiff, ConfigImpact } from '../types/settings-service.js';
+import type { IBootstrapEnvironment } from '../di/interfaces/bootstrap-environment.interface.js';
 
 type PaginatedServiceResult<T> = {
   results: T[];
@@ -48,7 +50,9 @@ export class SettingsService implements ISettingsService {
     @inject(TYPES.Logger)
     private readonly logger: ILogger,
     @inject(TYPES.SettingsRepository)
-    private readonly settingsRepo: ISettingsRepository
+    private readonly settingsRepo: ISettingsRepository,
+    @inject(TYPES.BootstrapEnvironment)
+    private readonly bootstrapEnvironment: IBootstrapEnvironment
   ) {}
 
   async findOne(
@@ -84,7 +88,11 @@ export class SettingsService implements ISettingsService {
     filter: Record<string, unknown>,
     data: Partial<ISettings>,
     _options?: { upsert?: boolean; runValidators?: boolean }
-  ): Promise<BulkWriteResult> {
+  ): Promise<{
+    matchedCount: number;
+    modifiedCount: number;
+    upsertedCount?: number;
+  }> {
     // For settings, updateMany is only used to deactivate records.
     const docs = await this.settingsRepo.findMany(
       filter as Record<string, unknown>
@@ -97,12 +105,6 @@ export class SettingsService implements ISettingsService {
       matchedCount: docs.length,
       upsertedCount: 0,
     };
-  }
-
-  async deleteMany(
-    _filter: Record<string, unknown>
-  ): Promise<BulkDeleteResult> {
-    throw new Error('deleteMany is not supported for settings');
   }
 
   async findMany(
@@ -157,16 +159,6 @@ export class SettingsService implements ISettingsService {
     return Promise.all(data.map(d => this.settingsRepo.create(d as any)));
   }
 
-  async deleteOne(
-    _filter: Record<string, unknown> | string
-  ): Promise<ISettings | null> {
-    throw new Error('deleteOne is not supported for settings');
-  }
-
-  async aggregate(_pipeline: unknown[]): Promise<unknown[]> {
-    throw new Error('aggregate is not supported by the repository abstraction');
-  }
-
   private async acquireConfigLock(): Promise<() => void> {
     while (SettingsService.configUpdateLock) {
       await SettingsService.configUpdateLock;
@@ -183,7 +175,7 @@ export class SettingsService implements ISettingsService {
     };
   }
 
-  private encryptSensitiveFields(config: any): any {
+  private encryptSensitiveFields(config: any, encryptionKey: string): any {
     const encryptedConfig = JSON.parse(JSON.stringify(config));
 
     for (const fieldPath of SENSITIVE_FIELDS) {
@@ -193,13 +185,13 @@ export class SettingsService implements ISettingsService {
         if (Array.isArray(value)) {
           const encryptedArray = value.map((item: string) => {
             if (typeof item === 'string' && item.length > 0) {
-              return ensureEncrypted(item);
+              return ensureEncrypted(item, encryptionKey);
             }
             return item;
           });
           setNestedValue(encryptedConfig, fieldPath, encryptedArray);
         } else if (typeof value === 'string' && value.length > 0) {
-          const encryptedValue = ensureEncrypted(value);
+          const encryptedValue = ensureEncrypted(value, encryptionKey);
           setNestedValue(encryptedConfig, fieldPath, encryptedValue);
         }
       }
@@ -208,7 +200,7 @@ export class SettingsService implements ISettingsService {
     return encryptedConfig;
   }
 
-  private decryptSensitiveFields(config: any): any {
+  private decryptSensitiveFields(config: any, encryptionKey: string): any {
     const decryptedConfig = JSON.parse(JSON.stringify(config));
 
     for (const fieldPath of SENSITIVE_FIELDS) {
@@ -219,13 +211,13 @@ export class SettingsService implements ISettingsService {
           if (Array.isArray(value)) {
             const decryptedArray = value.map((item: string) => {
               if (typeof item === 'string' && item.length > 0) {
-                return ensureDecrypted(item);
+                return ensureDecrypted(item, encryptionKey);
               }
               return item;
             });
             setNestedValue(decryptedConfig, fieldPath, decryptedArray);
           } else if (typeof value === 'string' && value.length > 0) {
-            const decryptedValue = ensureDecrypted(value);
+            const decryptedValue = ensureDecrypted(value, encryptionKey);
             setNestedValue(decryptedConfig, fieldPath, decryptedValue);
           }
         } catch (error) {
@@ -240,8 +232,8 @@ export class SettingsService implements ISettingsService {
     return decryptedConfig;
   }
 
-  private validateEncryptionKey(): void {
-    const encryptionKey = process.env.ENCRYPTION_KEY;
+  private validateEncryptionKey(): string {
+    const encryptionKey = this.bootstrapEnvironment.encryptionKey;
 
     if (!encryptionKey) {
       throw new Error(
@@ -267,11 +259,13 @@ export class SettingsService implements ISettingsService {
           "Generate a new key using: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
       );
     }
+
+    return encryptionKey;
   }
 
   public async loadAndDecryptConfiguration(): Promise<ISettings | null> {
     try {
-      this.validateEncryptionKey();
+      const encryptionKey = this.validateEncryptionKey();
 
       const settings = await this.settingsRepo.findActive(
         SettingsService.MAIN_CONFIG_KEY
@@ -282,12 +276,13 @@ export class SettingsService implements ISettingsService {
         return null;
       }
 
-      const decryptedConfig = this.decryptSensitiveFields(settings);
-      const validatedConfig = AppConfigSchema.parse(decryptedConfig);
+      const decryptedConfig = this.decryptSensitiveFields(
+        settings,
+        encryptionKey
+      );
+      const validatedConfig = PersistedConfigSchema.parse(decryptedConfig);
 
-      // AppConfig includes computed oidc_storage which ISettings doesn't persist,
-      // but other fields overlap correctly.
-      return validatedConfig as unknown as ISettings;
+      return { ...settings, ...validatedConfig };
     } catch (error) {
       this.logger.error(error as Error, {
         context: 'load_and_decrypt_configuration',
@@ -327,9 +322,12 @@ export class SettingsService implements ISettingsService {
     const releaseLock = await this.acquireConfigLock();
 
     try {
-      this.validateEncryptionKey();
+      const encryptionKey = this.validateEncryptionKey();
 
-      const encryptedConfig = this.encryptSensitiveFields(config);
+      const encryptedConfig = this.encryptSensitiveFields(
+        config,
+        encryptionKey
+      );
 
       const existingSettings = await this.settingsRepo.findActive(
         SettingsService.MAIN_CONFIG_KEY
@@ -650,7 +648,8 @@ export class SettingsService implements ISettingsService {
 
   public async flushInitialConfiguration(
     modifiedBy?: string,
-    reason?: string
+    reason?: string,
+    initialConfig?: PersistedConfig
   ): Promise<ISettings | null> {
     try {
       const existingConfig = await this.getMainConfiguration();
@@ -665,7 +664,9 @@ export class SettingsService implements ISettingsService {
         'No main configuration found, flushing initial default configuration...'
       );
 
-      const validatedConfig = AppConfigSchema.parse(getDefaultFullConfig());
+      const validatedConfig = PersistedConfigSchema.parse(
+        initialConfig ?? getDefaultFullConfig()
+      );
 
       const savedConfig = await this.saveMainConfiguration(
         validatedConfig,
@@ -917,131 +918,116 @@ export class SettingsService implements ISettingsService {
     keptVersion: string | null;
     details: string;
   }> {
-    try {
+    this.logger.info(
+      '[SettingsService] Running startup validation for active configurations...'
+    );
+
+    const activeConfigs = await this.settingsRepo.findMany(
+      { key: SettingsService.MAIN_CONFIG_KEY, is_active: true },
+      { sort: { created_at: -1 } }
+    );
+
+    if (activeConfigs.length <= 1) {
       this.logger.info(
-        '[SettingsService] Running startup validation for active configurations...'
-      );
-
-      const activeConfigs = await this.settingsRepo.findMany(
-        { key: SettingsService.MAIN_CONFIG_KEY, is_active: true },
-        { sort: { created_at: -1 } }
-      );
-
-      if (activeConfigs.length <= 1) {
-        this.logger.info(
-          '[SettingsService] Validation passed: Single active configuration detected',
-          {
-            activeCount: activeConfigs.length,
-            version: activeConfigs[0]?.version || 'none',
-          }
-        );
-
-        return {
-          isValid: true,
-          multipleActiveFound: false,
-          fixedCount: 0,
-          keptVersion: activeConfigs[0]?.version || null,
-          details: `Validation passed: ${activeConfigs.length} active configuration(s) found`,
-        };
-      }
-
-      this.logger.error(
-        '[SettingsService] CRITICAL: Multiple active configurations detected!',
+        '[SettingsService] Validation passed: Single active configuration detected',
         {
-          count: activeConfigs.length,
-          versions: activeConfigs.map(c => ({
-            version: c.version,
-            _version: c._version,
-            created_at: c.created_at,
-            updated_at: c.updated_at,
-          })),
+          activeCount: activeConfigs.length,
+          version: activeConfigs[0]?.version || 'none',
         }
       );
 
-      const [newestConfig, ...olderConfigs] = activeConfigs;
+      return {
+        isValid: true,
+        multipleActiveFound: false,
+        fixedCount: 0,
+        keptVersion: activeConfigs[0]?.version || null,
+        details: `Validation passed: ${activeConfigs.length} active configuration(s) found`,
+      };
+    }
 
-      this.logger.warn(
-        '[SettingsService] Auto-healing: Keeping newest config, deactivating older ones',
-        {
-          keeping: {
-            version: newestConfig.version,
-            _version: newestConfig._version,
-            created_at: newestConfig.created_at,
-          },
-          deactivating: olderConfigs.map(c => ({
-            version: c.version,
-            _version: c._version,
-            created_at: c.created_at,
-          })),
-        }
-      );
-
-      let fixedCount = 0;
-      for (const config of olderConfigs) {
-        try {
-          await this.settingsRepo.update(String(config._id), {
-            is_active: false,
-          } as any);
-          fixedCount++;
-          this.logger.info('[SettingsService] Deactivated older config', {
-            version: config.version,
-            _version: config._version,
-          });
-        } catch (error) {
-          this.logger.error('[SettingsService] Failed to deactivate config', {
-            version: config.version,
-            error: errorMessage(error),
-          });
-        }
+    this.logger.error(
+      '[SettingsService] CRITICAL: Multiple active configurations detected!',
+      {
+        count: activeConfigs.length,
+        versions: activeConfigs.map(c => ({
+          version: c.version,
+          _version: c._version,
+          created_at: c.created_at,
+          updated_at: c.updated_at,
+        })),
       }
+    );
 
-      const activeConfigsAfterFix = await this.settingsRepo.count({
-        key: SettingsService.MAIN_CONFIG_KEY,
-        is_active: true,
-      });
+    const [newestConfig, ...olderConfigs] = activeConfigs;
 
-      if (activeConfigsAfterFix === 1) {
-        this.logger.info(
-          '[SettingsService] Auto-healing successful: Single active config restored',
-          {
-            keptVersion: newestConfig.version,
-            deactivatedCount: fixedCount,
-          }
-        );
+    this.logger.warn(
+      '[SettingsService] Auto-healing: Keeping newest config, deactivating older ones',
+      {
+        keeping: {
+          version: newestConfig.version,
+          _version: newestConfig._version,
+          created_at: newestConfig.created_at,
+        },
+        deactivating: olderConfigs.map(c => ({
+          version: c.version,
+          _version: c._version,
+          created_at: c.created_at,
+        })),
+      }
+    );
 
-        return {
-          isValid: false,
-          multipleActiveFound: true,
-          fixedCount,
-          keptVersion: newestConfig.version,
-          details: `Auto-healed: Found ${activeConfigs.length} active configs, kept newest (v${newestConfig.version}), deactivated ${fixedCount} older configs`,
-        };
-      } else {
-        this.logger.error('[SettingsService] Auto-healing incomplete', {
-          remainingActiveCount: activeConfigsAfterFix,
-          expectedCount: 1,
+    let fixedCount = 0;
+    for (const config of olderConfigs) {
+      try {
+        await this.settingsRepo.update(String(config._id), {
+          is_active: false,
+        } as any);
+        fixedCount++;
+        this.logger.info('[SettingsService] Deactivated older config', {
+          version: config.version,
+          _version: config._version,
         });
-
-        return {
-          isValid: false,
-          multipleActiveFound: true,
-          fixedCount,
-          keptVersion: newestConfig.version,
-          details: `Auto-healing incomplete: ${activeConfigsAfterFix} active configs remain after attempting to fix`,
-        };
+      } catch (error) {
+        this.logger.error('[SettingsService] Failed to deactivate config', {
+          version: config.version,
+          error: errorMessage(error),
+        });
       }
-    } catch (error) {
-      this.logger.error('[SettingsService] Validation failed with error', {
-        error: errorMessage(error),
-        context: 'validate_and_fix_active_configs',
+    }
+
+    const activeConfigsAfterFix = await this.settingsRepo.count({
+      key: SettingsService.MAIN_CONFIG_KEY,
+      is_active: true,
+    });
+
+    if (activeConfigsAfterFix === 1) {
+      this.logger.info(
+        '[SettingsService] Auto-healing successful: Single active config restored',
+        {
+          keptVersion: newestConfig.version,
+          deactivatedCount: fixedCount,
+        }
+      );
+
+      return {
+        isValid: true,
+        multipleActiveFound: true,
+        fixedCount,
+        keptVersion: newestConfig.version,
+        details: `Auto-healed: Found ${activeConfigs.length} active configs, kept newest (v${newestConfig.version}), deactivated ${fixedCount} older configs`,
+      };
+    } else {
+      this.logger.error('[SettingsService] Auto-healing incomplete', {
+        remainingActiveCount: activeConfigsAfterFix,
+        expectedCount: 1,
       });
 
       return {
         isValid: false,
-        multipleActiveFound: false,
-        fixedCount: 0,
-        keptVersion: null,
-        details: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        multipleActiveFound: true,
+        fixedCount,
+        keptVersion: newestConfig.version,
+        details: `Auto-healing incomplete: ${activeConfigsAfterFix} active configs remain after attempting to fix`,
       };
     }
   }
@@ -1106,23 +1092,4 @@ export class SettingsService implements ISettingsService {
       return 0;
     }
   }
-}
-
-/**
- * Configuration diff entry representing a single field change
- */
-export interface ConfigDiff {
-  field: string;
-  oldValue: any;
-  newValue: any;
-  changeType: 'added' | 'modified' | 'removed';
-}
-
-/**
- * Configuration impact analysis result
- */
-export interface ConfigImpact {
-  servicesAffected: string[];
-  requiresRestart: boolean;
-  warnings: string[];
 }

@@ -370,30 +370,25 @@ describe('server process entrypoint', () => {
     consoleError.mockRestore();
   });
 
-  it('continues with bootstrap configuration when persisted config is unavailable', async () => {
+  it('fails startup when persisted configuration cannot be loaded', async () => {
     const failure = new Error('settings unavailable');
     harness.configManager.load.mockRejectedValue(failure);
 
-    await importEntrypoint();
+    await importUntilExit();
 
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Failed to load full configuration, continuing with bootstrap config',
-      { error: failure }
-    );
-    expect(harness.application.initialize).toHaveBeenCalledOnce();
+    expect(harness.application.initialize).not.toHaveBeenCalled();
+    expect(harness.database.disconnect).toHaveBeenCalledOnce();
   });
 
-  it('keeps the loaded config when initial persistence fails', async () => {
-    const failure = new Error('flush unavailable');
-    harness.configManager.flushInitial.mockRejectedValue(failure);
-
-    await importEntrypoint();
-
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Failed to flush initial configuration, continuing with loaded config',
-      { error: failure }
+  it('fails startup when initial configuration cannot be persisted', async () => {
+    harness.configManager.flushInitial.mockRejectedValue(
+      new Error('flush unavailable')
     );
+
+    await importUntilExit();
+
     expect(harness.configManager.load).toHaveBeenCalledOnce();
+    expect(harness.application.initialize).not.toHaveBeenCalled();
   });
 
   it('does not run database configuration maintenance in file-config mode', async () => {
@@ -410,6 +405,7 @@ describe('server process entrypoint', () => {
 
   it('reloads configuration after healing multiple active versions', async () => {
     harness.settingsService.validateAndFixActiveConfigs.mockResolvedValue({
+      isValid: true,
       multipleActiveFound: true,
       fixedCount: 2,
       keptVersion: '3.0.0',
@@ -429,33 +425,26 @@ describe('server process entrypoint', () => {
     expect(harness.configManager.reload).toHaveBeenCalledOnce();
   });
 
-  it('reports invalid configuration without aborting startup', async () => {
+  it('fails startup when configuration validation returns an invalid result', async () => {
     harness.settingsService.validateAndFixActiveConfigs.mockResolvedValue({
       multipleActiveFound: false,
       isValid: false,
       details: 'missing issuer',
     });
 
-    await importEntrypoint();
+    await importUntilExit();
 
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Configuration validation returned issues',
-      { details: 'missing issuer' }
-    );
+    expect(harness.application.initialize).not.toHaveBeenCalled();
   });
 
-  it('isolates configuration validation failures from startup', async () => {
-    const failure = new Error('validation offline');
+  it('fails startup when configuration validation throws', async () => {
     harness.settingsService.validateAndFixActiveConfigs.mockRejectedValue(
-      failure
+      new Error('validation offline')
     );
 
-    await importEntrypoint();
+    await importUntilExit();
 
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Configuration validation failed, but continuing startup',
-      { error: failure }
-    );
+    expect(harness.application.initialize).not.toHaveBeenCalled();
   });
 
   it('bootstraps the master tenant when multi-tenancy is enabled', async () => {
@@ -474,7 +463,7 @@ describe('server process entrypoint', () => {
     );
   });
 
-  it('isolates master-tenant bootstrap failures from server startup', async () => {
+  it('fails startup when master-tenant bootstrap fails', async () => {
     const failure = new Error('master tenant unavailable');
     harness.configManager.getBootstrapConfig.mockResolvedValue({
       ...bootstrapConfig,
@@ -482,12 +471,9 @@ describe('server process entrypoint', () => {
     });
     harness.bootstrapMasterTenant.mockRejectedValue(failure);
 
-    await importEntrypoint();
+    await importUntilExit();
 
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Master tenant bootstrap failed, continuing startup',
-      { error: failure }
-    );
+    expect(harness.application.initialize).not.toHaveBeenCalled();
   });
 
   it('fails bootstrap when the database did not connect', async () => {

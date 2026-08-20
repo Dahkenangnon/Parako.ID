@@ -15,6 +15,16 @@ import {
   BootstrapConfigSchema,
 } from './schemas/bootstrap-schema.js';
 import { AppConfig, AppConfigSchema } from './schemas/schema.js';
+import {
+  PersistedConfigSchema,
+  type PersistedConfig,
+} from './schemas/persisted-schema.js';
+
+export type DeepPartial<T> = T extends readonly unknown[]
+  ? T
+  : T extends object
+    ? { [Key in keyof T]?: DeepPartial<T[Key]> }
+    : T;
 
 // BOOTSTRAP CONFIG - From .env only, cannot be changed via UI
 
@@ -37,25 +47,8 @@ export { BootstrapConfigSchema };
 
 // PERSISTED CONFIG - From database or file, excludes bootstrap fields
 
-/**
- * Persisted configuration schema
- * This is the main application configuration stored in database/file
- * It excludes bootstrap-only fields (environment, port, database URI)
- *
- * Note: This schema is the same as AppConfigSchema but semantically
- * represents the subset of config that can be persisted and modified
- */
-export const PersistedConfigSchema = AppConfigSchema;
-
-/**
- * Persisted configuration type
- * This represents configuration that can be stored in database and modified via admin UI
- *
- * Note: While this currently matches AppConfig, the separation is important
- * because in the future we may want to explicitly exclude certain fields from
- * being persisted (like computed fields or bootstrap fields)
- */
-export type PersistedConfig = AppConfig;
+export { PersistedConfigSchema };
+export type { PersistedConfig };
 
 // RUNTIME CONFIG - Merged bootstrap + persisted + metadata
 
@@ -115,6 +108,10 @@ export interface ConfigMetadata {
 // rest of the parent's keys — `keyof` of the resulting interface only sees the
 // explicitly-listed overrides. Using a type intersection preserves the full key set.
 export type RuntimeConfig = PersistedConfig & {
+  oidc_storage: AppConfig['oidc_storage'];
+  features: AppConfig['features'];
+  integrations: AppConfig['integrations'];
+
   /**
    * Deployment configuration with bootstrap fields merged in
    */
@@ -201,7 +198,7 @@ export function isRuntimeConfig(config: unknown): config is RuntimeConfig {
   const candidate = config as Record<string, unknown>;
   if (
     !isConfigMetadata(candidate._metadata) ||
-    !PersistedConfigSchema.safeParse(config).success
+    !AppConfigSchema.safeParse(config).success
   ) {
     return false;
   }

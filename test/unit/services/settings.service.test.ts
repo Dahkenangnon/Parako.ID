@@ -1,10 +1,5 @@
-/**
- * TDD — SettingsService uses ISettingsRepository for data access
- *
- * RED: SettingsService extends BaseService (Mongoose), uses settingsModel directly.
- * GREEN: After migrating to ISettingsRepository.
- */
 import 'reflect-metadata';
+import { BootstrapEnvironment } from '../../../src/config/bootstrap-environment.js';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SettingsService } from '../../../src/services/settings.service.js';
 import type { ISettings } from '../../../src/models/settings/types.js';
@@ -60,7 +55,11 @@ function makeService(
   repo: ISettingsRepository,
   logger = makeMockLogger()
 ): SettingsService {
-  return new SettingsService(logger as any, repo as any);
+  return new SettingsService(
+    logger as any,
+    repo as any,
+    new BootstrapEnvironment()
+  );
 }
 
 describe('SettingsService — ISettingsRepository delegation', () => {
@@ -194,18 +193,6 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       expect(repo.update).toHaveBeenNthCalledWith(2, 'two', {
         is_active: false,
       });
-    });
-
-    it('rejects unsupported destructive and aggregation operations', async () => {
-      await expect(service.deleteMany({})).rejects.toThrow(
-        'deleteMany is not supported for settings'
-      );
-      await expect(service.deleteOne('settings-123')).rejects.toThrow(
-        'deleteOne is not supported for settings'
-      );
-      await expect(service.aggregate([])).rejects.toThrow(
-        'aggregate is not supported by the repository abstraction'
-      );
     });
 
     it('returns the requested repository-backed pagination page and totals', async () => {
@@ -874,16 +861,26 @@ describe('SettingsService — ISettingsRepository delegation', () => {
 
     it('flushes validated defaults with explicit and fallback audit values', async () => {
       const saved = makeSettings();
+      const initialConfig = getDefaultFullConfig();
+      initialConfig.deployment.url = 'https://id.operator.test';
       vi.spyOn(service, 'getMainConfiguration').mockResolvedValue(null);
       const save = vi
         .spyOn(service, 'saveMainConfiguration')
         .mockResolvedValue(saved);
 
       await expect(
-        service.flushInitialConfiguration('bootstrap', 'first run')
+        service.flushInitialConfiguration(
+          'bootstrap',
+          'first run',
+          initialConfig
+        )
       ).resolves.toBe(saved);
       expect(save).toHaveBeenLastCalledWith(
-        expect.objectContaining({ application: expect.any(Object) }),
+        expect.objectContaining({
+          deployment: expect.objectContaining({
+            url: 'https://id.operator.test',
+          }),
+        }),
         'bootstrap',
         'first run'
       );
@@ -990,8 +987,15 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       const cookies = changes.find(
         change => change.field === 'security.secrets.cookie_secrets'
       );
-      expect(cookies?.oldValue[0]).not.toBe('old-cookie');
-      expect(cookies?.oldValue[1]).toBe(7);
+      const oldCookies = cookies?.oldValue;
+      expect(Array.isArray(oldCookies)).toBe(true);
+      if (!Array.isArray(oldCookies)) {
+        throw new TypeError(
+          'Expected masked cookie secrets to remain an array'
+        );
+      }
+      expect(oldCookies[0]).not.toBe('old-cookie');
+      expect(oldCookies[1]).toBe(7);
       expect(changes.some(change => change.field === '_id')).toBe(false);
       expect(changes.some(change => change.field === 'unchanged')).toBe(false);
       expect(
@@ -1110,7 +1114,7 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       vi.mocked(repo.count).mockResolvedValue(1);
 
       await expect(service.validateAndFixActiveConfigs()).resolves.toEqual({
-        isValid: false,
+        isValid: true,
         multipleActiveFound: true,
         fixedCount: 2,
         keptVersion: '1.0.3',
@@ -1167,21 +1171,14 @@ describe('SettingsService — ISettingsRepository delegation', () => {
       );
     });
 
-    it.each([
-      [new Error('validation unavailable'), 'validation unavailable'],
-      ['unknown failure', 'Unknown error'],
-    ])(
-      'returns a safe validation result on dependency failure',
-      async (failure, detail) => {
+    it.each([new Error('validation unavailable'), 'unknown failure'])(
+      'propagates validation dependency failures: %s',
+      async failure => {
         vi.mocked(repo.findMany).mockRejectedValue(failure);
 
-        await expect(service.validateAndFixActiveConfigs()).resolves.toEqual({
-          isValid: false,
-          multipleActiveFound: false,
-          fixedCount: 0,
-          keptVersion: null,
-          details: `Validation error: ${detail}`,
-        });
+        await expect(service.validateAndFixActiveConfigs()).rejects.toBe(
+          failure
+        );
       }
     );
 

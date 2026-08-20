@@ -1,7 +1,11 @@
 import { injectable, inject, optional } from 'inversify';
 import { randomUUID } from 'node:crypto';
 import { AppConfigSchema, type AppConfig } from './schemas/schema.js';
-import { type RuntimeConfig, type BootstrapConfig } from './types.js';
+import {
+  type RuntimeConfig,
+  type BootstrapConfig,
+  type PersistedConfig,
+} from './types.js';
 import { BootstrapConfigProvider } from './provider/bootstrap-provider.js';
 import { DatabaseConfigProvider } from './provider/db-provider.js';
 import { FileConfigProvider } from './provider/file-provider.js';
@@ -92,19 +96,8 @@ export class ConfigManager implements IConfigManager {
   private pubsubPattern: string | null = null;
   private pubsubHandler: ((msg: Record<string, unknown>) => void) | null = null;
 
-  // Section-based caching for lazy loading
-  private sectionCache: Map<string, { data: unknown; timestamp: number }> =
-    new Map();
-  private readonly SECTION_CACHE_TTL = 60000; // 60 seconds
-
-  private metrics = {
-    sectionCacheHits: 0,
-    sectionCacheMisses: 0,
-    sectionAccessCount: new Map<string, number>(),
-  };
-
   private dbProviderChangeHandler: (
-    config: AppConfig | null,
+    config: PersistedConfig | null,
     error?: Error,
     source?: 'local-update'
   ) => void;
@@ -156,7 +149,7 @@ export class ConfigManager implements IConfigManager {
    * @param error - Error if reload failed
    */
   private async handleDbProviderChange(
-    config: AppConfig | null,
+    config: PersistedConfig | null,
     error?: Error,
     source?: 'local-update'
   ): Promise<void> {
@@ -192,7 +185,6 @@ export class ConfigManager implements IConfigManager {
       runtimeConfig = applyComputedDefaults(runtimeConfig);
 
       this.cache = runtimeConfig;
-      this.clearSectionCache();
       // Every tenant config is derived from this global base. A database
       // change notification must invalidate those derived values even when
       // Redis Pub/Sub is unavailable or has not delivered its event yet.
@@ -225,7 +217,7 @@ export class ConfigManager implements IConfigManager {
    * @returns RuntimeConfig with bootstrap fields merged in
    */
   private createRuntimeConfig(
-    persistedConfig: AppConfig | BootstrapConfig,
+    persistedConfig: PersistedConfig | BootstrapConfig,
     bootstrapConfig: BootstrapConfig,
     configProvider: 'bootstrap' | 'file' | 'database'
   ): RuntimeConfig {
@@ -233,13 +225,10 @@ export class ConfigManager implements IConfigManager {
     // config is just the bootstrap object and lacks application, branding,
     // security, etc. Layer the cached default-full-config under it so every
     // section has sensible values before computed fields run.
-    const base: AppConfig =
-      configProvider === 'bootstrap'
-        ? mergeConfig<AppConfig>(
-            getDefaultFullConfig(),
-            persistedConfig as unknown as DeepPartial<AppConfig>
-          )
-        : (persistedConfig as AppConfig);
+    const base = mergeConfig<AppConfig>(
+      getDefaultFullConfig(),
+      persistedConfig as unknown as DeepPartial<AppConfig>
+    );
 
     return {
       ...base,
@@ -259,6 +248,13 @@ export class ConfigManager implements IConfigManager {
         mongodb: bootstrapConfig.storage.mongodb,
         sqlite: bootstrapConfig.storage.sqlite,
         postgresql: bootstrapConfig.storage.postgresql,
+      },
+      integrations: {
+        ...base.integrations,
+        file_storage: {
+          ...base.integrations.file_storage,
+          provider: bootstrapConfig.integrations.file_storage.provider,
+        },
       },
       // oidc_storage is fully computed from bootstrap — never persisted
       oidc_storage: buildOidcStorageFromBootstrap(bootstrapConfig),
@@ -309,7 +305,7 @@ export class ConfigManager implements IConfigManager {
       const isDevelopment =
         bootstrapConfig.deployment.environment === 'development';
 
-      let persistedConfig: AppConfig | BootstrapConfig;
+      let persistedConfig: PersistedConfig | BootstrapConfig;
       let configProvider: 'bootstrap' | 'file' | 'database';
 
       if (useFileConfig && isDevelopment) {
@@ -332,6 +328,7 @@ export class ConfigManager implements IConfigManager {
         }
       } else {
         // Step 3b: Use database configuration (production default or when file config is disabled)
+        this.dbProvider.initialize();
         const isDbAvailable = await this.dbProvider.isAvailable();
 
         if (isDbAvailable) {
@@ -340,12 +337,7 @@ export class ConfigManager implements IConfigManager {
           configProvider = 'database';
           console.info('Persisted configuration loaded from database');
         } else {
-          // Fallback: Use bootstrap config as base if database is not available
-          persistedConfig = bootstrapConfig;
-          configProvider = 'bootstrap';
-          console.warn(
-            'Database not available, using bootstrap configuration only'
-          );
+          throw new Error('Database configuration provider is not available');
         }
       }
 
@@ -416,94 +408,6 @@ export class ConfigManager implements IConfigManager {
   }
 
   /**
-   * Get a specific configuration section with caching
-   * Implements lazy loading with 60-second cache TTL
-   * @param section - The configuration section key
-   * @returns The configuration section data
-   */
-  getConfigSection<K extends keyof AppConfig>(section: K): AppConfig[K] {
-    if (!this.cache) {
-      throw new Error('Configuration not loaded. Call load() first.');
-    }
-
-    const now = Date.now();
-    const cached = this.sectionCache.get(section as string);
-
-    if (cached && now - cached.timestamp < this.SECTION_CACHE_TTL) {
-      this.metrics.sectionCacheHits++;
-      // A section enters sectionCache only through the miss path below, which
-      // initializes its access counter in the same operation.
-      const accessCount = this.metrics.sectionAccessCount.get(
-        section as string
-      )!;
-      this.metrics.sectionAccessCount.set(section as string, accessCount + 1);
-
-      console.debug(
-        `[ConfigManager] Section cache hit: ${String(section)} (age: ${now - cached.timestamp}ms)`
-      );
-
-      return cached.data as AppConfig[K];
-    }
-
-    this.metrics.sectionCacheMisses++;
-    const accessCount =
-      this.metrics.sectionAccessCount.get(section as string) || 0;
-    this.metrics.sectionAccessCount.set(section as string, accessCount + 1);
-
-    console.debug(
-      `[ConfigManager] Section cache miss: ${String(section)} - loading from config`
-    );
-
-    const fullConfig = this.getConfig();
-    const sectionData = fullConfig[section];
-
-    this.sectionCache.set(section as string, {
-      data: sectionData,
-      timestamp: now,
-    });
-
-    return sectionData;
-  }
-
-  /**
-   * Clear section cache
-   * Called when configuration is updated or reloaded
-   */
-  private clearSectionCache(): void {
-    this.sectionCache.clear();
-    console.debug('[ConfigManager] Section cache cleared');
-  }
-
-  /**
-   * Get section cache metrics
-   * Returns statistics about cache hits, misses, and most accessed sections
-   */
-  getSectionCacheMetrics() {
-    const mostAccessedSections = Array.from(
-      this.metrics.sectionAccessCount.entries()
-    )
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10) // Top 10 most accessed sections
-      .map(([section, count]) => ({ section, count }));
-
-    const totalRequests =
-      this.metrics.sectionCacheHits + this.metrics.sectionCacheMisses;
-    const hitRate =
-      totalRequests > 0
-        ? ((this.metrics.sectionCacheHits / totalRequests) * 100).toFixed(2)
-        : '0.00';
-
-    return {
-      cacheHits: this.metrics.sectionCacheHits,
-      cacheMisses: this.metrics.sectionCacheMisses,
-      totalRequests,
-      hitRate: `${hitRate}%`,
-      cachedSections: this.sectionCache.size,
-      mostAccessedSections,
-    };
-  }
-
-  /**
    * Subscribe to configuration changes
    * @param subscriberId - Unique identifier for the subscriber
    * @param callback - Function to call when configuration changes
@@ -523,9 +427,6 @@ export class ConfigManager implements IConfigManager {
     this.subscribers.delete(subscriberId);
   }
 
-  /**
-   * Get list of active subscribers
-   */
   getSubscribers(): string[] {
     return Array.from(this.subscribers.keys());
   }
@@ -613,7 +514,6 @@ export class ConfigManager implements IConfigManager {
       runtimeConfig = applyComputedDefaults(runtimeConfig);
 
       this.cache = runtimeConfig;
-      this.clearSectionCache();
       // Global config is the base for ALL tenant merged configs.
       this.tenantConfigs.clear();
       await this.notifySubscribers(runtimeConfig);
@@ -667,7 +567,7 @@ export class ConfigManager implements IConfigManager {
 
     const previousCache = this.cache;
     try {
-      let persistedConfig: AppConfig | BootstrapConfig;
+      let persistedConfig: PersistedConfig | BootstrapConfig;
       let configProvider: 'file' | 'database';
 
       if (useFileConfig && isDevelopment) {
@@ -700,7 +600,6 @@ export class ConfigManager implements IConfigManager {
       runtimeConfig = applyComputedDefaults(runtimeConfig);
 
       this.cache = runtimeConfig;
-      this.clearSectionCache();
       this.tenantConfigs.clear();
       await this.notifySubscribers(runtimeConfig);
       console.info(`Configuration reloaded (provider: ${configProvider})`);
@@ -718,9 +617,6 @@ export class ConfigManager implements IConfigManager {
     }
   }
 
-  /**
-   * Get configuration value by path
-   */
   getConfigValue<T = unknown>(path: string, defaultValue?: T): T {
     const config = this.getConfig();
     const keys = path.split('.');
@@ -745,37 +641,24 @@ export class ConfigManager implements IConfigManager {
     return value as T;
   }
 
-  /**
-   * Check if a feature is enabled
-   */
   isFeatureEnabled(featurePath: string): boolean {
     return this.getConfigValue<boolean>(`features.${featurePath}`, false);
   }
 
-  /**
-   * Clear all caches
-   */
   clearCache(): void {
     this.bootstrapProvider.clearCache();
     this.dbProvider.clearCache();
     this.fileProvider.clearCache();
-    this.clearSectionCache();
     this.tenantConfigs.clear();
     this.cache = null;
     this.isInitialized = false;
     console.info('All configuration caches cleared');
   }
 
-  /**
-   * Check if configuration is loaded
-   */
   isLoaded(): boolean {
     return this.isInitialized && this.cache !== null;
   }
 
-  /**
-   * Get bootstrap configuration only
-   */
   async getBootstrapConfig(): Promise<BootstrapConfig> {
     return await this.bootstrapProvider.loadConfiguration();
   }
@@ -1003,7 +886,6 @@ export class ConfigManager implements IConfigManager {
     this.dbProvider.cleanup();
     this.fileProvider.cleanup();
     this.bootstrapProvider.clearCache();
-    this.clearSectionCache();
     this.tenantConfigs.clear();
     this.subscribers.clear();
     this.cache = null;

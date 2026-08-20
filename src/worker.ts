@@ -71,14 +71,7 @@ async function bootstrap(): Promise<void> {
     throw new Error('Worker cannot start: database connection failed');
   }
 
-  try {
-    await configManager.load();
-  } catch (error) {
-    logger.warn(
-      'Failed to load full configuration, continuing with bootstrap config',
-      { error, component: 'worker' }
-    );
-  }
+  await configManager.load();
 
   const config = configManager.getConfig();
 

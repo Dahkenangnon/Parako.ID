@@ -2471,7 +2471,7 @@ test('branding media is validated, served, isolated, removable, and restorable',
     });
     const invalidDialog = page.getByRole('dialog', { name: 'Invalid File' });
     await expect(invalidDialog).toContainText(
-      'Please upload a valid image file'
+      'Invalid file type. Allowed types:'
     );
     await invalidDialog.getByRole('button', { name: 'OK' }).click();
     await expect(page.locator('#logo-dark-upload')).toHaveValue('');

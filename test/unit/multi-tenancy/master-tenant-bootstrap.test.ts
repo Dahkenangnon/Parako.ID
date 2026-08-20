@@ -14,7 +14,7 @@ import { Container } from 'inversify';
 import { TYPES } from '../../../src/di/types.js';
 import type { ILogger } from '../../../src/di/interfaces/logger.interface.js';
 import type { ITenantRepository } from '../../../src/db/repositories/interfaces/tenant.repository.js';
-import type { IUserRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
+import type { IUserPersistenceRepository } from '../../../src/db/repositories/interfaces/user.repository.js';
 import type { IPasswordUtils } from '../../../src/di/interfaces/password-utils.interface.js';
 import type { BootstrapConfig } from '../../../src/config/schemas/bootstrap-schema.js';
 import { bootstrapMasterTenant } from '../../../src/multi-tenancy/master-tenant-bootstrap.js';
@@ -46,7 +46,7 @@ function createMockTenantRepo(exists = false): ITenantRepository {
   } as unknown as ITenantRepository;
 }
 
-function createMockUserRepo(hasAdmin = false): IUserRepository {
+function createMockUserRepo(hasAdmin = false): IUserPersistenceRepository {
   return {
     findMany: vi.fn().mockResolvedValue({
       results: hasAdmin ? [{ id: 'admin-1', roles: ['platform_admin'] }] : [],
@@ -60,7 +60,7 @@ function createMockUserRepo(hasAdmin = false): IUserRepository {
       email: 'admin@example.com',
       roles: ['admin', 'platform_admin'],
     }),
-  } as unknown as IUserRepository;
+  } as unknown as IUserPersistenceRepository;
 }
 
 function createMockPasswordUtils(): IPasswordUtils {
@@ -102,7 +102,7 @@ function makeBootstrapConfig(
 
 function createContainer(
   tenantRepo: ITenantRepository,
-  userRepo?: IUserRepository,
+  userRepo?: IUserPersistenceRepository,
   passwordUtils?: IPasswordUtils
 ): Container {
   const container = new Container();

@@ -202,7 +202,6 @@ function _buildDefaultFullConfig(): AppConfig {
             },
             accounts: {
               my_account: 'accounts/my-account.njk',
-              settings: 'accounts/settings.njk',
               apps: 'accounts/apps.njk',
               sessions: 'accounts/sessions.njk',
               recovery_codes: 'accounts/recovery-codes.njk',

@@ -2,7 +2,7 @@ import type { Container } from 'inversify';
 import { TYPES } from '../di/types.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
 import type { ITenantRepository } from '../db/repositories/interfaces/tenant.repository.js';
-import type { IUserRepository } from '../db/repositories/interfaces/user.repository.js';
+import type { IUserPersistenceRepository } from '../db/repositories/interfaces/user.repository.js';
 import type { IPasswordUtils } from '../di/interfaces/password-utils.interface.js';
 import type { BootstrapConfig } from '../config/schemas/bootstrap-schema.js';
 import type { CreateUserDto } from '../db/repositories/interfaces/user.repository.js';
@@ -33,7 +33,9 @@ export async function bootstrapMasterTenant(
   const password = mtConfig?.bootstrap_admin_password;
 
   if (email && password) {
-    const userRepo = container.get<IUserRepository>(TYPES.UserRepository);
+    const userRepo = container.get<IUserPersistenceRepository>(
+      TYPES.UserRepository
+    );
     const passwordUtils = container.get<IPasswordUtils>(TYPES.PasswordUtils);
     await seedBootstrapAdmin(userRepo, passwordUtils, logger, email, password);
   }
@@ -82,7 +84,7 @@ async function seedMasterTenantRecord(
  * Only creates if no user with `platform_admin` role exists in `_platforms`.
  */
 async function seedBootstrapAdmin(
-  userRepo: IUserRepository,
+  userRepo: IUserPersistenceRepository,
   passwordUtils: IPasswordUtils,
   logger: ILogger,
   email: string,

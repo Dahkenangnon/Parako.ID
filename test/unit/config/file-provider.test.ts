@@ -19,8 +19,8 @@ vi.mock('../../../src/utils/env-validator.js', () => ({
   PARAKO_ENV_SPECS: mocks.specs,
   validateEnvVars: mocks.validateEnvVars,
 }));
-vi.mock('../../../src/config/schemas/schema.js', () => ({
-  AppConfigSchema: { parse: mocks.parse },
+vi.mock('../../../src/config/schemas/persisted-schema.js', () => ({
+  PersistedConfigSchema: { parse: mocks.parse },
 }));
 
 import { FileConfigProvider } from '../../../src/config/provider/file-provider.js';

@@ -1,11 +1,9 @@
 import { type ISettings } from '../../models/settings.model.js';
-import { type IBaseService } from './base-service.interface.js';
 import { z } from 'zod';
-import type {
-  ConfigDiff,
-  ConfigImpact,
-} from '../../services/settings.service.js';
+
 import type { AppConfig } from '../../config/schemas/schema.js';
+import type { PersistedConfig } from '../../config/schemas/persisted-schema.js';
+import type { ConfigDiff, ConfigImpact } from '../../types/settings-service.js';
 
 /**
  * Interface for SettingsService — manages versioned application configuration.
@@ -17,7 +15,50 @@ import type { AppConfig } from '../../config/schemas/schema.js';
  * Sensitive field values are encrypted at rest; the service transparently
  * encrypts on write and decrypts on read via the encryption utilities.
  */
-export interface ISettingsService extends IBaseService<ISettings> {
+export interface ISettingsService {
+  findOne(filter: Record<string, unknown> | string): Promise<ISettings | null>;
+  countDocuments(filter?: Record<string, unknown>): Promise<number>;
+  updateById(
+    id: string,
+    data: Partial<ISettings>,
+    options?: { upsert?: boolean; runValidators?: boolean }
+  ): Promise<ISettings | null>;
+  updateMany(
+    filter: Record<string, unknown>,
+    data: Partial<ISettings>,
+    options?: { upsert?: boolean; runValidators?: boolean }
+  ): Promise<{
+    matchedCount: number;
+    modifiedCount: number;
+    upsertedCount?: number;
+  }>;
+  findMany(
+    filter?: Record<string, unknown>,
+    options?: {
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+      limit?: number;
+      skip?: number;
+    }
+  ): Promise<ISettings[]>;
+  findWithPagination(
+    filter: Record<string, unknown>,
+    options: {
+      page: number;
+      limit: number;
+      sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
+    }
+  ): Promise<{
+    results: ISettings[];
+    page: number;
+    limit: number;
+    totalResults: number;
+    totalPages: number;
+  }>;
+  createOne(data: Partial<ISettings>): Promise<ISettings>;
+  createMany(
+    data: Partial<ISettings>[],
+    options?: { ordered?: boolean }
+  ): Promise<ISettings[]>;
   /**
    * Return the currently active main application configuration document,
    * or null if none has been persisted yet (first-run scenario).
@@ -38,9 +79,6 @@ export interface ISettingsService extends IBaseService<ISettings> {
     expectedVersion?: number
   ): Promise<ISettings>;
 
-  /**
-   * Return the active configuration document for the given key, or null.
-   */
   getConfigurationByKey(key: string): Promise<ISettings | null>;
 
   /**
@@ -60,9 +98,6 @@ export interface ISettingsService extends IBaseService<ISettings> {
    */
   getMainConfigurationLastUpdated(): Promise<Date | null>;
 
-  /**
-   * Return true if an active main configuration document exists in the database.
-   */
   hasMainConfiguration(): Promise<boolean>;
 
   /**
@@ -71,9 +106,6 @@ export interface ISettingsService extends IBaseService<ISettings> {
    */
   configDocumentExists(): Promise<boolean>;
 
-  /**
-   * Return all currently active configuration documents across all keys.
-   */
   getAllActiveConfigurations(): Promise<ISettings[]>;
 
   /**
@@ -88,9 +120,6 @@ export interface ISettingsService extends IBaseService<ISettings> {
    */
   validateConfiguration(config: unknown): z.ZodSafeParseResult<any>;
 
-  /**
-   * Return a summary of configuration storage statistics.
-   */
   getConfigurationStatistics(): Promise<{
     totalConfigurations: number;
     activeConfigurations: number;
@@ -114,7 +143,8 @@ export interface ISettingsService extends IBaseService<ISettings> {
    */
   flushInitialConfiguration(
     modifiedBy?: string,
-    reason?: string
+    reason?: string,
+    initialConfig?: PersistedConfig
   ): Promise<ISettings | null>;
 
   /**

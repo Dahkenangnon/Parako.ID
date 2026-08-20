@@ -1,6 +1,7 @@
 import mongoose, { Schema } from 'mongoose';
 import { afterAll, describe, expect, it } from 'vitest';
 import { getDefaultFullConfig } from '../../../src/config/constants.js';
+import { PersistedConfigSchema } from '../../../src/config/types.js';
 import {
   applicationSchema,
   brandingSchema,
@@ -104,24 +105,10 @@ describe('settings persistence schemas', () => {
       },
     },
     {
-      name: 'multi-tenant extraction source',
-      path: 'features.multi_tenancy.extraction_priority.0',
-      mutate: (config: Record<string, any>) => {
-        config.features.multi_tenancy.extraction_priority = ['query'];
-      },
-    },
-    {
       name: 'IP reputation threshold',
       path: 'integrations.ipqualityscore.fraud_score_threshold',
       mutate: (config: Record<string, any>) => {
         config.integrations.ipqualityscore.fraud_score_threshold = 101;
-      },
-    },
-    {
-      name: 'file-storage provider',
-      path: 'integrations.file_storage.provider',
-      mutate: (config: Record<string, any>) => {
-        config.integrations.file_storage.provider = 'ftp';
       },
     },
     {
@@ -242,18 +229,37 @@ describe('settings persistence schemas', () => {
     );
   });
 
-  it('round-trips the canonical default configuration without data loss', () => {
-    const canonicalConfig = getDefaultFullConfig();
+  it('retains a legacy account settings override for runtime migration', () => {
+    const document = new SettingsSchemasModel({
+      branding: {
+        companyName: 'Example',
+        logo: '/logo.svg',
+        ui: {
+          customization: {
+            enabled: true,
+            rootPath: 'runtime/views',
+            views: {
+              accounts: { settings: 'custom/legacy-settings.njk' },
+            },
+          },
+        },
+      },
+    });
+
+    expect(
+      document.toObject().branding?.ui?.customization?.views?.accounts?.settings
+    ).toBe('custom/legacy-settings.njk');
+  });
+
+  it('round-trips the canonical persisted configuration exactly', () => {
+    const canonicalConfig = PersistedConfigSchema.parse(getDefaultFullConfig());
     const document = new SettingsSchemasModel(canonicalConfig);
     const stored = document.toObject();
     const storedConfig = Object.fromEntries(
       configSections.map(section => [section, stored[section]])
     );
-    const persistedCanonicalConfig = Object.fromEntries(
-      configSections.map(section => [section, canonicalConfig[section]])
-    );
 
-    expect(storedConfig).toMatchObject(persistedCanonicalConfig);
+    expect(storedConfig).toEqual(canonicalConfig);
   });
 
   it('backfills safe defaults for sparse legacy settings', () => {
@@ -315,16 +321,7 @@ describe('settings persistence schemas', () => {
           include_default_metrics: true,
           prefix: 'parako_',
         },
-        multi_tenancy: {
-          enabled: false,
-          extraction_priority: ['header', 'subdomain'],
-          tenant_header: 'x-tenant-id',
-          provider_pool: {
-            max_size: 50,
-            idle_ttl_ms: 1_800_000,
-            cleanup_interval_ms: 60_000,
-          },
-        },
+        multi_tenancy: { enabled: false },
       },
       integrations: {
         ipinfo: { enabled: false, cache_ttl_hours: 24 },
@@ -335,7 +332,6 @@ describe('settings persistence schemas', () => {
         },
         fingerprintjs: { enabled: false },
         file_storage: {
-          provider: 'local',
           upload_dir: './runtime/uploads',
           signed_url_expiry_seconds: 3600,
           s3: {
@@ -353,11 +349,6 @@ describe('settings persistence schemas', () => {
           email: { enabled: true },
           sms: {
             enabled: false,
-            rate_limits: {
-              per_phone_per_hour: 3,
-              per_ip_per_day: 10,
-              cooldown_seconds: 60,
-            },
           },
         },
         defaults: {
@@ -391,16 +382,13 @@ describe('settings persistence schemas', () => {
     await expect(document.validate()).resolves.toBeUndefined();
   });
 
-  it('rejects an unsupported legacy persisted deployment environment', async () => {
+  it('does not persist a legacy deployment environment', async () => {
     const config = getDefaultFullConfig() as unknown as Record<string, any>;
     config.deployment.environment = 'qa';
     const document = new SettingsSchemasModel(config);
 
-    await expect(document.validate()).rejects.toMatchObject({
-      errors: {
-        'deployment.environment': expect.any(mongoose.Error.ValidatorError),
-      },
-    });
+    await expect(document.validate()).resolves.toBeUndefined();
+    expect(document.toObject().deployment).not.toHaveProperty('environment');
   });
 
   it.each(invalidSettings)('rejects an invalid $name', async testCase => {
@@ -427,10 +415,13 @@ describe('settings persistence schemas', () => {
     });
   });
 
-  it('does not persist bootstrap-computed OIDC storage settings', () => {
+  it('does not persist bootstrap-owned or computed settings', () => {
     const config = getDefaultFullConfig();
     const document = new SettingsSchemasModel(config).toObject();
 
     expect(document).not.toHaveProperty('oidc_storage');
+    expect(document.deployment).not.toHaveProperty('environment');
+    expect(document.integrations?.file_storage).not.toHaveProperty('provider');
+    expect(document.features?.multi_tenancy).toEqual({ enabled: false });
   });
 });

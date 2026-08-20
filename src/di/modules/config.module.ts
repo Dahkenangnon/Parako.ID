@@ -5,9 +5,11 @@ import { ConfigManager } from '../../config/index.js';
 import { BootstrapConfigProvider } from '../../config/provider/bootstrap-provider.js';
 import { DatabaseConfigProvider } from '../../config/provider/db-provider.js';
 import { FileConfigProvider } from '../../config/provider/file-provider.js';
+import { BootstrapEnvironment } from '../../config/bootstrap-environment.js';
 
 import { IConfigManager } from '../interfaces/config-manager.interface.js';
 import { IConfigProvider } from '../interfaces/config-provider.interface.js';
+import type { IBootstrapEnvironment } from '../interfaces/bootstrap-environment.interface.js';
 
 export const configModule: ContainerModule = new ContainerModule(
   (options: ContainerModuleLoadOptions) => {
@@ -15,6 +17,11 @@ export const configModule: ContainerModule = new ContainerModule(
     options
       .bind<IConfigManager>(TYPES.ConfigManager)
       .to(ConfigManager)
+      .inSingletonScope();
+
+    options
+      .bind<IBootstrapEnvironment>(TYPES.BootstrapEnvironment)
+      .to(BootstrapEnvironment)
       .inSingletonScope();
 
     options

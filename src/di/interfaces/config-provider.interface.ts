@@ -1,4 +1,4 @@
-import type { DeepPartial } from '../../utils/config-merge.js';
+import type { DeepPartial } from '../../config/types.js';
 
 /**
  * Interface for configuration providers

@@ -1,7 +1,9 @@
 import { injectable, inject } from 'inversify';
 import type { IConfigFileReader } from '../../di/interfaces/config-file-reader.interface.js';
-import type { AppConfig } from '../schemas/schema.js';
-import { AppConfigSchema } from '../schemas/schema.js';
+import {
+  PersistedConfigSchema,
+  type PersistedConfig,
+} from '../schemas/persisted-schema.js';
 import { AbstractConfigProvider } from './abstract.js';
 import type { DeepPartial } from '../../utils/config-merge.js';
 import { TYPES } from '../../di/types.js';
@@ -20,13 +22,13 @@ import {
  * Usage:
  * 1. Set USE_FILE_CONFIG=true in your runtime/.env file
  * 2. Ensure a config file exists at runtime/parako.jsonc or runtime/parako.json
- * 3. The configuration will be loaded and validated against AppConfigSchema
+ * 3. The configuration will be loaded and validated against PersistedConfigSchema
  *
  * Note: This provider does not support updates - use database provider for updates
  */
 @injectable()
-export class FileConfigProvider extends AbstractConfigProvider {
-  private cache: AppConfig | null = null;
+export class FileConfigProvider extends AbstractConfigProvider<PersistedConfig> {
+  private cache: PersistedConfig | null = null;
   private isInitialized = false;
 
   constructor(
@@ -36,10 +38,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
     super();
   }
 
-  /**
-   * Load configuration from JSONC file
-   */
-  async loadConfiguration(): Promise<AppConfig> {
+  async loadConfiguration(): Promise<PersistedConfig> {
     if (this.isInitialized && this.cache) {
       return this.cache;
     }
@@ -52,7 +51,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
 
       const mergedConfig = mergeConfig(getDefaultFullConfig(), rawConfig);
 
-      const config = AppConfigSchema.parse(mergedConfig);
+      const config = PersistedConfigSchema.parse(mergedConfig);
 
       this.cache = config;
       this.isInitialized = true;
@@ -90,16 +89,15 @@ export class FileConfigProvider extends AbstractConfigProvider {
   /**
    * Update configuration (not supported for file provider)
    */
-  async updateConfig?(_partial: DeepPartial<AppConfig>): Promise<AppConfig> {
+  async updateConfig?(
+    _partial: DeepPartial<PersistedConfig>
+  ): Promise<PersistedConfig> {
     throw new Error(
       'File configuration cannot be updated. Use database provider for updates.'
     );
   }
 
-  /**
-   * Reload configuration from file
-   */
-  async reloadConfiguration(): Promise<AppConfig> {
+  async reloadConfiguration(): Promise<PersistedConfig> {
     this.cache = null;
     this.isInitialized = false;
     return this.loadConfiguration();
@@ -108,7 +106,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
   /**
    * Flush initial configuration (not supported for file provider)
    */
-  async flushInitial?(): Promise<AppConfig> {
+  async flushInitial?(): Promise<PersistedConfig> {
     throw new Error(
       'File configuration does not support initial flush. Use database provider.'
     );
@@ -126,16 +124,10 @@ export class FileConfigProvider extends AbstractConfigProvider {
     this.clearCache();
   }
 
-  /**
-   * Check if configuration is currently cached
-   */
   isCached(): boolean {
     return this.cache !== null;
   }
 
-  /**
-   * Get a specific configuration value by path
-   */
   getConfigValue<T = any>(path: string, defaultValue?: T): T {
     if (!this.cache) {
       throw new Error(
@@ -171,7 +163,7 @@ export class FileConfigProvider extends AbstractConfigProvider {
         console.warn(`[CONFIG WARNING] Accessing undefined configuration key: "${path}"
            - Path "${partialPath}" ${partialPath === path ? 'does not exist' : `exists but "${path}" doesn't`} in configuration
            - Using default value: ${JSON.stringify(defaultValue)} 
-           - To fix this, ensure the key is defined in AppConfigSchema`);
+           - To fix this, ensure the key is defined in PersistedConfigSchema`);
         return defaultValue as T;
       }
     }
@@ -179,9 +171,6 @@ export class FileConfigProvider extends AbstractConfigProvider {
     return current as T;
   }
 
-  /**
-   * Get the provider name for identification
-   */
   getProviderName(): string {
     return 'file';
   }

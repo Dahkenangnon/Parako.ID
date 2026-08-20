@@ -17,9 +17,6 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-/**
- * Extended Express Request with validation warnings
- */
 export interface RequestWithValidation extends Request {
   validationWarnings?: string[];
 }

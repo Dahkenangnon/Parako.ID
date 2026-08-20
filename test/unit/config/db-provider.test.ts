@@ -18,8 +18,8 @@ vi.mock('mongoose', () => ({
     },
   },
 }));
-vi.mock('../../../src/config/schemas/schema.js', () => ({
-  AppConfigSchema: { parse: mocks.parse },
+vi.mock('../../../src/config/schemas/persisted-schema.js', () => ({
+  PersistedConfigSchema: { parse: mocks.parse },
 }));
 vi.mock('../../../src/config/constants.js', () => ({
   getDefaultFullConfig: mocks.getDefaultFullConfig,
@@ -59,10 +59,15 @@ function createSettingsDouble() {
 
 function createProvider(
   settings: SettingsDouble = createSettingsDouble(),
-  adapter = 'sqlite'
+  adapter = 'sqlite',
+  deploymentUrl?: string
 ) {
   const bootstrapProvider = {
-    getConfigValue: vi.fn().mockReturnValue(adapter),
+    getConfigValue: vi.fn((path: string, fallback?: unknown) => {
+      if (path === 'storage.adapter') return adapter;
+      if (path === 'deployment.url') return deploymentUrl ?? fallback;
+      return fallback;
+    }),
   };
   const provider = new DatabaseConfigProvider(
     settings as never,
@@ -119,10 +124,20 @@ describe('DatabaseConfigProvider core behavior', () => {
 
   function trackedProvider(
     settings: SettingsDouble = createSettingsDouble(),
+    adapter = 'sqlite',
+    deploymentUrl?: string
+  ) {
+    const result = createProvider(settings, adapter, deploymentUrl);
+    providers.push(result.provider);
+    return result;
+  }
+
+  function initializedProvider(
+    settings: SettingsDouble = createSettingsDouble(),
     adapter = 'sqlite'
   ) {
-    const result = createProvider(settings, adapter);
-    providers.push(result.provider);
+    const result = trackedProvider(settings, adapter);
+    result.provider.initialize();
     return result;
   }
 
@@ -148,6 +163,59 @@ describe('DatabaseConfigProvider core behavior', () => {
     );
     expect(settings.configDocumentExists).toHaveBeenCalledOnce();
     expect(provider.isCached()).toBe(true);
+  });
+
+  it('seeds first-run persistence from the bootstrap deployment URL', async () => {
+    const defaults = createStoredSettings({
+      deployment: {
+        environment: 'production',
+        url: 'https://example.com',
+        server: { port: 9007, trust_proxy_hops: 1 },
+      },
+      oidc: { issuer: 'https://example.com/oidc/v1', path: '/oidc/v1' },
+      storage: { adapter: 'sqlite', sqlite: { path: '/runtime/parako.db' } },
+    });
+    const sanitized = createStoredSettings({
+      deployment: {
+        url: 'https://id.operator.test',
+        server: { trust_proxy_hops: 1 },
+      },
+      oidc: { issuer: 'https://example.com/oidc/v1', path: '/oidc/v1' },
+    });
+    const computed = createStoredSettings({
+      deployment: sanitized.deployment,
+      oidc: {
+        issuer: 'https://id.operator.test/oidc/v1',
+        path: '/oidc/v1',
+      },
+    });
+    const validated = { ...computed, schema: 'persisted' };
+    const { provider, settings } = trackedProvider(
+      createSettingsDouble(),
+      'sqlite',
+      'https://id.operator.test'
+    );
+    settings.configDocumentExists.mockResolvedValue(false);
+    settings.saveMainConfigurationWithTransaction.mockResolvedValue(undefined);
+    mocks.getDefaultFullConfig.mockReturnValue(defaults);
+    mocks.stripBootstrapFields.mockReturnValue(sanitized);
+    mocks.applyComputedDefaults.mockReturnValue(computed);
+    mocks.parse.mockReturnValue(validated);
+
+    await expect(provider.loadConfiguration()).resolves.toBe(validated);
+
+    expect(mocks.stripBootstrapFields).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deployment: expect.objectContaining({
+          url: 'https://id.operator.test',
+        }),
+      })
+    );
+    expect(mocks.applyComputedDefaults).toHaveBeenCalledWith(sanitized);
+    expect(mocks.parse).toHaveBeenCalledWith(computed);
+    expect(settings.saveMainConfigurationWithTransaction).toHaveBeenCalledWith(
+      validated
+    );
   });
 
   it('loads, shapes, timestamps, caches, clears, and reloads stored config', async () => {
@@ -280,7 +348,9 @@ describe('DatabaseConfigProvider core behavior', () => {
     });
     mocks.stripBootstrapFields.mockReturnValue(sanitized);
     mocks.applyComputedDefaults.mockReturnValue(computed);
-    mocks.parse.mockReturnValue(validated);
+    mocks.parse.mockImplementation(value =>
+      value === computed ? validated : value
+    );
     provider.subscribe(subscriber);
 
     const result = await provider.updateConfig(
@@ -519,16 +589,27 @@ describe('DatabaseConfigProvider core behavior', () => {
     await expect(provider.updateConfig({})).resolves.toBeDefined();
   });
 
-  it('reports database availability without leaking errors', async () => {
+  it('propagates database availability failures', async () => {
     const { provider, settings } = trackedProvider();
     settings.getMainConfiguration.mockResolvedValue({});
     await expect(provider.isAvailable()).resolves.toBe(true);
 
-    settings.getMainConfiguration.mockRejectedValueOnce(new Error('offline'));
-    await expect(provider.isAvailable()).resolves.toBe(false);
+    const error = new Error('offline');
+    settings.getMainConfiguration.mockRejectedValueOnce(error);
+    await expect(provider.isAvailable()).rejects.toBe(error);
 
     settings.getMainConfiguration.mockRejectedValueOnce('offline');
-    await expect(provider.isAvailable()).resolves.toBe(false);
+    await expect(provider.isAvailable()).rejects.toBe('offline');
+  });
+
+  it('starts monitoring explicitly and only once', () => {
+    const { provider } = trackedProvider();
+
+    expect(vi.getTimerCount()).toBe(0);
+    provider.initialize();
+    provider.initialize();
+
+    expect(vi.getTimerCount()).toBe(1);
   });
 
   it('uses a change stream for replica-set topology and watches the real config key', () => {
@@ -555,7 +636,7 @@ describe('DatabaseConfigProvider core behavior', () => {
       db: { collection: getCollection },
     };
 
-    trackedProvider(createSettingsDouble(), 'mongodb');
+    initializedProvider(createSettingsDouble(), 'mongodb');
 
     expect(getCollection).toHaveBeenCalledWith('settings');
     expect(collection.watch).toHaveBeenCalledWith(
@@ -580,7 +661,7 @@ describe('DatabaseConfigProvider core behavior', () => {
       application: { title: 'Polled update' },
     });
     const subscriber = vi.fn();
-    const { provider, settings } = trackedProvider();
+    const { provider, settings } = initializedProvider();
     settings.configDocumentExists.mockResolvedValue(true);
     settings.loadAndDecryptConfiguration
       .mockResolvedValueOnce(original)
@@ -631,7 +712,7 @@ describe('DatabaseConfigProvider core behavior', () => {
       const oldTimestamp = new Date('2026-08-01T00:00:00.000Z');
       const newTimestamp = new Date('2026-08-01T01:00:00.000Z');
       const subscriber = vi.fn();
-      const { provider, settings } = trackedProvider();
+      const { provider, settings } = initializedProvider();
       settings.configDocumentExists
         .mockResolvedValueOnce(true)
         .mockRejectedValueOnce(failure);
@@ -669,7 +750,7 @@ describe('DatabaseConfigProvider core behavior', () => {
       db: { collection: vi.fn().mockReturnValue(collection) },
     };
     const subscriber = vi.fn();
-    const { provider, settings } = trackedProvider(
+    const { provider, settings } = initializedProvider(
       createSettingsDouble(),
       'mongodb'
     );
@@ -720,7 +801,7 @@ describe('DatabaseConfigProvider core behavior', () => {
     connection => {
       mocks.connection = connection;
 
-      trackedProvider(createSettingsDouble(), 'mongodb');
+      initializedProvider(createSettingsDouble(), 'mongodb');
 
       expect(vi.getTimerCount()).toBe(1);
     }
@@ -733,7 +814,7 @@ describe('DatabaseConfigProvider core behavior', () => {
         throw new Error('topology unavailable');
       },
     };
-    trackedProvider(createSettingsDouble(), 'mongodb');
+    initializedProvider(createSettingsDouble(), 'mongodb');
     expect(vi.getTimerCount()).toBe(1);
 
     mocks.connection = {
@@ -742,14 +823,14 @@ describe('DatabaseConfigProvider core behavior', () => {
         throw 'topology unavailable';
       },
     };
-    trackedProvider(createSettingsDouble(), 'mongodb');
+    initializedProvider(createSettingsDouble(), 'mongodb');
     expect(vi.getTimerCount()).toBe(2);
 
     mocks.connection = {
       readyState: 1,
       client: { topology: { constructor: { name: 'ReplicaSet' } } },
     };
-    trackedProvider(createSettingsDouble(), 'mongodb');
+    initializedProvider(createSettingsDouble(), 'mongodb');
     await Promise.resolve();
     expect(vi.getTimerCount()).toBe(3);
 
@@ -762,7 +843,7 @@ describe('DatabaseConfigProvider core behavior', () => {
         }),
       },
     };
-    trackedProvider(createSettingsDouble(), 'mongodb');
+    initializedProvider(createSettingsDouble(), 'mongodb');
     await Promise.resolve();
     expect(vi.getTimerCount()).toBe(4);
   });
@@ -781,7 +862,7 @@ describe('DatabaseConfigProvider core behavior', () => {
         }),
       },
     };
-    const { provider } = trackedProvider(createSettingsDouble(), 'mongodb');
+    const { provider } = initializedProvider(createSettingsDouble(), 'mongodb');
 
     provider.cleanup();
     await Promise.resolve();
@@ -807,7 +888,8 @@ describe('DatabaseConfigProvider core behavior', () => {
     );
     expect(settings.flushInitialConfiguration).toHaveBeenCalledWith(
       'system',
-      'Initial configuration flush'
+      'Initial configuration flush',
+      mocks.defaultConfig
     );
     expect(result).toEqual(decrypted);
     expect(result).not.toHaveProperty('oidc_storage');

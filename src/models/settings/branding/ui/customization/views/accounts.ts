@@ -3,6 +3,7 @@ import { Schema } from 'mongoose';
 export const brandingAccountsViewsSchema = new Schema(
   {
     my_account: { type: String },
+    // Legacy persistence input; ViewResolver maps custom values to settings_profile.
     settings: { type: String },
     apps: { type: String },
     sessions: { type: String },

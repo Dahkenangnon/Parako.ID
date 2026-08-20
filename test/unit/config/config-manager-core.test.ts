@@ -59,6 +59,16 @@ function createPersistedConfig(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createDefaultConfig() {
+  return createPersistedConfig({
+    deployment: {
+      url: 'https://persisted.example.test',
+      server: { trust_proxy_hops: 1 },
+      redis_prefix: 'parako',
+    },
+  });
+}
+
 function createBootstrapConfig(overrides: Record<string, unknown> = {}) {
   return {
     deployment: {
@@ -69,6 +79,9 @@ function createBootstrapConfig(overrides: Record<string, unknown> = {}) {
     storage: {
       adapter: 'sqlite',
       sqlite: { path: './runtime/data/parako.db' },
+    },
+    integrations: {
+      file_storage: { provider: 'local' },
     },
     multiTenancy: {
       enabled: true,
@@ -91,6 +104,7 @@ function createManager() {
   };
   const dbProvider = {
     cleanup: vi.fn(),
+    initialize: vi.fn(),
     clearCache: vi.fn(),
     flushInitial: vi.fn(),
     isAvailable: vi.fn(),
@@ -149,7 +163,7 @@ describe('ConfigManager core behavior', () => {
       .mockReturnValue('tenant-a:config:key');
     mocks.getDefaultFullConfig
       .mockReset()
-      .mockReturnValue(createPersistedConfig());
+      .mockReturnValue(createDefaultConfig());
     mocks.getTenantIdSafe.mockReset().mockReturnValue(undefined);
     mocks.tenantRun.mockReset().mockImplementation((_tenantId, fn) => fn());
     vi.spyOn(console, 'debug').mockImplementation(() => {});
@@ -187,6 +201,7 @@ describe('ConfigManager core behavior', () => {
       isBootstrapMerged: true,
       loadedAt: new Date('2026-08-01T00:00:00.000Z'),
     });
+    expect(dbProvider.initialize).toHaveBeenCalledOnce();
     expect(dbProvider.loadConfiguration).toHaveBeenCalledOnce();
     expect(mocks.applyComputedDefaults).toHaveBeenCalledOnce();
     expect(manager.isLoaded()).toBe(true);
@@ -303,7 +318,10 @@ describe('ConfigManager core behavior', () => {
 
     const config = await manager.load();
 
-    expect(config.application).toEqual({ title: 'From file' });
+    expect(config.application).toEqual({
+      title: 'From file',
+      description: 'Stored config',
+    });
     expect(config._metadata.configProvider).toBe('file');
     expect(dbProvider.isAvailable).not.toHaveBeenCalled();
     expect(manager.isUsingFileConfig()).toBe(true);
@@ -328,16 +346,17 @@ describe('ConfigManager core behavior', () => {
     expect(config._metadata.configProvider).toBe('bootstrap');
   });
 
-  it('falls back to complete defaults when database config is unavailable', async () => {
-    const bootstrap = createBootstrapConfig();
+  it('fails startup when database configuration is unavailable', async () => {
     const { bootstrapProvider, dbProvider, manager } = createManager();
-    bootstrapProvider.loadConfiguration.mockResolvedValue(bootstrap);
+    bootstrapProvider.loadConfiguration.mockResolvedValue(
+      createBootstrapConfig()
+    );
     dbProvider.isAvailable.mockResolvedValue(false);
 
-    const config = await manager.load();
-
-    expect(config.application.title).toBe('Persisted');
-    expect(config._metadata.configProvider).toBe('bootstrap');
+    await expect(manager.load()).rejects.toThrow(
+      'Failed to load configuration: Database configuration provider is not available'
+    );
+    expect(manager.isLoaded()).toBe(false);
   });
 
   it.each([new Error('bootstrap failed'), 'bootstrap failed'])(
@@ -362,51 +381,7 @@ describe('ConfigManager core behavior', () => {
     expect(() => manager.getPlatformConfig()).toThrow(
       'Configuration not loaded. Call load() first.'
     );
-    expect(() => manager.getConfigSection('application')).toThrow(
-      'Configuration not loaded. Call load() first.'
-    );
     expect(manager.isUsingFileConfig()).toBe(false);
-  });
-
-  it('caches sections, expires them after 60 seconds, and reports metrics', async () => {
-    const { bootstrapProvider, dbProvider, manager } = createManager();
-    bootstrapProvider.loadConfiguration.mockResolvedValue(
-      createBootstrapConfig()
-    );
-    dbProvider.isAvailable.mockResolvedValue(true);
-    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
-    await manager.load();
-
-    expect(manager.getSectionCacheMetrics()).toMatchObject({
-      cacheHits: 0,
-      cacheMisses: 0,
-      totalRequests: 0,
-      hitRate: '0.00%',
-      cachedSections: 0,
-    });
-    expect(manager.getConfigSection('application')).toEqual({
-      title: 'Persisted',
-      description: 'Stored config',
-    });
-    expect(manager.getConfigSection('application')).toEqual({
-      title: 'Persisted',
-      description: 'Stored config',
-    });
-    vi.advanceTimersByTime(60_000);
-    manager.getConfigSection('application');
-    manager.getConfigSection('deployment');
-
-    expect(manager.getSectionCacheMetrics()).toMatchObject({
-      cacheHits: 1,
-      cacheMisses: 3,
-      totalRequests: 4,
-      hitRate: '25.00%',
-      cachedSections: 2,
-      mostAccessedSections: [
-        { section: 'application', count: 3 },
-        { section: 'deployment', count: 1 },
-      ],
-    });
   });
 
   it('reads only own configuration paths and checks feature flags', async () => {
@@ -443,11 +418,11 @@ describe('ConfigManager core behavior', () => {
     const { bootstrapProvider, dbProvider, fileProvider, manager } =
       createManager();
     bootstrapProvider.loadConfiguration.mockResolvedValue(bootstrap);
-    dbProvider.isAvailable.mockResolvedValue(false);
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
     await manager.load();
 
     await expect(manager.getBootstrapConfig()).resolves.toBe(bootstrap);
-    manager.getConfigSection('application');
     manager.clearCache();
 
     expect(bootstrapProvider.clearCache).toHaveBeenCalledOnce();
@@ -527,7 +502,6 @@ describe('ConfigManager core behavior', () => {
     await manager.load();
     await manager.ensureTenantConfig('tenant-a');
     expect(tenantOverrideService.loadOverrides).toHaveBeenCalledOnce();
-    manager.getConfigSection('application');
     const successfulSubscriber = vi.fn();
     const failingSubscriber = vi.fn().mockRejectedValue(new Error('offline'));
     manager.subscribe('successful', successfulSubscriber);
@@ -546,7 +520,6 @@ describe('ConfigManager core behavior', () => {
     expect(mocks.applyComputedDefaults).toHaveBeenCalledOnce();
     expect(successfulSubscriber).toHaveBeenCalledOnce();
     expect(failingSubscriber).toHaveBeenCalledOnce();
-    expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
     await manager.ensureTenantConfig('tenant-a');
     expect(tenantOverrideService.loadOverrides).toHaveBeenCalledTimes(2);
     expect(console.error).toHaveBeenCalledWith(
@@ -659,7 +632,6 @@ describe('ConfigManager core behavior', () => {
     );
     await manager.load();
     await manager.ensureTenantConfig('tenant-a');
-    manager.getConfigSection('application');
     const subscriber = vi.fn();
     manager.subscribe('update-listener', subscriber);
     const pubsub = {
@@ -680,7 +652,6 @@ describe('ConfigManager core behavior', () => {
     );
     expect(updated.application.title).toBe('Updated');
     expect(subscriber).toHaveBeenCalledWith(updated);
-    expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
     expect(mocks.buildRedisKey).toHaveBeenCalledWith(
       'persisted-prefix',
       'config',
@@ -1171,7 +1142,6 @@ describe('ConfigManager core behavior', () => {
     dbProvider.loadConfiguration.mockResolvedValue(createPersistedConfig());
     await manager.load();
     manager.subscribe('listener', vi.fn());
-    manager.getConfigSection('application');
     const changeHandler = dbProvider.subscribe.mock.calls[0][0];
 
     manager.cleanup();
@@ -1181,7 +1151,6 @@ describe('ConfigManager core behavior', () => {
     expect(fileProvider.cleanup).toHaveBeenCalledOnce();
     expect(bootstrapProvider.clearCache).toHaveBeenCalledOnce();
     expect(manager.getSubscribers()).toEqual([]);
-    expect(manager.getSectionCacheMetrics().cachedSections).toBe(0);
     expect(manager.isLoaded()).toBe(false);
   });
 

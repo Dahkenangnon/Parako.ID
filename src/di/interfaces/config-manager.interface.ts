@@ -1,9 +1,8 @@
 import {
   type RuntimeConfig,
   type BootstrapConfig,
+  type DeepPartial,
 } from '../../config/types.js';
-import { type AppConfig } from '../../config/schemas/schema.js';
-import type { DeepPartial } from '../../utils/config-merge.js';
 import type { IRedisPubSubService } from './redis-pubsub-service.interface.js';
 
 /**
@@ -16,17 +15,8 @@ import type { IRedisPubSubService } from './redis-pubsub-service.interface.js';
  * - Runtime metadata
  */
 export interface IConfigManager {
-  /**
-   * Load bootstrap configuration and then full configuration
-   * This is the main entry point for configuration loading
-   * Returns RuntimeConfig with bootstrap fields merged in
-   */
   load(): Promise<RuntimeConfig>;
 
-  /**
-   * Get current configuration
-   * Returns RuntimeConfig with bootstrap fields already merged
-   */
   getConfig(): RuntimeConfig;
 
   /**
@@ -35,46 +25,13 @@ export interface IConfigManager {
    */
   getPlatformConfig(): RuntimeConfig;
 
-  /**
-   * Get a specific configuration section with caching
-   * Implements lazy loading with 60-second cache TTL
-   * @param section - The configuration section key
-   * @returns The configuration section data
-   */
-  getConfigSection<K extends keyof AppConfig>(section: K): AppConfig[K];
-
-  /**
-   * Get section cache metrics
-   * Returns statistics about cache hits, misses, and most accessed sections
-   */
-  getSectionCacheMetrics(): {
-    cacheHits: number;
-    cacheMisses: number;
-    totalRequests: number;
-    hitRate: string;
-    cachedSections: number;
-    mostAccessedSections: Array<{ section: string; count: number }>;
-  };
-
-  /**
-   * Subscribe to configuration changes
-   * @param subscriberId - Unique identifier for the subscriber
-   * @param callback - Function to call when configuration changes
-   */
   subscribe(
     subscriberId: string,
     callback: (config: RuntimeConfig) => void | Promise<void>
   ): void;
 
-  /**
-   * Unsubscribe from configuration changes
-   * @param subscriberId - Unique identifier for the subscriber
-   */
   unsubscribe(subscriberId: string): void;
 
-  /**
-   * Get list of active subscribers
-   */
   getSubscribers(): string[];
 
   /**
@@ -86,37 +43,16 @@ export interface IConfigManager {
     expectedVersion?: number
   ): Promise<RuntimeConfig>;
 
-  /**
-   * Reload configuration from database
-   * Returns RuntimeConfig with bootstrap fields merged in
-   */
   reload(): Promise<RuntimeConfig>;
 
-  /**
-   * Get configuration value by path
-   * Can access both persisted and bootstrap fields
-   */
   getConfigValue<T = unknown>(path: string, defaultValue?: T): T;
 
-  /**
-   * Check if a feature is enabled
-   */
   isFeatureEnabled(featurePath: string): boolean;
 
-  /**
-   * Clear all caches
-   */
   clearCache(): void;
 
-  /**
-   * Check if configuration is loaded
-   */
   isLoaded(): boolean;
 
-  /**
-   * Get bootstrap configuration only (from .env)
-   * Returns only the bootstrap fields without persisted config
-   */
   getBootstrapConfig(): Promise<BootstrapConfig>;
 
   /**
@@ -157,8 +93,5 @@ export interface IConfigManager {
    */
   setPubSub(pubsub: IRedisPubSubService): void;
 
-  /**
-   * Cleanup resources and stop monitoring
-   */
   cleanup(): void;
 }

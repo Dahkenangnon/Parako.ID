@@ -1,6 +1,10 @@
 import { injectable, inject } from 'inversify';
 import mongoose from 'mongoose';
-import { type AppConfig, AppConfigSchema } from '../schemas/schema.js';
+import type { AppConfig } from '../schemas/schema.js';
+import {
+  PersistedConfigSchema,
+  type PersistedConfig,
+} from '../schemas/persisted-schema.js';
 import { AbstractConfigProvider } from './abstract.js';
 import { SettingsService } from '../../services/settings.service.js';
 import { getDefaultFullConfig } from '../constants.js';
@@ -20,7 +24,7 @@ import {
 import { ConfigurationVersionConflictError } from '../../errors/configuration-version-conflict.error.js';
 
 type DatabaseConfigChangeSubscriber = (
-  config: AppConfig | null,
+  config: PersistedConfig | null,
   error?: Error,
   source?: 'local-update'
 ) => void;
@@ -32,8 +36,8 @@ type DatabaseConfigChangeSubscriber = (
  * Implements production-ready caching with automatic cache invalidation
  */
 @injectable()
-export class DatabaseConfigProvider extends AbstractConfigProvider {
-  private cachedConfig: AppConfig | null = null;
+export class DatabaseConfigProvider extends AbstractConfigProvider<PersistedConfig> {
+  private cachedConfig: PersistedConfig | null = null;
   private lastConfigUpdate: Date | null = null;
   private settingsService: SettingsService;
   /**
@@ -45,6 +49,9 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
   private readonly CACHE_CHECK_INTERVAL = 30000; // 30 seconds
   private changeStream: any = null; // MongoDB change stream
   private usingChangeStreams = false;
+  private monitoringStarted = false;
+  private readonly storageAdapter: string;
+  private readonly bootstrapProvider: IConfigProvider<BootstrapConfig>;
 
   constructor(
     @inject(TYPES.SettingsService) settingsService: SettingsService,
@@ -53,11 +60,23 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
   ) {
     super();
     this.settingsService = settingsService;
-    const storageAdapter = bootstrapProvider.getConfigValue(
+    this.bootstrapProvider = bootstrapProvider;
+    this.storageAdapter = bootstrapProvider.getConfigValue(
       'storage.adapter',
       'sqlite'
     );
-    this.startCacheMonitoring(storageAdapter);
+  }
+
+  /**
+   * Start configuration monitoring after the database connection is ready.
+   */
+  initialize(): void {
+    if (this.monitoringStarted) {
+      return;
+    }
+
+    this.monitoringStarted = true;
+    this.startCacheMonitoring(this.storageAdapter);
   }
 
   /**
@@ -278,6 +297,8 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
       this.cacheCheckInterval = null;
     }
 
+    this.monitoringStarted = false;
+
     console.info('Configuration monitoring stopped');
   }
 
@@ -292,7 +313,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * This prevents accidentally overwriting valid encrypted config with defaults
    * when decryption fails (e.g., wrong ENCRYPTION_KEY).
    */
-  private async loadFromDatabase(): Promise<AppConfig | null> {
+  private async loadFromDatabase(): Promise<PersistedConfig | null> {
     // Step 1: Check if document exists (without loading content)
     const documentExists = await this.settingsService.configDocumentExists();
 
@@ -322,20 +343,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
         lastUpdated: this.lastConfigUpdate,
       });
 
-      // oidc_storage is omitted — it's computed from bootstrap env vars in
-      // ConfigManager.createRuntimeConfig(), which always runs after this.
-      const config = {
-        application: settings.application,
-        branding: settings.branding,
-        deployment: settings.deployment,
-        security: settings.security,
-        features: settings.features as any,
-        oidc: settings.oidc as any,
-        integrations: settings.integrations,
-        notifications: settings.notifications,
-      } as AppConfig;
-
-      return config;
+      return PersistedConfigSchema.parse(settings);
     } catch (error) {
       // Re-throw with context - do NOT swallow and return null
       console.error('Failed to load configuration from database', {
@@ -347,17 +355,33 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     }
   }
 
+  private buildInitialConfig(): PersistedConfig {
+    const deploymentUrl = this.bootstrapProvider.getConfigValue<
+      string | undefined
+    >('deployment.url');
+    const defaults = getDefaultFullConfig();
+    const seededConfig = deploymentUrl
+      ? mergeConfig<AppConfig>(defaults, {
+          deployment: { url: deploymentUrl },
+        })
+      : defaults;
+
+    const sanitizedConfig = stripBootstrapFields(seededConfig);
+    const configWithDefaults = applyComputedDefaults(sanitizedConfig);
+
+    return PersistedConfigSchema.parse(configWithDefaults);
+  }
+
   /**
    * Auto-flush default configuration to database if none exists
    */
-  private async autoFlushDefaultConfig(): Promise<AppConfig> {
+  private async autoFlushDefaultConfig(): Promise<PersistedConfig> {
     try {
       console.info(
         'No configuration found in database, auto-flushing default configuration...'
       );
 
-      // Use the default full configuration from constants
-      const defaultConfig = AppConfigSchema.parse(getDefaultFullConfig());
+      const defaultConfig = this.buildInitialConfig();
 
       await this.settingsService.saveMainConfigurationWithTransaction(
         defaultConfig
@@ -403,7 +427,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * @param error - Error object if reload failed
    */
   private notifySubscribers(
-    config: AppConfig | null,
+    config: PersistedConfig | null,
     error?: Error,
     source?: 'local-update'
   ): void {
@@ -425,9 +449,6 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     });
   }
 
-  /**
-   * Check if database configuration has been updated
-   */
   private async isDatabaseConfigUpdated(): Promise<boolean> {
     try {
       const lastUpdate =
@@ -448,7 +469,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     }
   }
 
-  async loadConfiguration(): Promise<AppConfig> {
+  async loadConfiguration(): Promise<PersistedConfig> {
     // Trust Change Streams or polling to invalidate cache - don't check DB on every access
     // This eliminates database query overhead on every config access
     if (this.cachedConfig) {
@@ -466,7 +487,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
     return config;
   }
 
-  async reloadConfiguration(): Promise<AppConfig> {
+  async reloadConfiguration(): Promise<PersistedConfig> {
     this.clearCache();
     return this.loadConfiguration();
   }
@@ -497,7 +518,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
   async updateConfig(
     partial: DeepPartial<AppConfig>,
     expectedVersion?: number
-  ): Promise<AppConfig> {
+  ): Promise<PersistedConfig> {
     try {
       const maxAttempts = expectedVersion === undefined ? 3 : 1;
 
@@ -535,7 +556,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
         // (OIDC issuer, integration URLs, MFA settings, etc.) from base configuration values
         // ensuring consistency across the application even when base values change
         const configWithDefaults = applyComputedDefaults(sanitizedConfig);
-        const validatedConfig = AppConfigSchema.parse(configWithDefaults);
+        const validatedConfig = PersistedConfigSchema.parse(configWithDefaults);
 
         try {
           // saveMainConfiguration() encrypts sensitive fields. Passing the
@@ -594,7 +615,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
    * Flush initial default configuration to database if none exists
    * This ensures the database has a complete configuration on first run
    */
-  async flushInitial(): Promise<AppConfig> {
+  async flushInitial(): Promise<PersistedConfig> {
     // Explicit ALS context for startup — prevents breakage if strict mode
     // is enabled before first request (app.ts enables strict in multi-tenant).
     return tenantContext.run(DEFAULT_TENANT_ID, async () => {
@@ -605,7 +626,8 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
         const savedConfig =
           await this.settingsService.flushInitialConfiguration(
             'system',
-            'Initial configuration flush'
+            'Initial configuration flush',
+            this.buildInitialConfig()
           );
 
         if (savedConfig) {
@@ -613,18 +635,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
           const decryptedConfig = await this.loadAndDecryptConfiguration();
 
           if (decryptedConfig) {
-            // oidc_storage is omitted — it's computed from bootstrap env vars in
-            // ConfigManager.createRuntimeConfig(), which always runs after this.
-            const config = {
-              application: decryptedConfig.application,
-              branding: decryptedConfig.branding,
-              deployment: decryptedConfig.deployment,
-              security: decryptedConfig.security,
-              features: decryptedConfig.features as any,
-              oidc: decryptedConfig.oidc as any,
-              integrations: decryptedConfig.integrations,
-              notifications: decryptedConfig.notifications,
-            } as AppConfig;
+            const config = PersistedConfigSchema.parse(decryptedConfig);
 
             this.cachedConfig = config;
             this.lastConfigUpdate = new Date();
@@ -704,15 +715,7 @@ export class DatabaseConfigProvider extends AbstractConfigProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    try {
-      await this.settingsService.getMainConfiguration();
-      return true;
-    } catch (error) {
-      console.warn(
-        'Database configuration provider not available:',
-        error instanceof Error ? error.message : String(error)
-      );
-      return false;
-    }
+    await this.settingsService.getMainConfiguration();
+    return true;
   }
 }

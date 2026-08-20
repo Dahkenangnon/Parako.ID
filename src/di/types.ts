@@ -2,6 +2,7 @@
 export const TYPES = {
   ConfigManager: Symbol.for('ConfigManager'),
   BootstrapConfigProvider: Symbol.for('BootstrapConfigProvider'),
+  BootstrapEnvironment: Symbol.for('BootstrapEnvironment'),
   DatabaseConfigProvider: Symbol.for('DatabaseConfigProvider'),
   FileConfigProvider: Symbol.for('FileConfigProvider'),
 

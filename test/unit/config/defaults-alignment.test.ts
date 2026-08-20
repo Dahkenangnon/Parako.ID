@@ -6,6 +6,24 @@ import { mergeConfig } from '../../../src/utils/config-merge.js';
 const DEFAULT_FULL_CONFIG = getDefaultFullConfig();
 
 describe('DEFAULT_FULL_CONFIG alignment', () => {
+  it('does not advertise the removed legacy account settings view', () => {
+    expect(
+      'settings' in DEFAULT_FULL_CONFIG.branding.ui.customization.views.accounts
+    ).toBe(false);
+  });
+
+  it('accepts the legacy account settings override for runtime migration', () => {
+    const config = structuredClone(DEFAULT_FULL_CONFIG) as Record<string, any>;
+    config.branding.ui.customization.views.accounts.settings =
+      'custom/legacy-settings.njk';
+
+    const result = AppConfigSchema.parse(config);
+
+    expect(result.branding.ui.customization.views.accounts.settings).toBe(
+      'custom/legacy-settings.njk'
+    );
+  });
+
   it('passes full Zod validation', () => {
     const result = AppConfigSchema.safeParse(DEFAULT_FULL_CONFIG);
     if (!result.success) {

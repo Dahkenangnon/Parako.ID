@@ -198,7 +198,7 @@ export const OidcOverrideSchema = z.object({
  * Parako.ID Configuration Schema - Redesigned
  *
  * This schema defines the PERSISTED configuration structure for the OIDC Identity Provider
- * with a clear, logical organization that separates concerns and is future-proof.
+ * with a clear organization that separates persisted concerns.
  *
  * IMPORTANT: This schema represents configuration that can be stored in the database
  * or file and modified through the admin UI. It EXCLUDES bootstrap-only fields that
@@ -616,8 +616,10 @@ export const AppConfigSchema = z.object({
                   .describe('My account profile template'),
                 settings: z
                   .string()
-                  .default('accounts/settings.njk')
-                  .describe('Account settings template'),
+                  .optional()
+                  .describe(
+                    'Deprecated alias for accounts.settings_profile; retained for configuration migration'
+                  ),
                 apps: z
                   .string()
                   .default('accounts/apps.njk')
@@ -669,7 +671,6 @@ export const AppConfigSchema = z.object({
               })
               .default({
                 my_account: 'accounts/my-account.njk',
-                settings: 'accounts/settings.njk',
                 apps: 'accounts/apps.njk',
                 sessions: 'accounts/sessions.njk',
                 recovery_codes: 'accounts/recovery-codes.njk',
@@ -802,7 +803,6 @@ export const AppConfigSchema = z.object({
             },
             accounts: {
               my_account: 'accounts/my-account.njk',
-              settings: 'accounts/settings.njk',
               apps: 'accounts/apps.njk',
               sessions: 'accounts/sessions.njk',
               recovery_codes: 'accounts/recovery-codes.njk',

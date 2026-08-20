@@ -34,6 +34,8 @@ export const SENSITIVE_FIELDS = [
   'oidc.secrets.pairwise_salt',
 ] as const;
 
+const SENSITIVE_FIELD_SET: ReadonlySet<string> = new Set(SENSITIVE_FIELDS);
+
 /**
  * BOOTSTRAP_ONLY_FIELDS - Registry of fields that can ONLY be set via .env
  * These fields are infrastructure-level and should never be persisted to database
@@ -57,7 +59,7 @@ export function isSensitiveField(fieldPath: string): boolean {
   if (!fieldPath || typeof fieldPath !== 'string') {
     return false;
   }
-  return SENSITIVE_FIELDS.includes(fieldPath as any);
+  return SENSITIVE_FIELD_SET.has(fieldPath);
 }
 
 /**
@@ -1584,32 +1586,4 @@ export function convertSecurityFormData(data: any): any {
   converted = convertBooleanFields(converted, booleanFields);
 
   return converted;
-}
-
-/**
- * Get section icon for settings overview
- * @param sectionKey - The section key
- * @returns The icon name for the section
- */
-export function getSectionIcon(sectionKey: string): string {
-  const icons: { [key: string]: string } = {
-    application: 'cog',
-    branding: 'palette',
-    deployment: 'server',
-    security: 'shield-check',
-    features: 'sparkles',
-    oidc: 'key',
-    integrations: 'plug',
-  };
-  return icons[sectionKey] || 'cog';
-}
-
-/**
- * Check if section is configured
- * @param config - The configuration object
- * @param sectionKey - The section key to check
- * @returns True if section is configured, false otherwise
- */
-export function getSectionStatus(config: any, sectionKey: string): boolean {
-  return !!config?.[sectionKey];
 }

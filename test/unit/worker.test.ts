@@ -439,16 +439,15 @@ describe('worker process entrypoint', () => {
     expect(harness.logger.shutdown).toHaveBeenCalledOnce();
   });
 
-  it('continues with bootstrap configuration when the full config load fails', async () => {
-    const failure = new Error('settings unavailable');
-    harness.configManager.load.mockRejectedValue(failure);
-
-    await importWorker();
-
-    expect(harness.logger.warn).toHaveBeenCalledWith(
-      'Failed to load full configuration, continuing with bootstrap config',
-      { error: failure, component: 'worker' }
+  it('fails worker startup when the full config load fails', async () => {
+    harness.configManager.load.mockRejectedValue(
+      new Error('settings unavailable')
     );
+
+    await importWorkerUntilExit();
+
+    expect(harness.database.disconnect).toHaveBeenCalledOnce();
+    expect(harness.keyStore.initialize).not.toHaveBeenCalled();
   });
 
   it('uses safe runtime defaults and skips PM2 readiness when IPC is absent', async () => {

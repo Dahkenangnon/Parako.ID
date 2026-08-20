@@ -3,135 +3,6 @@ import { brandingAuthViewsSchema } from './branding/ui/customization/views/auth.
 import { brandingAccountsViewsSchema } from './branding/ui/customization/views/accounts.js';
 import { brandingErrorsViewsSchema } from './branding/ui/customization/views/errorpage.js';
 
-// APPLICATION sub schema
-//   {
-//     name: { type: String, required: true },
-//     version: { type: String, required: true },
-//     title: { type: String, required: true },
-//     description: { type: String, required: true },
-//     tagline: { type: String, required: true },
-//     locales: {
-//       default: { type: String, required: true },
-//       available: { type: [String], required: true },
-//     },
-//   },
-//   { _id: false }
-// );
-
-// BRANDING sub schema
-
-// 1. Theme
-//   {
-//     type: {
-//       type: String,
-//       enum: ['predefined', 'custom'],
-//       required: true,
-//     },
-//     theme: {
-//       type: String,
-//       enum: [
-//         'default',
-//         'blue',
-//         'green',
-//         'purple',
-//         'orange',
-//         'pink',
-//         'indigo',
-//         'emerald',
-//         'gray',
-//         'teal',
-//         'red',
-//         'yellow',
-//         'rose',
-//       ],
-//       required: true,
-//     },
-//   },
-//   { _id: false }
-// );
-
-// 2. OIDC Views
-//   {
-//     consent: { type: String },
-//     device_flow_code_input: { type: String },
-//     device_flow_confirm_code: { type: String },
-//     device_flow_success: { type: String },
-//     error: { type: String },
-//     login: { type: String },
-//     logout_success: { type: String },
-//     logout: { type: String },
-//     mfa: { type: String },
-//   },
-//   { _id: false }
-// );
-
-// 3. Auth Views branding/ui/customization/views/
-//   {
-//     login: { type: String },
-//     register: { type: String },
-//     forgot_password: { type: String },
-//     reset_password: { type: String },
-//     email_verification: { type: String },
-//     verify_email: { type: String },
-//     email_verification_success: { type: String },
-//     account_select: { type: String },
-//     continue: { type: String },
-//     multi_factor: { type: String },
-//     mfa_verify: { type: String },
-//     mfa_resend: { type: String },
-//     logout: { type: String },
-//     social_password_setup: { type: String },
-//     social_contact_info: { type: String },
-//     account_recovery: { type: String },
-//     recovery_backup_codes: { type: String },
-//     recovery_secondary_email: { type: String },
-//     recovery_verify_code: { type: String },
-//     setup_mfa: { type: String },
-//     social_callback: { type: String },
-//     oidc: brandingOidcViewsSchema,
-//   },
-//   { _id: false }
-// );
-
-// 4. Accounts Views
-//   {
-//     home: { type: String },
-//     my_account: { type: String },
-//     settings: { type: String },
-//     apps: { type: String },
-//     sessions: { type: String },
-//     recovery_codes: { type: String },
-//     recovery_setup: { type: String },
-//   },
-//   { _id: false }
-// );
-
-// 5. Errors Views
-//   {
-//     unauthorized: { type: String },
-//     forbidden: { type: String },
-//     notfound: { type: String },
-//     server_error: { type: String },
-//     rate_limit: { type: String },
-//   },
-//   { _id: false }
-// );
-
-// 6. Email Views
-//   {
-//     mail: { type: String },
-//   },
-//   { _id: false }
-// );
-
-// // 7. Home Views
-//   {
-//     index: { type: String },
-//   },
-//   { _id: false }
-// );
-
-// 8. Custom views
 const brandingViewsSchema = new Schema(
   {
     auth: brandingAuthViewsSchema,
@@ -153,7 +24,6 @@ const brandingViewsSchema = new Schema(
   { _id: false }
 );
 
-// 9. Customization
 const brandingCustomizationSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -163,7 +33,6 @@ const brandingCustomizationSchema = new Schema(
   { _id: false }
 );
 
-// 10. UI
 const brandingUiSchema = new Schema(
   {
     customization: brandingCustomizationSchema,
@@ -171,7 +40,6 @@ const brandingUiSchema = new Schema(
   { _id: false }
 );
 
-// 10.5 Theme Color Set (for light/dark mode)
 const themeColorSetSchema = new Schema(
   {
     primary: { type: String },
@@ -211,7 +79,6 @@ const themeColorSetSchema = new Schema(
   { _id: false }
 );
 
-// 10.6 Theme Colors (light and dark)
 const brandingColorsSchema = new Schema(
   {
     light: { type: themeColorSetSchema, default: () => ({}) },
@@ -220,7 +87,6 @@ const brandingColorsSchema = new Schema(
   { _id: false }
 );
 
-// 10.7 Typography/Fonts
 const brandingFontsSchema = new Schema(
   {
     sans: { type: String },
@@ -230,7 +96,6 @@ const brandingFontsSchema = new Schema(
   { _id: false }
 );
 
-// 11. Branding
 export const brandingSchema = new Schema(
   {
     companyName: { type: String, required: true },
@@ -246,9 +111,6 @@ export const brandingSchema = new Schema(
   { _id: false }
 );
 
-// DEPLOYMENT sub schema
-
-// 1. Cookies Defaults
 const deploymentCookiesDefaultsSchema = new Schema(
   {
     maxAge: { type: Number, required: true },
@@ -264,7 +126,6 @@ const deploymentCookiesDefaultsSchema = new Schema(
   { _id: false }
 );
 
-// 2. Cookies Types
 const deploymentCookiesTypesSchema = new Schema(
   {
     session: {
@@ -304,7 +165,6 @@ const deploymentCookiesTypesSchema = new Schema(
   { _id: false }
 );
 
-// 3. Cookies
 const deploymentCookiesSchema = new Schema(
   {
     defaults: deploymentCookiesDefaultsSchema,
@@ -313,7 +173,6 @@ const deploymentCookiesSchema = new Schema(
   { _id: false }
 );
 
-// 4. Auth Routes
 const deploymentAuthRoutesSchema = new Schema(
   {
     login: { type: String, required: true },
@@ -349,7 +208,6 @@ const deploymentAuthRoutesSchema = new Schema(
   { _id: false }
 );
 
-// 5. Account Routes
 const deploymentAccountRoutesSchema = new Schema(
   {
     dashboard: { type: String, required: true },
@@ -391,7 +249,6 @@ const deploymentAccountRoutesSchema = new Schema(
   { _id: false }
 );
 
-// 6. API Routes
 const deploymentApiRoutesSchema = new Schema(
   {
     base: { type: String, required: true },
@@ -399,7 +256,6 @@ const deploymentApiRoutesSchema = new Schema(
   { _id: false }
 );
 
-// 7. Routes
 const deploymentRoutesSchema = new Schema(
   {
     auth: { type: String, required: true },
@@ -413,7 +269,6 @@ const deploymentRoutesSchema = new Schema(
   { _id: false }
 );
 
-// 8. Server
 const deploymentServerSchema = new Schema(
   {
     // CORS allowlists are arrays so cors v2+ can emit Vary: Origin and
@@ -433,16 +288,8 @@ const deploymentServerSchema = new Schema(
   { _id: false }
 );
 
-// 9. Deployment
 export const deploymentSchema = new Schema(
   {
-    // NOTE: environment is a bootstrap-only field from .env
-    // It should not be stored in database, but kept here as optional for backwards compatibility
-    environment: {
-      type: String,
-      enum: ['development', 'staging', 'production'],
-      required: false,
-    },
     url: { type: String, required: true },
     redis_prefix: { type: String, default: 'parako' },
     server: deploymentServerSchema,
@@ -452,9 +299,6 @@ export const deploymentSchema = new Schema(
   { _id: false }
 );
 
-// SECURITY sub schema
-
-// 1. Secrets
 const securitySecretsSchema = new Schema(
   {
     jwt_secret: { type: String, required: true },
@@ -465,7 +309,6 @@ const securitySecretsSchema = new Schema(
   { _id: false }
 );
 
-// 2. Rate Limiting
 const securityRateLimitingSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -475,7 +318,6 @@ const securityRateLimitingSchema = new Schema(
   { _id: false }
 );
 
-// 2.5 Device Matching Configuration
 const securityDeviceMatchingSchema = new Schema(
   {
     min_confidence_score: { type: Number, default: 70, min: 0, max: 100 },
@@ -487,7 +329,6 @@ const securityDeviceMatchingSchema = new Schema(
   { _id: false }
 );
 
-// 3. Protection
 const securityProtectionSchema = new Schema(
   {
     rate_limiting: securityRateLimitingSchema,
@@ -505,7 +346,6 @@ const securityProtectionSchema = new Schema(
   { _id: false }
 );
 
-// 4. TOTP
 const securityTotpSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -514,7 +354,6 @@ const securityTotpSchema = new Schema(
   { _id: false }
 );
 
-// 5. Email MFA
 const securityEmailMfaSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -523,7 +362,6 @@ const securityEmailMfaSchema = new Schema(
   { _id: false }
 );
 
-// 6. SMS
 const securitySmsSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -531,7 +369,6 @@ const securitySmsSchema = new Schema(
   { _id: false }
 );
 
-// 7. WebAuthn
 const securityWebauthnSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -562,7 +399,6 @@ const securityWebauthnSchema = new Schema(
   { _id: false }
 );
 
-// 8. Multi Factor
 const securityMultiFactorSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -574,7 +410,6 @@ const securityMultiFactorSchema = new Schema(
   { _id: false }
 );
 
-// 8. Session Management
 const securitySessionManagementSchema = new Schema(
   {
     multiple_accounts: {
@@ -584,7 +419,6 @@ const securitySessionManagementSchema = new Schema(
   { _id: false }
 );
 
-// 9. Password Policy
 const securityPasswordPolicySchema = new Schema(
   {
     min_length: { type: Number, required: true },
@@ -597,7 +431,6 @@ const securityPasswordPolicySchema = new Schema(
   { _id: false }
 );
 
-// 10. Login
 const securityLoginSchema = new Schema(
   {
     login_methods: { type: [String], required: true },
@@ -606,7 +439,6 @@ const securityLoginSchema = new Schema(
   { _id: false }
 );
 
-// 11. Auto Approval
 const securityAutoApprovalSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -615,7 +447,6 @@ const securityAutoApprovalSchema = new Schema(
   { _id: false }
 );
 
-// 11.5 Contact Channels (for registration)
 const securityContactChannelEmailSchema = new Schema(
   {
     enabled: { type: Boolean, default: true },
@@ -659,7 +490,6 @@ const securityContactChannelsSchema = new Schema(
   { _id: false }
 );
 
-// 12. Signup
 const securitySignupSchema = new Schema(
   {
     signup_methods: { type: [String], required: true },
@@ -679,7 +509,6 @@ const securitySignupSchema = new Schema(
   { _id: false }
 );
 
-// 13. Roles
 const securityRolesSchema = new Schema(
   {
     available: { type: [String], required: true },
@@ -688,7 +517,6 @@ const securityRolesSchema = new Schema(
   { _id: false }
 );
 
-// 14. Custom Identifiers
 const securityCustomIdentifiersSchema = new Schema(
   {
     enabled: { type: Boolean, required: false, default: false },
@@ -736,7 +564,6 @@ const securityCustomIdentifiersSchema = new Schema(
   { _id: false }
 );
 
-// 19. Recovery Backup Codes
 const securityRecoveryBackupCodesSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -746,7 +573,6 @@ const securityRecoveryBackupCodesSchema = new Schema(
   { _id: false }
 );
 
-// 20. Recovery Secondary Email
 const securityRecoverySecondaryEmailSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -754,7 +580,6 @@ const securityRecoverySecondaryEmailSchema = new Schema(
   { _id: false }
 );
 
-// 21. Recovery SMS
 const securityRecoverySmsSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -762,7 +587,6 @@ const securityRecoverySmsSchema = new Schema(
   { _id: false }
 );
 
-// 22. Recovery Security Questions
 const securityRecoverySecurityQuestionsSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -770,7 +594,6 @@ const securityRecoverySecurityQuestionsSchema = new Schema(
   { _id: false }
 );
 
-// 23. Recovery
 const securityRecoverySchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -778,19 +601,10 @@ const securityRecoverySchema = new Schema(
     secondary_email: securityRecoverySecondaryEmailSchema,
     sms: securityRecoverySmsSchema,
     security_questions: securityRecoverySecurityQuestionsSchema,
-    // Method priority and enforcement configuration
-    method_priority: {
-      type: [String],
-      enum: ['backup_codes', 'secondary_email', 'sms', 'security_questions'],
-      default: ['backup_codes', 'secondary_email', 'sms', 'security_questions'],
-    },
-    required_methods: { type: Number, default: 1, min: 0, max: 4 },
-    enforce_setup: { type: Boolean, default: false },
   },
   { _id: false }
 );
 
-// 18. Session Security Configuration
 const securitySessionSchema = new Schema(
   {
     cookie_name: { type: String, default: 'application_session' },
@@ -843,7 +657,6 @@ const securityPasswordBreachDetectionSchema = new Schema(
   { _id: false }
 );
 
-// 20. Authentication
 const securityAuthenticationSchema = new Schema(
   {
     multi_factor: securityMultiFactorSchema,
@@ -886,7 +699,6 @@ export const securitySchema = new Schema(
   { _id: false }
 );
 
-// FEATURES sub schema
 const featuresOidcDevInteractionsSchema = new Schema(
   {
     enabled: { type: Boolean, required: true },
@@ -1232,28 +1044,9 @@ const featuresMetricsSchema = new Schema(
   { _id: false }
 );
 
-const featuresProviderPoolSchema = new Schema(
-  {
-    max_size: { type: Number, default: 50, min: 1 },
-    idle_ttl_ms: { type: Number, default: 1_800_000, min: 60_000 },
-    cleanup_interval_ms: { type: Number, default: 60_000, min: 10_000 },
-  },
-  { _id: false }
-);
-
 const featuresMultiTenancySchema = new Schema(
   {
     enabled: { type: Boolean, default: false },
-    extraction_priority: {
-      type: [String],
-      enum: ['header', 'subdomain'],
-      default: ['header', 'subdomain'],
-    },
-    tenant_header: { type: String, default: 'x-tenant-id' },
-    provider_pool: {
-      type: featuresProviderPoolSchema,
-      default: () => ({}),
-    },
   },
   { _id: false }
 );
@@ -1271,7 +1064,6 @@ export const featuresSchema = new Schema(
   { _id: false }
 );
 
-// OIDC sub schema
 const oidcRoutesSchema = new Schema(
   {
     authorization: { type: String, required: true },
@@ -1363,7 +1155,6 @@ export const oidcSchema = new Schema(
   { _id: false }
 );
 
-// INTEGRATIONS sub schema
 const integrationsEmailSchema = new Schema(
   {
     smtp_host: { type: String, required: true },
@@ -1430,7 +1221,6 @@ const integrationsS3StorageSchema = new Schema(
 
 const integrationsFileStorageSchema = new Schema(
   {
-    provider: { type: String, enum: ['local', 's3'], default: 'local' },
     upload_dir: { type: String, default: './runtime/uploads' },
     signed_url_expiry_seconds: { type: Number, default: 3600, min: 1 },
     s3: { type: integrationsS3StorageSchema, default: () => ({}) },
@@ -1462,7 +1252,6 @@ export const integrationsSchema = new Schema(
   { _id: false }
 );
 
-// NOTIFICATIONS sub schema
 const notificationChannelsEmailSchema = new Schema(
   {
     enabled: { type: Boolean, default: true },
@@ -1488,7 +1277,7 @@ const notificationChannelsSmsSchema = new Schema(
     from_number: { type: String },
     rate_limits: {
       type: notificationChannelsSmsRateLimitsSchema,
-      default: () => ({}),
+      required: false,
     },
   },
   { _id: false }
