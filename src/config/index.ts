@@ -523,7 +523,7 @@ export class ConfigManager implements IConfigManager {
       // happen within an admin panel request, which has tenant context)
       // Send tenantId: '*' to signal all tenant caches should be cleared.
       if (this.pubsub?.isConnected()) {
-        const prefix = this.cache?.deployment?.redis_prefix || 'parako';
+        const prefix = this.cache.deployment.redis_prefix;
         this.pubsub
           .publish(buildRedisKey(prefix, 'config', 'invalidated'), {
             originId: this.originId,

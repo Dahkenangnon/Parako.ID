@@ -1745,6 +1745,7 @@ describe('SessionManager - Express session queries', () => {
     it.each([
       { name: 'missing', storedSession: null },
       { name: 'corrupt', storedSession: '{not-json' },
+      { name: 'non-object', storedSession: '[]' },
     ])(
       'does not revoke a Redis session when its stored payload is $name',
       async ({ storedSession }) => {

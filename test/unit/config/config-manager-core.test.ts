@@ -208,6 +208,22 @@ describe('ConfigManager core behavior', () => {
     expect(manager.getPlatformConfig()).toBe(first);
   });
 
+  it('falls back to persisted tenant routing when bootstrap omits multi-tenancy settings', async () => {
+    const persisted = createPersistedConfig();
+    const bootstrap = createBootstrapConfig({ multiTenancy: undefined });
+    const { bootstrapProvider, dbProvider, manager } = createManager();
+    bootstrapProvider.loadConfiguration.mockResolvedValue(bootstrap);
+    dbProvider.isAvailable.mockResolvedValue(true);
+    dbProvider.loadConfiguration.mockResolvedValue(persisted);
+
+    const config = await manager.load();
+
+    expect(config.features.multi_tenancy).toEqual({
+      ...persisted.features.multi_tenancy,
+      enabled: false,
+    });
+  });
+
   it('computes Redis OIDC storage entirely from bootstrap values', async () => {
     const bootstrap = createBootstrapConfig({
       oidcStorage: { adapter: 'redis' },
@@ -1031,6 +1047,25 @@ describe('ConfigManager core behavior', () => {
       timestamp: Date.now(),
       tenantId: 'tenant-a',
     });
+  });
+
+  it('uses the default Redis prefix when invalidating before config load', async () => {
+    const { manager } = createManager();
+    const pubsub = {
+      isConnected: vi.fn().mockReturnValue(true),
+      psubscribe: vi.fn(),
+      publish: vi.fn().mockResolvedValue(undefined),
+    };
+    manager.setPubSub(pubsub as never);
+
+    await manager.invalidateTenantConfig('tenant-a', { broadcast: true });
+
+    expect(mocks.buildRedisKeyForTenant).toHaveBeenCalledWith(
+      'parako',
+      'tenant-a',
+      'config',
+      'invalidated'
+    );
   });
 
   it.each([new Error('redis offline'), 'redis offline'])(

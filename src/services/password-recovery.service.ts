@@ -52,6 +52,16 @@ function nonEmptyString(value: unknown): string | undefined {
 export class PasswordRecoveryService {
   constructor(private readonly dependencies: PasswordRecoveryDependencies) {}
 
+  public resetPage(token: string): {
+    status: 'ready';
+    token: string;
+    passwordPolicy: PasswordPolicy;
+  };
+  public resetPage(
+    token: unknown
+  ):
+    | { status: 'missing_token' }
+    | { status: 'ready'; token: string; passwordPolicy: PasswordPolicy };
   public resetPage(
     token: unknown
   ):

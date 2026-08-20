@@ -21,7 +21,10 @@ import type { IOIDCAdapterBridge } from '../di/interfaces/oidc-adapter-bridge.in
 import { TYPES } from '../di/types.js';
 import { PrismaSessionStore } from './prisma-session-store.js';
 import { createTenantSessionId } from './session-id.js';
-import { decodePersistedSession } from './session-persistence.js';
+import {
+  decodePersistedSession,
+  type PersistedSessionDocument,
+} from './session-persistence.js';
 import { encryptValue, decryptValue, isEncrypted } from './encryption.js';
 import { createConnectRedisClientAdapter } from './connect-redis-client.js';
 import {
@@ -83,18 +86,10 @@ function mongoSessionTenantFilter(tenantId: string): Record<string, unknown> {
 }
 
 function sessionBelongsToTenant(
-  sessionData: unknown,
+  sessionData: PersistedSessionDocument,
   tenantId: string
 ): boolean {
-  if (
-    !sessionData ||
-    typeof sessionData !== 'object' ||
-    Array.isArray(sessionData)
-  ) {
-    return false;
-  }
-
-  const storedTenantId = (sessionData as { tenantId?: unknown }).tenantId;
+  const storedTenantId = sessionData.tenantId;
   return (
     storedTenantId === tenantId ||
     (tenantId === DEFAULT_TENANT_ID && storedTenantId === undefined)
@@ -2973,7 +2968,7 @@ export class SessionManager implements ISessionManager {
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
       deviceId: deviceId || undefined,
-      accountId: userAccount?.username ?? userData.accountId,
+      accountId: userAccount.username,
       _metadata: metadata,
     };
     delete sessionData.currentActiveLoggedUser;

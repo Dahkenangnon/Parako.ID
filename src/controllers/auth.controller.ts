@@ -1619,9 +1619,6 @@ export class AuthController implements IAuthController {
 
   private renderPasswordResetForm(res: Response, token: string): void {
     const page = this.passwordRecoveryService.resetPage(token);
-    if (page.status !== 'ready') {
-      throw new Error('Password reset token unexpectedly unavailable');
-    }
 
     res.render(this.viewResolver.views.auth.reset_password, {
       title: `Reset Password - ${this.getAppTitle()}`,
