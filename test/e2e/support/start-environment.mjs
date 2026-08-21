@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { Queue } from 'bullmq';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -734,6 +735,14 @@ function renderRp(session, logoutComplete) {
 async function startRp(fixtureStore, socialEnabled) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: 10_000,
+      standardHeaders: false,
+      legacyHeaders: false,
+    })
+  );
 
   if (socialEnabled) {
     installFakeGitHubProvider(app, {
