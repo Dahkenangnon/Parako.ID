@@ -13,8 +13,14 @@ updates:
     groups:
       production-dependencies:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
       development-dependencies:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
 
     ignore:
       # Keep compiler tooling within the versions supported by the Node 24
@@ -23,6 +29,17 @@ updates:
         update-types:
           - version-update:semver-major
       - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+      # These majors require explicit compatibility or licensing work and
+      # must not be mixed into routine grouped maintenance updates.
+      - dependency-name: bullmq
+        update-types:
+          - version-update:semver-major
+      - dependency-name: ioredis
+        update-types:
+          - version-update:semver-major
+      - dependency-name: ua-parser-js
         update-types:
           - version-update:semver-major
 
