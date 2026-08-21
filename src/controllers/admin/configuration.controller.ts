@@ -78,7 +78,22 @@ function buildSectionOverrides(
   section: ConfigurableSection,
   sectionData: Record<string, any>
 ): Partial<Record<ConfigurableSection, Record<string, any>>> {
-  return { [section]: sectionData };
+  switch (section) {
+    case 'application':
+      return { application: sectionData };
+    case 'branding':
+      return { branding: sectionData };
+    case 'security':
+      return { security: sectionData };
+    case 'features':
+      return { features: sectionData };
+    case 'oidc':
+      return { oidc: sectionData };
+    case 'integrations':
+      return { integrations: sectionData };
+    case 'notifications':
+      return { notifications: sectionData };
+  }
 }
 
 /**
