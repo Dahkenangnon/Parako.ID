@@ -37,6 +37,12 @@ import {
 describe('Keys CLI — index.ts exports', () => {
   beforeEach(() => {
     vi.spyOn(fs, 'chmodSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'mkdirSync').mockImplementation(() => undefined);
+    vi.spyOn(fs, 'openSync').mockReturnValue(23);
+    vi.spyOn(fs, 'fchmodSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'closeSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'renameSync').mockImplementation(() => {});
+    vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -46,7 +52,9 @@ describe('Keys CLI — index.ts exports', () => {
 
   describe('generateKeys()', () => {
     it('refuses an existing first-boot JWKS file before generating keys', async () => {
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
+      vi.mocked(fs.openSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error('already exists'), { code: 'EEXIST' });
+      });
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
@@ -63,16 +71,11 @@ describe('Keys CLI — index.ts exports', () => {
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
-      const mkdirSpy = vi
-        .spyOn(fs, 'mkdirSync')
-        .mockImplementation(() => undefined as any);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
 
       await generateKeys(true);
 
-      expect(writeSpy).toHaveBeenCalledOnce();
-      const writtenPath = writeSpy.mock.calls[0][0] as string;
-      expect(writtenPath).toContain('runtime/jwks/jwks.json');
+      expect(writeSpy).toHaveBeenCalledWith(23, expect.any(String), 'utf8');
+      expect(fs.renameSync).not.toHaveBeenCalled();
 
       const writtenContent = JSON.parse(writeSpy.mock.calls[0][1] as string);
       expect(writtenContent).toHaveProperty('keys');
@@ -85,45 +88,63 @@ describe('Keys CLI — index.ts exports', () => {
         ['ES256', { extractable: true }],
         ['EdDSA', { extractable: true }],
       ]);
-
-      writeSpy.mockRestore();
-      mkdirSpy.mockRestore();
     });
 
     it('can generate only the required RSA and EC keys', async () => {
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
-      const mkdirSpy = vi
-        .spyOn(fs, 'mkdirSync')
-        .mockImplementation(() => undefined as any);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await generateKeys(false, true);
 
       const writtenContent = JSON.parse(writeSpy.mock.calls[0][1] as string);
       expect(writtenContent.keys).toHaveLength(2);
-      expect(mkdirSpy).not.toHaveBeenCalled();
+      expect(fs.mkdirSync).toHaveBeenCalledWith(
+        expect.stringContaining('runtime/jwks'),
+        { recursive: true }
+      );
     });
 
-    it('enforces owner-only permissions on the private JWKS file', async () => {
+    it('atomically replaces keys with owner-only permissions', async () => {
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
         .mockImplementation(() => {});
-      const chmodSpy = vi.mocked(fs.chmodSync);
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
       vi.spyOn(console, 'log').mockImplementation(() => {});
 
       await generateKeys(false, true);
 
-      const outputPath = writeSpy.mock.calls[0]?.[0] as string;
-      expect(writeSpy).toHaveBeenCalledWith(outputPath, expect.any(String), {
-        encoding: 'utf8',
-        flag: 'w',
-        mode: 0o600,
-      });
-      expect(chmodSpy).toHaveBeenCalledWith(outputPath, 0o600);
+      const flags =
+        fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        fs.constants.O_NOFOLLOW;
+      expect(fs.openSync).toHaveBeenCalledWith(
+        expect.stringContaining('runtime/jwks/jwks.json.tmp-'),
+        flags,
+        0o600
+      );
+      expect(writeSpy).toHaveBeenCalledWith(23, expect.any(String), 'utf8');
+      expect(fs.fchmodSync).toHaveBeenCalledWith(23, 0o600);
+      expect(fs.closeSync).toHaveBeenCalledWith(23);
+      expect(fs.renameSync).toHaveBeenCalledWith(
+        expect.stringContaining('runtime/jwks/jwks.json.tmp-'),
+        expect.stringContaining('runtime/jwks/jwks.json')
+      );
+    });
+
+    it('removes a reserved first-boot file if key generation fails', async () => {
+      vi.mocked(jose.generateKeyPair).mockRejectedValueOnce(
+        new Error('generation failed')
+      );
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys()).rejects.toThrow('generation failed');
+
+      expect(fs.closeSync).toHaveBeenCalledWith(23);
+      expect(fs.unlinkSync).toHaveBeenCalledWith(
+        expect.stringContaining('runtime/jwks/jwks.json')
+      );
     });
   });
 
