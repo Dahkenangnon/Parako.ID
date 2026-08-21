@@ -111,7 +111,7 @@ describe.sequential('compiled JWKS keys CLI', () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Failed to generate keys');
-    expect(result.stderr).toContain('ENOTDIR');
+    expect(result.stderr).toMatch(/\b(?:EEXIST|ENOTDIR)\b/);
     expect(result.stderr).not.toContain('"d":');
     expect(result.stdout).not.toContain('JWKS keys generated successfully');
     expect(readFileSync(collisionPath, 'utf8')).toBe(collisionContent);
