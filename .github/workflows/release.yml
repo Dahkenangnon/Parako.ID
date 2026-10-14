@@ -622,6 +622,7 @@ jobs:
           - social-policy-restricted
           - background-jobs
           - worker-drain
+          - identity-recovery
           - operations
           - webauthn
     services:
@@ -951,6 +952,7 @@ jobs:
           set -euo pipefail
           cp ../installer/install.sh ./install.sh
           cp ../installer/install-git.sh ./install-git.sh
+          cp ../installer/index.html ./index.html
           shopt -s nullglob
           for ARCH in x64 arm64; do
             ARCHIVES=(parako-id-v*-linux-"$ARCH".tar.gz)
@@ -960,7 +962,7 @@ jobs:
             tar -xOf "$ARCHIVE" parako-id-release/release-manifest.json > "release-manifest-linux-$ARCH.json"
           done
           sha256sum parako-id-v*.tar.gz parako-id-v*.zip \
-            install.sh install-git.sh SBOM-linux-*.spdx.json \
+            install.sh install-git.sh index.html SBOM-linux-*.spdx.json \
             release-manifest-linux-*.json | sort -k2 > SHA256SUMS
           test "$(grep -c 'SBOM-linux-' SHA256SUMS)" -eq 2
           test "$(grep -c 'release-manifest-linux-' SHA256SUMS)" -eq 2
@@ -1078,5 +1080,34 @@ jobs:
             release-assets/install-git.sh
             release-assets/install-git.sh.sig
             release-assets/install-git.sh.pem
+            release-assets/index.html
             release-assets/SBOM-linux-*.spdx.json
             release-assets/release-manifest-linux-*.json
+
+  # The public release remains the source of truth. Its completion asks the
+  # private distribution repository to verify and deploy only signed assets.
+  distribution-notify:
+    name: Distribution — request verified get.parako.id deployment
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch the immutable release to the distribution repository
+        env:
+          GH_TOKEN: ${{ secrets.GET_PARAKO_ID_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || {
+            echo "::error::GET_PARAKO_ID_DISPATCH_TOKEN is not configured"
+            exit 1
+          }
+          gh api --method POST \
+            repos/Dahkenangnon/get.Parako.ID/dispatches \
+            --raw-field event_type=parako-release-published \
+            --raw-field "client_payload[tag]=$RELEASE_TAG" \
+            --raw-field "client_payload[source_sha]=$SOURCE_SHA"

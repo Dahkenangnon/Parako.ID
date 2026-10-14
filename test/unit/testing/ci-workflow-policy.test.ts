@@ -165,6 +165,24 @@ describe('GitHub Actions workflow policy', () => {
     }
   });
 
+  it('publishes and dispatches the signed public distribution assets', () => {
+    const release = readJob(RELEASE_WORKFLOW, 'release');
+    const distribution = readJob(RELEASE_WORKFLOW, 'distribution-notify');
+
+    expect(release).toContain('cp ../installer/index.html ./index.html');
+    expect(release).toContain('install.sh install-git.sh index.html');
+    expect(release).toContain('release-assets/index.html');
+
+    expect(distribution).toContain('needs: release');
+    expect(distribution).toContain('GET_PARAKO_ID_DISPATCH_TOKEN');
+    expect(distribution).toContain(
+      'repos/Dahkenangnon/get.Parako.ID/dispatches'
+    );
+    expect(distribution).toContain('parako-release-published');
+    expect(distribution).toContain('client_payload[tag]');
+    expect(distribution).toContain('client_payload[source_sha]');
+  });
+
   it('runs expensive browser E2E jobs only after the independent preflight gates pass', () => {
     const requiredJobs = [
       'commit-policy',
