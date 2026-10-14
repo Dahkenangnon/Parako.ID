@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('ViewResolver', () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.doUnmock('node:fs');
     vi.doUnmock('node:url');
     vi.resetModules();
@@ -238,6 +239,7 @@ describe('ViewResolver', () => {
   });
 
   it('configures Express with custom views before defaults and development watching', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
     const { ViewResolver } =
       await import('../../../src/utils/view-resolver.js');
     const configManager = {
@@ -281,6 +283,31 @@ describe('ViewResolver', () => {
       ),
       { context: 'express_views_configuration' }
     );
+  });
+
+  it('does not watch view files when a development deployment runs under tests', async () => {
+    vi.stubEnv('NODE_ENV', 'test');
+    const { ViewResolver } =
+      await import('../../../src/utils/view-resolver.js');
+    const configManager = {
+      getConfig: vi.fn(() => ({
+        deployment: { environment: 'development' },
+      })),
+    };
+    const resolver = new ViewResolver(
+      configManager as never,
+      { error: vi.fn(), info: vi.fn() } as never,
+      { rootDir: '/srv/parako' } as never
+    );
+    const configure = vi.fn(() => ({ configured: true }));
+
+    resolver.configureExpressViews({} as never, { configure } as never);
+
+    expect(configure).toHaveBeenCalledWith(['/srv/parako/src/views'], {
+      autoescape: true,
+      express: {},
+      watch: false,
+    });
   });
 
   it('logs and rethrows Nunjucks configuration failures in production', async () => {

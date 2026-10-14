@@ -14,6 +14,7 @@ import { Application } from 'express';
 import { deepMerge } from './misc.js';
 import type { IFileSystemUtils } from '../di/interfaces/file-system-utils.interface.js';
 import type { ILogger } from '../di/interfaces/logger.interface.js';
+import { readEnvironmentVariable } from '../config/bootstrap-environment.js';
 
 function isOutsideRoot(relativePath: string): boolean {
   return (
@@ -529,7 +530,8 @@ export class ViewResolver implements IViewResolver {
         express: app,
         watch:
           this.configManager.getConfig().deployment.environment ===
-          'development',
+            'development' &&
+          readEnvironmentVariable('NODE_ENV') === 'development',
       });
 
       return njkEnv;

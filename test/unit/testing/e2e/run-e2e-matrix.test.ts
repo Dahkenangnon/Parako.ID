@@ -110,7 +110,7 @@ describe('E2E deployment matrix runner', () => {
     });
 
     const profileCommands = plan.slice(3);
-    expect(profileCommands).toHaveLength(65);
+    expect(profileCommands).toHaveLength(70);
     expect(
       new Set(profileCommands.map(command => command.args.at(-1)))
     ).toEqual(new Set(['--config=playwright.config.ts']));
@@ -131,6 +131,7 @@ describe('E2E deployment matrix runner', () => {
         'social-policy-restricted',
         'background-jobs',
         'worker-drain',
+        'identity-recovery',
         'operations',
         'webauthn',
       ])
@@ -139,18 +140,18 @@ describe('E2E deployment matrix runner', () => {
       profileCommands.filter(
         command => command.environment?.PARAKO_E2E_STORAGE_ADAPTER === 'sqlite'
       )
-    ).toHaveLength(13);
+    ).toHaveLength(14);
     expect(
       profileCommands.filter(
         command => command.environment?.PARAKO_E2E_STORAGE_ADAPTER === 'mongodb'
       )
-    ).toHaveLength(26);
+    ).toHaveLength(28);
     expect(
       profileCommands.filter(
         command =>
           command.environment?.PARAKO_E2E_STORAGE_ADAPTER === 'postgresql'
       )
-    ).toHaveLength(26);
+    ).toHaveLength(28);
     expect(
       profileCommands.filter(
         command =>
@@ -268,6 +269,6 @@ describe('E2E deployment matrix runner', () => {
         execute
       )
     ).toBe(0);
-    expect(execute).toHaveBeenCalledTimes(68);
+    expect(execute).toHaveBeenCalledTimes(73);
   });
 });

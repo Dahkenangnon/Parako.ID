@@ -14,7 +14,40 @@ vi.mock('pg', () => ({
   },
 }));
 
-import { PostgresqlFixtureStore } from '../../../e2e/support/fixture-store.mjs';
+import {
+  MongoFixtureStore,
+  PostgresqlFixtureStore,
+} from '../../../e2e/support/fixture-store.mjs';
+
+describe('MongoFixtureStore activity availability controls', () => {
+  it('recovers when a queued audit write recreates activities before the failing view is installed', async () => {
+    const namespaceExists = Object.assign(new Error('namespace exists'), {
+      code: 48,
+    });
+    const rename = vi.fn().mockResolvedValue(undefined);
+    const drop = vi.fn().mockResolvedValue(true);
+    const createCollection = vi
+      .fn()
+      .mockRejectedValueOnce(namespaceExists)
+      .mockResolvedValueOnce(undefined);
+    const database = {
+      collection: vi.fn(() => ({ drop, rename })),
+      createCollection,
+      listCollections: vi.fn(() => ({
+        toArray: vi.fn().mockResolvedValue([{ name: 'activities' }]),
+      })),
+    };
+    const store = new MongoFixtureStore(database, 'default');
+
+    await expect(store.setActivityStorageAvailability(false)).resolves.toBe(
+      true
+    );
+
+    expect(rename).toHaveBeenCalledWith('activities_unavailable');
+    expect(drop).toHaveBeenCalledOnce();
+    expect(createCollection).toHaveBeenCalledTimes(2);
+  });
+});
 
 describe('PostgresqlFixtureStore expiry controls', () => {
   beforeEach(() => {
