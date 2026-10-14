@@ -126,7 +126,7 @@
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@prisma/client-runtime-utils": "^7.9.1",
-    "@simplewebauthn/server": "^13.3.2",
+    "@simplewebauthn/server": "^14.0.3",
     "argon2": "^0.45.1",
     "better-sqlite3": "^13.0.3",
     "bullmq": "^5.80.2",
