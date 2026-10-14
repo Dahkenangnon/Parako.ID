@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "buried-raster",
+        "value": "*",
+        "files": ["installer/index.html"],
+        "createdAt": "2026-10-14T12:16:00.758Z",
+        "reason": "The inline SVG fractal-noise layer is an intentional subtle grain overlay, documented by its class and comment; it is not product imagery or a compliance asset."
+      }
+    ]
+  }
+}
