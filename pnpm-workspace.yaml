@@ -30,8 +30,8 @@ minimumReleaseAgeExclude:
   - hono@4.12.25
   - js-yaml@4.3.1
   - nanoid@3.3.18
-  - multer@2.2.0
-  - nodemailer@9.0.3
+  - multer@2.3.0
+  - nodemailer@9.1.1
   - piscina@4.9.3
   - undici@8.5.0
   - vite@8.1.5
@@ -54,9 +54,11 @@ minimumReleaseAgeExclude:
   - axios@1.18.0
   - body-parser@2.3.0
   - brace-expansion@5.0.9
-  - fast-uri@3.1.5
+  - fast-uri@3.1.6
+  - mysql2@3.23.1
+  - qs@6.16.0
   - mongoose@9.7.4
-  - sharp@0.35.3
+  - sharp@0.35.4
   - valibot@1.4.2
 
 # Transitive vulnerability remediation — every entry maps a vulnerable package
@@ -87,15 +89,16 @@ overrides:
   ajv@6: '>=6.14.0 <7'
   ajv@8: '>=8.18.0'
   axios: '>=1.18.0 <2'
-  fast-uri: '>=3.1.5 <4'
+  fast-uri: '>=3.1.6 <4'
   fast-xml-builder: '>=1.1.7'
   fast-xml-parser: '>=5.5.6'
   '@hono/node-server': '>=2.0.10 <3'
   follow-redirects: '>=1.15.12'
   ip-address: '>=10.3.1'
-  nodemailer: '>=9.0.1 <10'
+  mysql2: '>=3.23.1 <4'
+  nodemailer: '>=9.1.1 <10'
   path-to-regexp: '>=8.4.0'
-  qs: '>=6.15.2'
+  qs: '>=6.16.0 <7'
   undici: '>=8.5.0 <9'
   uuid: '>=11.1.1'
   yaml: '>=2.8.3'
@@ -104,7 +107,7 @@ overrides:
   '@xhmikosr/decompress': '>=10.2.1 <11'
   form-data: '>=4.0.6 <5'
   hono: '>=4.12.25 <5'
-  multer: '>=2.2.0 <3'
+  multer: '>=2.3.0 <3'
   piscina: '>=4.9.3 <5'
   body-parser: '>=2.3.0 <3'
   valibot: '>=1.4.2 <2'

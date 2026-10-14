@@ -44,7 +44,7 @@ describe('source package release policy', () => {
       'utf8'
     );
 
-    expect(workspace).toContain("fast-uri: '>=3.1.5 <4'");
+    expect(workspace).toContain("fast-uri: '>=3.1.6 <4'");
     expect(workspace).toContain("ip-address: '>=10.3.1'");
     expect(workspace).not.toContain('ua-parser-js@2.0.10');
   });
