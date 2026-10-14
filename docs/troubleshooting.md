@@ -152,7 +152,7 @@ sudo parako admin replace-pending \
 ```
 
 Use the Docker-namespaced command for Docker deployments. Replacement is
-intentionally unavailable after activation or in multi-tenant mode.
+unavailable after activation and in multi-tenant mode.
 
 ### Bootstrap login is rate-limited
 

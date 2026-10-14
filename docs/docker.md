@@ -173,7 +173,7 @@ the configured HTTPS origin.
 
 ## Bootstrap recovery
 
-Docker deployments expose the same scoped recovery operations:
+Docker deployments use the same scoped recovery commands:
 
 ```bash
 sudo parako docker config set-url \
@@ -191,11 +191,11 @@ sudo parako docker security clear-bootstrap-rate-limit \
   --yes
 ```
 
-The administrator and limiter commands are root-only, single-tenant recovery
-paths and append a secret-free record to
-`runtime/logs/operator-audit.jsonl`. The limiter command deletes only the
-calculated Redis buckets and restarts the app container; it never scans or
-flushes the database.
+The administrator and limiter commands require root and work only in
+single-tenant deployments. Each command appends an audit record without
+secrets to `runtime/logs/operator-audit.jsonl`. The limiter command deletes
+only the calculated Redis buckets and restarts the app container. It never
+scans or flushes the database.
 
 ## Routine operations
 
@@ -211,8 +211,8 @@ sudo parako docker down
 ```
 
 `stop` affects the application and worker. `down` removes Compose containers
-and networks but deliberately preserves named data volumes. Neither command is
-an uninstall or a data purge.
+and networks while preserving named data volumes. Neither command uninstalls
+Parako.ID or deletes its data.
 
 Database lifecycle commands are explicit:
 

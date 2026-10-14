@@ -31,8 +31,7 @@ updates:
       - dependency-name: typescript
         update-types:
           - version-update:semver-major
-      # These majors require explicit compatibility or licensing work and
-      # must not be mixed into routine grouped maintenance updates.
+      # Review these major upgrades separately for compatibility or licensing changes.
       - dependency-name: bullmq
         update-types:
           - version-update:semver-major

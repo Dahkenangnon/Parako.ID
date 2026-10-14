@@ -226,8 +226,7 @@ test.describe('public identity lifecycle', () => {
     const resetUrl = extractActionUrl(message, '/auth/reset-password');
     await page.goto(resetUrl);
 
-    // A rejection must leave the browser on the form with the same reset token
-    // so the user can choose a safer password immediately.
+    // Keep the reset token available after the server rejects the password.
     await page.locator('#password').fill(breachedPassword);
     await page.locator('#confirm-password').fill(breachedPassword);
     await page.getByRole('button', { name: /^reset password$/i }).click();

@@ -10,8 +10,8 @@ order: 2
 release. Custom paths selected with `install.sh --dir` are recorded and
 discovered automatically. `PARAKO_INSTALL_DIR` remains an explicit override.
 
-Application and OIDC configuration is intentionally outside this CLI and stays
-in the admin panel. DNS, TLS, and reverse-proxy configuration are also external.
+Application and OIDC settings remain in the admin panel. DNS, TLS, and
+reverse-proxy configuration also remain outside the CLI.
 
 ## Command summary
 
@@ -120,10 +120,9 @@ sudo parako security clear-bootstrap-rate-limit \
   --yes
 ```
 
-These sensitive recovery commands require root. Administrative and security
-recovery outcomes are appended without secrets to
-`runtime/logs/operator-audit.jsonl` with mode `0600`. Never use `FLUSHDB` for
-rate-limit recovery.
+Both recovery commands require root. They append audit records without secrets
+to `runtime/logs/operator-audit.jsonl`, which uses mode `0600`. Never use
+`FLUSHDB` for rate-limit recovery.
 
 ## Backups and restores
 

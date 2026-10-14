@@ -1964,8 +1964,7 @@ async function main() {
 
   const runtimeEnvironment = {
     ...process.env,
-    // The browser matrix exercises development-mode behavior without needing
-    // locale file watchers in its disposable runtime.
+    // Run development behavior without locale watchers in this disposable runtime.
     NODE_ENV: 'test',
     DEPLOYMENT_ENVIRONMENT: 'development',
     DEPLOYMENT_SERVER_PORT: '19007',

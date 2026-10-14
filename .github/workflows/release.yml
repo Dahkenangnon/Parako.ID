@@ -1084,10 +1084,10 @@ jobs:
             release-assets/SBOM-linux-*.spdx.json
             release-assets/release-manifest-linux-*.json
 
-  # The public release remains the source of truth. Its completion asks the
-  # private distribution repository to verify and deploy only signed assets.
+  # After publication, ask the private distribution repository to verify and
+  # deploy the signed assets.
   distribution-notify:
-    name: Distribution — request verified get.parako.id deployment
+    name: 'Distribution: request verified get.parako.id deployment'
     needs: release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04

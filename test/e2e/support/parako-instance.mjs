@@ -384,8 +384,7 @@ export async function startParakoInstance({
       cwd: runtimeRoot,
       env: {
         ...process.env,
-        // Browser tests do not need development file watchers; disabling them
-        // also keeps repeated matrix cells below host inotify limits.
+        // Disable file watching during browser tests to stay below host inotify limits.
         NODE_ENV: e2eNodeEnvironment(environment),
         DEPLOYMENT_ENVIRONMENT: environment,
         DEPLOYMENT_SERVER_PORT: String(port),

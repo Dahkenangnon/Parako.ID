@@ -25,8 +25,8 @@ identity data.
 Parako.ID is an OpenID Connect and OAuth 2.0 identity provider for web, mobile,
 API, CLI, and device applications. It combines modern sign-in, tenant-aware
 identity, branded experiences, an administration panel, and production
-lifecycle tooling in one deployment—while users, sessions, keys, grants,
-audit logs, and configuration remain inside infrastructure you control.
+lifecycle tooling in one deployment. Users, sessions, keys, grants, audit
+logs, and configuration remain inside infrastructure you control.
 
 It is built on the OpenID Certified [`node-oidc-provider`](https://github.com/panva/node-oidc-provider) library. Parako.ID itself has not undergone OpenID Foundation certification.
 
@@ -44,25 +44,25 @@ Managed auth is convenient until user count, data residency, tenant isolation, l
 | Run many organizations          | Tenant isolation, per-tenant branding/config/OIDC provider instances, subdomain or header tenant resolution |
 | Support local identity patterns | Email, phone, username, and custom identifiers such as employee IDs or student matricule numbers            |
 
-## Core Capabilities
+## Core capabilities
 
-### Own Your Identity Data
+### Own your identity data
 
 Use Parako.ID when identity data needs to stay close to the organization that is responsible for it. User records, password hashes, MFA state, recovery settings, sessions, OIDC grants, signing keys, tenant configuration, and audit activity are stored in the database you choose and operate.
 
-### Standards-First SSO/OIDC
+### Standards-first SSO/OIDC
 
 Parako.ID speaks OAuth2 and OpenID Connect through `node-oidc-provider`: authorization code + PKCE, discovery, JWKS, access and refresh tokens, token introspection, revocation, device flow, resource indicators, dynamic client registration, and RP-initiated logout. Use it for web apps, mobile apps, APIs, CLIs, machine clients, and device-style flows.
 
-### Authentication That Fits Real Users
+### Authentication that fits real users
 
 Support email, phone, username, and custom-identifier login from the same deployment. Passwords use Argon2id, breach-password checks use Have I Been Pwned k-anonymity, and accounts can be protected with new-device verification, multi-account browser sessions, TOTP, email OTP, SMS OTP, backup codes, security questions, and WebAuthn/FIDO2 passkeys.
 
-### Low-Bandwidth Friendly by Design
+### Designed for low-bandwidth connections
 
 Parako.ID does not make authentication depend on a heavy SPA bundle. Auth, account, and admin flows are server-rendered with Nunjucks and enhanced with small client-side behavior, so core identity workflows remain usable on slower 2G and 3G connections, low-end devices, shared Wi-Fi, and institution networks where bandwidth is unreliable.
 
-### Multi-Database Support
+### Multiple database options
 
 Choose the storage model that matches your stage:
 
@@ -74,25 +74,25 @@ Choose the storage model that matches your stage:
 
 SQLite is the easiest starting point. Multi-tenancy requires MongoDB or PostgreSQL.
 
-### Multi-Tenancy Built In
+### Built-in multi-tenancy
 
 Run one Parako.ID instance for many organizations. Each tenant can have isolated data, sessions, OIDC provider instances, branding, security policy, social-provider config, notifications, and token settings. Tenant resolution supports subdomains and headers, with `_platforms` for platform administration and `_ops` for infrastructure callback routing.
 
-### Admin Panel, CLI, and Management API
+### Admin panel, CLI, and Management API
 
 Manage users, OIDC clients, sessions, grants, JWKS keys, activities, settings, tenants, imports, exports, and platform configuration from the admin panel. Automate the same operational work through the Management API with scoped permissions, or use CLI tools for clients, keys, updates, and service helpers.
 
-### Emerging-Market Friendly Defaults
+### Defaults for constrained environments
 
 Parako.ID is practical for environments where identity systems must work with constrained infrastructure and mixed user devices: SQLite for a low-friction start, server-rendered pages for low bandwidth, phone and custom identifiers for local login patterns, SMS/email recovery options, and 10 included locales for international deployments.
 
-### Operator-Controlled Deployment
+### Operator-controlled deployment
 
 Architecture-specific releases bundle Node.js, production dependencies, migrations, backup encryption tools, an SPDX SBOM, and a compatibility manifest. The installer verifies and atomically activates them; the `parako` CLI manages bootstrap secrets, migrations, encrypted backup/restore, hardened systemd services, health diagnostics, updates, and rollback safety. Application and OIDC settings stay in the admin panel, while your team retains control of the database and Redis services, HTTPS ingress, DNS, monitoring, and off-host backup storage.
 
-## Built For Operators
+## Built for operators
 
-Parako.ID is infrastructure you control, not a black-box auth tenant. The application handles identity workflows, OIDC protocol behavior, tenant-aware configuration, admin surfaces, and release staging. You keep ownership of the operational pieces that define your production posture.
+Parako.ID runs as infrastructure you control. The application handles identity workflows, OIDC protocol behavior, tenant-aware configuration, admin surfaces, and release staging. Your team owns the operational services and policies that define the production environment.
 
 | Parako.ID manages                                  | You own and control                                   |
 | -------------------------------------------------- | ----------------------------------------------------- |
@@ -101,7 +101,7 @@ Parako.ID is infrastructure you control, not a black-box auth tenant. The applic
 | Signed releases, migrations, and systemd lifecycle | Monitoring, incident response, and upgrade timing     |
 | Encrypted host backup/restore and rollback checks  | Off-host retention, restore drills, and recovery SLOs |
 
-## What You Can Build With It
+## What you can build
 
 - A self-hosted SSO layer for internal tools and customer apps.
 - A tenant-aware identity platform for SaaS products.
@@ -161,7 +161,7 @@ test commands.
 - An external HTTPS reverse proxy or load balancer for public deployments.
 - Optional SMTP/Twilio/social-provider credentials depending on enabled features.
 
-## Project Status
+## Project status
 
 Parako.ID is early-access open source infrastructure. The core identity server, admin UI, storage adapters, multi-tenancy foundation, installer, and management surfaces are active. OpenID Federation 1.0 work is in progress through the standalone [oidfed](https://github.com/Dahkenangnon/oidfed) library.
 

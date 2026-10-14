@@ -87,8 +87,8 @@ or trust-root asset via Cosign keyless:
 - `SHA256SUMS` → `SHA256SUMS.sig` + `.pem`
 - `install.sh` and `install-git.sh` → a matching `.sig` + `.pem`
 
-The landing page, standalone per-architecture SBOM, and release manifest are
-authenticated by their entries in the signed `SHA256SUMS` file.
+Entries in the signed `SHA256SUMS` file authenticate the landing page,
+standalone per-architecture SBOM, and release manifest.
 
 The cosign certificate identity is bound to the workflow path:
 
@@ -122,7 +122,7 @@ Expected output: `Verified OK`.
 
 ## Public distribution contract
 
-The stable public surface is deliberately small:
+`get.parako.id` serves four paths:
 
 | Path          | Expected content                                                    |
 | ------------- | ------------------------------------------------------------------- |
@@ -131,12 +131,12 @@ The stable public surface is deliberately small:
 | `/index.html` | The current release landing page                                    |
 | `/parako.sh`  | Unsupported and expected to return `404`                            |
 
-After a GitHub release is published, the release workflow dispatches the tag
-and source commit to the private distribution repository. That workflow
+After publishing a GitHub release, the release workflow sends the tag and
+source commit to the private distribution repository. The private workflow
 resolves the immutable public tag, verifies the signed `SHA256SUMS`, checks the
-exact installer and landing-page hashes, atomically switches the server's
-release pointer, and compares the live endpoints byte-for-byte. Static copies
-are not maintained independently.
+installer and landing-page hashes, atomically switches the server's release
+pointer, and compares the live endpoints byte for byte. It does not maintain
+separate static copies.
 
 ## The `--insecure-no-signature` escape
 

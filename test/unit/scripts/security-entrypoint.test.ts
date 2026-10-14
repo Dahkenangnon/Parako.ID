@@ -78,7 +78,7 @@ describe('security CLI process entrypoint', () => {
     entrypoint.isMain = true;
     vi.resetModules();
 
-    // Re-evaluation is required to exercise the ESM process-entrypoint guard.
+    // Re-evaluate the module so the ESM entrypoint guard runs.
     await import('../../../scripts/manage/security.js');
 
     await vi.waitFor(() => expect(entrypoint.parseAsync).toHaveBeenCalled());
