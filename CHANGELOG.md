@@ -14,6 +14,7 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ### Bug Fixes
 
+- update vulnerable dependencies ([d35ab62](https://github.com/Dahkenangnon/Parako.ID/commit/d35ab62e92ac62850f38966562e299202b21c1cb))
 - improve installer text contrast ([79a20ca](https://github.com/Dahkenangnon/Parako.ID/commit/79a20ca88101d0e07db755d19bc97789ec2b88c0))
 - stabilize the browser matrix runtime ([35bc79b](https://github.com/Dahkenangnon/Parako.ID/commit/35bc79b6a2254d374be6c7ff0bbf015a75fbba66))
 - make auth recovery failures actionable ([c44e16c](https://github.com/Dahkenangnon/Parako.ID/commit/c44e16c5c3dbcb95ebdbc2185c1ef860e29e5695))
