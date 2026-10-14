@@ -15,6 +15,8 @@ PARAKO_VERSION="0.3.7"
 INSTALLER_URL="${PARAKO_INSTALLER_URL:-https://get.parako.id}"
 DEFAULT_INSTALL_DIR_ROOT="/opt/parako-id"
 DEFAULT_INSTALL_DIR_USER="${HOME:-/tmp}/parako-id"
+ROOT_INSTALL_REGISTRY="/etc/parako/install-dir"
+USER_INSTALL_REGISTRY="${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/parako/install-dir"
 READINESS_MAX_ATTEMPTS=30
 READINESS_POLL_INTERVAL_SECONDS=2
 TEMP_WORKDIR=""
@@ -50,10 +52,55 @@ print_kv() { printf '  %s%-22s%s %s\n' "${C_DIM}" "$1" "${C_RESET}" "$2"; }
 # -----------------------------------------------------------------------------
 # Install-directory + state discovery
 # -----------------------------------------------------------------------------
+validate_install_dir_candidate() {
+  local candidate=$1 source=$2 recorded=""
+  case "${candidate}" in /*) ;; *) die "${source} must contain an absolute install path" ;; esac
+  [ -d "${candidate}" ] || die "${source} points to a missing install directory: ${candidate}"
+  [ -r "${candidate}/.parako-state" ] \
+    || die "${source} points to an install without .parako-state: ${candidate}"
+  recorded=$(grep -E '^INSTALL_DIR=' "${candidate}/.parako-state" | head -n1 | cut -d= -f2-)
+  [ "${recorded}" = "${candidate}" ] \
+    || die "${source} path does not match its installer state"
+  printf '%s' "${candidate}"
+}
+
+read_install_registry() {
+  local file=$1 mode owner expected_owner value
+  [ -f "${file}" ] && [ ! -L "${file}" ] || return 1
+  mode=$(stat -c '%a' "${file}" 2>/dev/null || printf unknown)
+  owner=$(stat -c '%U' "${file}" 2>/dev/null || printf unknown)
+  case "${file}:${mode}" in
+    "${ROOT_INSTALL_REGISTRY}":644|"${ROOT_INSTALL_REGISTRY}":600|"${USER_INSTALL_REGISTRY}":600) ;;
+    *) die "install registry has unsafe permissions: ${file} (${mode})" ;;
+  esac
+  if [ "${file}" = "${ROOT_INSTALL_REGISTRY}" ]; then
+    expected_owner=root
+  else
+    expected_owner=$(id -un)
+  fi
+  [ "${owner}" = "${expected_owner}" ] \
+    || die "install registry has an unexpected owner: ${file} (${owner})"
+  IFS= read -r value <"${file}" || [ -n "${value}" ]
+  [ -n "${value}" ] || die "install registry is empty: ${file}"
+  if IFS= read -r _ < <(tail -n +2 "${file}"); then
+    die "install registry must contain exactly one line: ${file}"
+  fi
+  case "${value}" in *$'\r'*|*$'\n'*) die "install registry contains invalid line breaks: ${file}" ;; esac
+  validate_install_dir_candidate "${value}" "${file}"
+}
+
 find_install_dir() {
-  if [ -n "${PARAKO_INSTALL_DIR:-}" ] && [ -d "${PARAKO_INSTALL_DIR}" ]; then
-    printf '%s' "${PARAKO_INSTALL_DIR}"
-    return 0
+  if [ -n "${PARAKO_INSTALL_DIR:-}" ]; then
+    validate_install_dir_candidate "${PARAKO_INSTALL_DIR}" PARAKO_INSTALL_DIR
+    return
+  fi
+  if [ -e "${ROOT_INSTALL_REGISTRY}" ]; then
+    read_install_registry "${ROOT_INSTALL_REGISTRY}"
+    return
+  fi
+  if [ -e "${USER_INSTALL_REGISTRY}" ]; then
+    read_install_registry "${USER_INSTALL_REGISTRY}"
+    return
   fi
   if [ -d "${DEFAULT_INSTALL_DIR_ROOT}" ]; then
     printf '%s' "${DEFAULT_INSTALL_DIR_ROOT}"
@@ -83,10 +130,14 @@ read_pkg_version() {
 }
 
 read_state_field() {
-  local install_dir=$1 field=$2
+  local install_dir=$1 field=$2 matches count
   local file="${install_dir}/.parako-state"
   [ -r "${file}" ] || return 1
-  grep -E "^${field}=" "${file}" | head -n1 | cut -d= -f2-
+  matches=$(grep -E "^${field}=" "${file}" 2>/dev/null || true)
+  [ -n "${matches}" ] || return 1
+  count=$(printf '%s\n' "${matches}" | wc -l)
+  [ "${count}" -eq 1 ] || die "duplicate ${field} entries in ${file}"
+  printf '%s' "${matches#*=}"
 }
 
 install_mode() {
@@ -113,7 +164,7 @@ read_current_target() {
 
 require_install_dir() {
   local install_dir
-  install_dir=$(find_install_dir 2>/dev/null) \
+  install_dir=$(find_install_dir) \
     || die "no Parako.ID install dir found; set PARAKO_INSTALL_DIR or install first"
   if [ "$(install_mode "${install_dir}")" != "docker" ]; then
     [ -L "${install_dir}/current" ] || die "${install_dir}/current is not installed"
@@ -220,7 +271,7 @@ require_root() {
 # back to fetching install.sh from get.parako.id.
 locate_installer() {
   local install_dir candidate
-  if install_dir=$(find_install_dir 2>/dev/null); then
+  if install_dir=$(find_install_dir); then
     candidate="${install_dir}/current/contrib/install.sh"
     if [ -r "${candidate}" ]; then printf '%s' "${candidate}"; return 0; fi
   fi
@@ -236,7 +287,7 @@ run_installer() {
   # misses non-root installs in $HOME or any PARAKO_INSTALL_DIR override.
   local injected=()
   if [[ " $* " != *" --dir "* ]]; then
-    if install_dir=$(find_install_dir 2>/dev/null); then
+    if install_dir=$(find_install_dir); then
       injected=(--dir "${install_dir}")
     fi
   fi
@@ -257,7 +308,7 @@ run_installer() {
 
 locate_git_installer() {
   local install_dir candidate
-  if install_dir=$(find_install_dir 2>/dev/null); then
+  if install_dir=$(find_install_dir); then
     candidate="${install_dir}/current/contrib/install-git.sh"
     if [ -r "${candidate}" ]; then printf '%s' "${candidate}"; return 0; fi
     candidate="${install_dir}/current/installer/install-git.sh"
@@ -305,28 +356,31 @@ run_distribution_installer() {
 # -----------------------------------------------------------------------------
 cmd_version() {
   local install_dir=""
-  if install_dir=$(find_install_dir 2>/dev/null); then
-    local current_target previous pkg_version
-    current_target=$(read_current_target "${install_dir}")
-    previous=$(read_state_field "${install_dir}" PREVIOUS_VERSION 2>/dev/null || true)
-    pkg_version=$(read_pkg_version "${install_dir}")
-    print_header "parako"
-    print_kv "parako helper"   "${PARAKO_VERSION}"
-    print_kv "install dir"     "${install_dir}"
-    print_kv "install mode"    "$(install_mode "${install_dir}")"
-    print_kv "current release" "${current_target:-<none>}"
-    print_kv "previous release" "${previous:-<none>}"
-    print_kv "app version"     "${pkg_version}"
-  else
+  if [ -n "${PARAKO_INSTALL_DIR:-}" ]; then
+    install_dir=$(validate_install_dir_candidate "${PARAKO_INSTALL_DIR}" PARAKO_INSTALL_DIR)
+  elif ! install_dir=$(find_install_dir); then
     print_header "parako"
     print_kv "parako helper"   "${PARAKO_VERSION}"
     print_kv "install dir"     "<not found> (set PARAKO_INSTALL_DIR or run install)"
+    return
   fi
+
+  local current_target previous pkg_version
+  current_target=$(read_current_target "${install_dir}")
+  previous=$(read_state_field "${install_dir}" PREVIOUS_VERSION 2>/dev/null || true)
+  pkg_version=$(read_pkg_version "${install_dir}")
+  print_header "parako"
+  print_kv "parako helper"   "${PARAKO_VERSION}"
+  print_kv "install dir"     "${install_dir}"
+  print_kv "install mode"    "$(install_mode "${install_dir}")"
+  print_kv "current release" "${current_target:-<none>}"
+  print_kv "previous release" "${previous:-<none>}"
+  print_kv "app version"     "${pkg_version}"
 }
 
 cmd_paths() {
   local install_dir
-  install_dir=$(find_install_dir 2>/dev/null) \
+  install_dir=$(find_install_dir) \
     || die "no Parako.ID install dir found; set PARAKO_INSTALL_DIR or run the installer first"
   print_header "Parako.ID paths"
   print_kv "install dir"       "${install_dir}"
@@ -373,6 +427,30 @@ validate_database_uri() {
     || die "--database-url must be a complete ${adapter} URI with a host and database name"
 }
 
+normalize_deployment_url() {
+  local value=${1:-} authority host port=""
+  case "${value}" in *$'\n'*|*$'\r'*) die "deployment URL must not contain line breaks" ;; esac
+  [[ "${value}" =~ ^https://[^/@?#[:space:]]+(/[^?#[:space:]]*)?$ ]] \
+    || die "deployment URL must be a valid public HTTPS URL without credentials, query, or fragment"
+  authority=${value#https://}
+  authority=${authority%%/*}
+  if [[ "${authority}" == \[* ]]; then
+    [[ "${authority}" =~ ^\[[0-9A-Fa-f:.]+\](:[0-9]+)?$ ]] \
+      || die "deployment URL contains an invalid IPv6 host or port"
+    if [[ "${authority}" == *']:'* ]]; then port=${authority##*:}; fi
+  else
+    [[ "${authority}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]+)?$ ]] \
+      || die "deployment URL contains an invalid host or port"
+    host=${authority%%:*}
+    case "${host}" in *..*|*.-*|*-.*) die "deployment URL contains an invalid host" ;; esac
+    if [[ "${authority}" == *:* ]]; then port=${authority##*:}; fi
+  fi
+  if [ -n "${port}" ] && { [ "${port}" -lt 1 ] || [ "${port}" -gt 65535 ]; }; then
+    die "deployment URL port must be between 1 and 65535"
+  fi
+  printf '%s' "${value%/}"
+}
+
 cmd_config_init() {
   local install_dir env_file sample url="" adapter="sqlite" database_url=""
   local redis_host="127.0.0.1" redis_port="6379"
@@ -396,7 +474,7 @@ cmd_config_init() {
   for value in "${url}" "${database_url}" "${redis_host}" "${redis_port}" "${backup_recipient}"; do
     case "${value}" in *$'\n'*|*$'\r'*) die "configuration values must not contain line breaks" ;; esac
   done
-  case "${url}" in https://*) ;; *) die "--url must be the public HTTPS deployment URL" ;; esac
+  url=$(normalize_deployment_url "${url}")
   case "${adapter}" in sqlite|postgresql|mongodb) ;; *) die "unsupported adapter: ${adapter}" ;; esac
   if [ "${adapter}" != "sqlite" ] && [ -z "${database_url}" ]; then
     die "--database-url is required for ${adapter}"
@@ -420,7 +498,7 @@ cmd_config_init() {
   chmod 0600 "${env_file}"
 
   set_env_value "${env_file}" DEPLOYMENT_ENVIRONMENT production
-  set_env_value "${env_file}" DEPLOYMENT_URL "${url%/}"
+  set_env_value "${env_file}" DEPLOYMENT_URL "${url}"
   set_env_value "${env_file}" STORAGE_ADAPTER "${adapter}"
   # Services and management CLIs execute from the immutable `current`
   # release. Use an absolute path so database state always remains in the
@@ -448,10 +526,8 @@ cmd_config_init() {
   cmd_config_check
 }
 
-cmd_config_check() {
-  local install_dir env_file failed=0 adapter value mode group
-  install_dir=$(require_install_dir)
-  env_file="${install_dir}/runtime/.env"
+check_config_file() {
+  local install_dir=$1 env_file=$2 failed=0 adapter value mode group
   [ -r "${env_file}" ] || die "missing ${env_file}; run parako config init first"
 
   mode=$(stat -c '%a' "${env_file}" 2>/dev/null || printf unknown)
@@ -465,10 +541,9 @@ cmd_config_check() {
   esac
   [ "$(env_value "${env_file}" DEPLOYMENT_ENVIRONMENT)" = "production" ] \
     || { log_err "DEPLOYMENT_ENVIRONMENT must be production"; failed=1; }
-  case "$(env_value "${env_file}" DEPLOYMENT_URL)" in
-    https://*) ;;
-    *) log_err "DEPLOYMENT_URL must use HTTPS"; failed=1 ;;
-  esac
+  value=$(env_value "${env_file}" DEPLOYMENT_URL)
+  normalize_deployment_url "${value}" >/dev/null 2>&1 \
+    || { log_err "DEPLOYMENT_URL must be a valid public HTTPS URL"; failed=1; }
   for key in ENCRYPTION_KEY JWT_SECRET COOKIE_SECRET_1 COOKIE_SECRET_2 HMAC_SECRET PAIRWISE_SALT REDIS_HOST REDIS_PORT; do
     value=$(env_value "${env_file}" "${key}" || true)
     if [ -z "${value}" ] || [[ "${value}" == *replace-me* ]]; then
@@ -489,8 +564,49 @@ cmd_config_check() {
     *) log_err "unsupported STORAGE_ADAPTER: ${adapter:-<empty>}"; failed=1 ;;
   esac
   [ "${failed}" -eq 0 ] || return 1
+}
+
+cmd_config_check() {
+  local install_dir env_file
+  install_dir=$(require_install_dir)
+  env_file="${install_dir}/runtime/.env"
+  check_config_file "${install_dir}" "${env_file}"
   log_ok "bootstrap configuration is production-ready"
   log_info "Application and OIDC settings remain managed in the admin panel."
+}
+
+cmd_config_set_url() {
+  local install_dir env_file url="" confirmed=0 temporary old_url
+  install_dir=$(require_install_dir)
+  env_file="${install_dir}/runtime/.env"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --url) [ $# -ge 2 ] || die "--url requires https://..."; url=$2; shift 2 ;;
+      --yes) confirmed=1; shift ;;
+      *) die "unknown config set-url option: $1" ;;
+    esac
+  done
+  [ "${confirmed}" -eq 1 ] || die "config set-url requires --yes"
+  url=$(normalize_deployment_url "${url}")
+  [ -r "${env_file}" ] || die "missing ${env_file}; run parako config init first"
+  old_url=$(env_value "${env_file}" DEPLOYMENT_URL)
+  if [ "${old_url}" = "${url}" ]; then
+    log_ok "DEPLOYMENT_URL is already ${url}"
+    return
+  fi
+  temporary=$(mktemp "${env_file}.tmp.XXXXXXXX") \
+    || die "could not create temporary configuration file"
+  cp -p "${env_file}" "${temporary}"
+  set_env_value_portable "${temporary}" DEPLOYMENT_URL "${url}"
+  check_config_file "${install_dir}" "${temporary}" \
+    || { rm -f "${temporary}"; die "corrected configuration did not pass validation"; }
+  mv -f "${temporary}" "${env_file}"
+  log_ok "updated DEPLOYMENT_URL from ${old_url} to ${url}"
+  if [ "$(install_mode "${install_dir}")" = docker ]; then
+    log_info "Apply the correction with: parako docker restart"
+  else
+    log_info "Apply the correction with: parako service restart"
+  fi
 }
 
 age_binary() {
@@ -723,8 +839,9 @@ cmd_config() {
   case "${sub}" in
     init) cmd_config_init "$@" ;;
     check) cmd_config_check "$@" ;;
+    set-url) cmd_config_set_url "$@" ;;
     path) local install_dir; install_dir=$(require_install_dir); printf '%s\n' "${install_dir}/runtime/.env" ;;
-    *) die "usage: parako config <init|check|path>" ;;
+    *) die "usage: parako config <init|check|set-url|path>" ;;
   esac
 }
 
@@ -744,7 +861,29 @@ cmd_admin() {
     bootstrap)
       cmd_config_check
       run_bundled_cli admin bootstrap "$@" ;;
-    *) die "usage: parako admin bootstrap --email admin@example.com" ;;
+    replace-pending)
+      require_root
+      cmd_config_check
+      run_bundled_cli admin replace-pending "$@" ;;
+    *) die "usage: parako admin <bootstrap|replace-pending> [options]" ;;
+  esac
+}
+
+cmd_security() {
+  local sub=${1:-}; [ $# -gt 0 ] && shift
+  case "${sub}" in
+    clear-bootstrap-rate-limit)
+      require_root
+      cmd_config_check
+      run_bundled_cli security clear-bootstrap-rate-limit "$@"
+      if command -v systemctl >/dev/null 2>&1 \
+          && systemctl cat parako-id.service >/dev/null 2>&1; then
+        systemctl restart parako-id.service
+        log_ok "application restarted; the scoped rate-limit recovery is complete"
+      else
+        log_warn "restart the application process to clear its in-memory global limiter"
+      fi ;;
+    *) die "usage: parako security clear-bootstrap-rate-limit [options]" ;;
   esac
 }
 
@@ -1078,7 +1217,7 @@ cmd_self_update() {
   # (already cosign-verified at install time). Fall back to fetching from
   # get.parako.id.
   local install_dir source_file="" source_label=""
-  if [ -z "${from_url}" ] && install_dir=$(find_install_dir 2>/dev/null); then
+  if [ -z "${from_url}" ] && install_dir=$(find_install_dir); then
     local candidate="${install_dir}/current/contrib/parako.sh"
     if [ -r "${candidate}" ]; then
       source_file=${candidate}
@@ -1157,7 +1296,7 @@ load_docker_operator() {
     source "${candidate}"
     return
   fi
-  if install_dir=$(find_install_dir 2>/dev/null); then
+  if install_dir=$(find_install_dir); then
     candidate="${install_dir}/docker/parako-docker.sh"
     if [ -r "${candidate}" ]; then
       # shellcheck source=/dev/null
@@ -1188,10 +1327,16 @@ Commands:
   config init --url URL [options]
                                 Create bootstrap-only production environment
   config check|path             Validate or locate runtime/.env
+  config set-url --url URL --yes
+                                Correct the public deployment URL atomically
   db status|migrate             Inspect or apply database migrations
   db baseline --confirm-existing-schema
                                 Adopt a schema previously created with db push
   admin bootstrap --email EMAIL Create a one-time first-admin activation URL
+  admin replace-pending [options]
+                                Correct the sole pending administrator (root only)
+  security clear-bootstrap-rate-limit [options]
+                                Clear one bootstrap login bucket (root only)
   backup [--recipient AGE]      Create an encrypted database/runtime backup
   backup-keygen FILE            Create an age identity and print its recipient
   restore FILE --identity FILE --yes
@@ -1239,6 +1384,7 @@ main() {
     config)               cmd_config "$@" ;;
     db)                   cmd_db "$@" ;;
     admin)                cmd_admin "$@" ;;
+    security)             cmd_security "$@" ;;
     migrate)              cmd_db migrate "$@" ;;
     backup)               cmd_backup "$@" ;;
     backup-keygen)        cmd_backup_keygen "$@" ;;

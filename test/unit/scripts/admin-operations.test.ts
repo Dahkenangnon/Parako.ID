@@ -9,12 +9,14 @@ const dependencies = vi.hoisted(() => {
       create: vi.fn(),
       findMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   };
   const mongo = {
     close: vi.fn(),
     connect: vi.fn(),
     insertOne: vi.fn(),
+    findOne: vi.fn(),
     updateOne: vi.fn(),
     toArray: vi.fn(),
   };
@@ -22,6 +24,7 @@ const dependencies = vi.hoisted(() => {
   const find = vi.fn(() => ({ limit }));
   const collection = vi.fn(() => ({
     find,
+    findOne: mongo.findOne,
     insertOne: mongo.insertOne,
     updateOne: mongo.updateOne,
   }));
@@ -41,6 +44,7 @@ const dependencies = vi.hoisted(() => {
     mongoClient: vi.fn(function () {
       return client;
     }),
+    operatorAudit: vi.fn(),
     prisma,
     resolved: {
       adapter: 'sqlite',
@@ -67,11 +71,15 @@ vi.mock('mongodb', () => ({ MongoClient: dependencies.mongoClient }));
 vi.mock('../../../scripts/manage/shared/entrypoint.js', () => ({
   isMainModule: () => false,
 }));
+vi.mock('../../../scripts/manage/shared/operator-audit.js', () => ({
+  writeOperatorAudit: dependencies.operatorAudit,
+}));
 
 import {
   buildProgram,
   createAdminActivation,
   hashActivationToken,
+  replacePendingAdmin,
   selectReissuableAdmin,
 } from '../../../scripts/manage/admin.js';
 
@@ -93,12 +101,15 @@ describe('administrator activation lifecycle', () => {
     dependencies.prisma.user.findMany.mockResolvedValue([]);
     dependencies.prisma.user.create.mockResolvedValue({});
     dependencies.prisma.user.update.mockResolvedValue({});
+    dependencies.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     dependencies.prisma.$disconnect.mockResolvedValue(undefined);
     dependencies.mongo.connect.mockResolvedValue(undefined);
     dependencies.mongo.close.mockResolvedValue(undefined);
     dependencies.mongo.toArray.mockResolvedValue([]);
     dependencies.mongo.insertOne.mockResolvedValue({ acknowledged: true });
+    dependencies.mongo.findOne.mockResolvedValue(null);
     dependencies.mongo.updateOne.mockResolvedValue({ acknowledged: true });
+    dependencies.operatorAudit.mockResolvedValue(undefined);
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-03T12:00:00.000Z'));
   });
@@ -373,6 +384,269 @@ describe('administrator activation lifecycle', () => {
     ).toThrow('pending administrator activation');
   });
 
+  it('replaces the sole pending SQLite administrator and invalidates its old token', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'pending-admin',
+        email: 'wrong@example.com',
+        password: null,
+        roles: JSON.stringify(['admin']),
+      },
+    ]);
+
+    const activationUrl = await replacePendingAdmin(
+      'Correct@Example.com',
+      'Correcting an address entered during deployment',
+      30
+    );
+    const token = new URL(activationUrl).searchParams.get('token')!;
+
+    expect(dependencies.prisma.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'pending-admin', password: null },
+      data: expect.objectContaining({
+        email: 'correct@example.com',
+        reset_password_token: hashActivationToken(token),
+        reset_password_expires: new Date('2026-08-03T12:30:00.000Z'),
+      }),
+    });
+    expect(dependencies.operatorAudit).toHaveBeenNthCalledWith(
+      1,
+      '/project',
+      expect.objectContaining({
+        action: 'bootstrap_admin.replace_pending',
+        status: 'attempt',
+        reason: 'Correcting an address entered during deployment',
+      })
+    );
+    expect(dependencies.operatorAudit).toHaveBeenLastCalledWith(
+      '/project',
+      expect.objectContaining({ status: 'success' })
+    );
+  });
+
+  it('does not replace an administrator activated after selection', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'pending-admin',
+        email: 'wrong@example.com',
+        password: null,
+        roles: JSON.stringify(['admin']),
+      },
+    ]);
+    dependencies.prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      replacePendingAdmin(
+        'correct@example.com',
+        'Activation raced with operator correction',
+        60
+      )
+    ).rejects.toThrow('changed during replacement');
+
+    expect(dependencies.operatorAudit).toHaveBeenLastCalledWith(
+      '/project',
+      expect.objectContaining({ status: 'failed' })
+    );
+  });
+
+  it('requires exactly one pending administrator before replacement', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([]);
+
+    await expect(
+      replacePendingAdmin(
+        'correct@example.com',
+        'Correcting a missing pending administrator',
+        60
+      )
+    ).rejects.toThrow('requires exactly one unactivated administrator');
+    expect(dependencies.prisma.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a replacement email already assigned to another Prisma user', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'pending-admin',
+        email: 'wrong@example.com',
+        password: null,
+        roles: JSON.stringify(['admin']),
+      },
+      {
+        id: 'existing-user',
+        email: 'correct@example.com',
+        password: 'hash',
+        roles: JSON.stringify(['user']),
+      },
+    ]);
+
+    await expect(
+      replacePendingAdmin(
+        'correct@example.com',
+        'Correcting a duplicate deployment address',
+        60
+      )
+    ).rejects.toThrow('replacement email is already assigned');
+    expect(dependencies.prisma.user.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('replaces a pending PostgreSQL administrator without an existing email', async () => {
+    dependencies.resolved = {
+      adapter: 'postgresql',
+      config: 'prisma.config.pg.ts',
+      env: { DATABASE_URL: 'postgresql://db/parako' },
+    };
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'pending-admin',
+        email: null,
+        password: null,
+        roles: JSON.stringify(['admin']),
+      },
+    ]);
+
+    await replacePendingAdmin(
+      'correct@example.com',
+      'Correcting the pending PostgreSQL administrator',
+      60
+    );
+
+    expect(dependencies.createPrismaClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storage: {
+          adapter: 'postgresql',
+          postgresql: { url: 'postgresql://db/parako' },
+          sqlite: undefined,
+        },
+      })
+    );
+    expect(dependencies.operatorAudit).toHaveBeenLastCalledWith(
+      '/project',
+      expect.objectContaining({
+        status: 'success',
+        target: expect.objectContaining({ previousEmail: '' }),
+      })
+    );
+  });
+
+  it('refuses pending-administrator replacement after activation', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'active-admin',
+        email: 'active@example.com',
+        password: 'password-hash',
+        roles: JSON.stringify(['admin']),
+      },
+    ]);
+
+    await expect(
+      replacePendingAdmin(
+        'new@example.com',
+        'Attempted correction after activation',
+        60
+      )
+    ).rejects.toThrow('activated administrator already exists');
+    expect(dependencies.prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(dependencies.operatorAudit).toHaveBeenLastCalledWith(
+      '/project',
+      expect.objectContaining({ status: 'failed' })
+    );
+  });
+
+  it('replaces the sole pending MongoDB administrator', async () => {
+    dependencies.resolved = {
+      adapter: 'mongodb',
+      env: { STORAGE_MONGODB_URI: 'mongodb://db/parako' },
+    };
+    process.env.STORAGE_MONGODB_URI = 'mongodb://db/parako';
+    dependencies.mongo.toArray.mockResolvedValue([
+      { _id: 'mongo-id', email: null, password: null },
+    ]);
+    dependencies.mongo.updateOne.mockResolvedValue({ matchedCount: 1 });
+
+    const activationUrl = await replacePendingAdmin(
+      'new@example.com',
+      'Correcting the pending MongoDB administrator',
+      20
+    );
+    const token = new URL(activationUrl).searchParams.get('token')!;
+
+    expect(dependencies.mongo.findOne).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      _id: { $ne: 'mongo-id' },
+    });
+    expect(dependencies.mongo.updateOne).toHaveBeenCalledWith(
+      { _id: 'mongo-id', password: null },
+      {
+        $set: expect.objectContaining({
+          email: 'new@example.com',
+          reset_password_token: hashActivationToken(token),
+        }),
+      }
+    );
+    expect(dependencies.operatorAudit).toHaveBeenLastCalledWith(
+      '/project',
+      expect.objectContaining({
+        status: 'success',
+        target: expect.objectContaining({ previousEmail: '' }),
+      })
+    );
+  });
+
+  it('rejects a replacement email already assigned to another MongoDB user', async () => {
+    dependencies.resolved = {
+      adapter: 'mongodb',
+      env: { STORAGE_MONGODB_URI: 'mongodb://db/parako' },
+    };
+    process.env.STORAGE_MONGODB_URI = 'mongodb://db/parako';
+    dependencies.mongo.toArray.mockResolvedValue([
+      { _id: 'mongo-id', email: 'wrong@example.com', password: null },
+    ]);
+    dependencies.mongo.findOne.mockResolvedValue({ _id: 'existing-user' });
+
+    await expect(
+      replacePendingAdmin(
+        'new@example.com',
+        'Correcting a duplicate MongoDB administrator address',
+        60
+      )
+    ).rejects.toThrow('replacement email is already assigned');
+    expect(dependencies.mongo.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a MongoDB administrator activated after selection', async () => {
+    dependencies.resolved = {
+      adapter: 'mongodb',
+      env: { STORAGE_MONGODB_URI: 'mongodb://db/parako' },
+    };
+    process.env.STORAGE_MONGODB_URI = 'mongodb://db/parako';
+    dependencies.mongo.toArray.mockResolvedValue([
+      { _id: 'mongo-id', email: 'wrong@example.com', password: null },
+    ]);
+    dependencies.mongo.updateOne.mockResolvedValue({ matchedCount: 0 });
+
+    await expect(
+      replacePendingAdmin(
+        'new@example.com',
+        'Activation raced with MongoDB operator correction',
+        60
+      )
+    ).rejects.toThrow('changed during replacement');
+  });
+
+  it('requires a meaningful audit reason for pending-administrator replacement', async () => {
+    await expect(
+      replacePendingAdmin('new@example.com', 'short', 60)
+    ).rejects.toThrow('reason must be between 10 and 500 characters');
+    expect(dependencies.createPrismaClient).not.toHaveBeenCalled();
+    expect(dependencies.operatorAudit).not.toHaveBeenCalled();
+  });
+
+  it('rejects an excessively long pending-administrator audit reason', async () => {
+    await expect(
+      replacePendingAdmin('new@example.com', 'x'.repeat(501), 60)
+    ).rejects.toThrow('reason must be between 10 and 500 characters');
+    expect(dependencies.operatorAudit).not.toHaveBeenCalled();
+  });
+
   it('registers and dispatches the bootstrap command', async () => {
     const program = buildProgram();
     program.exitOverride();
@@ -399,5 +673,38 @@ describe('administrator activation lifecycle', () => {
     expect(consoleLog.mock.calls.flat().join('\n')).toContain(
       'https://id.example.com/auth/reset-password?token='
     );
+  });
+
+  it('registers and dispatches the pending-administrator replacement command', async () => {
+    dependencies.prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'pending-admin',
+        email: 'wrong@example.com',
+        password: null,
+        roles: JSON.stringify(['admin']),
+      },
+    ]);
+    const program = buildProgram();
+    program.exitOverride();
+    const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await program.parseAsync([
+      'node',
+      'parako-admin',
+      'replace-pending',
+      '--email',
+      'correct@example.com',
+      '--reason',
+      'Correcting the deployment administrator address',
+      '--expires-minutes',
+      '20',
+    ]);
+
+    const output = consoleLog.mock.calls.flat().join('\n');
+    expect(output).toContain('Replacement administrator activation URL:');
+    expect(output).toContain(
+      'https://id.example.com/auth/reset-password?token='
+    );
+    expect(output).toContain('The previous activation URL is invalid.');
   });
 });

@@ -40,7 +40,7 @@ The installer does **not** protect against:
 
 ## Verifying the installer itself
 
-Each release of Parako.ID publishes the SHA256 of `install.sh` in the release notes. To verify what you're about to pipe to bash:
+Each release of Parako.ID publishes the SHA256 of `install.sh` in the release notes. Download and verify it before execution:
 
 ```bash
 # Download without executing
@@ -87,8 +87,8 @@ or trust-root asset via Cosign keyless:
 - `SHA256SUMS` → `SHA256SUMS.sig` + `.pem`
 - `install.sh` and `install-git.sh` → a matching `.sig` + `.pem`
 
-The standalone per-architecture SBOM and release manifest are authenticated by
-their entries in the signed `SHA256SUMS` file.
+The landing page, standalone per-architecture SBOM, and release manifest are
+authenticated by their entries in the signed `SHA256SUMS` file.
 
 The cosign certificate identity is bound to the workflow path:
 
@@ -120,14 +120,34 @@ cosign verify-blob \
 
 Expected output: `Verified OK`.
 
+## Public distribution contract
+
+The stable public surface is deliberately small:
+
+| Path          | Expected content                                                    |
+| ------------- | ------------------------------------------------------------------- |
+| `/`           | `install.sh` for CLI clients; the release landing page for browsers |
+| `/install.sh` | The current `install.sh`                                            |
+| `/index.html` | The current release landing page                                    |
+| `/parako.sh`  | Unsupported and expected to return `404`                            |
+
+After a GitHub release is published, the release workflow dispatches the tag
+and source commit to the private distribution repository. That workflow
+resolves the immutable public tag, verifies the signed `SHA256SUMS`, checks the
+exact installer and landing-page hashes, atomically switches the server's
+release pointer, and compares the live endpoints byte-for-byte. Static copies
+are not maintained independently.
+
 ## The `--insecure-no-signature` escape
 
 In the rare case where Sigstore is unreachable (network partition, Sigstore outage, regulated network), the installer offers an explicit escape:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash -s -- \
-  --update --insecure-no-signature \
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER" --update --insecure-no-signature \
   --reason "Sigstore outage on 2026-06-15; verified SHA256 manually from release notes"
+rm -f "$PARAKO_INSTALLER"
 ```
 
 The escape requires:

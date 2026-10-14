@@ -70,7 +70,10 @@ healthy because OIDC tokens, activation links, and signatures are time-bound.
 ## Install and configure
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER"
+rm -f "$PARAKO_INSTALLER"
 
 sudo parako backup-keygen /root/parako-backup-identity.txt
 
@@ -114,6 +117,12 @@ Set the public URL passed to `config init` to the exact HTTPS origin clients
 will use. For nginx examples, see
 [`docs/reference/nginx-vhost-examples/`](reference/nginx-vhost-examples/).
 
+Before requesting a certificate, verify that the hostname's public A and AAAA
+records resolve only to this ingress host, TCP port 80 is reachable from the
+internet, and `nginx -t` plus an HTTP reload succeeds. Then run Certbot. An
+ACME response from an unrelated address or CDN is a DNS/routing problem; do
+not reset Parako.ID or its database to recover from it.
+
 The proxy trust setting itself remains part of application configuration in the
 admin panel.
 
@@ -153,6 +162,10 @@ environment variables.
 
 Multi-tenant platform bootstrap has additional role and hostname requirements;
 see [Multi-Tenancy](multi-tenancy.md).
+
+If the deployment URL or pending administrator email was entered incorrectly,
+do not reset the database. Use the scoped commands documented under
+[Bootstrap recovery](parako-cli.md#bootstrap-recovery).
 
 ## Health and monitoring
 

@@ -129,6 +129,48 @@ JWKS keys must be generated before the first startup.
 - Check if the password has expired (`max_age_days` policy)
 - Check if password breach detection is blocking the password
 
+During administrator activation or password reset, a breached-password
+rejection leaves the activation token valid and does not change the password.
+Choose a different password and submit the same form again.
+
+### Bootstrap address or URL is wrong
+
+Do not delete the database. Correct the public origin atomically:
+
+```bash
+sudo parako config set-url --url https://correct-auth.example.com --yes
+sudo parako service restart
+```
+
+For Docker, use `parako docker config set-url` followed by
+`parako docker restart`. Correct the sole unactivated administrator with:
+
+```bash
+sudo parako admin replace-pending \
+  --email correct-admin@example.com \
+  --reason 'Corrected address entered during bootstrap'
+```
+
+Use the Docker-namespaced command for Docker deployments. Replacement is
+intentionally unavailable after activation or in multi-tenant mode.
+
+### Bootstrap login is rate-limited
+
+The HTML response shows the server's `Retry-After` interval and counts down.
+Waiting is the normal recovery. When immediate bootstrap recovery is necessary,
+run the exact-key, root-only operation:
+
+```bash
+sudo parako security clear-bootstrap-rate-limit \
+  --ip 203.0.113.10 \
+  --email correct-admin@example.com \
+  --reason 'Bootstrap password retries exhausted the limiter' \
+  --yes
+```
+
+Use `parako docker security ...` for Docker. Never use Redis `FLUSHDB`; it can
+destroy unrelated sessions, queues, grants, and limiter state.
+
 ### MFA not working
 
 - **TOTP:** Verify the user's device clock is synchronized (TOTP is time-based)

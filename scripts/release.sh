@@ -288,6 +288,7 @@ validate_build_output() {
         "dist/scripts/manage/database.js"
         "dist/scripts/manage/diagnostics.js"
         "dist/scripts/manage/keys.js"
+        "dist/scripts/manage/security.js"
         "dist/scripts/manage/systemd.js"
     )
     
@@ -306,6 +307,7 @@ validate_build_output() {
     node dist/scripts/manage/database.js --help > /dev/null || { log_error "Database CLI failed"; exit 1; }
     node dist/scripts/manage/diagnostics.js --help > /dev/null || { log_error "Diagnostics CLI failed"; exit 1; }
     node dist/scripts/manage/keys.js --help > /dev/null || { log_error "Keys CLI failed"; exit 1; }
+    node dist/scripts/manage/security.js --help > /dev/null || { log_error "Security CLI failed"; exit 1; }
     
     log_success "Build validation completed"
 }
@@ -459,6 +461,7 @@ create_production_package() {
                 database: './dist/scripts/manage/database.js',
                 diagnostics: './dist/scripts/manage/diagnostics.js',
                 keys: './dist/scripts/manage/keys.js',
+                security: './dist/scripts/manage/security.js',
                 systemd: './dist/scripts/manage/systemd.js'
             },
             engines: pkg.engines,
@@ -476,6 +479,7 @@ create_production_package() {
                 'database': './node/bin/node dist/scripts/manage/database.js',
                 'diagnostics': './node/bin/node dist/scripts/manage/diagnostics.js',
                 'keys': './node/bin/node dist/scripts/manage/keys.js',
+                'security': './node/bin/node dist/scripts/manage/security.js',
                 'systemd': './node/bin/node dist/scripts/manage/systemd.js',
                 // DB management scripts remain for operator ad-hoc use. The
                 // installer does NOT call them; release notes tell operators
@@ -794,6 +798,7 @@ validate_production_package() {
     # actual help output (a skipped entrypoint otherwise exits successfully).
     ./node/bin/node dist/scripts/manage/client.js --help > /dev/null || { log_error "Client CLI test failed with bundled dependencies"; exit 1; }
     ./node/bin/node dist/scripts/manage/keys.js --help > /dev/null || { log_error "Keys CLI test failed"; exit 1; }
+    ./node/bin/node dist/scripts/manage/security.js --help > /dev/null || { log_error "Security CLI test failed"; exit 1; }
     local cli_smoke_failed=0
     ln -s . .current-smoke
     ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/admin.js --help \
@@ -802,6 +807,8 @@ validate_production_package() {
         | grep -q 'Usage: parako-database' || { log_error "Database CLI symlink test failed"; cli_smoke_failed=1; }
     ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/diagnostics.js --help \
         | grep -q 'Usage: parako-diagnostics' || { log_error "Diagnostics CLI symlink test failed"; cli_smoke_failed=1; }
+    ./.current-smoke/node/bin/node .current-smoke/dist/scripts/manage/security.js --help \
+        | grep -q 'Usage: parako-security' || { log_error "Security CLI symlink test failed"; cli_smoke_failed=1; }
     rm .current-smoke
     [[ "$cli_smoke_failed" -eq 1 ]] && exit 1
     cd ..

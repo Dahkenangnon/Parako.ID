@@ -79,6 +79,29 @@ teardown() {
   echo "${output}" | grep -q -- "--non-interactive also requires --force"
 }
 
+@test "piped interactive installation fails immediately with actionable guidance" {
+  run timeout 2s setsid bash -c '
+    source "$1"
+    prompt_yn_timeout "Proceed?" no 60
+  ' _ "${INSTALLER_SH}" </dev/null
+
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q -- '--non-interactive --force'
+}
+
+@test "explicit non-interactive confirmation does not sleep" {
+  run timeout 2s bash -c '
+    source "$1"
+    FLAG_NON_INTERACTIVE=1
+    FLAG_FORCE=1
+    RESOLVED_INSTALL_DIR="$2"
+    TAG=v0.3.8
+    beginning_ritual install
+  ' _ "${INSTALLER_SH}" "${INSTALL_DIR}"
+
+  [ "${status}" -eq 0 ]
+}
+
 @test "install.sh rejects mutually exclusive mode flags" {
   run bash "${INSTALLER_SH}" --update --rollback
   [ "${status}" -ne 0 ]
@@ -156,8 +179,41 @@ teardown() {
   echo "${output}" | grep -q "Usage:"
 }
 
-@test "parako.sh version runs without an install" {
+@test "parako.sh rejects an explicit missing install path" {
   run env PARAKO_INSTALL_DIR=/nonexistent bash "${PARAKO_SH}" version
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q "missing install directory"
+}
+
+@test "parako.sh discovers a custom install from the user registry" {
+  local state_home="${BATS_TEST_TMPDIR}/state-home"
+  local custom_dir="${BATS_TEST_TMPDIR}/custom-parako"
+  mkdir -p "${state_home}/parako" "${custom_dir}/releases/v0.3.8"
+  printf 'INSTALL_MODE=native\nINSTALL_DIR=%s\nVERSION=v0.3.8\n' "${custom_dir}" \
+    >"${custom_dir}/.parako-state"
+  ln -s releases/v0.3.8 "${custom_dir}/current"
+  printf '%s\n' "${custom_dir}" >"${state_home}/parako/install-dir"
+  chmod 0600 "${state_home}/parako/install-dir"
+
+  run env -u PARAKO_INSTALL_DIR XDG_STATE_HOME="${state_home}" \
+    bash "${PARAKO_SH}" paths
+
   [ "${status}" -eq 0 ]
-  echo "${output}" | grep -q "parako helper"
+  echo "${output}" | grep -Fq "${custom_dir}"
+}
+
+@test "parako.sh rejects a registered path whose state disagrees" {
+  local state_home="${BATS_TEST_TMPDIR}/state-home-invalid"
+  local custom_dir="${BATS_TEST_TMPDIR}/custom-parako-invalid"
+  mkdir -p "${state_home}/parako" "${custom_dir}"
+  printf 'INSTALL_MODE=docker\nINSTALL_DIR=/different/path\nVERSION=0.3.8\n' \
+    >"${custom_dir}/.parako-state"
+  printf '%s\n' "${custom_dir}" >"${state_home}/parako/install-dir"
+  chmod 0600 "${state_home}/parako/install-dir"
+
+  run env -u PARAKO_INSTALL_DIR XDG_STATE_HOME="${state_home}" \
+    bash "${PARAKO_SH}" paths
+
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q 'does not match its installer state'
 }

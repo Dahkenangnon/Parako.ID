@@ -7,8 +7,48 @@ setup() {
   mkdir -p "${INSTALL_DIR}/docker" "${INSTALL_DIR}/runtime"
   cp "${INSTALLER_DIR}/../deployment/docker/compose.tools.yaml" "${INSTALL_DIR}/docker/compose.tools.yaml"
   cp "${INSTALLER_DIR}/../.env.example" "${INSTALL_DIR}/docker/.env.sample"
-  printf 'INSTALL_MODE=docker\nINSTALL_DIR=%s\nVERSION=0.3.5\n' "${INSTALL_DIR}" \
+  printf 'INSTALL_MODE=docker\nINSTALL_DIR=%s\nVERSION=0.3.5\nDOCKER_IMAGE=ghcr.io/dahkenangnon/parako-id@sha256:%064d\n' \
+    "${INSTALL_DIR}" 0 \
     >"${INSTALL_DIR}/.parako-state"
+}
+
+@test "docker compose rejects malformed persisted image state" {
+  sed -i 's|^DOCKER_IMAGE=.*|DOCKER_IMAGE=download progress ghcr.io/dahkenangnon/parako-id@sha256:bad|' \
+    "${INSTALL_DIR}/.parako-state"
+
+  run bash -c '
+    source "$1"
+    source "$2"
+    validate_docker_image_reference "$(read_state_field "$3" DOCKER_IMAGE)"
+  ' _ "${PARAKO_SH}" "${PARAKO_DOCKER_SH}" "${INSTALL_DIR}"
+
+  [ "${status}" -ne 0 ]
+  echo "${output}" | grep -q 'invalid Docker image reference'
+}
+
+@test "docker image resolution returns only the verified digest when pull is noisy" {
+  local expected='ghcr.io/dahkenangnon/parako-id@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+
+  run bash -c '
+    expected=$2
+    source "$1"
+    ensure_cosign() { :; }
+    docker() {
+      if [ "$1" = pull ]; then
+        printf "%s\n" "Pulling layer" "Pull complete"
+      else
+        printf "%s\n" "${expected}"
+      fi
+    }
+    cosign() { :; }
+    resolve_verified_docker_image 0.3.8
+  ' _ "${INSTALLER_SH}" "${expected}"
+
+  [ "${status}" -eq 0 ]
+  [ "${output}" = "Pulling layer
+Pull complete
+${expected}" ]
+  [ "${lines[2]}" = "${expected}" ]
 }
 
 @test "docker config init records a non-secret SQLite topology and protected bootstrap environment" {

@@ -77,6 +77,74 @@ setup() {
   grep -q '^STORAGE_MONGODB_URI=mongodb://' "${INSTALL_DIR}/runtime/.env"
 }
 
+@test "config set-url atomically corrects only the public deployment URL" {
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" config init --url https://wrong.example.com
+  [ "${status}" -eq 0 ]
+  local before_secret
+  before_secret=$(grep '^ENCRYPTION_KEY=' "${INSTALL_DIR}/runtime/.env")
+
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" config set-url \
+      --url https://correct.example.com --yes
+
+  [ "${status}" -eq 0 ]
+  grep -q '^DEPLOYMENT_URL=https://correct.example.com$' \
+    "${INSTALL_DIR}/runtime/.env"
+  [ "$(grep '^ENCRYPTION_KEY=' "${INSTALL_DIR}/runtime/.env")" = "${before_secret}" ]
+  [ "$(stat -c '%a' "${INSTALL_DIR}/runtime/.env")" = 600 ]
+  ! find "${INSTALL_DIR}/runtime" -maxdepth 1 -name '.env.tmp.*' | grep -q .
+}
+
+@test "config set-url requires explicit confirmation and preserves the old value" {
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" config init --url https://original.example.com
+  [ "${status}" -eq 0 ]
+
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" config set-url --url https://replacement.example.com
+
+  [ "${status}" -ne 0 ]
+  grep -q '^DEPLOYMENT_URL=https://original.example.com$' \
+    "${INSTALL_DIR}/runtime/.env"
+}
+
+@test "config set-url rejects malformed hosts and out-of-range ports" {
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" config init --url https://original.example.com
+  [ "${status}" -eq 0 ]
+
+  for invalid_url in \
+    'https://example.com:bad' \
+    'https://example..com' \
+    'https://example.com:70000'; do
+    run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+      bash "${PARAKO_SH}" config set-url --url "${invalid_url}" --yes
+    [ "${status}" -ne 0 ]
+  done
+
+  grep -q '^DEPLOYMENT_URL=https://original.example.com$' \
+    "${INSTALL_DIR}/runtime/.env"
+}
+
+@test "docker config set-url shares the validated correction workflow" {
+  sed -i 's/^INSTALL_MODE=.*/INSTALL_MODE=docker/' "${INSTALL_DIR}/.parako-state"
+  mkdir -p "${INSTALL_DIR}/docker"
+  cp "${INSTALLER_DIR}/../.env.example" "${INSTALL_DIR}/docker/.env.sample"
+
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" docker config init \
+      --url https://old.example.com --adapter sqlite --redis managed --tenancy single
+  [ "${status}" -eq 0 ]
+
+  run env PARAKO_INSTALL_DIR="${INSTALL_DIR}" \
+    bash "${PARAKO_SH}" docker config set-url \
+      --url https://new.example.com --yes
+
+  [ "${status}" -eq 0 ]
+  grep -q '^DEPLOYMENT_URL=https://new.example.com$' "${INSTALL_DIR}/runtime/.env"
+}
+
 @test "release permission normalization preserves packaged executables" {
   local release_dir="${BATS_TEST_TMPDIR}/release-permissions"
   mkdir -p "${release_dir}/node_modules/@prisma/engines"

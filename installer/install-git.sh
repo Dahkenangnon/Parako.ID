@@ -28,6 +28,12 @@ STAGING_DIR=""
 PARAKO_BIN_PATH=""
 BUILT_VERSION=""
 
+if [ "$(id -u)" -eq 0 ]; then
+  INSTALL_REGISTRY_FILE="/etc/parako/install-dir"
+else
+  INSTALL_REGISTRY_FILE="${XDG_STATE_HOME:-${HOME}/.local/state}/parako/install-dir"
+fi
+
 log() { printf '[%s] %s\n' "$1" "$2"; }
 die() { log FAIL "$1" >&2; exit "${2:-1}"; }
 
@@ -330,6 +336,29 @@ install_operator_binary() {
   PARAKO_BIN_PATH="${bin_dir}/parako"
 }
 
+register_install_dir() {
+  local directory temporary mode=0600
+  directory=$(dirname "${INSTALL_REGISTRY_FILE}")
+  mkdir -p "${directory}"
+  temporary=$(mktemp "${INSTALL_REGISTRY_FILE}.tmp.XXXXXXXX")
+  printf '%s\n' "${INSTALL_DIR}" >"${temporary}"
+  if [ "$(id -u)" -eq 0 ]; then
+    mode=0644
+    chown root:root "${temporary}"
+  fi
+  chmod "${mode}" "${temporary}"
+  mv -f "${temporary}" "${INSTALL_REGISTRY_FILE}"
+}
+
+unregister_install_dir() {
+  local registered=""
+  [ -f "${INSTALL_REGISTRY_FILE}" ] && [ ! -L "${INSTALL_REGISTRY_FILE}" ] || return 0
+  IFS= read -r registered <"${INSTALL_REGISTRY_FILE}" || true
+  [ "${registered}" = "${INSTALL_DIR}" ] || return 0
+  rm -f "${INSTALL_REGISTRY_FILE}"
+  rmdir "$(dirname "${INSTALL_REGISTRY_FILE}")" 2>/dev/null || true
+}
+
 install_or_update() {
   validate_ref
   validate_repository
@@ -358,6 +387,7 @@ install_or_update() {
   previous=$(activate_release "${release}")
   install_operator_binary
   write_state "${release}" "${commit}" "${REF}" "${version}" "${previous}" "${previous_version}"
+  register_install_dir
   log OK "activated ${release} (Parako.ID ${version})"
 }
 
@@ -378,6 +408,7 @@ rollback_main() {
   activate_release "${target}" >/dev/null
   install_operator_binary
   write_state "${target}" "${commit}" "${commit}" "${version}" "${current}" "${previous_version}"
+  register_install_dir
   log OK "activated previous release ${target}; runtime data was not changed"
 }
 
@@ -435,6 +466,7 @@ uninstall_main() {
   chmod -R u+w "${INSTALL_DIR}/releases" 2>/dev/null || true
   rm -rf -- "${INSTALL_DIR}/releases" "${INSTALL_DIR}/repository.git"
   rm -f -- "${INSTALL_DIR}/.parako-state"
+  unregister_install_dir
   if [ "${PURGE}" -eq 1 ]; then rm -rf -- "${INSTALL_DIR}/runtime"; fi
   log OK "Git installation removed; runtime purge=${PURGE}"
 }
@@ -452,4 +484,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

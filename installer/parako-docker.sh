@@ -6,6 +6,13 @@ docker_topology_value() {
   grep -E "^${key}=" "${file}" 2>/dev/null | tail -n1 | cut -d= -f2-
 }
 
+validate_docker_image_reference() {
+  local image=${1:-}
+  [[ "${image}" =~ ^ghcr\.io/dahkenangnon/parako-id@sha256:[a-f0-9]{64}$ ]] \
+    || die "invalid Docker image reference in installer state"
+  printf '%s' "${image}"
+}
+
 read_protected_value_file() {
   local file=${1:-} label=${2:-credential} mode value extra
   [ -n "${file}" ] && [ -f "${file}" ] && [ ! -L "${file}" ] \
@@ -66,7 +73,7 @@ cmd_docker_config_init() {
     esac
   done
 
-  case "${url}" in https://*) ;; *) die "--url must be the public HTTPS deployment URL" ;; esac
+  url=$(normalize_deployment_url "${url}")
   [ -n "${adapter}" ] || die "--adapter is required for Docker installations"
   case "${adapter}" in
     sqlite|postgresql|mongodb) ;;
@@ -136,7 +143,7 @@ cmd_docker_config_init() {
   chmod 0600 "${env_file}"
 
   set_env_value_portable "${env_file}" DEPLOYMENT_ENVIRONMENT production
-  set_env_value_portable "${env_file}" DEPLOYMENT_URL "${url%/}"
+  set_env_value_portable "${env_file}" DEPLOYMENT_URL "${url}"
   set_env_value_portable "${env_file}" STORAGE_ADAPTER "${adapter}"
   case "${adapter}" in
     sqlite)
@@ -196,11 +203,12 @@ cmd_docker_config() {
   case "${sub}" in
     init) cmd_docker_config_init "$@" ;;
     check) cmd_docker_config_check "$@" ;;
+    set-url) cmd_config_set_url "$@" ;;
     path)
       local install_dir
       install_dir=$(require_docker_install_dir)
       printf '%s\n' "${install_dir}/runtime/.env" ;;
-    *) die "usage: parako docker config <init|check|path>" ;;
+    *) die "usage: parako docker config <init|check|set-url|path>" ;;
   esac
 }
 
@@ -220,6 +228,11 @@ docker_compose() {
   version=$(read_state_field "${install_dir}" VERSION 2>/dev/null || printf '%s' "${PARAKO_VERSION}")
   image=${PARAKO_DOCKER_IMAGE:-$(read_state_field "${install_dir}" DOCKER_IMAGE 2>/dev/null || true)}
   image=${image:-ghcr.io/dahkenangnon/parako-id:${version}}
+  if [[ "${image}" == *@sha256:* ]]; then
+    image=$(validate_docker_image_reference "${image}")
+  elif [ -z "${PARAKO_DOCKER_IMAGE:-}" ]; then
+    die "invalid Docker image reference in installer state"
+  fi
 
   arguments=(
     compose
@@ -483,10 +496,7 @@ docker_resolve_verified_image() {
     || die "cosign is required to verify Parako Docker images"
   docker pull "${tag}" >&2
   digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "${tag}")
-  case "${digest}" in
-    "${PARAKO_DOCKER_REPOSITORY}"@sha256:*) ;;
-    *) die "pulled image did not resolve to an expected repository digest" ;;
-  esac
+  digest=$(validate_docker_image_reference "${digest}")
   cosign verify \
     --certificate-identity-regexp "${PARAKO_COSIGN_IDENTITY_REGEXP}" \
     --certificate-oidc-issuer "${PARAKO_COSIGN_OIDC_ISSUER}" \
@@ -678,7 +688,26 @@ cmd_docker_admin() {
   case "${sub}" in
     bootstrap)
       docker_compose run --rm app node dist/scripts/manage/admin.js bootstrap "$@" ;;
-    *) die "usage: parako docker admin bootstrap --email admin@example.com" ;;
+    replace-pending)
+      require_root
+      docker_compose run --rm app node dist/scripts/manage/admin.js replace-pending "$@" ;;
+    *) die "usage: parako docker admin <bootstrap|replace-pending> [options]" ;;
+  esac
+}
+
+cmd_docker_security() {
+  local sub=${1:-}
+  [ "$#" -eq 0 ] || shift
+  require_root
+  require_docker_runtime
+  cmd_docker_config_check
+  case "${sub}" in
+    clear-bootstrap-rate-limit)
+      docker_compose run --rm app node dist/scripts/manage/security.js \
+        clear-bootstrap-rate-limit "$@"
+      docker_compose restart app
+      log_ok "application restarted; the scoped rate-limit recovery is complete" ;;
+    *) die "usage: parako docker security clear-bootstrap-rate-limit [options]" ;;
   esac
 }
 
@@ -700,12 +729,16 @@ Usage:
 
 Commands:
   config init|check|path    Create or validate Docker bootstrap configuration
+  config set-url ...        Correct the public deployment URL atomically
   deploy                    Validate, migrate, and start the Docker deployment
   start|stop|restart|down    Manage Docker application services
   status|logs [options]     Inspect Docker services and logs
   health|diag                Check readiness or all Docker dependencies
   db status|migrate|baseline Manage the configured database schema
   admin bootstrap --email E  Create a first-admin activation URL
+  admin replace-pending ...  Correct the sole pending administrator (root only)
+  security clear-bootstrap-rate-limit ...
+                             Clear one bootstrap login bucket (root only)
   backup [options]           Create an encrypted database and runtime backup
   restore FILE [options]     Restore a compatible encrypted backup explicitly
   update --version vX.Y.Z    Verify, back up, migrate, and deploy an image
@@ -730,6 +763,7 @@ docker_operator_main() {
     diag) cmd_docker_diag "$@" ;;
     db) cmd_docker_db "$@" ;;
     admin) cmd_docker_admin "$@" ;;
+    security) cmd_docker_security "$@" ;;
     backup) cmd_docker_backup "$@" ;;
     restore) cmd_docker_restore "$@" ;;
     update) cmd_docker_update "$@" ;;

@@ -115,14 +115,19 @@ Parako.ID is infrastructure you control, not a black-box auth tenant. The applic
 Install the latest release on a Linux host:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER"
+rm -f "$PARAKO_INSTALLER"
 ```
 
 The installer places a verified self-contained release and installs the `parako` production operator. Docker operators can install the signed Compose bundle and immutable GHCR image instead:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
-  | sudo bash -s -- --docker
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER" --docker
+rm -f "$PARAKO_INSTALLER"
 ```
 
 A separate [commit-pinned Git distribution](./docs/installer-from-source.md) provides the native immutable layout for source-build environments. Follow the [quickstart](./docs/quickstart.md), [native deployment](./docs/deployment.md), or [Docker deployment](./docs/docker.md) runbook to configure dependencies, deploy, and create the first administrator.

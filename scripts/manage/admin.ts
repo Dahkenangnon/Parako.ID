@@ -13,6 +13,7 @@ import {
   resolveAdapterEnvironment,
 } from './database.js';
 import { isMainModule } from './shared/entrypoint.js';
+import { writeOperatorAudit } from './shared/operator-audit.js';
 import { getPackageInfo } from './shared/utils.js';
 
 export function hashActivationToken(token: string): string {
@@ -227,11 +228,12 @@ async function createMongoActivation(
   }
 }
 
-export async function createAdminActivation(
+function validateActivationInput(
   email: string,
   expiresMinutes: number
-): Promise<string> {
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+): string {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
     throw new Error('A valid administrator email is required.');
   }
   if (
@@ -241,6 +243,14 @@ export async function createAdminActivation(
   ) {
     throw new Error('Activation expiry must be between 5 and 1440 minutes.');
   }
+  return normalizedEmail;
+}
+
+export async function createAdminActivation(
+  email: string,
+  expiresMinutes: number
+): Promise<string> {
+  const normalizedEmail = validateActivationInput(email, expiresMinutes);
 
   const context = bootstrapContext();
   const { adapter, deploymentUrl } = context;
@@ -249,17 +259,198 @@ export async function createAdminActivation(
   const expiresAt = new Date(Date.now() + expiresMinutes * 60_000);
 
   if (adapter === 'mongodb') {
-    await createMongoActivation(email.toLowerCase(), tokenHash, expiresAt);
+    await createMongoActivation(normalizedEmail, tokenHash, expiresAt);
   } else {
     await createPrismaActivation(
       adapter,
-      email.toLowerCase(),
+      normalizedEmail,
       tokenHash,
       expiresAt,
       context
     );
   }
   return buildActivationUrl(deploymentUrl, token);
+}
+
+function selectPendingAdmin<T extends ExistingAdmin>(admins: T[]): T {
+  if (admins.some(admin => Boolean(admin.password))) {
+    throw new Error(
+      'An activated administrator already exists. Manage administrators in the admin panel.'
+    );
+  }
+  if (admins.length !== 1) {
+    throw new Error(
+      'Pending administrator replacement requires exactly one unactivated administrator.'
+    );
+  }
+  return admins[0]!;
+}
+
+async function replacePendingPrismaAdmin(
+  adapter: 'sqlite' | 'postgresql',
+  email: string,
+  tokenHash: string,
+  expiresAt: Date,
+  context: BootstrapContext
+): Promise<{ id: string; previousEmail: string }> {
+  const sqlitePath = context.env.DATABASE_URL?.replace(/^file:/, '');
+  const prisma = createPrismaClient({
+    deployment: {
+      environment: 'production',
+      server: { port: context.serverPort },
+    },
+    storage: {
+      adapter,
+      sqlite: adapter === 'sqlite' ? { path: sqlitePath! } : undefined,
+      postgresql:
+        adapter === 'postgresql'
+          ? { url: context.env.DATABASE_URL! }
+          : undefined,
+    },
+    multiTenancy: { enabled: false },
+  } as any) as any;
+
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, email: true, roles: true, password: true },
+    });
+    const admins = users.filter((user: any) =>
+      parseRoles(user.roles).some(role =>
+        ['admin', 'superadmin', 'platform_admin'].includes(role)
+      )
+    );
+    const pending = selectPendingAdmin(admins);
+    const duplicate = users.some(
+      (user: ExistingAdmin) =>
+        user.id !== pending.id && user.email?.toLowerCase() === email
+    );
+    if (duplicate) {
+      throw new Error('The replacement email is already assigned to a user.');
+    }
+    const result = await prisma.user.updateMany({
+      where: { id: pending.id, password: null },
+      data: {
+        email,
+        reset_password_token: tokenHash,
+        reset_password_expires: expiresAt,
+        updated_at: new Date(),
+      },
+    });
+    if (result.count !== 1) {
+      throw new Error(
+        'The pending administrator changed during replacement; no changes were applied.'
+      );
+    }
+    return {
+      id: String(pending.id),
+      previousEmail: pending.email ?? '',
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function replacePendingMongoAdmin(
+  email: string,
+  tokenHash: string,
+  expiresAt: Date
+): Promise<{ id: string; previousEmail: string }> {
+  const client = new MongoClient(process.env.STORAGE_MONGODB_URI!, {
+    serverSelectionTimeoutMS: 10_000,
+  });
+  try {
+    await client.connect();
+    const users = client.db().collection<ExistingAdmin>('users');
+    const admins = await users
+      .find({ roles: { $in: ['admin', 'superadmin', 'platform_admin'] } })
+      .limit(2)
+      .toArray();
+    const pending = selectPendingAdmin(admins);
+    const duplicate = await users.findOne({
+      email,
+      _id: { $ne: pending._id },
+    });
+    if (duplicate) {
+      throw new Error('The replacement email is already assigned to a user.');
+    }
+    const result = await users.updateOne(
+      { _id: pending._id, password: null },
+      {
+        $set: {
+          email,
+          reset_password_token: tokenHash,
+          reset_password_expires: expiresAt,
+          updated_at: new Date(),
+        },
+      }
+    );
+    if (result.matchedCount !== undefined && result.matchedCount !== 1) {
+      throw new Error(
+        'The pending administrator changed during replacement; no changes were applied.'
+      );
+    }
+    return {
+      id: String(pending._id),
+      previousEmail: pending.email ?? '',
+    };
+  } finally {
+    await client.close();
+  }
+}
+
+export async function replacePendingAdmin(
+  email: string,
+  reason: string,
+  expiresMinutes: number
+): Promise<string> {
+  const normalizedEmail = validateActivationInput(email, expiresMinutes);
+  const normalizedReason = reason.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  if (normalizedReason.length < 10 || normalizedReason.length > 500) {
+    throw new Error('The reason must be between 10 and 500 characters.');
+  }
+
+  const context = bootstrapContext();
+  await writeOperatorAudit(context.root, {
+    action: 'bootstrap_admin.replace_pending',
+    status: 'attempt',
+    reason: normalizedReason,
+    target: { newEmail: normalizedEmail },
+  });
+
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashActivationToken(token);
+    const expiresAt = new Date(Date.now() + expiresMinutes * 60_000);
+    const replaced =
+      context.adapter === 'mongodb'
+        ? await replacePendingMongoAdmin(normalizedEmail, tokenHash, expiresAt)
+        : await replacePendingPrismaAdmin(
+            context.adapter,
+            normalizedEmail,
+            tokenHash,
+            expiresAt,
+            context
+          );
+    await writeOperatorAudit(context.root, {
+      action: 'bootstrap_admin.replace_pending',
+      status: 'success',
+      reason: normalizedReason,
+      target: {
+        administratorId: replaced.id,
+        previousEmail: replaced.previousEmail,
+        newEmail: normalizedEmail,
+      },
+    });
+    return buildActivationUrl(context.deploymentUrl, token);
+  } catch (error) {
+    await writeOperatorAudit(context.root, {
+      action: 'bootstrap_admin.replace_pending',
+      status: 'failed',
+      reason: normalizedReason,
+      target: { newEmail: normalizedEmail },
+    });
+    throw error;
+  }
 }
 
 export function buildProgram(): Command {
@@ -286,6 +477,31 @@ export function buildProgram(): Command {
       console.log(url);
       console.log(
         'The URL expires automatically and is invalidated when the password is set.'
+      );
+    });
+  program
+    .command('replace-pending')
+    .description(
+      'Replace the sole unactivated single-tenant administrator and rotate its activation token'
+    )
+    .requiredOption('--email <address>', 'Correct administrator email')
+    .requiredOption('--reason <text>', 'Auditable reason for the correction')
+    .option(
+      '--expires-minutes <minutes>',
+      'Activation lifetime in minutes',
+      value => Number(value),
+      60
+    )
+    .action(async options => {
+      const url = await replacePendingAdmin(
+        options.email,
+        options.reason,
+        options.expiresMinutes
+      );
+      console.log('Replacement administrator activation URL:');
+      console.log(url);
+      console.log(
+        'The previous activation URL is invalid. This URL expires automatically and is invalidated when the password is set.'
       );
     });
   return program;

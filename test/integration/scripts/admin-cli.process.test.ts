@@ -1,6 +1,13 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -64,11 +71,62 @@ function runAdminBootstrap(
         DEPLOYMENT_SERVER_PORT: '9007',
         DEPLOYMENT_URL: 'https://id.example.test',
         PARAKO_ENV_FILE: join(temporaryRoot, 'missing.env'),
-        PARAKO_ROOT: repositoryRoot,
+        PARAKO_ROOT: temporaryRoot,
         ...environment,
       },
     }
   );
+}
+
+function runAdminReplacement(
+  temporaryRoot: string,
+  email: string,
+  reason: string,
+  environment: NodeJS.ProcessEnv,
+  expiresMinutes = 10
+) {
+  return spawnSync(
+    process.execPath,
+    [
+      adminEntrypoint,
+      'replace-pending',
+      '--email',
+      email,
+      '--reason',
+      reason,
+      '--expires-minutes',
+      String(expiresMinutes),
+    ],
+    {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        DEPLOYMENT_SERVER_PORT: '9007',
+        DEPLOYMENT_URL: 'https://id.example.test',
+        PARAKO_ENV_FILE: join(temporaryRoot, 'missing.env'),
+        PARAKO_ROOT: temporaryRoot,
+        ...environment,
+      },
+    }
+  );
+}
+
+function prepareTemporaryProjectRoot(temporaryRoot: string): void {
+  mkdirSync(join(temporaryRoot, 'prisma'));
+  writeFileSync(join(temporaryRoot, 'package.json'), '{}\n', { mode: 0o600 });
+}
+
+function readOperatorAudit(
+  temporaryRoot: string
+): Array<Record<string, unknown>> {
+  return readFileSync(
+    join(temporaryRoot, 'runtime', 'logs', 'operator-audit.jsonl'),
+    'utf8'
+  )
+    .trim()
+    .split('\n')
+    .map(line => JSON.parse(line));
 }
 
 function runSqliteAdminBootstrap(
@@ -104,6 +162,7 @@ describe.sequential('compiled administrator CLI with SQLite', () => {
     }
 
     temporaryRoot = mkdtempSync(join(tmpdir(), 'parako-admin-cli-sqlite-'));
+    prepareTemporaryProjectRoot(temporaryRoot);
     databasePath = join(temporaryRoot, 'parako.db');
     execFileSync(
       process.execPath,
@@ -134,6 +193,7 @@ describe.sequential('compiled administrator CLI with SQLite', () => {
 
   beforeEach(async () => {
     await prisma.user.deleteMany({});
+    rmSync(join(temporaryRoot, 'runtime'), { recursive: true, force: true });
   });
 
   it('issues a single-use activation and persists only its hash', async () => {
@@ -216,6 +276,46 @@ describe.sequential('compiled administrator CLI with SQLite', () => {
     );
   }, 60_000); // Two compiled CLI processes must complete under full-suite load.
 
+  it('replaces the sole pending administrator and records an auditable recovery', async () => {
+    const bootstrap = runSqliteAdminBootstrap(
+      databasePath,
+      temporaryRoot,
+      'wrong@example.test'
+    );
+    expect(bootstrap.status, bootstrap.stderr).toBe(0);
+
+    const reason = 'Correcting the email supplied during deployment';
+    const replacement = runAdminReplacement(
+      temporaryRoot,
+      'Correct@Example.test',
+      reason,
+      {
+        DATABASE_URL: `file:${databasePath}`,
+        STORAGE_ADAPTER: 'sqlite',
+        STORAGE_SQLITE_PATH: databasePath,
+      }
+    );
+
+    expect(replacement.status, replacement.stderr).toBe(0);
+    const activationUrl = replacement.stdout
+      .split('\n')
+      .find(line => line.startsWith('https://'));
+    const token = new URL(activationUrl!).searchParams.get('token')!;
+    const administrators = await prisma.user.findMany();
+    expect(administrators).toHaveLength(1);
+    expect(administrators[0]).toMatchObject({
+      email: 'correct@example.test',
+      password: null,
+      reset_password_token: createHash('sha256').update(token).digest('hex'),
+    });
+    const audit = readOperatorAudit(temporaryRoot);
+    expect(audit.map(entry => [entry.status, entry.reason])).toEqual([
+      ['attempt', reason],
+      ['success', reason],
+    ]);
+    expect(JSON.stringify(audit)).not.toContain(token);
+  }, 60_000);
+
   it('refuses to replace an activated administrator without leaking database details', async () => {
     await prisma.user.create({
       data: {
@@ -295,6 +395,7 @@ describe.sequential('compiled administrator CLI with MongoDB', () => {
     }
 
     temporaryRoot = mkdtempSync(join(tmpdir(), 'parako-admin-cli-mongodb-'));
+    prepareTemporaryProjectRoot(temporaryRoot);
     mongodb = await MongoMemoryServer.create();
     mongodbUri = mongodb.getUri('parako_admin_cli');
     client = new MongoClient(mongodbUri);
@@ -311,6 +412,7 @@ describe.sequential('compiled administrator CLI with MongoDB', () => {
 
   beforeEach(async () => {
     await client.db().collection('users').deleteMany({});
+    rmSync(join(temporaryRoot, 'runtime'), { recursive: true, force: true });
   });
 
   it('issues a single-use activation through a real MongoDB process boundary', async () => {
@@ -383,6 +485,47 @@ describe.sequential('compiled administrator CLI with MongoDB', () => {
       createHash('sha256').update(secondToken).digest('hex')
     );
   });
+
+  it('replaces the pending MongoDB administrator through the compiled recovery command', async () => {
+    const environment = {
+      DATABASE_URL: '',
+      STORAGE_ADAPTER: 'mongodb',
+      STORAGE_MONGODB_URI: mongodbUri,
+    };
+    const bootstrap = runAdminBootstrap(
+      temporaryRoot,
+      'wrong@example.test',
+      environment
+    );
+    expect(bootstrap.status, bootstrap.stderr).toBe(0);
+
+    const reason = 'Correcting the initial MongoDB administrator email';
+    const replacement = runAdminReplacement(
+      temporaryRoot,
+      'correct@example.test',
+      reason,
+      environment
+    );
+
+    expect(replacement.status, replacement.stderr).toBe(0);
+    const activationUrl = replacement.stdout
+      .split('\n')
+      .find(line => line.startsWith('https://'));
+    const token = new URL(activationUrl!).searchParams.get('token')!;
+    const administrators = await client
+      .db()
+      .collection('users')
+      .find({})
+      .toArray();
+    expect(administrators).toHaveLength(1);
+    expect(administrators[0]).toMatchObject({
+      email: 'correct@example.test',
+      reset_password_token: createHash('sha256').update(token).digest('hex'),
+    });
+    expect(readOperatorAudit(temporaryRoot).map(entry => entry.status)).toEqual(
+      ['attempt', 'success']
+    );
+  }, 60_000);
 
   it('refuses the single-tenant bootstrap command in multi-tenant mode', async () => {
     const result = runAdminBootstrap(temporaryRoot, 'admin@example.test', {

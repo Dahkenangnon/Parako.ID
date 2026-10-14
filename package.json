@@ -86,6 +86,7 @@
     "database": "node dist/scripts/manage/database.js",
     "diagnostics": "node dist/scripts/manage/diagnostics.js",
     "keys": "node dist/scripts/manage/keys.js",
+    "security": "node dist/scripts/manage/security.js",
     "systemd": "node -- dist/scripts/manage/systemd.js",
     "postinstall": "prisma generate --config=prisma.config.ts && prisma generate --config=prisma.config.pg.ts",
     "prepare": "husky",

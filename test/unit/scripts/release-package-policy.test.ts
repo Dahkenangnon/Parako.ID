@@ -22,6 +22,9 @@ describe('source package release policy', () => {
     );
     expect(packageJson.scripts).not.toHaveProperty('restart');
     expect(packageJson.scripts).not.toHaveProperty('prod:worker');
+    expect(packageJson.scripts.security).toBe(
+      'node dist/scripts/manage/security.js'
+    );
   });
 
   it('uses maintained, artifact-compatible production dependencies', () => {

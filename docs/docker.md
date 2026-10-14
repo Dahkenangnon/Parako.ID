@@ -63,8 +63,10 @@ Then install the signed Parako release metadata, Compose files, operator CLI,
 and bundled backup tools:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
-  | sudo bash -s -- --docker
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER" --docker
+rm -f "$PARAKO_INSTALLER"
 ```
 
 The installer verifies both the release archive and the GHCR image with
@@ -76,7 +78,7 @@ changes (the initial `curl` still downloads the installer):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
-  | sudo bash -s -- --docker --plan
+  | sudo bash -s -- --docker --plan --non-interactive --force
 ```
 
 ## Create a backup identity
@@ -168,6 +170,32 @@ sudo parako docker admin bootstrap --email admin@example.com
 dependencies, applies migrations, starts the app and worker, and requires
 `/readyz` to pass. Open the printed one-time administrator activation URL over
 the configured HTTPS origin.
+
+## Bootstrap recovery
+
+Docker deployments expose the same scoped recovery operations:
+
+```bash
+sudo parako docker config set-url \
+  --url https://correct-auth.example.com --yes
+sudo parako docker restart
+
+sudo parako docker admin replace-pending \
+  --email correct-admin@example.com \
+  --reason 'Corrected address entered during bootstrap'
+
+sudo parako docker security clear-bootstrap-rate-limit \
+  --ip 203.0.113.10 \
+  --email correct-admin@example.com \
+  --reason 'Bootstrap password retries exhausted the limiter' \
+  --yes
+```
+
+The administrator and limiter commands are root-only, single-tenant recovery
+paths and append a secret-free record to
+`runtime/logs/operator-audit.jsonl`. The limiter command deletes only the
+calculated Redis buckets and restarts the app container; it never scans or
+flushes the database.
 
 ## Routine operations
 
