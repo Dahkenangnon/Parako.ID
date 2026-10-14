@@ -67,6 +67,19 @@ describe('Keys CLI — index.ts exports', () => {
       expect(writeSpy).not.toHaveBeenCalled();
     });
 
+    it('propagates an unexpected first-boot file reservation error', async () => {
+      const permissionError = Object.assign(new Error('permission denied'), {
+        code: 'EACCES',
+      });
+      vi.mocked(fs.openSync).mockImplementationOnce(() => {
+        throw permissionError;
+      });
+
+      await expect(generateKeys()).rejects.toBe(permissionError);
+
+      expect(jose.generateKeyPair).not.toHaveBeenCalled();
+    });
+
     it('should generate keys and write jwks.json to runtime/jwks/', async () => {
       const writeSpy = vi
         .spyOn(fs, 'writeFileSync')
@@ -145,6 +158,69 @@ describe('Keys CLI — index.ts exports', () => {
       expect(fs.unlinkSync).toHaveBeenCalledWith(
         expect.stringContaining('runtime/jwks/jwks.json')
       );
+    });
+
+    it('preserves a generation failure when its reserved file is already absent', async () => {
+      vi.mocked(jose.generateKeyPair).mockRejectedValueOnce(
+        new Error('generation failed')
+      );
+      vi.mocked(fs.unlinkSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error('already absent'), { code: 'ENOENT' });
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys()).rejects.toThrow('generation failed');
+
+      expect(fs.closeSync).toHaveBeenCalledWith(23);
+    });
+
+    it('surfaces a failure to remove an incomplete reserved file', async () => {
+      vi.mocked(jose.generateKeyPair).mockRejectedValueOnce(
+        new Error('generation failed')
+      );
+      vi.mocked(fs.unlinkSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error('cleanup denied'), { code: 'EACCES' });
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys()).rejects.toThrow('cleanup denied');
+    });
+
+    it('closes and removes a temporary replacement after a write failure', async () => {
+      vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
+        throw new Error('write failed');
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys(false, true)).rejects.toThrow('write failed');
+
+      expect(fs.closeSync).toHaveBeenCalledWith(23);
+      expect(fs.unlinkSync).toHaveBeenCalledWith(
+        expect.stringContaining('runtime/jwks/jwks.json.tmp-')
+      );
+      expect(fs.renameSync).not.toHaveBeenCalled();
+    });
+
+    it('ignores an absent temporary file after atomic replacement', async () => {
+      vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+      vi.mocked(fs.unlinkSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error('already renamed'), { code: 'ENOENT' });
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys(false, true)).resolves.toBeUndefined();
+
+      expect(fs.renameSync).toHaveBeenCalledOnce();
+    });
+
+    it('surfaces an unexpected temporary-file cleanup failure', async () => {
+      vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+      vi.mocked(fs.unlinkSync).mockImplementationOnce(() => {
+        throw Object.assign(new Error('cleanup denied'), { code: 'EACCES' });
+      });
+      vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await expect(generateKeys(false, true)).rejects.toThrow('cleanup denied');
     });
   });
 

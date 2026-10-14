@@ -127,6 +127,11 @@ describe.sequential('compiled systemd CLI', () => {
     fakeRootModule = join(temporaryRoot, 'fake-root.mjs');
     commandLog = join(temporaryRoot, 'commands.jsonl');
     mkdirSync(fakeBin, { recursive: true });
+    writeFileSync(
+      join(temporaryRoot, 'package.json'),
+      '{"type":"commonjs"}\n',
+      'utf8'
+    );
     // Exercise the real privileged CLI path while delegating only to disposable
     // fake OS commands; no host systemd state is accessed or modified.
     writeFileSync(
