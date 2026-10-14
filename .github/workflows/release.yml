@@ -320,6 +320,9 @@ jobs:
     env:
       CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
       # gitleaks:allow -- deterministic non-production test encryption key.
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
@@ -375,6 +378,9 @@ jobs:
     env:
       CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
       # gitleaks:allow -- deterministic non-production test encryption key.
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
