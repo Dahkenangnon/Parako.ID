@@ -19,6 +19,8 @@ class SharedMockAgent extends MockAgent {
   constructor() {
     super();
     this.disableNetConnect();
+    // Social-provider fixtures share the temporary RP's loopback listener.
+    this.enableNetConnect('127.0.0.1:19010');
     this.get(BACKCHANNEL_ORIGIN)
       .intercept({ method: 'POST', path: BACKCHANNEL_PATH })
       .reply(204, async options => {

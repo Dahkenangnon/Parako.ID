@@ -248,10 +248,16 @@ load helpers
 }
 
 @test "parako.sh defines release, config, DB, backup, service, and health commands" {
-  for verb in cmd_version cmd_paths cmd_doctor cmd_update cmd_rollback cmd_gc cmd_config cmd_db cmd_backup cmd_restore cmd_service cmd_health cmd_diag cmd_deploy cmd_admin; do
+  for verb in cmd_version cmd_paths cmd_doctor cmd_update cmd_rollback cmd_gc cmd_config cmd_db cmd_backup cmd_restore cmd_service cmd_health cmd_diag cmd_deploy cmd_admin cmd_security; do
     grep -qE "^${verb}\\(\\)" "${PARAKO_SH}" \
       || { echo "missing ${verb} in parako.sh"; return 1; }
   done
+}
+
+@test "parako.sh exposes narrowly scoped bootstrap rate-limit recovery" {
+  grep -q 'run_bundled_cli security clear-bootstrap-rate-limit' "${PARAKO_SH}"
+  ! grep -qi 'flushdb' "${PARAKO_SH}"
+  ! grep -qi 'flushall' "${PARAKO_SH}"
 }
 
 @test "parako.sh keeps reverse proxy and TLS out of scope" {
@@ -264,6 +270,7 @@ load helpers
 
 @test "parako.sh exposes one-time administrator activation" {
   grep -q 'run_bundled_cli admin bootstrap' "${PARAKO_SH}"
+  grep -q 'run_bundled_cli admin replace-pending' "${PARAKO_SH}"
 }
 
 @test "parako.sh delegates update/rollback/gc through the recorded distribution mode" {

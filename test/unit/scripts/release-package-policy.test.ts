@@ -22,6 +22,9 @@ describe('source package release policy', () => {
     );
     expect(packageJson.scripts).not.toHaveProperty('restart');
     expect(packageJson.scripts).not.toHaveProperty('prod:worker');
+    expect(packageJson.scripts.security).toBe(
+      'node dist/scripts/manage/security.js'
+    );
   });
 
   it('uses maintained, artifact-compatible production dependencies', () => {
@@ -41,8 +44,18 @@ describe('source package release policy', () => {
       'utf8'
     );
 
-    expect(workspace).toContain("fast-uri: '>=3.1.5 <4'");
-    expect(workspace).toContain("ip-address: '>=10.3.1'");
+    for (const override of [
+      "'@parcel/watcher': '>=2.6.0 <3'",
+      "'@xhmikosr/decompress': '>=10.2.2 <11'",
+      "axios: '>=1.20.0 <2'",
+      "fast-uri: '>=3.1.8 <4'",
+      "ip-address: '>=10.7.1 <11'",
+      "piscina: '>=4.9.4 <5'",
+      "proxy-addr: '>=2.0.8 <3'",
+      "source-map-js: '>=1.2.2 <2'",
+    ]) {
+      expect(workspace).toContain(override);
+    }
     expect(workspace).not.toContain('ua-parser-js@2.0.10');
   });
 

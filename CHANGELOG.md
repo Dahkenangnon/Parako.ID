@@ -6,6 +6,21 @@ Release commits are prepared with `pnpm release <patch|minor|major> --no-push`, 
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-10-14
+
+### Features
+
+- add scoped bootstrap recovery ([3d8ea88](https://github.com/Dahkenangnon/Parako.ID/commit/3d8ea8810e1da05d9738893a7ff19a25dabb6614))
+
+### Bug Fixes
+
+- update vulnerable dependencies ([d35ab62](https://github.com/Dahkenangnon/Parako.ID/commit/d35ab62e92ac62850f38966562e299202b21c1cb))
+- improve installer text contrast ([79a20ca](https://github.com/Dahkenangnon/Parako.ID/commit/79a20ca88101d0e07db755d19bc97789ec2b88c0))
+- stabilize the browser matrix runtime ([35bc79b](https://github.com/Dahkenangnon/Parako.ID/commit/35bc79b6a2254d374be6c7ff0bbf015a75fbba66))
+- make auth recovery failures actionable ([c44e16c](https://github.com/Dahkenangnon/Parako.ID/commit/c44e16c5c3dbcb95ebdbc2185c1ef860e29e5695))
+- make sensitive file writes race-safe ([b7cb2bc](https://github.com/Dahkenangnon/Parako.ID/commit/b7cb2bc53999c538746b6d8c76a65cb3cf4a7370))
+- constrain dynamic controller fields ([3c6333e](https://github.com/Dahkenangnon/Parako.ID/commit/3c6333e1b9800930e5bf278f5ac45567c075bd54))
+
 ## [0.3.7] - 2026-08-20
 
 _No user-visible changes — see git history for the maintenance commits in this release._

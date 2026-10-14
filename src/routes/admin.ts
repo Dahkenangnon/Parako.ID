@@ -22,6 +22,7 @@ import {
   configUpdateLimiter,
   testEmailLimiter,
   revealSecretLimiter,
+  markInteractiveRateLimitRequest,
 } from '../utils/rate-limiter.js';
 import {
   validateHtmlBody,
@@ -67,6 +68,7 @@ export const adminRoutes = (
   platformTenantMiddleware?: PlatformTenantMiddleware
 ): Router => {
   const router = express.Router();
+  router.use(markInteractiveRateLimitRequest);
   const htmlDeps = { sessionManager, logger };
 
   const validateUserList = validateHtmlQuery(

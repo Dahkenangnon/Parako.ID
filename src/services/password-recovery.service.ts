@@ -3,6 +3,7 @@ import type {
   PasswordValidationResult,
 } from '../di/interfaces/user-service.interface.js';
 import type { IUser } from '../types/user.js';
+import { PasswordCompromisedError } from '../errors/password-compromised.error.js';
 
 export interface PasswordRecoveryDependencies {
   isValidEmailAddress(email: string): boolean;
@@ -34,6 +35,7 @@ export type ResetSubmissionResult =
   | { status: 'missing_token' }
   | { status: 'passwords_do_not_match'; token: string }
   | { status: 'invalid_password'; token: string; messages: string[] }
+  | { status: 'compromised_password'; token: string; message: string }
   | { status: 'success'; user: IUser };
 
 export type PasswordResetRequestResult =
@@ -114,7 +116,19 @@ export class PasswordRecoveryService {
       };
     }
 
-    const user = await this.dependencies.resetPassword(token, password);
+    let user: IUser;
+    try {
+      user = await this.dependencies.resetPassword(token, password);
+    } catch (error) {
+      if (error instanceof PasswordCompromisedError) {
+        return {
+          status: 'compromised_password',
+          token,
+          message: error.message,
+        };
+      }
+      throw error;
+    }
     this.dependencies.info('Password reset successfully', {
       username: user.username,
       id: user._id,

@@ -36,6 +36,7 @@ import { createPrecompressedStaticMiddleware } from './middlewares/precompressed
 import { setStaticAssetCacheHeaders } from './middlewares/static-cache-policy.js';
 import { isShuttingDown } from './utils/shutdown.js';
 import { createHtmlErrorHandler } from './middlewares/html-error-handler.middleware.js';
+import { requestExplicitlyAcceptsHtml } from './utils/rate-limiter.js';
 
 /**
  * Paths under which responses are served from the static public/ directory
@@ -66,6 +67,21 @@ const isUnauthenticatedStaticPath = (path: string): boolean => {
     if (path.startsWith(prefix)) return true;
   }
   return false;
+};
+
+const pathMatchesBase = (requestPath: string, base: string): boolean =>
+  requestPath === base || requestPath.startsWith(`${base}/`);
+
+const withoutLocalePrefix = (
+  requestPath: string,
+  availableLocales: readonly string[]
+): string => {
+  const [firstSegment] = requestPath.split('/').filter(Boolean);
+  if (!firstSegment || !availableLocales.includes(firstSegment)) {
+    return requestPath;
+  }
+  const stripped = requestPath.slice(firstSegment.length + 1);
+  return stripped || '/';
 };
 
 @injectable()
@@ -368,6 +384,34 @@ export class Application implements IApplication {
           ip: req.ip,
           path: req.originalUrl,
         });
+
+        const current = this.configManager.getConfig();
+        const retryAfterSeconds = rateLimitConfig.window_minutes * 60;
+        const interactiveBases = [
+          current.deployment.routes.auth,
+          current.deployment.routes.accounts,
+          '/admin',
+        ];
+        const interactivePath = withoutLocalePrefix(
+          req.path || req.originalUrl?.split('?')[0] || '/',
+          current.application?.locales?.available ?? []
+        );
+        const isInteractivePage =
+          requestExplicitlyAcceptsHtml(req) &&
+          interactiveBases.some(base => pathMatchesBase(interactivePath, base));
+
+        res.setHeader('Retry-After', String(retryAfterSeconds));
+        if (isInteractivePage) {
+          res
+            .status(options.statusCode)
+            .render(this.viewResolver.views.errors.rate_limit, {
+              title: 'Too Many Requests',
+              message:
+                options.message || 'Too many requests, please try again later.',
+              retryAfterSeconds,
+            });
+          return;
+        }
 
         res
           .status(options.statusCode)

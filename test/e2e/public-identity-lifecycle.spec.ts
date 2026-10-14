@@ -209,6 +209,49 @@ test.describe('public identity lifecycle', () => {
     await expect(page).toHaveURL(`${IDP_ORIGIN}/accounts/`);
   });
 
+  test('keeps a reset token usable after rejecting a breached password', async ({
+    page,
+    request,
+  }) => {
+    const user = await createManagedUser('breached-password-recovery');
+    const breachedPassword = 'E2E-Breached!9';
+    const safePassword = 'E2E-Recovered!9';
+    await resetCapturedMessages(request);
+
+    await page.goto(`${IDP_ORIGIN}/auth/forgot-password`);
+    await page.locator('#email').fill(user.email);
+    await page.getByRole('button', { name: /send reset link/i }).click();
+
+    const message = await waitForMessage(request, user.email);
+    const resetUrl = extractActionUrl(message, '/auth/reset-password');
+    await page.goto(resetUrl);
+
+    // Keep the reset token available after the server rejects the password.
+    await page.locator('#password').fill(breachedPassword);
+    await page.locator('#confirm-password').fill(breachedPassword);
+    await page.getByRole('button', { name: /^reset password$/i }).click();
+
+    await expect(page).toHaveURL(`${IDP_ORIGIN}/auth/reset-password`);
+    await expect(page.locator('input[name="token"]')).toHaveValue(
+      new URL(resetUrl).searchParams.get('token')!
+    );
+    const rejectionDialog = page.getByRole('dialog');
+    await expect(rejectionDialog).toContainText(/password was not changed/i);
+    await rejectionDialog.getByRole('button', { name: 'OK' }).click();
+
+    await page.locator('#password').fill(safePassword);
+    await page.locator('#confirm-password').fill(safePassword);
+    await page.getByRole('button', { name: /^reset password$/i }).click();
+
+    await expect(page).toHaveURL(`${IDP_ORIGIN}/auth/login`);
+    await expect(
+      page.getByText(/password has been reset successfully/i)
+    ).toBeVisible();
+
+    await login(page, user, safePassword);
+    await expect(page).toHaveURL(`${IDP_ORIGIN}/accounts/`);
+  });
+
   test('rejects delivered email-verification and password-reset links after their persisted expiry', async ({
     page,
     request,

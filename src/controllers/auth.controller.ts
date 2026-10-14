@@ -147,8 +147,9 @@ export class AuthController implements IAuthController {
       return;
     }
 
-    const remaining = { ...existing };
-    delete remaining[provider];
+    const remaining = Object.fromEntries(
+      Object.entries(existing).filter(([key]) => key !== provider)
+    ) as Partial<SocialRegisterData>;
 
     if (Object.keys(remaining).length === 0) {
       this.sessionManager.remove(req, 'socialRegister');
@@ -1537,6 +1538,13 @@ export class AuthController implements IAuthController {
           .error(
             `Password requirements not met: ${result.messages.join(', ')}`
           );
+        return this.renderPasswordResetForm(res, result.token);
+      }
+
+      if (result.status === 'compromised_password') {
+        this.sessionManager
+          .flash(req)
+          .error(`${result.message} Your password was not changed.`);
         return this.renderPasswordResetForm(res, result.token);
       }
 

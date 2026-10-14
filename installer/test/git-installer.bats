@@ -9,7 +9,9 @@ setup() {
   export INSTALL_DIR="${TEST_ROOT}/install"
   export FAKE_BIN="${TEST_ROOT}/bin"
   export PARAKO_GIT_BIN_DIR="${TEST_ROOT}/managed-bin"
-  mkdir -p "${FIXTURE_REPOSITORY}/installer" "${FIXTURE_REPOSITORY}/runtime" "${FAKE_BIN}"
+  export XDG_STATE_HOME="${TEST_ROOT}/state"
+  mkdir -p "${FIXTURE_REPOSITORY}/installer" "${FIXTURE_REPOSITORY}/runtime" \
+    "${FAKE_BIN}" "${XDG_STATE_HOME}"
 
   cp "${PARAKO_SH}" "${FIXTURE_REPOSITORY}/installer/parako.sh"
   cp "${GIT_INSTALLER_SH}" "${FIXTURE_REPOSITORY}/installer/install-git.sh"
@@ -41,6 +43,7 @@ SH
   git -C "${FIXTURE_REPOSITORY}" init -b main
   git -C "${FIXTURE_REPOSITORY}" config user.name "Parako CI"
   git -C "${FIXTURE_REPOSITORY}" config user.email "ci@parako.invalid"
+  git -C "${FIXTURE_REPOSITORY}" config commit.gpgsign false
   git -C "${FIXTURE_REPOSITORY}" add .
   git -C "${FIXTURE_REPOSITORY}" commit -m "fixture: initial"
   export FIRST_COMMIT

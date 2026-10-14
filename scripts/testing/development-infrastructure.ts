@@ -98,7 +98,12 @@ function appendMissingEnvironmentValues(
   existing: NodeJS.ProcessEnv,
   values: Record<string, string | undefined>
 ): void {
-  const contents = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  let contents = '';
+  try {
+    contents = readFileSync(path, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   const additions = Object.entries(values).filter(
     ([name, value]) => value !== undefined && existing[name] === undefined
   );

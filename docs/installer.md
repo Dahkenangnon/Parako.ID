@@ -30,14 +30,28 @@ before the first public use.
 ## Install
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER"
+rm -f "$PARAKO_INSTALLER"
 ```
 
 Pin a release when reproducibility matters:
 
 ```bash
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER" --version vX.Y.Z
+rm -f "$PARAKO_INSTALLER"
+```
+
+The download-first form keeps standard input attached to the terminal so the
+confirmation prompt can read your answer. A piped installer has no interactive
+input and fails immediately. Automation must opt in explicitly:
+
+```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
-  | sudo bash -s -- --version vX.Y.Z
+  | sudo bash -s -- --non-interactive --force
 ```
 
 The low-level installer only verifies, stages, and activates release files.

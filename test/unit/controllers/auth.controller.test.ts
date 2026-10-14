@@ -29,6 +29,7 @@ import { AuthController } from '../../../src/controllers/auth.controller.js';
 import { createAuthControllerOperationModules } from '../../../src/di/factories/controller-operations.factory.js';
 import { PhoneVerificationDeliveryError } from '../../../src/errors/phone-verification-delivery.error.js';
 import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
+import { PasswordCompromisedError } from '../../../src/errors/password-compromised.error.js';
 import type { IUser } from '../../../src/types/user.js';
 
 const user = (overrides: Record<string, unknown> = {}) => ({
@@ -2716,6 +2717,34 @@ describe('AuthController', () => {
         'auth/reset-password',
         expect.objectContaining({ token: 'reset-token' })
       );
+    });
+
+    it('keeps a valid reset token on the form after breach protection rejects the password', async () => {
+      const { authService, controller, flash } = makeHarness();
+      authService.resetPassword.mockRejectedValue(
+        new PasswordCompromisedError(42)
+      );
+      const res = response();
+
+      await controller.processResetPassword(
+        request({
+          body: {
+            token: 'reset-token',
+            password: 'breached-password',
+            'confirm-password': 'breached-password',
+          },
+        }),
+        res
+      );
+
+      expect(flash.error).toHaveBeenCalledWith(
+        expect.stringContaining('Your password was not changed')
+      );
+      expect(res.render).toHaveBeenCalledWith(
+        'auth/reset-password',
+        expect.objectContaining({ token: 'reset-token' })
+      );
+      expect(res.redirect).not.toHaveBeenCalled();
     });
 
     it('resets the password, revokes sessions, and sends a notification', async () => {

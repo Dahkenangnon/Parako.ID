@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Install Parako.ID — Your auth server. Self-hosted. Free.</title>
+    <title>Install Parako.ID: Your auth server. Self-hosted. Free.</title>
     <meta
       name="description"
-      content="Install Parako.ID with one command. Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 — zero per-user fees."
+      content="Install Parako.ID with one command. Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 with no per-user fees."
     />
     <meta
       property="og:title"
-      content="Install Parako.ID — Your auth server. Self-hosted. Free."
+      content="Install Parako.ID: Your auth server. Self-hosted. Free."
     />
     <meta
       property="og:description"
-      content="Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 — zero per-user fees. One command to install."
+      content="Self-hosted identity server with SSO, MFA, passkeys, and OAuth2 with no per-user fees. One command to install."
     />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://get.parako.id" />
@@ -33,7 +33,7 @@
         --border-default: #263044;
         --text-primary: #eceff4;
         --text-secondary: #8b95a8;
-        --text-muted: #5a6577;
+        --text-muted: #737f92;
         --accent: #47d4a0;
         --accent-dim: #2a8a64;
         --accent-glow: rgba(71, 212, 160, 0.12);
@@ -414,14 +414,18 @@
                 ><span class="kw">curl</span>
                 <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
                 <span class="str">https://get.parako.id</span>
-                <span class="op">|</span> <span class="kw">bash</span></span
+                <span class="fl">-o</span>
+                <span class="str">/tmp/parako-install.sh</span>
+                <span class="op">&amp;&amp;</span>
+                <span class="kw">sudo bash</span>
+                <span class="str">/tmp/parako-install.sh</span></span
               >
               <button
                 class="copy-btn"
                 onclick="
                   copy(
                     this,
-                    'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash'
+                    'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/parako-install.sh && sudo bash /tmp/parako-install.sh'
                   )
                 "
               >
@@ -430,7 +434,7 @@
             </div>
             <div class="cmd-row">
               <div style="flex: 1">
-                <div class="cmd-label"># or install a specific version</div>
+                <div class="cmd-label"># non-interactive one-line install</div>
                 <div
                   style="display: flex; align-items: flex-start; gap: 0.6rem"
                 >
@@ -439,17 +443,16 @@
                     ><span class="kw">curl</span>
                     <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
                     <span class="str">https://get.parako.id</span>
-                    <span class="op">|</span> <span class="kw">bash</span>
+                    <span class="op">|</span> <span class="kw">sudo bash</span>
                     <span class="fl">-s</span> <span class="op">--</span>
-                    <span class="fl">--version</span>
-                    <span class="str">vX.Y.Z</span></span
+                    <span class="fl">--non-interactive --force</span></span
                   >
                   <button
                     class="copy-btn"
                     onclick="
                       copy(
                         this,
-                        'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash -s -- --version vX.Y.Z'
+                        'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | sudo bash -s -- --non-interactive --force'
                       )
                     "
                   >
@@ -461,29 +464,20 @@
             <div class="cmd-row">
               <div style="flex: 1">
                 <div class="cmd-label">
-                  # in-place app-files update (operator owns DB / service
-                  restart)
+                  # update an installed release after verification
                 </div>
                 <div
                   style="display: flex; align-items: flex-start; gap: 0.6rem"
                 >
                   <span class="prompt">$</span>
                   <span class="cmd-code" id="cmd3"
-                    ><span class="kw">curl</span>
-                    <span class="fl">--proto '=https' --tlsv1.2 -fsSL</span>
-                    <span class="str">https://get.parako.id</span>
-                    <span class="op">|</span> <span class="kw">bash</span>
-                    <span class="fl">-s</span> <span class="op">--</span>
-                    <span class="fl">--update</span></span
+                    ><span class="kw">sudo parako update</span>
+                    <span class="fl">--version</span>
+                    <span class="str">vX.Y.Z</span></span
                   >
                   <button
                     class="copy-btn"
-                    onclick="
-                      copy(
-                        this,
-                        'curl --proto \'=https\' --tlsv1.2 -fsSL https://get.parako.id | bash -s -- --update'
-                      )
-                    "
+                    onclick="copy(this, 'sudo parako update --version vX.Y.Z')"
                   >
                     Copy
                   </button>

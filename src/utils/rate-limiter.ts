@@ -17,6 +17,7 @@ import rateLimit, {
 } from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import type { Request, Response } from 'express';
+import type { NextFunction } from 'express';
 import { Redis } from 'ioredis';
 import { buildRedisKey } from '../multi-tenancy/redis-key.js';
 import { HARDENING } from '../config/hardening-defaults.js';
@@ -28,6 +29,7 @@ const isDev = readEnvironmentVariable('NODE_ENV') !== 'production';
 let redisClient: Redis | null = null;
 let redisBasePrefix = 'parako';
 const staticLimiterRefreshers: Array<() => void> = [];
+const INTERACTIVE_RATE_LIMIT_LOCAL = 'interactiveRateLimitResponse';
 
 const refreshStaticLimiters = (): void => {
   staticLimiterRefreshers.forEach(refresh => refresh());
@@ -131,6 +133,20 @@ interface RateLimiterOptions {
   requestWasSuccessful?: (req: Request, res: Response) => boolean;
 }
 
+export const requestExplicitlyAcceptsHtml = (req: Request): boolean =>
+  /(?:^|,)\s*text\/html(?:\s*;|\s*,|\s*$)/i.test(
+    String(req.headers?.accept ?? '')
+  );
+
+export const markInteractiveRateLimitRequest = (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  res.locals[INTERACTIVE_RATE_LIMIT_LOCAL] = true;
+  next();
+};
+
 /**
  * Factory function to create rate limiters with dev/prod awareness
  */
@@ -166,10 +182,24 @@ function createLimiter(options: RateLimiterOptions): RateLimitRequestHandler {
     skipSuccessfulRequests,
     requestWasSuccessful,
     handler: (req, res, _next, opts) => {
+      const retryAfterSeconds = Math.ceil(windowMs / 1000);
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      if (
+        res.locals?.[INTERACTIVE_RATE_LIMIT_LOCAL] === true &&
+        requestExplicitlyAcceptsHtml(req)
+      ) {
+        res.status(429).render('error/rate-limit-inline', {
+          title: 'Too Many Requests',
+          message: opts.message,
+          retryAfterSeconds,
+        });
+        return;
+      }
+
       res.status(429).json({
         success: false,
         error: opts.message,
-        retryAfter: Math.ceil(windowMs / 1000),
+        retryAfter: retryAfterSeconds,
       });
     },
     store: redisClient

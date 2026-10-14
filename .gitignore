@@ -40,6 +40,7 @@ parako-id-v*.tar.gz
 parako-id-v*.zip
 SHA256SUMS
 ssl
+/.impeccable/hook.cache.json
 
 # -------------------------------
 # IDE settings

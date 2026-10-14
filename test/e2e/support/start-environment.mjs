@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import { Queue } from 'bullmq';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -105,6 +106,7 @@ const SOCIAL_CLIENT_SECRET = 'parako-browser-e2e-social-secret';
 const TEST_SECRET = '0123456789abcdef'.repeat(4);
 const BACKGROUND_JOBS_ENABLED =
   process.env.PARAKO_E2E_BACKGROUND_JOBS === 'true';
+const HIBP_APP_INTERCEPT_ENABLED = process.env.PARAKO_E2E_HIBP_APP === 'true';
 const WORKER_DRAIN_ENABLED = process.env.PARAKO_E2E_WORKER_DRAIN === 'true';
 const OPERATIONS_ENABLED = process.env.PARAKO_E2E_OPERATIONS === 'true';
 const TENANT_MANAGEMENT_API_SCOPES = Object.values(SCOPES)
@@ -734,6 +736,14 @@ function renderRp(session, logoutComplete) {
 async function startRp(fixtureStore, socialEnabled) {
   const app = express();
   app.disable('x-powered-by');
+  app.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: 10_000,
+      standardHeaders: false,
+      legacyHeaders: false,
+    })
+  );
 
   if (socialEnabled) {
     installFakeGitHubProvider(app, {
@@ -1954,7 +1964,8 @@ async function main() {
 
   const runtimeEnvironment = {
     ...process.env,
-    NODE_ENV: 'development',
+    // Run development behavior without locale watchers in this disposable runtime.
+    NODE_ENV: 'test',
     DEPLOYMENT_ENVIRONMENT: 'development',
     DEPLOYMENT_SERVER_PORT: '19007',
     DEPLOYMENT_URL: DEPLOYMENT_ORIGIN,
@@ -1999,6 +2010,9 @@ async function main() {
   parako = spawn(
     process.execPath,
     [
+      ...(HIBP_APP_INTERCEPT_ENABLED
+        ? ['--import', path.join(SUPPORT_DIR, 'mock-hibp.mjs')]
+        : []),
       '--import',
       path.join(SUPPORT_DIR, 'mock-oidc-outbound.mjs'),
       '--import',

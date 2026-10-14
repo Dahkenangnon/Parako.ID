@@ -7,10 +7,11 @@ order: 2
 
 `parako` is installed with a verified release. It operates the standard
 `/opt/parako-id` layout and uses only the runtime and tools bundled with that
-release. Set `PARAKO_INSTALL_DIR` when using a different installation path.
+release. Custom paths selected with `install.sh --dir` are recorded and
+discovered automatically. `PARAKO_INSTALL_DIR` remains an explicit override.
 
-Application and OIDC configuration is intentionally outside this CLI and stays
-in the admin panel. DNS, TLS, and reverse-proxy configuration are also external.
+Application and OIDC settings remain in the admin panel. DNS, TLS, and
+reverse-proxy configuration also remain outside the CLI.
 
 ## Command summary
 
@@ -20,9 +21,12 @@ in the admin panel. DNS, TLS, and reverse-proxy configuration are also external.
 | `parako paths`                                               | Show resolved release and runtime paths                   |
 | `parako config init ...`                                     | Create a bootstrap-only production `.env` and secrets     |
 | `parako config check\|path`                                  | Validate or locate the bootstrap environment              |
+| `parako config set-url --url URL --yes`                      | Correct the bootstrap public URL atomically               |
 | `parako db status\|migrate`                                  | Inspect or apply shipped database migrations              |
 | `parako db baseline --confirm-existing-schema`               | Adopt a matching schema previously created with `db push` |
 | `parako admin bootstrap --email EMAIL`                       | Issue a single-use first-admin activation URL             |
+| `parako admin replace-pending --email EMAIL --reason TEXT`   | Replace the sole pending administrator and rotate its URL |
+| `parako security clear-bootstrap-rate-limit ...`             | Clear only one bootstrap operator's Redis limiter buckets |
 | `parako backup-keygen FILE`                                  | Create an `age` identity and print its public recipient   |
 | `parako backup [--recipient AGE]`                            | Create an encrypted database/runtime backup               |
 | `parako restore FILE --identity FILE --yes`                  | Explicitly restore a compatible encrypted backup          |
@@ -82,6 +86,43 @@ This command is for single-tenant deployments. In multi-tenant mode, seed the
 initial `_platforms` administrator with `PARAKO_BOOTSTRAP_ADMIN_EMAIL` and
 `PARAKO_BOOTSTRAP_ADMIN_PASSWORD` before first startup, as documented in the
 [multi-tenancy guide](./multi-tenancy.md#bootstrap-admin).
+
+## Bootstrap recovery
+
+Correct a deployment origin without recreating secrets or data, then restart:
+
+```bash
+sudo parako config set-url --url https://correct-auth.example.com --yes
+sudo parako service restart
+sudo parako diag
+```
+
+If the only administrator is still unactivated and its email address is wrong,
+replace it explicitly. The old activation URL becomes invalid:
+
+```bash
+sudo parako admin replace-pending \
+  --email correct-admin@example.com \
+  --reason 'Corrected address entered during bootstrap'
+```
+
+The command refuses an activated administrator, multiple pending
+administrators, multi-tenant mode, or an email already used by another account.
+
+If failed bootstrap attempts exhaust the login limiter, clear only that
+operator's exact Redis keys and restart the in-memory limiter:
+
+```bash
+sudo parako security clear-bootstrap-rate-limit \
+  --ip 203.0.113.10 \
+  --email correct-admin@example.com \
+  --reason 'Bootstrap password retries exhausted the limiter' \
+  --yes
+```
+
+Both recovery commands require root. They append audit records without secrets
+to `runtime/logs/operator-audit.jsonl`, which uses mode `0600`. Never use
+`FLUSHDB` for rate-limit recovery.
 
 ## Backups and restores
 

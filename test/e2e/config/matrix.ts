@@ -30,6 +30,7 @@ const FEATURE_PROFILE_SPECS = [
   'admin-data-import.spec.ts',
   'admin-jwks-scheduler.spec.ts',
   'worker-graceful-shutdown.spec.ts',
+  'public-identity-lifecycle.spec.ts',
 ] as const;
 
 export const E2E_CELL_IDS = [
@@ -54,6 +55,7 @@ export const E2E_PROFILE_IDS = [
   'social-policy-restricted',
   'background-jobs',
   'worker-drain',
+  'identity-recovery',
   'operations',
   'webauthn',
 ] as const;
@@ -225,6 +227,17 @@ export const E2E_PROFILES: Record<E2eProfileId, E2eProfile> = {
       PARAKO_E2E_DRAIN_HIBP_PREFIX: 'ABCDE',
       PARAKO_E2E_DRAIN_HIBP_SUFFIX: 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF',
       PARAKO_E2E_DRAIN_HIBP_COUNT: '84',
+    },
+  },
+  'identity-recovery': {
+    id: 'identity-recovery',
+    testMatch: ['public-identity-lifecycle.spec.ts'],
+    environment: {
+      PARAKO_E2E_HIBP_APP: 'true',
+      // SHA1 range for the breached password submitted by the reset journey.
+      PARAKO_E2E_HIBP_PREFIX: '47051',
+      PARAKO_E2E_HIBP_SUFFIX: 'DB91A6069DD6D8E10A31FC4B48EB65C013F',
+      PARAKO_E2E_HIBP_COUNT: '42',
     },
   },
   operations: {

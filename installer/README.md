@@ -1,6 +1,10 @@
-# Parako.ID Installer (source)
+# Parako.ID installer source
 
-This directory is the source tree for the Parako.ID installer, published to `https://get.parako.id`. Operators do not clone this repo to install Parako.ID — they pipe the published script to bash (or download and run it offline).
+This directory contains the Parako.ID installer published at
+`https://get.parako.id`. Operators install Parako.ID from the published
+script rather than cloning this repository. For interactive use, download the
+script before running it so standard input remains attached to the terminal.
+Automation must pass `--non-interactive --force` explicitly.
 
 Authoritative end-user reference: [docs/installer.md](../docs/installer.md). Threat model and chain-of-trust: [docs/installer-security.md](../docs/installer-security.md). Reference nginx vhosts: [docs/reference/nginx-vhost-examples/](../docs/reference/nginx-vhost-examples/).
 
@@ -13,8 +17,9 @@ Authoritative end-user reference: [docs/installer.md](../docs/installer.md). Thr
 | `index.html` | Landing page at `get.parako.id`.                                                                                                          |
 | `test/`      | ShellCheck + Bats lint + multi-OS smoke matrix (Ubuntu 24.04/26.04 and Debian 12/13).                                                     |
 
-## Excluded from release tarballs
+## Files excluded from release tarballs
 
-`installer/install.sh` is never part of a release tarball. It lives in source for audit transparency and is published to `get.parako.id` independently. Release builds enforce this with both an allowlist staging step and an explicit denylist in [`scripts/release.sh`](../scripts/release.sh).
+`installer/install.sh` is never part of a release tarball. It lives in source for audit transparency and is published alongside each GitHub release. The signed release checksum manifest authenticates the installer and `index.html`; the private distribution workflow consumes those exact assets and atomically updates `get.parako.id`. Release builds enforce the tarball exclusion with both an allowlist staging step and an explicit denylist in [`scripts/release.sh`](../scripts/release.sh).
 
-`installer/parako.sh` IS shipped at `contrib/parako.sh` inside every release tarball, where the installer reads it to populate `/usr/local/bin/parako`.
+Every release tarball includes `installer/parako.sh` at `contrib/parako.sh`.
+The installer uses that file to create `/usr/local/bin/parako`.

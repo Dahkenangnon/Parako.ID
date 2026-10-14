@@ -72,7 +72,10 @@ operator-owned in both modes.
 Install the signed release:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER"
+rm -f "$PARAKO_INSTALLER"
 ```
 
 This installs the verified native release. Operators who require local source
@@ -81,8 +84,10 @@ For a signed Docker image with managed or external database and Redis choices,
 use:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id \
-  | sudo bash -s -- --docker
+PARAKO_INSTALLER=$(mktemp)
+curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o "$PARAKO_INSTALLER"
+sudo bash "$PARAKO_INSTALLER" --docker
+rm -f "$PARAKO_INSTALLER"
 ```
 
 Continue with the [Docker deployment runbook](docker.md); Docker lifecycle

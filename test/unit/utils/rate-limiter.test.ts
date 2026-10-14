@@ -212,6 +212,7 @@ describe('centralized rate limiter', () => {
     );
     const options = mocks.rateLimit.mock.calls[0]?.[0] as any;
     const response = {
+      setHeader: vi.fn(),
       status: vi.fn(),
       json: vi.fn(),
     };
@@ -222,11 +223,86 @@ describe('centralized rate limiter', () => {
     });
 
     expect(response.status).toHaveBeenCalledWith(429);
+    expect(response.setHeader).toHaveBeenCalledWith('Retry-After', '900');
     expect(response.json).toHaveBeenCalledWith({
       success: false,
       error: 'Configured limit reached',
       retryAfter: 900,
     });
+  });
+
+  it('renders the built-in throttle page only for marked HTML routes', async () => {
+    const rateLimiters = await loadRateLimiter('production');
+    rateLimiters.loginLimiter(
+      { ip: '203.0.113.10' } as Request,
+      { locals: {} } as Response,
+      vi.fn() as NextFunction
+    );
+    const options = mocks.rateLimit.mock.calls[0]?.[0] as any;
+    const response = {
+      locals: {},
+      setHeader: vi.fn(),
+      status: vi.fn(),
+      render: vi.fn(),
+      json: vi.fn(),
+    };
+    response.status.mockReturnValue(response);
+    rateLimiters.markInteractiveRateLimitRequest(
+      {} as Request,
+      response as unknown as Response,
+      vi.fn()
+    );
+
+    options.handler(
+      { headers: { accept: 'text/html,application/xhtml+xml' } },
+      response,
+      vi.fn(),
+      { message: 'Please wait' }
+    );
+
+    expect(response.render).toHaveBeenCalledWith('error/rate-limit-inline', {
+      message: 'Please wait',
+      retryAfterSeconds: 900,
+      title: 'Too Many Requests',
+    });
+    expect(response.json).not.toHaveBeenCalled();
+  });
+
+  it('keeps marked API-style requests on the JSON throttle contract', async () => {
+    const rateLimiters = await loadRateLimiter('production');
+    rateLimiters.loginLimiter(
+      { ip: '203.0.113.10' } as Request,
+      { locals: {} } as Response,
+      vi.fn() as NextFunction
+    );
+    const options = mocks.rateLimit.mock.calls[0]?.[0] as any;
+    const response = {
+      locals: {},
+      setHeader: vi.fn(),
+      status: vi.fn(),
+      render: vi.fn(),
+      json: vi.fn(),
+    };
+    response.status.mockReturnValue(response);
+    rateLimiters.markInteractiveRateLimitRequest(
+      {} as Request,
+      response as unknown as Response,
+      vi.fn()
+    );
+
+    options.handler(
+      { headers: { accept: 'application/json' } },
+      response,
+      vi.fn(),
+      { message: 'Please wait' }
+    );
+
+    expect(response.json).toHaveBeenCalledWith({
+      success: false,
+      error: 'Please wait',
+      retryAfter: 900,
+    });
+    expect(response.render).not.toHaveBeenCalled();
   });
 
   it('creates a relaxed global limiter in development', async () => {

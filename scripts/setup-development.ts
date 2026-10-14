@@ -119,21 +119,26 @@ export function generateDevelopmentEnvironmentFile(
 ): 'runtime/.env' {
   const relativePath = 'runtime/.env';
   const environmentPath = resolve(root, relativePath);
-  if (existsSync(environmentPath)) {
-    throw new Error(`${relativePath} already exists; refusing to overwrite it`);
-  }
-
   mkdirSync(dirname(environmentPath), { recursive: true });
   const template = readFileSync(resolve(root, '.env.example'), 'utf8');
-  writeFileSync(
-    environmentPath,
-    renderDevelopmentEnvironment(template, randomSecret),
-    {
-      encoding: 'utf8',
-      flag: 'wx',
-      mode: 0o600,
+  try {
+    writeFileSync(
+      environmentPath,
+      renderDevelopmentEnvironment(template, randomSecret),
+      {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+      }
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(
+        `${relativePath} already exists; refusing to overwrite it`
+      );
     }
-  );
+    throw error;
+  }
   return relativePath;
 }
 

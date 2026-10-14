@@ -3206,9 +3206,32 @@ export class AccountsController implements IAccountController {
         methods: updatedMethods,
       };
 
-      const recoveryWithoutDisabledMethod = { ...updatedRecovery };
-      delete recoveryWithoutDisabledMethod[method];
-      updatedRecovery = recoveryWithoutDisabledMethod;
+      switch (method) {
+        case 'backup_codes': {
+          const remaining = { ...updatedRecovery };
+          delete remaining.backup_codes;
+          updatedRecovery = remaining;
+          break;
+        }
+        case 'secondary_email': {
+          const remaining = { ...updatedRecovery };
+          delete remaining.secondary_email;
+          updatedRecovery = remaining;
+          break;
+        }
+        case 'sms': {
+          const remaining = { ...updatedRecovery };
+          delete remaining.sms;
+          updatedRecovery = remaining;
+          break;
+        }
+        case 'security_questions': {
+          const remaining = { ...updatedRecovery };
+          delete remaining.security_questions;
+          updatedRecovery = remaining;
+          break;
+        }
+      }
 
       if (updatedMethods.length === 0) {
         updatedRecovery = {

@@ -31,12 +31,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out complete Git history
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -68,10 +68,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -98,10 +98,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -147,10 +147,10 @@ jobs:
             script: typecheck:e2e
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -174,10 +174,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -201,10 +201,10 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -232,10 +232,10 @@ jobs:
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -273,10 +273,10 @@ jobs:
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -320,14 +320,17 @@ jobs:
     env:
       CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
       # gitleaks:allow -- deterministic non-production test encryption key.
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -375,14 +378,17 @@ jobs:
     env:
       CONTRACT_MONGODB_URI: mongodb://127.0.0.1:27017/parako_config_integration
       TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_DATABASE: 0
       # gitleaks:allow -- deterministic non-production test encryption key.
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -446,12 +452,12 @@ jobs:
       ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -478,10 +484,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -545,10 +551,10 @@ jobs:
       PARAKO_E2E_PROFILE: self-starting
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -622,6 +628,7 @@ jobs:
           - social-policy-restricted
           - background-jobs
           - worker-drain
+          - identity-recovery
           - operations
           - webauthn
     services:
@@ -654,10 +661,10 @@ jobs:
       PARAKO_E2E_POSTGRESQL_URL: postgresql://parako:parako@127.0.0.1:5432/parako_e2e
     steps:
       - name: Check out repository source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up pnpm 11.4.0
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -725,12 +732,12 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
           version: 11.4.0
 
@@ -831,7 +838,7 @@ jobs:
       image: ${{ steps.sign.outputs.reference }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve release image
         id: image
@@ -854,7 +861,7 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
         with:
           platforms: arm64
 
@@ -862,7 +869,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -924,7 +931,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -951,6 +958,7 @@ jobs:
           set -euo pipefail
           cp ../installer/install.sh ./install.sh
           cp ../installer/install-git.sh ./install-git.sh
+          cp ../installer/index.html ./index.html
           shopt -s nullglob
           for ARCH in x64 arm64; do
             ARCHIVES=(parako-id-v*-linux-"$ARCH".tar.gz)
@@ -960,7 +968,7 @@ jobs:
             tar -xOf "$ARCHIVE" parako-id-release/release-manifest.json > "release-manifest-linux-$ARCH.json"
           done
           sha256sum parako-id-v*.tar.gz parako-id-v*.zip \
-            install.sh install-git.sh SBOM-linux-*.spdx.json \
+            install.sh install-git.sh index.html SBOM-linux-*.spdx.json \
             release-manifest-linux-*.json | sort -k2 > SHA256SUMS
           test "$(grep -c 'SBOM-linux-' SHA256SUMS)" -eq 2
           test "$(grep -c 'release-manifest-linux-' SHA256SUMS)" -eq 2
@@ -1078,5 +1086,34 @@ jobs:
             release-assets/install-git.sh
             release-assets/install-git.sh.sig
             release-assets/install-git.sh.pem
+            release-assets/index.html
             release-assets/SBOM-linux-*.spdx.json
             release-assets/release-manifest-linux-*.json
+
+  # After publication, ask the private distribution repository to verify and
+  # deploy the signed assets.
+  distribution-notify:
+    name: 'Distribution: request verified get.parako.id deployment'
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch the immutable release to the distribution repository
+        env:
+          GH_TOKEN: ${{ secrets.GET_PARAKO_ID_DISPATCH_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || {
+            echo "::error::GET_PARAKO_ID_DISPATCH_TOKEN is not configured"
+            exit 1
+          }
+          gh api --method POST \
+            repos/Dahkenangnon/get.Parako.ID/dispatches \
+            --raw-field event_type=parako-release-published \
+            --raw-field "client_payload[tag]=$RELEASE_TAG" \
+            --raw-field "client_payload[source_sha]=$SOURCE_SHA"

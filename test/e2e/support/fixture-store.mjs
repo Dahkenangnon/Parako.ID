@@ -431,8 +431,8 @@ export class MongoFixtureStore {
       try {
         await restore();
       } catch (error) {
-        // A queued audit write can recreate the collection between drop and
-        // rename. Discard that disposable shell and restore the fixture once.
+        // A queued audit write may recreate the collection after the drop.
+        // Remove the empty replacement, then restore the fixture once.
         if (error?.code !== 48) throw error;
         await this.database.collection('activities').drop();
         await restore();
@@ -448,16 +448,26 @@ export class MongoFixtureStore {
     // MongoDB treats a missing collection as an empty collection. A temporary
     // view whose pipeline fails is therefore required to exercise the real
     // repository failure path while preserving all disposable fixture data.
-    await this.database.createCollection('activities', {
-      viewOn: 'activities_unavailable',
-      pipeline: [
-        {
-          $match: {
-            $expr: { $eq: [{ $divide: [1, 0] }, 0] },
+    const createFailureView = () =>
+      this.database.createCollection('activities', {
+        viewOn: 'activities_unavailable',
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: [{ $divide: [1, 0] }, 0] },
+            },
           },
-        },
-      ],
-    });
+        ],
+      });
+    try {
+      await createFailureView();
+    } catch (error) {
+      // A queued audit write may recreate the collection after the rename.
+      // Drop the empty collection, then retry the view once.
+      if (error?.code !== 48) throw error;
+      await this.database.collection('activities').drop();
+      await createFailureView();
+    }
     return true;
   }
 }

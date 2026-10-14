@@ -102,12 +102,14 @@ if [ "$(id -u 2>/dev/null || printf '1000')" = "0" ]; then
   readonly DEFAULT_LOG_DIR="/var/log"
   readonly DEFAULT_LOCK_DIR="/var/lock"
   readonly DEFAULT_BIN_DIR="/usr/local/bin"
+  readonly INSTALL_REGISTRY_FILE="/etc/parako/install-dir"
   readonly RUNNING_AS_ROOT=1
 else
   readonly DEFAULT_INSTALL_DIR="${PWD}/parako-id"
   readonly DEFAULT_LOG_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/parako"
   readonly DEFAULT_LOCK_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache/parako}"
   readonly DEFAULT_BIN_DIR="${HOME}/.local/bin"
+  readonly INSTALL_REGISTRY_FILE="${XDG_STATE_HOME:-${HOME}/.local/state}/parako/install-dir"
   readonly RUNNING_AS_ROOT=0
 fi
 
@@ -239,14 +241,11 @@ prompt_yn_timeout() {
   if [ "${default}" = "yes" ]; then hint="Y/n"; else hint="y/N"; fi
   printf '  %s%s%s [%s%s%s] (%ds timeout): ' \
     "${C_CYAN}" "${text}" "${C_RESET}" "${C_DIM}" "${hint}" "${C_RESET}" "${secs}"
-  # When invoked via `curl ... | bash`, stdin is the pipe (no keyboard input)
-  # and read times out instantly. Fall back to the controlling /dev/tty so the
-  # prompt still works in that idiom.
-  if [ ! -t 0 ] && [ -r /dev/tty ]; then
-    IFS= read -r -t "${secs}" answer < /dev/tty || rc=$?
-  else
-    IFS= read -r -t "${secs}" answer || rc=$?
+  if [ ! -t 0 ]; then
+    printf '\n'
+    die "interactive confirmation is unavailable when the installer is piped; re-run with --non-interactive --force, or download install.sh and execute it from a terminal"
   fi
+  IFS= read -r -t "${secs}" answer || rc=$?
   if [ "${rc}" -ne 0 ]; then
     printf '\n'
     log_warn "no response within ${secs}s; aborting"
@@ -280,8 +279,12 @@ Parako.ID installer v${INSTALLER_VERSION}
   TLS, and application/OIDC settings remain OPERATOR responsibilities.
 
 Common workflows:
-  Fresh install (system-wide)
-    curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash
+  Fresh install (system-wide, unattended)
+    curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id | sudo bash -s -- --non-interactive --force
+
+  Fresh install (interactive)
+    curl --proto '=https' --tlsv1.2 -fsSL https://get.parako.id -o /tmp/parako-install.sh
+    sudo bash /tmp/parako-install.sh
 
   Update to latest stable
     parako update          # or: install.sh --update
@@ -850,8 +853,7 @@ beginning_ritual() {
   printf '\n'
 
   if [ "${FLAG_NON_INTERACTIVE}" -eq 1 ] && [ "${FLAG_FORCE}" -eq 1 ]; then
-    log_info "non-interactive mode; proceeding in 5 seconds (Ctrl+C to abort)"
-    sleep 5
+    log_info "non-interactive mode; explicit --force accepted"
     return 0
   fi
   if [ "${FLAG_FORCE}" -eq 1 ]; then return 0; fi
@@ -887,10 +889,40 @@ write_parako_state() {
   mv -f "${state_tmp}" "${state_file}"
 }
 
+register_install_dir() {
+  local registry_dir temporary
+  registry_dir=$(dirname "${INSTALL_REGISTRY_FILE}")
+  mkdir -p "${registry_dir}" || die "could not create install registry directory: ${registry_dir}"
+  temporary=$(mktemp "${INSTALL_REGISTRY_FILE}.tmp.XXXXXXXX") \
+    || die "could not create temporary install registry"
+  printf '%s\n' "${RESOLVED_INSTALL_DIR}" >"${temporary}"
+  if [ "${RUNNING_AS_ROOT}" -eq 1 ]; then
+    chmod 0644 "${temporary}"
+    chown root:root "${temporary}"
+  else
+    chmod 0600 "${temporary}"
+  fi
+  mv -f "${temporary}" "${INSTALL_REGISTRY_FILE}"
+  log_ok "registered install directory at ${INSTALL_REGISTRY_FILE}"
+}
+
+unregister_install_dir() {
+  local registered=""
+  [ -f "${INSTALL_REGISTRY_FILE}" ] && [ ! -L "${INSTALL_REGISTRY_FILE}" ] || return 0
+  IFS= read -r registered <"${INSTALL_REGISTRY_FILE}" || true
+  [ "${registered}" = "${RESOLVED_INSTALL_DIR}" ] || return 0
+  rm -f "${INSTALL_REGISTRY_FILE}"
+  rmdir "$(dirname "${INSTALL_REGISTRY_FILE}")" 2>/dev/null || true
+}
+
 read_state_field() {
-  local field=$1 file="${RESOLVED_INSTALL_DIR}/.parako-state"
+  local field=$1 file="${RESOLVED_INSTALL_DIR}/.parako-state" matches count
   [ -r "${file}" ] || return 1
-  grep -E "^${field}=" "${file}" | head -n1 | cut -d= -f2-
+  matches=$(grep -E "^${field}=" "${file}" 2>/dev/null || true)
+  [ -n "${matches}" ] || return 1
+  count=$(printf '%s\n' "${matches}" | wc -l)
+  [ "${count}" -eq 1 ] || die "duplicate ${field} entries in ${file}"
+  printf '%s' "${matches#*=}"
 }
 
 # -----------------------------------------------------------------------------
@@ -1212,6 +1244,7 @@ install_main() {
 
   install_parako_binary
   write_parako_state "${TAG}" "${previous_version}" "${PARAKO_BIN_RESOLVED:-}"
+  register_install_dir
 
   print_next_steps_card "${TAG}" "${previous_version}"
 }
@@ -1520,6 +1553,7 @@ uninstall_main() {
     log_ok "removed releases/"
   fi
   rm -f "${RESOLVED_INSTALL_DIR}/.parako-state"
+  unregister_install_dir
   # Lock file is still held; the EXIT trap closes FD 9; remove the file last.
 
   if [ "${FLAG_PURGE}" -eq 1 ] && [ -d "${rt}" ]; then
@@ -1547,7 +1581,7 @@ uninstall_main() {
     print_label "Runtime"   "${rt}  (preserved)"
   fi
   printf '\n'
-  printf '  To reinstall: curl --proto =https --tlsv1.2 -fsSL https://get.parako.id | bash\n\n'
+  printf '  To reinstall interactively: download install.sh, then execute it from a terminal.\n\n'
 }
 
 # -----------------------------------------------------------------------------
@@ -1572,9 +1606,10 @@ resolve_verified_docker_image() {
   local version=$1 repository="ghcr.io/dahkenangnon/parako-id" tag digest
   tag="${repository}:${version}"
   ensure_cosign
-  docker pull "${tag}"
+  docker pull "${tag}" >&2
   digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "${tag}")
-  case "${digest}" in "${repository}"@sha256:*) ;; *) die "image did not resolve to the expected repository digest" ;; esac
+  [[ "${digest}" =~ ^ghcr\.io/dahkenangnon/parako-id@sha256:[a-f0-9]{64}$ ]] \
+    || die "image did not resolve to a valid expected repository digest"
   cosign verify \
     --certificate-identity-regexp "${COSIGN_CERT_IDENTITY_REGEX}" \
     --certificate-oidc-issuer "${COSIGN_OIDC_ISSUER}" \
@@ -1585,6 +1620,8 @@ resolve_verified_docker_image() {
 
 write_docker_install_state() {
   local version=$1 image=$2 bin_path=$3 state_file state_tmp
+  [[ "${image}" =~ ^ghcr\.io/dahkenangnon/parako-id@sha256:[a-f0-9]{64}$ ]] \
+    || die "refusing to persist an invalid Docker image reference"
   state_file="${RESOLVED_INSTALL_DIR}/.parako-state"
   state_tmp="${state_file}.tmp.$$"
   {
@@ -1657,6 +1694,7 @@ docker_install_main() {
   cp -a "${extracted}/tools/age" "${RESOLVED_INSTALL_DIR}/docker/tools/age"
   docker_install_operator_binary "${extracted}/contrib/parako.sh"
   write_docker_install_state "${version}" "${image}" "${PARAKO_BIN_RESOLVED}"
+  register_install_dir
 
   print_header "Parako.ID Docker operator installed"
   print_label "Verified image" "${image}"
@@ -1728,4 +1766,6 @@ main() {
   install_main "install"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

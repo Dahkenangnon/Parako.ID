@@ -30,6 +30,12 @@ function parakoRuntimeArguments(backchannelCaptureUrl) {
   ];
 }
 
+function e2eNodeEnvironment(deploymentEnvironment) {
+  return deploymentEnvironment === 'development'
+    ? 'test'
+    : deploymentEnvironment;
+}
+
 // gitleaks:allow -- deterministic local E2E runtime secret.
 const TEST_SECRET = '0123456789abcdef'.repeat(4);
 export const TEST_COOKIE_SECRET = `cookie-one-${TEST_SECRET}`;
@@ -378,7 +384,8 @@ export async function startParakoInstance({
       cwd: runtimeRoot,
       env: {
         ...process.env,
-        NODE_ENV: environment,
+        // Disable file watching during browser tests to stay below host inotify limits.
+        NODE_ENV: e2eNodeEnvironment(environment),
         DEPLOYMENT_ENVIRONMENT: environment,
         DEPLOYMENT_SERVER_PORT: String(port),
         DEPLOYMENT_URL: origin,
@@ -523,7 +530,7 @@ export async function startPostgresqlParakoInstance({
         cwd: runtimeRoot,
         env: {
           ...process.env,
-          NODE_ENV: 'development',
+          NODE_ENV: 'test',
           DEPLOYMENT_ENVIRONMENT: 'development',
           DEPLOYMENT_SERVER_PORT: String(port),
           DEPLOYMENT_URL: deploymentOrigin,
@@ -735,7 +742,7 @@ async function startMongoParakoInstance({
       cwd: runtimeRoot,
       env: {
         ...process.env,
-        NODE_ENV: 'development',
+        NODE_ENV: 'test',
         DEPLOYMENT_ENVIRONMENT: 'development',
         DEPLOYMENT_SERVER_PORT: String(port),
         DEPLOYMENT_URL: deploymentOrigin,
