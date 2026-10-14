@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PasswordRecoveryService } from '../../../src/services/password-recovery.service.js';
+import { PasswordCompromisedError } from '../../../src/errors/password-compromised.error.js';
 import type { IUser } from '../../../src/types/user.js';
 
 const user = {
@@ -122,6 +123,27 @@ describe('PasswordRecoveryService', () => {
       messages: ['Use 12 characters', 'Use a number'],
     });
     expect(dependencies.resetPassword).not.toHaveBeenCalled();
+  });
+
+  it('keeps the reset token available when breach protection rejects the password', async () => {
+    dependencies.resetPassword.mockRejectedValue(
+      new PasswordCompromisedError(42)
+    );
+
+    await expect(
+      service.submitReset({
+        token: 'reset-token',
+        password: 'breached-password',
+        'confirm-password': 'breached-password',
+      })
+    ).resolves.toEqual({
+      status: 'compromised_password',
+      token: 'reset-token',
+      message:
+        'This password has appeared in 42 known data breaches and cannot be used. Please choose a different password.',
+    });
+    expect(dependencies.revokeSessions).not.toHaveBeenCalled();
+    expect(dependencies.sendResetNotification).not.toHaveBeenCalled();
   });
 
   it('changes the password before revoking sessions and sending notification', async () => {

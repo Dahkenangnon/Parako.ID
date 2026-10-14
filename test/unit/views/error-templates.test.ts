@@ -48,6 +48,22 @@ describe('built-in error templates', () => {
     expect(html).not.toMatch(/\son\w+=/);
   });
 
+  it('renders a self-contained rate-limit page with recovery metadata', () => {
+    const html = environment.render('error/rate-limit-inline.njk', {
+      message: 'Please wait before retrying.',
+      retryAfterSeconds: 90,
+      title: 'Too Many Requests',
+    });
+
+    expect(html).toContain('>429<');
+    expect(html).toContain('Please wait before retrying.');
+    expect(html).toContain('data-rate-limit-countdown="90"');
+    expect(html).toMatch(/\/css\/styles(?:-[A-Za-z0-9]+)?\.css/);
+    expect(html).toMatch(/\/js\/error-page(?:-[A-Za-z0-9]+)?\.js/);
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toMatch(/\son\w+=/);
+  });
+
   it.each([
     ['error/403.njk', 'back'],
     ['error/500.njk', 'reload'],

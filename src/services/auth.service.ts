@@ -26,6 +26,7 @@ import { createBackgroundTaskQueue } from '../jobs/domains/background-tasks/queu
 import { tenantContext } from '../multi-tenancy/tenant-context.js';
 import { PhoneVerificationRequiredError } from '../errors/phone-verification-required.error.js';
 import { PhoneVerificationDeliveryError } from '../errors/phone-verification-delivery.error.js';
+import { PasswordCompromisedError } from '../errors/password-compromised.error.js';
 import { isRoleAvailableForTenant } from '../multi-tenancy/platform-roles.js';
 
 interface RegistrationProfile {
@@ -72,13 +73,10 @@ export class AuthService implements IAuthService {
 
       const result = await checkPasswordBreach(password, pbd.api_timeout_ms);
       if (result.breached && result.count >= (pbd.min_breach_count ?? 1)) {
-        throw new Error(
-          `This password has appeared in ${result.count} known data breaches and cannot be used. Please choose a different password.`
-        );
+        throw new PasswordCompromisedError(result.count);
       }
     } catch (error) {
-      // Re-throw breach errors, swallow API/network failures
-      if ((error as Error).message?.includes('data breaches')) {
+      if (error instanceof PasswordCompromisedError) {
         throw error;
       }
       this.logger.warn('Password breach check failed (allowing password)', {

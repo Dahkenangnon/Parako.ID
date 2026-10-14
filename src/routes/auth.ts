@@ -19,6 +19,7 @@ import {
   socialLoginLimiter,
   recoveryLimiter,
   forgotPasswordLimiter,
+  markInteractiveRateLimitRequest,
 } from '../utils/rate-limiter.js';
 import { rootLogger } from '../observability/logs/logger.js';
 import {
@@ -45,6 +46,7 @@ export const authRoutes = (
   logger: ILogger
 ): Router => {
   const router = express.Router();
+  router.use(markInteractiveRateLimitRequest);
   const config = configManager.getConfig();
   const routes = config.deployment.routes.auth_routes;
   const htmlDeps = { sessionManager, logger };

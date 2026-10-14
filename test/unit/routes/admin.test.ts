@@ -18,6 +18,11 @@ const rateLimiterMocks = vi.hoisted(() => {
 
   return {
     configUpdateLimiter: trace('rate:config-update'),
+    markInteractiveRateLimitRequest: (
+      _req: Request,
+      _res: Response,
+      next: NextFunction
+    ) => next(),
     revealSecretLimiter: trace('rate:reveal-secret'),
     testEmailLimiter: trace('rate:test-email'),
   };

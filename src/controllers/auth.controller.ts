@@ -1541,6 +1541,13 @@ export class AuthController implements IAuthController {
         return this.renderPasswordResetForm(res, result.token);
       }
 
+      if (result.status === 'compromised_password') {
+        this.sessionManager
+          .flash(req)
+          .error(`${result.message} Your password was not changed.`);
+        return this.renderPasswordResetForm(res, result.token);
+      }
+
       activityLoggerFor(this.activityLoggerDeps, req).success(
         'password_reset_success',
         result.user,

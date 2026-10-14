@@ -15,6 +15,9 @@ const rateLimiterMocks = vi.hoisted(() => ({
       next();
     }
   ),
+  markInteractiveRateLimitRequest: vi.fn(
+    (_req: Request, _res: Response, next: NextFunction) => next()
+  ),
 }));
 
 vi.mock('../../../src/utils/rate-limiter.js', () => rateLimiterMocks);

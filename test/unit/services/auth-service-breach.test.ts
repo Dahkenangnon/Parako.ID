@@ -12,6 +12,7 @@ vi.mock('../../../src/jobs/domains/background-tasks/queue.js', () => ({
 
 import { AuthService } from '../../../src/services/auth.service.js';
 import { PhoneVerificationRequiredError } from '../../../src/errors/phone-verification-required.error.js';
+import { PasswordCompromisedError } from '../../../src/errors/password-compromised.error.js';
 import {
   checkPasswordBreach,
   computeSha1PrefixSuffix,
@@ -503,7 +504,7 @@ describe('AuthService - breach detection', () => {
 
       await expect(
         service.resetPassword('valid-token', 'breached-password')
-      ).rejects.toThrow(/breached|compromised|data breach/i);
+      ).rejects.toBeInstanceOf(PasswordCompromisedError);
     });
   });
 

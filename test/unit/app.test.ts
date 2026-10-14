@@ -155,6 +155,10 @@ function createApplication(
   const config = {
     deployment: {
       environment: options.environment ?? 'test',
+      routes: {
+        auth: '/auth',
+        accounts: '/accounts',
+      },
       server: {
         allowed_origins: [] as string[],
         dev_allowed_origins: ['http://localhost:3000'],
@@ -197,6 +201,7 @@ function createApplication(
     views: {
       errors: {
         notfound: 'error/404.njk',
+        rate_limit: 'error/rate-limit-inline.njk',
         server_error: 'error/500.njk',
       },
     },
@@ -661,9 +666,10 @@ describe('Application', () => {
     expect(limiter?.skip?.(requestFor('/authorize'))).toBe(false);
 
     const status = vi.fn();
+    const setHeader = vi.fn();
     const type = vi.fn();
     const send = vi.fn();
-    const response = { status, type, send } as unknown as Response;
+    const response = { setHeader, status, type, send } as unknown as Response;
     status.mockReturnValue(response);
     type.mockReturnValue(response);
     const limitedRequest = {
@@ -676,6 +682,7 @@ describe('Application', () => {
       message: 'Slow down',
     });
     expect(status).toHaveBeenCalledWith(429);
+    expect(setHeader).toHaveBeenCalledWith('Retry-After', '900');
     expect(type).toHaveBeenCalledWith('text/plain');
     expect(send).toHaveBeenLastCalledWith('Slow down');
 
@@ -690,6 +697,93 @@ describe('Application', () => {
       ip: '192.0.2.10',
       path: '/authorize',
     });
+
+    const htmlStatus = vi.fn();
+    const htmlSetHeader = vi.fn();
+    const htmlRender = vi.fn();
+    const htmlResponse = {
+      status: htmlStatus,
+      setHeader: htmlSetHeader,
+      render: htmlRender,
+    } as unknown as Response;
+    htmlStatus.mockReturnValue(htmlResponse);
+    limiter?.handler?.(
+      {
+        headers: { accept: 'text/html,application/xhtml+xml' },
+        ip: '192.0.2.10',
+        originalUrl: '/auth/login',
+        path: '/auth/login',
+      } as unknown as Request,
+      htmlResponse,
+      vi.fn(),
+      { statusCode: 429, message: 'Slow down' }
+    );
+    expect(htmlSetHeader).toHaveBeenCalledWith('Retry-After', '900');
+    expect(htmlRender).toHaveBeenCalledWith('error/rate-limit-inline.njk', {
+      message: 'Slow down',
+      retryAfterSeconds: 900,
+      title: 'Too Many Requests',
+    });
+
+    (
+      config as typeof config & {
+        application: { locales: { available: string[] } };
+      }
+    ).application = { locales: { available: ['en'] } };
+    limiter?.handler?.(
+      {
+        headers: { accept: 'text/html' },
+        ip: '192.0.2.10',
+        originalUrl: '/en/auth/login',
+        path: undefined,
+      } as unknown as Request,
+      htmlResponse,
+      vi.fn(),
+      { statusCode: 429, message: '' }
+    );
+    expect(htmlRender).toHaveBeenLastCalledWith('error/rate-limit-inline.njk', {
+      message: 'Too many requests, please try again later.',
+      retryAfterSeconds: 900,
+      title: 'Too Many Requests',
+    });
+
+    const localeRootStatus = vi.fn();
+    const localeRootType = vi.fn();
+    const localeRootSend = vi.fn();
+    const localeRootResponse = {
+      setHeader: vi.fn(),
+      status: localeRootStatus,
+      type: localeRootType,
+      send: localeRootSend,
+    } as unknown as Response;
+    localeRootStatus.mockReturnValue(localeRootResponse);
+    localeRootType.mockReturnValue(localeRootResponse);
+    limiter?.handler?.(
+      {
+        headers: { accept: 'text/html' },
+        ip: '192.0.2.10',
+        originalUrl: undefined,
+        path: undefined,
+      } as unknown as Request,
+      localeRootResponse,
+      vi.fn(),
+      { statusCode: 429, message: 'Root limit' }
+    );
+    expect(localeRootType).toHaveBeenCalledWith('text/plain');
+    expect(localeRootSend).toHaveBeenCalledWith('Root limit');
+
+    limiter?.handler?.(
+      {
+        headers: { accept: 'text/html' },
+        ip: '192.0.2.10',
+        originalUrl: '/en',
+        path: '/en',
+      } as Request,
+      localeRootResponse,
+      vi.fn(),
+      { statusCode: 429, message: 'Locale root limit' }
+    );
+    expect(localeRootSend).toHaveBeenLastCalledWith('Locale root limit');
   });
 
   it('applies the hardened compression filter to headers and content types', async () => {

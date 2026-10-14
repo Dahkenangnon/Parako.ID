@@ -5,7 +5,10 @@ import { IConfigManager } from '../di/interfaces/config-manager.interface.js';
 import { ISecurityMiddleware } from '../di/interfaces/security-middleware.interface.js';
 import { ILocalsMiddleware } from '../di/interfaces/locals-middleware.interface.js';
 import { IUIMiddleware } from '../di/interfaces/ui-middleware.interface.js';
-import { changePasswordLimiter } from '../utils/rate-limiter.js';
+import {
+  changePasswordLimiter,
+  markInteractiveRateLimitRequest,
+} from '../utils/rate-limiter.js';
 import { asyncHandler } from '../middlewares/async-handler.js';
 
 export const accountRoutes = (
@@ -17,6 +20,7 @@ export const accountRoutes = (
   accountController: IAccountController
 ): Router => {
   const router = express.Router();
+  router.use(markInteractiveRateLimitRequest);
   const config = configManager.getConfig();
   const routes = config.deployment.routes.account_routes;
 

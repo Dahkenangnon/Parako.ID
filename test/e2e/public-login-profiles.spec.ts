@@ -340,8 +340,24 @@ for (const cell of loginCells) {
         }
 
         expect(limitedResponse).not.toBeNull();
-        expect(await limitedResponse!.text()).toContain('Too many requests');
+        expect(limitedResponse!.headers()['content-type']).toContain(
+          'text/html'
+        );
+        expect(await limitedResponse!.text()).toContain('Too Many Requests');
         expect(limitedResponse!.headers()['ratelimit-reset']).toBeDefined();
+        const retryAfter = Number(limitedResponse!.headers()['retry-after']);
+        expect(retryAfter).toBeGreaterThan(0);
+        await expect(
+          page.getByRole('heading', { name: 'Too Many Requests' })
+        ).toBeVisible();
+        const countdown = page.locator('[data-rate-limit-countdown]');
+        await expect(countdown).toHaveAttribute(
+          'data-rate-limit-countdown',
+          String(retryAfter)
+        );
+        await expect
+          .poll(async () => Number(await countdown.textContent()))
+          .toBeLessThan(retryAfter);
       } finally {
         await instance.stop();
       }

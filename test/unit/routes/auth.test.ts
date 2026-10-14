@@ -21,6 +21,11 @@ const rateLimiterMocks = vi.hoisted(() => {
     loginBruteForceByIdentifierAndIp: trace('rate:login:identifier-ip'),
     loginBruteForceByIp: trace('rate:login:ip'),
     loginLimiter: trace('rate:login'),
+    markInteractiveRateLimitRequest: (
+      _req: Request,
+      _res: Response,
+      next: NextFunction
+    ) => next(),
     mfaVerifyLimiter: trace('rate:mfa'),
     recoveryLimiter: trace('rate:recovery'),
     registerLimiter: trace('rate:register'),

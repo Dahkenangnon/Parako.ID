@@ -10,4 +10,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
     });
+
+  const countdown = document.querySelector<HTMLElement>(
+    '[data-rate-limit-countdown]'
+  );
+  if (!countdown) return;
+
+  let remaining = Number.parseInt(
+    countdown.dataset.rateLimitCountdown ?? '',
+    10
+  );
+  if (!Number.isFinite(remaining) || remaining < 0) return;
+
+  countdown.textContent = String(remaining);
+  const timer = window.setInterval(() => {
+    remaining = Math.max(remaining - 1, 0);
+    countdown.textContent = String(remaining);
+    if (remaining === 0) window.clearInterval(timer);
+  }, 1_000);
 });

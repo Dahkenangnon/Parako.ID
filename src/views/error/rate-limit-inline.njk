@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" class="min-h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ title or 'Too Many Requests' }}</title>
+    <link rel="stylesheet" href="{{ asset('css/styles.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/theme.css') }}">
+</head>
+<body class="min-h-svh bg-background text-foreground">
+    <main class="min-h-svh flex items-center justify-center px-4 py-10">
+        <section class="w-full max-w-md border-2 border-border bg-card p-6 text-center" aria-labelledby="rate-limit-title">
+            <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center border-2 border-amber-300 bg-amber-50 text-amber-700" aria-hidden="true">
+                <span class="text-lg font-bold">!</span>
+            </div>
+            <p class="mb-1 text-sm font-semibold text-muted-foreground">429</p>
+            <h1 id="rate-limit-title" class="mb-3 text-2xl font-bold">Too Many Requests</h1>
+            <p class="mb-3 text-sm text-muted-foreground">{{ message or 'Too many requests. Please try again later.' }}</p>
+            <p class="mb-6 text-sm">
+                Retry available in
+                <strong data-rate-limit-countdown="{{ retryAfterSeconds }}">{{ retryAfterSeconds }}</strong>
+                seconds.
+            </p>
+            <button type="button" data-error-action="reload" class="auth-btn flex h-10 w-full items-center justify-center border-2 border-transparent bg-primary text-sm font-semibold text-white focus:border-foreground focus:outline-none">
+                Try again
+            </button>
+        </section>
+    </main>
+    <script src="{{ asset('js/error-page.js') }}"></script>
+</body>
+</html>
