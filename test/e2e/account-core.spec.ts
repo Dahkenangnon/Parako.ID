@@ -6,6 +6,7 @@ import {
   IDP_ORIGIN,
   type ManagedUserFixture,
 } from './support/management-api.js';
+import { fillOtp } from './support/otp-input.js';
 
 type BrowserFailures = ReturnType<typeof observeBrowserFailures>;
 
@@ -86,16 +87,6 @@ async function expectStyledAccountPage(page: Page) {
       () => document.documentElement.scrollWidth <= innerWidth
     )
   ).toBe(true);
-}
-
-async function fillOtp(page: Page, token: string) {
-  expect(token).toMatch(/^\d{6}$/);
-  const inputs = page.locator('.otp-input');
-  await expect(inputs).toHaveCount(6);
-  for (const [index, digit] of [...token].entries()) {
-    await inputs.nth(index).fill(digit);
-  }
-  await expect(page.locator('#code')).toHaveValue(token);
 }
 
 async function authorizeTemporaryRp(page: Page) {

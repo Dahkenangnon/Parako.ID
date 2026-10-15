@@ -8,6 +8,7 @@ import {
 } from '@playwright/test';
 
 import { IDP_ORIGIN } from './support/management-api.js';
+import { fillOtp } from './support/otp-input.js';
 
 const RP_ORIGIN = 'http://127.0.0.1:19010';
 
@@ -61,13 +62,7 @@ async function waitForSms(
 }
 
 async function submitCode(page: Page, code: string) {
-  expect(code).toMatch(/^\d{6}$/);
-  const inputs = page.locator('.otp-input');
-  await expect(inputs).toHaveCount(6);
-  for (const [index, digit] of [...code].entries()) {
-    await inputs.nth(index).fill(digit);
-  }
-  await expect(page.locator('#code')).toHaveValue(code);
+  await fillOtp(page, code);
   await page.getByRole('button', { name: 'Verify Code' }).click();
 }
 

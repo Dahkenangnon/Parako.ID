@@ -31,6 +31,7 @@ import {
   TEST_COOKIE_SECRET,
 } from './support/parako-instance.mjs';
 import { requireE2ePostgresqlUrl } from './support/e2e-prerequisites.js';
+import { fillOtp } from './support/otp-input.js';
 
 const RP_ORIGIN = 'http://127.0.0.1:19389';
 const RP_CLIENT_ID = 'parako-public-account-matrix-rp';
@@ -261,16 +262,6 @@ async function login(
   await page.locator('#password').fill(credentials.password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page).toHaveURL(new RegExp(`^${origin}/accounts/`));
-}
-
-async function fillOtp(page: Page, token: string): Promise<void> {
-  expect(token).toMatch(/^\d{6}$/);
-  const inputs = page.locator('.otp-input');
-  await expect(inputs).toHaveCount(6);
-  for (const [index, digit] of [...token].entries()) {
-    await inputs.nth(index).fill(digit);
-  }
-  await expect(page.locator('#code')).toHaveValue(token);
 }
 
 async function authorizeTemporaryRp(

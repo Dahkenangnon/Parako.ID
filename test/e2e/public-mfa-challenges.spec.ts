@@ -11,6 +11,7 @@ import {
   IDP_ORIGIN,
   type ManagedUserFixture,
 } from './support/management-api.js';
+import { fillOtp } from './support/otp-input.js';
 
 const RP_ORIGIN = 'http://127.0.0.1:19010';
 
@@ -88,16 +89,6 @@ async function waitForLoginCodes(
     )
     .toBe(count);
   return loginCodes(await capturedMessages(request), recipient);
-}
-
-async function fillOtp(page: Page, code: string) {
-  expect(code).toMatch(/^\d{6}$/);
-  const inputs = page.locator('.otp-input');
-  await expect(inputs).toHaveCount(6);
-  for (const [index, digit] of [...code].entries()) {
-    await inputs.nth(index).fill(digit);
-  }
-  await expect(page.locator('#code')).toHaveValue(code);
 }
 
 async function login(page: Page, user: ManagedUserFixture) {

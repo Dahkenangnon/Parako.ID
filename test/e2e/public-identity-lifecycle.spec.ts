@@ -264,6 +264,9 @@ test.describe('public identity lifecycle', () => {
     await page.goto(`${IDP_ORIGIN}/auth/email-verification`);
     await page.locator('#email').fill(verificationUser.email);
     await page.getByRole('button', { name: /send verification link/i }).click();
+    await expect(page).toHaveURL(
+      `${IDP_ORIGIN}/auth/email-verification?status=pending`
+    );
     const verificationMessage = await waitForMessage(
       request,
       verificationUser.email
