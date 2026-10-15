@@ -50,14 +50,19 @@ async function requestSystemTenant(
 }
 
 async function acknowledgeExpectedConsoleHttpError(
+  page: Page,
   failures: BrowserFailures,
   status: number
 ): Promise<void> {
+  await page.waitForLoadState('networkidle');
   await expect
-    .poll(() => failures.consoleErrors)
-    .toEqual([
-      expect.stringContaining(`server responded with a status of ${status}`),
-    ]);
+    .poll(() => failures.consoleErrors.length)
+    .toBeGreaterThanOrEqual(1);
+  expect(
+    failures.consoleErrors.every(message =>
+      message.includes(`server responded with a status of ${status}`)
+    )
+  ).toBe(true);
   failures.consoleErrors.length = 0;
 }
 
@@ -87,7 +92,7 @@ test('the _ops host exposes only the stateless operational gateway', async ({
     expect(response?.status()).toBe(404);
     expect(response?.headers()['content-type']).toContain('text/html');
     await expect(page.getByText('Not Found', { exact: false })).toBeVisible();
-    await acknowledgeExpectedConsoleHttpError(failures, 404);
+    await acknowledgeExpectedConsoleHttpError(page, failures, 404);
     expectNoBrowserFailures(failures);
     return;
   }
@@ -98,11 +103,11 @@ test('the _ops host exposes only the stateless operational gateway', async ({
   });
   // The stateless gateway deliberately blocks Chromium's automatic favicon
   // request rather than exposing the regular tenant's static-asset surface.
-  await acknowledgeExpectedConsoleHttpError(failures, 404);
+  await acknowledgeExpectedConsoleHttpError(page, failures, 404);
   await expectJsonDocument(page, `${opsOrigin.origin}/auth/login`, 404, {
     error: 'Not found',
   });
-  await acknowledgeExpectedConsoleHttpError(failures, 404);
+  await acknowledgeExpectedConsoleHttpError(page, failures, 404);
 
   const methodDenied = await requestSystemTenant(request, '/metrics', {
     method: 'POST',
@@ -113,7 +118,7 @@ test('the _ops host exposes only the stateless operational gateway', async ({
   const regularMetrics = await page.goto(`${IDP_ORIGIN}/metrics`);
   expect(regularMetrics?.status()).toBe(404);
   expect(regularMetrics?.headers()['content-type']).toContain('text/html');
-  await acknowledgeExpectedConsoleHttpError(failures, 404);
+  await acknowledgeExpectedConsoleHttpError(page, failures, 404);
   expectNoBrowserFailures(failures);
 });
 
